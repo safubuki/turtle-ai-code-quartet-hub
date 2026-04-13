@@ -121,7 +121,7 @@ public sealed class VscodeLauncher
         if (config.UseDedicatedUserDataDirs)
         {
             arguments.Add("--user-data-dir");
-            arguments.Add(GetUserDataDirectory(slot, config));
+            arguments.Add(SlotUserDataPaths.GetUserDataDirectory(slot, config));
         }
 
         arguments.Add("--new-window");
@@ -138,7 +138,7 @@ public sealed class VscodeLauncher
         if (config.UseDedicatedUserDataDirs)
         {
             arguments.Add("--user-data-dir");
-            arguments.Add(Quote(GetUserDataDirectory(slot, config)));
+            arguments.Add(Quote(SlotUserDataPaths.GetUserDataDirectory(slot, config)));
         }
 
         arguments.Add("--new-window");
@@ -151,28 +151,11 @@ public sealed class VscodeLauncher
         return string.Join(" ", arguments);
     }
 
-    private static string GetUserDataDirectory(WindowSlot slot, AppConfig config)
-    {
-        var safeSlotName = new string(slot.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
-        if (string.IsNullOrWhiteSpace(safeSlotName))
-        {
-            safeSlotName = "slot";
-        }
-
-        return Path.Combine(config.StateDirectory, "user-data", safeSlotName);
-    }
-
     private static string? GetLaunchPath(WindowSlot slot, AppConfig config)
     {
-        if (!config.ReopenLastWorkspace)
+        if (config.ReopenLastWorkspace && !string.IsNullOrWhiteSpace(slot.SavedWorkspacePath))
         {
-            return slot.Path;
-        }
-
-        var userDataDirectory = GetUserDataDirectory(slot, config);
-        if (Directory.Exists(userDataDirectory) && Directory.EnumerateFileSystemEntries(userDataDirectory).Any())
-        {
-            return null;
+            return slot.SavedWorkspacePath;
         }
 
         return slot.Path;

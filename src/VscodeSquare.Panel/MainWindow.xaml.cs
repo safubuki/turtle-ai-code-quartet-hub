@@ -42,6 +42,9 @@ public partial class MainWindow : Window
 
         await RunBusyAsync(async () =>
         {
+            _statusStore.LoadSavedSettings();
+            RefreshSlots();
+
             if (!_vscodeLauncher.IsCodeCommandAvailable(_statusStore.Config.CodeCommand))
             {
                 _statusStore.Message = $"`{_statusStore.Config.CodeCommand}` が見つかりません。VS Codeのコマンドまたは設定を確認してください。";
@@ -88,6 +91,42 @@ public partial class MainWindow : Window
         Close();
     }
 
+    private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshSlots();
+        _statusStore.SaveCurrentSettings();
+        _statusStore.Message = "設定を保存しました。";
+    }
+
+    private void LoadSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _statusStore.LoadSavedSettings();
+        RefreshSlots();
+        _statusStore.Message = "設定を読み込みました。";
+    }
+
+    private void CloseAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshSlots();
+        _statusStore.SaveCurrentSettings();
+
+        var closed = 0;
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (!_windowArranger.Close(slot.WindowHandle))
+            {
+                continue;
+            }
+
+            _statusStore.ClearWindow(slot);
+            closed++;
+        }
+
+        _statusStore.Message = closed == 0
+            ? "閉じるVS Codeウィンドウがありません。"
+            : $"{closed}個のVS Codeを閉じて設定を保存しました。";
+    }
+
     private void FocusSlotButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: WindowSlot slot })
@@ -124,6 +163,7 @@ public partial class MainWindow : Window
         }
 
         RefreshSlots();
+        _statusStore.CaptureWorkspacePath(slot);
         if (_windowArranger.Close(slot.WindowHandle))
         {
             _statusStore.ClearWindow(slot);
@@ -163,5 +203,8 @@ public partial class MainWindow : Window
     private void SetBusyState(bool busy)
     {
         LaunchButton.IsEnabled = !busy;
+        SaveSettingsButton.IsEnabled = !busy;
+        LoadSettingsButton.IsEnabled = !busy;
+        CloseAllButton.IsEnabled = !busy;
     }
 }

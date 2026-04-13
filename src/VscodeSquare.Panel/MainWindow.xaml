@@ -130,6 +130,13 @@
       <Setter Property="BorderBrush" Value="#385345" />
     </Style>
 
+    <Style x:Key="BarButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="MinWidth" Value="74" />
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="Background" Value="#1B221E" />
+    </Style>
+
     <Style x:Key="FocusButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
       <Setter Property="MinWidth" Value="74" />
       <Style.Triggers>
@@ -311,18 +318,43 @@
                       Margin="8" />
     </UniformGrid>
 
-    <Border Grid.Row="2"
-            Background="{StaticResource SurfaceAltBrush}"
-            BorderBrush="{StaticResource BorderBrushSoft}"
-            BorderThickness="1"
-            CornerRadius="8"
-            Padding="10,7"
-            Margin="8,6,8,8">
-      <TextBlock Text="{Binding Message}"
-                 Foreground="{StaticResource MutedTextBrush}"
-                 FontSize="11"
-                 TextWrapping="NoWrap" />
-    </Border>
+    <Grid Grid.Row="2" Margin="8,4,8,6">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+
+      <Border Background="{StaticResource SurfaceAltBrush}"
+              BorderBrush="{StaticResource BorderBrushSoft}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="8,4"
+              Margin="0,0,6,0">
+        <TextBlock Text="{Binding Message}"
+                   Foreground="{StaticResource MutedTextBrush}"
+                   FontSize="10"
+                   TextWrapping="NoWrap" />
+      </Border>
+
+      <StackPanel Grid.Column="1"
+                  Orientation="Horizontal"
+                  VerticalAlignment="Center">
+        <Button x:Name="SaveSettingsButton"
+                Content="設定保存"
+                Click="SaveSettingsButton_Click"
+                Style="{StaticResource BarButton}"
+                Margin="0,0,6,0" />
+        <Button x:Name="LoadSettingsButton"
+                Content="設定読み込み"
+                Click="LoadSettingsButton_Click"
+                Style="{StaticResource BarButton}"
+                Margin="0,0,6,0" />
+        <Button x:Name="CloseAllButton"
+                Content="全て閉じる"
+                Click="CloseAllButton_Click"
+                Style="{StaticResource BarButton}" />
+      </StackPanel>
+    </Grid>
 
     <Button Grid.Row="3"
             x:Name="LaunchButton"

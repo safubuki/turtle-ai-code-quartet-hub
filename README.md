@@ -1,72 +1,126 @@
 # VS Code Square
 
-VS Code Square is a small Windows panel for launching and arranging four VS Code windows in a 2x2 layout.
+VS Code Square は、4つの VS Code ウィンドウをスロット A-D として起動し、2x2 に配置する Windows 向けの小さな WPF パネルです。
 
-This repository currently implements Phase 1 from `IMPLEMENTATION_PLAN.md`:
+## 機能
 
-- read slot settings from JSON
-- launch missing VS Code windows with `code --new-window`
-- bind newly created VS Code windows to slots
-- arrange assigned windows in a 2x2 grid on the primary monitor work area
-- focus an assigned window from the panel, then toggle it back to the 2x2 layout
-- edit and persist slot display titles from the panel
-- mark assigned windows as `Missing` when the HWND disappears
-- use slot-specific VS Code user data directories when needed to avoid requests being absorbed into an existing VS Code instance
+- `Square 4` で未起動スロットの VS Code を起動し、4分割に配置
+- 各カードの `フォーカス` で対象ウィンドウを最大化し、再度押すと4分割へ戻す
+- 各カードのタイトルをその場で編集して保持
+- 各カードの `閉じる` で対象 VS Code を閉じる
+- `全て閉じる` で管理中の VS Code をまとめて閉じる
+- `設定保存` / `設定読み込み` でカードタイトル、最後に開いたワークスペース、ウィンドウ割り当てを保存・復元
+- スロット別の VS Code user-data-dir を使い、スロットごとに最近開いたワークスペースを分けて管理
 
-AI status monitoring is intentionally left as a later phase. The panel exposes an `Unknown` AI badge so the UI shape can grow without changing the slot model.
+AI 状態取得は今後のフェーズです。現時点の `AI 未取得` は検出結果ではなくプレースホルダーです。
 
-## Requirements
+## 必要環境
 
 - Windows
+- VS Code
 - .NET 10 SDK
-- VS Code command line launcher available as `code`
+- VS Code コマンドラインランチャー `code`
 
-The current workspace can still be edited from VS Code without the SDK, but build and run commands require the SDK.
+## 環境構築
 
-## Build
+.NET SDK を winget で入れる場合:
+
+```powershell
+winget install Microsoft.DotNet.SDK.10
+```
+
+インストール後、別の PowerShell を開き直して確認します。
+
+```powershell
+dotnet --version
+```
+
+VS Code の `code` コマンドも確認します。
+
+```powershell
+code --version
+```
+
+`code` が見つからない場合は、VS Code のコマンドパレットから `Shell Command: Install 'code' command in PATH` 相当の設定を有効にするか、`config\vscode-square.json` の `codeCommand` に VS Code の `code.cmd` / `Code.exe` パスを設定してください。
+
+## 開発環境での起動
+
+ビルド:
 
 ```powershell
 dotnet build .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj
 ```
 
-## Run
+開発実行:
 
 ```powershell
 dotnet run --project .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj
 ```
 
-## Configuration
+ビルド済み exe を直接起動:
 
-Copy the example file and adjust the paths:
+```powershell
+.\src\VscodeSquare.Panel\bin\Debug\net10.0-windows\VscodeSquare.Panel.exe
+```
+
+## 設定
+
+設定ファイルを作る場合:
 
 ```powershell
 Copy-Item .\config\vscode-square.example.json .\config\vscode-square.json
 ```
 
-The app searches for configuration in this order:
+アプリは次の順で設定を探します。
 
 1. `config\vscode-square.json`
 2. `config\vscode-square.example.json`
-3. built-in default slots
+3. アプリ内の既定値
 
-The build copies the example config into the output folder.
+`config\vscode-square.json` は、スロット名、初期ワークスペースパス、起動タイムアウト、スロット別 user-data-dir の有無など、配布時にも固定したい設定を置く場所です。
 
-For deployment, keep app configuration next to the executable:
+スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開き、パネルの `設定保存` または `閉じる` / `全て閉じる` を押すと、最後に検出したワークスペースパスが `%LOCALAPPDATA%\VscodeSquare\slots.json` に保存されます。次回 `Square 4` を押すと、この保存済み設定を読み込んで VS Code を起動します。
 
-```text
-VscodeSquare.Panel.exe
-config/
-  vscode-square.json
-```
-
-Use this file for stable settings such as slot names, workspace paths, launch timeout, and whether slot-specific VS Code user data directories are used.
-
-Leave a slot `path` empty when you want VS Code to decide what to restore. On first launch that opens the VS Code welcome/no-folder state. After you open a folder or workspace inside that slot, VS Code stores it in the slot-specific user data directory and can restore it on later launches.
-
-Runtime state is stored separately under the configured `stateDirectory` value. By default this is:
+実行時状態の既定保存先:
 
 ```text
 %LOCALAPPDATA%\VscodeSquare\
 ```
 
-That state directory is for machine-local data such as slot user-data folders, saved HWND assignments, custom panel titles, logs, and future helper-extension status files. Keep workspace settings in `config\vscode-square.json`; keep volatile runtime state out of the app folder.
+ここには、スロット別 user-data-dir、`slots.json`、ログ、将来の補助拡張ステータスファイルなど、PCごとの実行時データを保存します。
+
+## デプロイ用 exe の作成
+
+自己完結型の win-x64 exe を作る場合:
+
+```powershell
+dotnet publish .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\dist\vscode-square
+```
+
+出力先:
+
+```text
+dist/
+  vscode-square/
+    VscodeSquare.Panel.exe
+    config/
+      vscode-square.example.json
+```
+
+配布時に固定設定を同梱する場合は、同じ階層に `config\vscode-square.json` を置きます。
+
+```powershell
+Copy-Item .\config\vscode-square.example.json .\dist\vscode-square\config\vscode-square.json
+```
+
+軽量なフレームワーク依存版でよい場合は、実行先PCに .NET 10 Desktop Runtime が必要です。
+
+```powershell
+dotnet publish .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj -c Release -o .\dist\vscode-square-framework
+```
+
+## AI・タブ・拡張機能情報
+
+この WPF パネル単体で安定して取れるのは、Win32 で見える VS Code ウィンドウのハンドル、タイトル、プロセス情報までです。
+
+VS Code の開いているタブ、ワークスペース、インストール済み拡張機能、拡張機能の状態を正確に取るには、VS Code 補助拡張を作り、VS Code API から取得した情報をローカルファイルなどへ書き出す構成が適しています。候補 API は `vscode.window.tabGroups.all`、`vscode.workspace.workspaceFolders`、`vscode.extensions.all` です。

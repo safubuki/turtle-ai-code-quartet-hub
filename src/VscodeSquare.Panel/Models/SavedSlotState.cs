@@ -6,5 +6,7 @@ public sealed class SavedSlotState
 
     public string PanelTitle { get; set; } = string.Empty;
 
+    public string SavedWorkspacePath { get; set; } = string.Empty;
+
     public long WindowHandle { get; set; }
 }

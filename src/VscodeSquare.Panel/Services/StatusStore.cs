@@ -53,6 +53,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         slot.WindowTitle = window.Title;
         slot.WindowStatus = SlotWindowStatus.Ready;
         slot.LastEventAt = DateTimeOffset.Now;
+        CaptureWorkspacePath(slot);
         SaveSlotStates();
     }
 
@@ -76,6 +77,35 @@ public sealed class StatusStore : INotifyPropertyChanged
         {
             slot.IsFocused = false;
         }
+    }
+
+    public void CaptureWorkspacePaths()
+    {
+        foreach (var slot in Slots)
+        {
+            CaptureWorkspacePath(slot);
+        }
+
+        SaveSlotStates();
+    }
+
+    public void CaptureWorkspacePath(WindowSlot slot)
+    {
+        var workspacePath = VscodeWorkspaceState.TryReadLastWorkspacePath(slot, Config);
+        if (!string.IsNullOrWhiteSpace(workspacePath))
+        {
+            slot.SavedWorkspacePath = workspacePath;
+        }
+    }
+
+    public void LoadSavedSettings()
+    {
+        LoadSavedSlotStates();
+    }
+
+    public void SaveCurrentSettings()
+    {
+        CaptureWorkspacePaths();
     }
 
     public void RefreshWindowStatuses(WindowEnumerator windowEnumerator)
@@ -124,6 +154,11 @@ public sealed class StatusStore : INotifyPropertyChanged
                     slot.PanelTitle = state.PanelTitle;
                 }
 
+                if (!string.IsNullOrWhiteSpace(state.SavedWorkspacePath))
+                {
+                    slot.SavedWorkspacePath = state.SavedWorkspacePath;
+                }
+
                 if (state.WindowHandle != 0)
                 {
                     slot.WindowHandle = new IntPtr(state.WindowHandle);
@@ -146,6 +181,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                 {
                     Name = slot.Name,
                     PanelTitle = slot.PanelTitle,
+                    SavedWorkspacePath = slot.SavedWorkspacePath,
                     WindowHandle = slot.WindowHandle.ToInt64()
                 })
                 .ToList();
@@ -165,7 +201,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
     private void Slot_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(WindowSlot.PanelTitle))
+        if (e.PropertyName is nameof(WindowSlot.PanelTitle) or nameof(WindowSlot.SavedWorkspacePath))
         {
             SaveSlotStates();
         }

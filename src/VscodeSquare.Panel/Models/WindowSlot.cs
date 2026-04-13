@@ -7,6 +7,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
 {
     private IntPtr _windowHandle;
     private string _panelTitle;
+    private string _savedWorkspacePath = string.Empty;
     private string _windowTitle = string.Empty;
     private SlotWindowStatus _windowStatus = SlotWindowStatus.Missing;
     private AiStatus _aiStatus = AiStatus.Unknown;
@@ -26,17 +27,20 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public string Path { get; }
 
+    public string EffectivePath => !string.IsNullOrWhiteSpace(SavedWorkspacePath) ? SavedWorkspacePath : Path;
+
     public string ShortPath
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(Path))
+            var path = EffectivePath;
+            if (string.IsNullOrWhiteSpace(path))
             {
                 return "-";
             }
 
-            var directoryName = System.IO.Path.GetFileName(Path.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
-            return string.IsNullOrWhiteSpace(directoryName) ? Path : directoryName;
+            var directoryName = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+            return string.IsNullOrWhiteSpace(directoryName) ? path : directoryName;
         }
     }
 
@@ -54,6 +58,19 @@ public sealed class WindowSlot : INotifyPropertyChanged
     }
 
     public string DisplayTitle => string.IsNullOrWhiteSpace(PanelTitle) ? GetDefaultPanelTitle() : PanelTitle;
+
+    public string SavedWorkspacePath
+    {
+        get => _savedWorkspacePath;
+        set
+        {
+            if (SetField(ref _savedWorkspacePath, NormalizeWorkspacePath(value)))
+            {
+                OnPropertyChanged(nameof(EffectivePath));
+                OnPropertyChanged(nameof(ShortPath));
+            }
+        }
+    }
 
     public bool IsFocused
     {
@@ -162,6 +179,27 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private string GetDefaultPanelTitle()
     {
         return string.IsNullOrWhiteSpace(Name) ? "未設定" : $"スロット {Name}";
+    }
+
+    private static string NormalizeWorkspacePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var path = value.Trim();
+        if (path.Length >= 3 && path[0] == '/' && char.IsLetter(path[1]) && path[2] == ':')
+        {
+            path = path[1..];
+        }
+
+        if (path.Length >= 2 && char.IsLetter(path[0]) && path[1] == ':')
+        {
+            path = path.Replace('/', System.IO.Path.DirectorySeparatorChar);
+        }
+
+        return path;
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

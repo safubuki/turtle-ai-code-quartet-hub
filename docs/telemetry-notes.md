@@ -9,6 +9,7 @@ Current panel behavior:
 - `AI 未取得` is a placeholder, not a detected state.
 - Window `Ready` / `Missing` comes from Win32 HWND checks.
 - Terminal or agent execution state is not read yet.
+- Editor tabs and extension status are not reliably available from Win32. Use a VS Code helper extension for those details.
 
 Recommended implementation order:
 
