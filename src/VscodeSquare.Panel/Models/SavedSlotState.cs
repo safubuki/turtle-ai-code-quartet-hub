@@ -8,5 +8,7 @@ public sealed class SavedSlotState
 
     public string SavedWorkspacePath { get; set; } = string.Empty;
 
+    public bool SavedWorkspaceConfirmed { get; set; }
+
     public long WindowHandle { get; set; }
 }

@@ -12,10 +12,18 @@ public sealed class WindowArranger
     private const uint SWP_NOOWNERZORDER = 0x0200;
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
+    private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+    private const uint MONITORINFOF_PRIMARY = 0x00000001;
 
-    public int Arrange(IReadOnlyList<WindowSlot> slots, int gap)
+    public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
     {
-        var workArea = GetPrimaryWorkArea();
+        var monitors = GetOrderedMonitors();
+        if (monitors.Count == 0)
+        {
+            return 0;
+        }
+
+        var workArea = monitors[NormalizeMonitorIndex(monitorIndex, monitors.Count)].WorkArea;
         var normalizedGap = Math.Clamp(gap, 0, 64);
         var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
         var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
@@ -42,6 +50,58 @@ public sealed class WindowArranger
         }
 
         return arranged;
+    }
+
+    public int GetMonitorCount()
+    {
+        return GetOrderedMonitors().Count;
+    }
+
+    public int GetDefaultMonitorIndex(string monitorSetting)
+    {
+        var monitors = GetOrderedMonitors();
+        if (monitors.Count == 0)
+        {
+            return 0;
+        }
+
+        if (int.TryParse(monitorSetting, out var configuredIndex))
+        {
+            return NormalizeMonitorIndex(configuredIndex - 1, monitors.Count);
+        }
+
+        return 0;
+    }
+
+    public int GetMonitorIndexForWindow(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return -1;
+        }
+
+        var monitorHandle = MonitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST);
+        var monitors = GetOrderedMonitors();
+        for (var index = 0; index < monitors.Count; index++)
+        {
+            if (monitors[index].Handle == monitorHandle)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    public string GetMonitorLabel(int monitorIndex)
+    {
+        var monitorCount = GetMonitorCount();
+        if (monitorCount == 0)
+        {
+            return "ディスプレイ 1/1";
+        }
+
+        return $"ディスプレイ {NormalizeMonitorIndex(monitorIndex, monitorCount) + 1}/{monitorCount}";
     }
 
     public bool Focus(IntPtr windowHandle)
@@ -76,28 +136,85 @@ public sealed class WindowArranger
         return PostMessage(windowHandle, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
     }
 
-    private static WorkArea GetPrimaryWorkArea()
+    private static List<MonitorWorkArea> GetOrderedMonitors()
     {
-        var monitor = MonitorFromWindow(IntPtr.Zero, MONITOR_DEFAULTTOPRIMARY);
-        var info = new MONITORINFO
-        {
-            cbSize = Marshal.SizeOf<MONITORINFO>()
-        };
+        var monitors = new List<MonitorWorkArea>();
 
-        if (!GetMonitorInfo(monitor, ref info))
+        _ = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMonitor, _, _, _) =>
         {
-            return new WorkArea(0, 0, 1280, 720);
+            var info = new MONITORINFO
+            {
+                cbSize = Marshal.SizeOf<MONITORINFO>()
+            };
+
+            if (GetMonitorInfo(hMonitor, ref info))
+            {
+                monitors.Add(new MonitorWorkArea(
+                    hMonitor,
+                    new WorkArea(
+                        info.rcWork.Left,
+                        info.rcWork.Top,
+                        info.rcWork.Right - info.rcWork.Left,
+                        info.rcWork.Bottom - info.rcWork.Top),
+                    (info.dwFlags & MONITORINFOF_PRIMARY) != 0));
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        if (monitors.Count == 0)
+        {
+            var monitor = MonitorFromWindow(IntPtr.Zero, MONITOR_DEFAULTTOPRIMARY);
+            var info = new MONITORINFO
+            {
+                cbSize = Marshal.SizeOf<MONITORINFO>()
+            };
+
+            if (GetMonitorInfo(monitor, ref info))
+            {
+                monitors.Add(new MonitorWorkArea(
+                    monitor,
+                    new WorkArea(
+                        info.rcWork.Left,
+                        info.rcWork.Top,
+                        info.rcWork.Right - info.rcWork.Left,
+                        info.rcWork.Bottom - info.rcWork.Top),
+                    true));
+            }
+            else
+            {
+                monitors.Add(new MonitorWorkArea(IntPtr.Zero, new WorkArea(0, 0, 1280, 720), true));
+            }
         }
 
-        return new WorkArea(
-            info.rcWork.Left,
-            info.rcWork.Top,
-            info.rcWork.Right - info.rcWork.Left,
-            info.rcWork.Bottom - info.rcWork.Top);
+        return monitors
+            .OrderByDescending(item => item.IsPrimary)
+            .ThenBy(item => item.WorkArea.Left)
+            .ThenBy(item => item.WorkArea.Top)
+            .ToList();
+    }
+
+    private static int NormalizeMonitorIndex(int monitorIndex, int monitorCount)
+    {
+        if (monitorCount <= 0)
+        {
+            return 0;
+        }
+
+        var normalizedIndex = monitorIndex % monitorCount;
+        if (normalizedIndex < 0)
+        {
+            normalizedIndex += monitorCount;
+        }
+
+        return normalizedIndex;
     }
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -117,7 +234,11 @@ public sealed class WindowArranger
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
+
     private readonly record struct WorkArea(int Left, int Top, int Width, int Height);
+
+    private readonly record struct MonitorWorkArea(IntPtr Handle, WorkArea WorkArea, bool IsPrimary);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MONITORINFO

@@ -1,15 +1,17 @@
-# VS Code Square
+# Turtle VSCode Quartet
 
-VS Code Square は、4つの VS Code ウィンドウをスロット A-D として起動し、2x2 に配置する Windows 向けの小さな WPF パネルです。
+Turtle VSCode Quartet は、4つの VS Code ウィンドウをスロット A-D として起動し、2x2 に配置する Windows 向けの小さな WPF パネルです。
 
 ## 機能
 
-- `Square 4` で未起動スロットの VS Code を起動し、4分割に配置
+- `Launch Quartet` で未起動スロットの VS Code を起動し、4分割に配置
 - 各カードの `フォーカス` で対象ウィンドウを最大化し、再度押すと4分割へ戻す
 - 各カードのタイトルをその場で編集して保持
+- 各カードのワークスペース名は、VS Code 側で開いているフォルダや workspace を数秒以内に反映
 - 各カードの `閉じる` で対象 VS Code を閉じる
 - `全て閉じる` で管理中の VS Code をまとめて閉じる
-- `設定保存` / `設定読み込み` でカードタイトル、最後に開いたワークスペース、ウィンドウ割り当てを保存・復元
+- `設定保存` / `設定読み込み` でカードタイトル、最後に確認できたワークスペース、ウィンドウ割り当てを保存・復元
+- `表示切替` で 4 つの VS Code を次のディスプレイへまとめて移動
 - スロット別の VS Code user-data-dir を使い、スロットごとに最近開いたワークスペースを分けて管理
 
 AI 状態取得は今後のフェーズです。現時点の `AI 未取得` は検出結果ではなくプレースホルダーです。
@@ -41,7 +43,7 @@ VS Code の `code` コマンドも確認します。
 code --version
 ```
 
-`code` が見つからない場合は、VS Code のコマンドパレットから `Shell Command: Install 'code' command in PATH` 相当の設定を有効にするか、`config\vscode-square.json` の `codeCommand` に VS Code の `code.cmd` / `Code.exe` パスを設定してください。
+`code` が見つからない場合は、VS Code のコマンドパレットから `Shell Command: Install 'code' command in PATH` 相当の設定を有効にするか、`config\vscode-square.json` の `codeCommand` に VS Code の `Code.exe` パスを設定してください。`code.cmd` を指定していても、アプリは可能なら実体の `Code.exe` を優先して起動し、余計なコマンドプロンプトが残らないようにします。
 
 ## 開発環境での起動
 
@@ -79,7 +81,9 @@ Copy-Item .\config\vscode-square.example.json .\config\vscode-square.json
 
 `config\vscode-square.json` は、スロット名、初期ワークスペースパス、起動タイムアウト、スロット別 user-data-dir の有無など、配布時にも固定したい設定を置く場所です。
 
-スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開き、パネルの `設定保存` または `閉じる` / `全て閉じる` を押すと、最後に検出したワークスペースパスが `%LOCALAPPDATA%\VscodeSquare\slots.json` に保存されます。次回 `Square 4` を押すと、この保存済み設定を読み込んで VS Code を起動します。
+スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開くと、パネル上のスロット名の下に現在のフォルダ名または workspace 名が数秒以内に反映されます。さらに `設定保存` または `閉じる` / `全て閉じる` を押すと、現在のウィンドウタイトルからそのワークスペースが確認できたスロットだけ `%LOCALAPPDATA%\VscodeSquare\slots.json` に保存されます。ようこそ画面や no-folder 状態のスロットは保存対象にせず、次回 `Launch Quartet` でもようこそ画面のまま起動します。
+
+複数ディスプレイがある場合は `表示切替` で 4 分割の配置先を次のディスプレイへ順送りできます。2 枚なら 1 → 2 → 1、3 枚なら 1 → 2 → 3 → 1 のようにトグルします。
 
 実行時状態の既定保存先:
 

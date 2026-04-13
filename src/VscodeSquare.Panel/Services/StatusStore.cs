@@ -51,9 +51,9 @@ public sealed class StatusStore : INotifyPropertyChanged
     {
         slot.WindowHandle = window.Handle;
         slot.WindowTitle = window.Title;
+        slot.CurrentWorkspacePath = string.Empty;
         slot.WindowStatus = SlotWindowStatus.Ready;
         slot.LastEventAt = DateTimeOffset.Now;
-        CaptureWorkspacePath(slot);
         SaveSlotStates();
     }
 
@@ -91,11 +91,22 @@ public sealed class StatusStore : INotifyPropertyChanged
 
     public void CaptureWorkspacePath(WindowSlot slot)
     {
-        var workspacePath = VscodeWorkspaceState.TryReadLastWorkspacePath(slot, Config);
+        if (slot.WindowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var workspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config);
+        slot.CurrentWorkspacePath = workspacePath ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(workspacePath))
         {
             slot.SavedWorkspacePath = workspacePath;
+            slot.SavedWorkspaceConfirmed = true;
+            return;
         }
+
+        slot.SavedWorkspaceConfirmed = false;
+        slot.SavedWorkspacePath = string.Empty;
     }
 
     public void LoadSavedSettings()
@@ -114,6 +125,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         {
             if (slot.WindowHandle == IntPtr.Zero)
             {
+                slot.CurrentWorkspacePath = string.Empty;
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
@@ -127,6 +139,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
             slot.WindowTitle = window.Title;
             slot.WindowStatus = SlotWindowStatus.Ready;
+            slot.CurrentWorkspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config) ?? string.Empty;
         }
     }
 
@@ -159,6 +172,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                     slot.SavedWorkspacePath = state.SavedWorkspacePath;
                 }
 
+                slot.SavedWorkspaceConfirmed = state.SavedWorkspaceConfirmed;
+
                 if (state.WindowHandle != 0)
                 {
                     slot.WindowHandle = new IntPtr(state.WindowHandle);
@@ -182,6 +197,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                     Name = slot.Name,
                     PanelTitle = slot.PanelTitle,
                     SavedWorkspacePath = slot.SavedWorkspacePath,
+                    SavedWorkspaceConfirmed = slot.SavedWorkspaceConfirmed,
                     WindowHandle = slot.WindowHandle.ToInt64()
                 })
                 .ToList();
@@ -201,7 +217,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
     private void Slot_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(WindowSlot.PanelTitle) or nameof(WindowSlot.SavedWorkspacePath))
+        if (e.PropertyName is nameof(WindowSlot.PanelTitle) or nameof(WindowSlot.SavedWorkspacePath) or nameof(WindowSlot.SavedWorkspaceConfirmed))
         {
             SaveSlotStates();
         }

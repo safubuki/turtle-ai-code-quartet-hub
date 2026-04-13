@@ -12,6 +12,7 @@ public partial class MainWindow : Window
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly StatusStore _statusStore;
     private readonly DispatcherTimer _refreshTimer;
+    private int? _activeMonitorIndex;
     private bool _isBusy;
 
     public MainWindow()
@@ -66,13 +67,13 @@ public partial class MainWindow : Window
 
             if (assignments.Count > 0)
             {
-                _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap);
+                ArrangeSlotsOnActiveMonitor();
                 _statusStore.ClearFocusedSlot();
                 _statusStore.Message = $"{assignments.Count}個のVS Codeを起動して2x2に配置しました。";
             }
             else
             {
-                var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap);
+                var arranged = ArrangeSlotsOnActiveMonitor();
                 _statusStore.ClearFocusedSlot();
                 _statusStore.Message = arranged > 0
                     ? $"{arranged}個のVS Codeを2x2に配置しました。"
@@ -137,7 +138,7 @@ public partial class MainWindow : Window
         RefreshSlots();
         if (slot.IsFocused)
         {
-            var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap);
+            var arranged = ArrangeSlotsOnActiveMonitor();
             _statusStore.ClearFocusedSlot();
             _statusStore.Message = arranged == 0
                 ? "4分割表示に戻せるVS Codeウィンドウがありません。"
@@ -153,6 +154,27 @@ public partial class MainWindow : Window
         }
 
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+    }
+
+    private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshSlots();
+
+        var monitorCount = _windowArranger.GetMonitorCount();
+        if (monitorCount <= 1)
+        {
+            _statusStore.Message = "利用可能なディスプレイが1枚のため切り替えできません。";
+            return;
+        }
+
+        var nextMonitorIndex = (GetActiveMonitorIndex() + 1) % monitorCount;
+        _activeMonitorIndex = nextMonitorIndex;
+
+        var arranged = ArrangeSlotsOnActiveMonitor();
+        _statusStore.ClearFocusedSlot();
+        _statusStore.Message = arranged > 0
+            ? $"{arranged}個のVS Codeを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に移動しました。"
+            : $"次回の配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました。";
     }
 
     private void CloseSlotButton_Click(object sender, RoutedEventArgs e)
@@ -179,6 +201,32 @@ public partial class MainWindow : Window
         _statusStore.RefreshWindowStatuses(_windowEnumerator);
     }
 
+    private int ArrangeSlotsOnActiveMonitor()
+    {
+        return _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
+    }
+
+    private int GetActiveMonitorIndex()
+    {
+        if (_activeMonitorIndex.HasValue)
+        {
+            return _activeMonitorIndex.Value;
+        }
+
+        foreach (var slot in _statusStore.Slots)
+        {
+            var detectedMonitorIndex = _windowArranger.GetMonitorIndexForWindow(slot.WindowHandle);
+            if (detectedMonitorIndex >= 0)
+            {
+                _activeMonitorIndex = detectedMonitorIndex;
+                return detectedMonitorIndex;
+            }
+        }
+
+        _activeMonitorIndex = _windowArranger.GetDefaultMonitorIndex(_statusStore.Config.Monitor);
+        return _activeMonitorIndex.Value;
+    }
+
     private async Task RunBusyAsync(Func<Task> action)
     {
         _isBusy = true;
@@ -203,6 +251,7 @@ public partial class MainWindow : Window
     private void SetBusyState(bool busy)
     {
         LaunchButton.IsEnabled = !busy;
+        ToggleMonitorButton.IsEnabled = !busy;
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;

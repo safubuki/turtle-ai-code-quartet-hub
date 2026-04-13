@@ -8,6 +8,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private IntPtr _windowHandle;
     private string _panelTitle;
     private string _savedWorkspacePath = string.Empty;
+    private bool _savedWorkspaceConfirmed;
+    private string _currentWorkspacePath = string.Empty;
     private string _windowTitle = string.Empty;
     private SlotWindowStatus _windowStatus = SlotWindowStatus.Missing;
     private AiStatus _aiStatus = AiStatus.Unknown;
@@ -27,13 +29,26 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public string Path { get; }
 
-    public string EffectivePath => !string.IsNullOrWhiteSpace(SavedWorkspacePath) ? SavedWorkspacePath : Path;
+    public string EffectivePath => SavedWorkspaceConfirmed && !string.IsNullOrWhiteSpace(SavedWorkspacePath) ? SavedWorkspacePath : Path;
+
+    public string DisplayPath
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentWorkspacePath))
+            {
+                return CurrentWorkspacePath;
+            }
+
+            return WindowHandle != IntPtr.Zero ? Path : EffectivePath;
+        }
+    }
 
     public string ShortPath
     {
         get
         {
-            var path = EffectivePath;
+            var path = DisplayPath;
             if (string.IsNullOrWhiteSpace(path))
             {
                 return "-";
@@ -67,6 +82,34 @@ public sealed class WindowSlot : INotifyPropertyChanged
             if (SetField(ref _savedWorkspacePath, NormalizeWorkspacePath(value)))
             {
                 OnPropertyChanged(nameof(EffectivePath));
+                OnPropertyChanged(nameof(DisplayPath));
+                OnPropertyChanged(nameof(ShortPath));
+            }
+        }
+    }
+
+    public bool SavedWorkspaceConfirmed
+    {
+        get => _savedWorkspaceConfirmed;
+        set
+        {
+            if (SetField(ref _savedWorkspaceConfirmed, value))
+            {
+                OnPropertyChanged(nameof(EffectivePath));
+                OnPropertyChanged(nameof(DisplayPath));
+                OnPropertyChanged(nameof(ShortPath));
+            }
+        }
+    }
+
+    public string CurrentWorkspacePath
+    {
+        get => _currentWorkspacePath;
+        set
+        {
+            if (SetField(ref _currentWorkspacePath, NormalizeWorkspacePath(value)))
+            {
+                OnPropertyChanged(nameof(DisplayPath));
                 OnPropertyChanged(nameof(ShortPath));
             }
         }
@@ -118,7 +161,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
             _windowHandle = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(DisplayPath));
             OnPropertyChanged(nameof(WindowHandleText));
+            OnPropertyChanged(nameof(ShortPath));
         }
     }
 
@@ -171,6 +216,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     public void ClearWindow()
     {
         WindowHandle = IntPtr.Zero;
+        CurrentWorkspacePath = string.Empty;
         WindowTitle = string.Empty;
         WindowStatus = SlotWindowStatus.Missing;
         IsFocused = false;

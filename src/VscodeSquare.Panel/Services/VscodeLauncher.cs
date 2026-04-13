@@ -39,60 +39,72 @@ public sealed class VscodeLauncher
             slot.WindowStatus = SlotWindowStatus.Launching;
         }
 
-        var beforeHandles = _windowEnumerator
+        var knownHandles = _windowEnumerator
             .GetVsCodeWindows()
             .Select(window => window.Handle)
             .ToHashSet();
 
         var resolvedCodeCommand = ResolveCodeCommand(config.CodeCommand) ?? config.CodeCommand;
+        var assignments = new List<WindowAssignment>();
+        var timeout = TimeSpan.FromSeconds(config.LaunchTimeoutSeconds);
 
         foreach (var slot in launchTargets)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {resolvedCodeCommand} {GetLaunchArguments(slot, config)}");
             StartCode(resolvedCodeCommand, slot, config);
-            await Task.Delay(350, cancellationToken);
+
+            var window = await WaitForNewWindowAsync(knownHandles, timeout, cancellationToken);
+            if (window is null)
+            {
+                DiagnosticLog.Write($"No new VS Code window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
+                slot.WindowStatus = SlotWindowStatus.Missing;
+                break;
+            }
+
+            knownHandles.Add(window.Handle);
+            assignments.Add(new WindowAssignment(slot, window));
         }
 
-        var windows = await WaitForNewWindowsAsync(
-            beforeHandles,
-            launchTargets.Count,
-            TimeSpan.FromSeconds(config.LaunchTimeoutSeconds),
-            cancellationToken);
+        foreach (var pendingSlot in launchTargets.Skip(assignments.Count))
+        {
+            if (pendingSlot.WindowHandle == IntPtr.Zero)
+            {
+                pendingSlot.WindowStatus = SlotWindowStatus.Missing;
+            }
+        }
 
-        return launchTargets
-            .Zip(windows, (slot, window) => new WindowAssignment(slot, window))
-            .ToList();
+        return assignments;
     }
 
-    private async Task<IReadOnlyList<WindowInfo>> WaitForNewWindowsAsync(
-        HashSet<IntPtr> beforeHandles,
-        int expectedCount,
+    private async Task<WindowInfo?> WaitForNewWindowAsync(
+        HashSet<IntPtr> knownHandles,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
-        var windows = new List<WindowInfo>();
 
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            windows = _windowEnumerator
+            var window = _windowEnumerator
                 .GetVsCodeWindows()
-                .Where(window => !beforeHandles.Contains(window.Handle))
+                .Where(item => !knownHandles.Contains(item.Handle))
                 .OrderBy(window => window.ProcessId)
                 .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                .FirstOrDefault();
 
-            if (windows.Count >= expectedCount)
+            if (window is not null)
             {
-                break;
+                return window;
             }
 
-            await Task.Delay(500, cancellationToken);
+            await Task.Delay(250, cancellationToken);
         }
 
-        return windows.Take(expectedCount).ToList();
+        return null;
     }
 
     private static void StartCode(string codeCommand, WindowSlot slot, AppConfig config)
@@ -153,7 +165,9 @@ public sealed class VscodeLauncher
 
     private static string? GetLaunchPath(WindowSlot slot, AppConfig config)
     {
-        if (config.ReopenLastWorkspace && !string.IsNullOrWhiteSpace(slot.SavedWorkspacePath))
+        if (config.ReopenLastWorkspace
+            && slot.SavedWorkspaceConfirmed
+            && !string.IsNullOrWhiteSpace(slot.SavedWorkspacePath))
         {
             return slot.SavedWorkspacePath;
         }
@@ -168,7 +182,7 @@ public sealed class VscodeLauncher
             : codeCommand.Trim().Trim('"');
         if (File.Exists(normalized))
         {
-            return normalized;
+            return ResolveVsCodeExecutable(normalized);
         }
 
         if (IsVsCodeCliAlias(normalized))
@@ -186,7 +200,7 @@ public sealed class VscodeLauncher
         {
             if (File.Exists(pathCandidate))
             {
-                return pathCandidate;
+                return ResolveVsCodeExecutable(pathCandidate);
             }
         }
 
@@ -199,6 +213,82 @@ public sealed class VscodeLauncher
         }
 
         return null;
+    }
+
+    private static string ResolveVsCodeExecutable(string commandPath)
+    {
+        if (!IsVsCodeWrapperScript(commandPath))
+        {
+            return commandPath;
+        }
+
+        var executableName = GetPreferredExecutableName(commandPath);
+        if (string.IsNullOrWhiteSpace(executableName))
+        {
+            return commandPath;
+        }
+
+        foreach (var directory in GetWrapperParentDirectories(commandPath))
+        {
+            var candidate = Path.Combine(directory, executableName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return commandPath;
+    }
+
+    private static bool IsVsCodeWrapperScript(string commandPath)
+    {
+        var extension = Path.GetExtension(commandPath);
+        if (!string.Equals(extension, ".cmd", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(extension, ".bat", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var fileName = Path.GetFileName(commandPath);
+        return fileName.Equals("code.cmd", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("code.bat", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("code-insiders.cmd", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("code-insiders.bat", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetPreferredExecutableName(string commandPath)
+    {
+        var fileName = Path.GetFileName(commandPath);
+        if (fileName.Equals("code.cmd", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("code.bat", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Code.exe";
+        }
+
+        if (fileName.Equals("code-insiders.cmd", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("code-insiders.bat", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Code - Insiders.exe";
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> GetWrapperParentDirectories(string commandPath)
+    {
+        var currentDirectory = Path.GetDirectoryName(commandPath);
+        if (string.IsNullOrWhiteSpace(currentDirectory))
+        {
+            yield break;
+        }
+
+        yield return currentDirectory;
+
+        var parentDirectory = Directory.GetParent(currentDirectory)?.FullName;
+        if (!string.IsNullOrWhiteSpace(parentDirectory))
+        {
+            yield return parentDirectory;
+        }
     }
 
     private static bool IsVsCodeCliAlias(string command)
@@ -246,18 +336,18 @@ public sealed class VscodeLauncher
         {
             if (wantsStable)
             {
-                yield return Path.Combine(root, "Programs", "Microsoft VS Code", "bin", "code.cmd");
                 yield return Path.Combine(root, "Programs", "Microsoft VS Code", "Code.exe");
-                yield return Path.Combine(root, "Microsoft VS Code", "bin", "code.cmd");
+                yield return Path.Combine(root, "Programs", "Microsoft VS Code", "bin", "code.cmd");
                 yield return Path.Combine(root, "Microsoft VS Code", "Code.exe");
+                yield return Path.Combine(root, "Microsoft VS Code", "bin", "code.cmd");
             }
 
             if (wantsInsiders)
             {
-                yield return Path.Combine(root, "Programs", "Microsoft VS Code Insiders", "bin", "code-insiders.cmd");
                 yield return Path.Combine(root, "Programs", "Microsoft VS Code Insiders", "Code - Insiders.exe");
-                yield return Path.Combine(root, "Microsoft VS Code Insiders", "bin", "code-insiders.cmd");
+                yield return Path.Combine(root, "Programs", "Microsoft VS Code Insiders", "bin", "code-insiders.cmd");
                 yield return Path.Combine(root, "Microsoft VS Code Insiders", "Code - Insiders.exe");
+                yield return Path.Combine(root, "Microsoft VS Code Insiders", "bin", "code-insiders.cmd");
             }
         }
     }

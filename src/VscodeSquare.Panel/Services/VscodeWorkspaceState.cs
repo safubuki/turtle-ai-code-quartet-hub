@@ -6,6 +6,19 @@ namespace VscodeSquare.Panel.Services;
 
 public static class VscodeWorkspaceState
 {
+    public static string? TryReadCurrentWorkspacePath(WindowSlot slot, AppConfig config)
+    {
+        var workspacePath = TryReadLastWorkspacePath(slot, config);
+        if (string.IsNullOrWhiteSpace(workspacePath))
+        {
+            return null;
+        }
+
+        return IsWorkspaceVisibleInWindowTitle(slot.WindowTitle, workspacePath)
+            ? workspacePath
+            : null;
+    }
+
     public static string? TryReadLastWorkspacePath(WindowSlot slot, AppConfig config)
     {
         var workspaceStorageDirectory = Path.Combine(
@@ -37,6 +50,49 @@ public static class VscodeWorkspaceState
         }
 
         return null;
+    }
+
+    private static bool IsWorkspaceVisibleInWindowTitle(string? windowTitle, string workspacePath)
+    {
+        if (string.IsNullOrWhiteSpace(windowTitle))
+        {
+            return false;
+        }
+
+        foreach (var candidate in GetWorkspaceTitleCandidates(workspacePath))
+        {
+            if (windowTitle.Contains(candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> GetWorkspaceTitleCandidates(string workspacePath)
+    {
+        var normalizedPath = workspacePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            yield break;
+        }
+
+        var fileName = Path.GetFileName(normalizedPath);
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            yield return fileName;
+        }
+
+        if (Path.HasExtension(normalizedPath))
+        {
+            var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(normalizedPath);
+            if (!string.IsNullOrWhiteSpace(fileNameWithoutExtension)
+                && !string.Equals(fileNameWithoutExtension, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return fileNameWithoutExtension;
+            }
+        }
     }
 
     private static string? TryReadWorkspaceJson(string path)

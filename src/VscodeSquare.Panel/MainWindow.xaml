@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:models="clr-namespace:VscodeSquare.Panel.Models"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="VS Code Square"
+        Title="Turtle VSCode Quartet"
         Width="640"
         Height="440"
         MinWidth="560"
@@ -283,7 +283,7 @@
     </Grid.RowDefinitions>
 
     <Grid Grid.Row="0">
-      <TextBlock Text="VS Code Square"
+      <TextBlock Text="Turtle VSCode Quartet"
                  FontWeight="SemiBold"
                  Foreground="{StaticResource TextBrush}" />
       <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
@@ -339,6 +339,11 @@
       <StackPanel Grid.Column="1"
                   Orientation="Horizontal"
                   VerticalAlignment="Center">
+        <Button x:Name="ToggleMonitorButton"
+          Content="表示切替"
+          Click="ToggleMonitorButton_Click"
+          Style="{StaticResource BarButton}"
+          Margin="0,0,6,0" />
         <Button x:Name="SaveSettingsButton"
                 Content="設定保存"
                 Click="SaveSettingsButton_Click"
@@ -356,9 +361,9 @@
       </StackPanel>
     </Grid>
 
-    <Button Grid.Row="3"
-            x:Name="LaunchButton"
-            Content="Square 4"
+        <Button Grid.Row="3"
+          x:Name="LaunchButton"
+              Content="Launch Quartet"
             Click="LaunchButton_Click"
             Style="{StaticResource LaunchButtonStyle}"
             HorizontalAlignment="Stretch"

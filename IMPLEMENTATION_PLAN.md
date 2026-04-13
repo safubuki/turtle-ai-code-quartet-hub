@@ -1,4 +1,4 @@
-# VS Code Square 実装計画書
+# Turtle VSCode Quartet 実装計画書
 
 作成日: 2026-04-14
 
@@ -84,7 +84,7 @@ Windowsデスクトップ上で複数のVS Codeウィンドウを扱いやすく
 
 ```text
 +--------------------------+
-| VS Code Square Panel     |
+| Turtle VSCode Quartet Panel |
 | WPF / .NET               |
 |                          |
 | - Launch 4 VS Code       |
