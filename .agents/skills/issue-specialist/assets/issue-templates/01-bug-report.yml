@@ -1,0 +1,63 @@
+name: バグ報告
+description: 再現可能な不具合を報告する
+title: "[バグ] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        再現と修正を迅速に進めるため、できるだけ具体的に記載してください。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何が壊れているかを記載してください
+      placeholder: 不具合の要点を簡潔に記載
+    validations:
+      required: true
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: 再現手順
+      description: この現象を再現するための正確な手順
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: 期待される挙動
+      placeholder: 本来どうなるべきか
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: 実際の挙動
+      placeholder: 実際に起きたこと
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 実行環境
+      description: OS、ブラウザ、アプリバージョンなど
+      placeholder: Windows 11 / Chrome 132 / app 1.0.0
+  - type: textarea
+    id: logs_and_screenshots
+    attributes:
+      label: ログ・スクリーンショット
+      description: スタックトレース、ログ、画像リンクなどを貼り付け
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 確認事項
+      options:
+        - label: 既存Issueを確認し、重複がないことを確認しました。
+          required: true
+        - label: 最新バージョンでも再現することを確認しました。
+          required: true

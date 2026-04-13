@@ -1,0 +1,56 @@
+name: メンテナンス作業
+description: リファクタ、依存更新、CI整備など機能追加以外の作業を管理する
+title: "[メンテ] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        リファクタリング、依存更新、運用改善などの作業管理に使用してください。
+  - type: textarea
+    id: objective
+    attributes:
+      label: 目的
+      description: 達成したいメンテナンス目標
+      placeholder: 成果ベースで簡潔に記載
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: スコープ
+      description: 対象範囲と対象外
+      placeholder: 影響範囲と非目標を明示
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: タスク分解
+      description: 実施チェックリスト
+      placeholder: |
+        - [ ] タスク1
+        - [ ] タスク2
+        - [ ] タスク3
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: 検証計画
+      description: 何で結果を検証するか
+      placeholder: テストコマンド、手動確認、リリース影響
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: リスクと対策
+      description: 技術的・運用的リスクと軽減策
+      placeholder: 任意
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 確認事項
+      options:
+        - label: 既存Issueを確認し、重複がないことを確認しました。
+          required: true

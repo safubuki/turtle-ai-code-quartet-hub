@@ -1,0 +1,71 @@
+name: 機能改善提案
+description: 新機能や改善提案を登録する
+title: "[改善] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        改善系のIssueです。ユーザー価値と完了条件を明確に記載してください。
+  - type: textarea
+    id: objective
+    attributes:
+      label: 目的
+      description: 何を改善するか
+      placeholder: 目的を1文で記載
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 背景・課題
+      description: なぜ必要か
+      placeholder: 現在の課題、影響、制約を記載
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案内容
+      description: 何を実装したいか
+      placeholder: 設計方針、挙動、UI/API変更点など
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 受け入れ条件
+      description: 完了条件をチェックリストで記載
+      placeholder: |
+        - [ ] 条件1
+        - [ ] 条件2
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: スコープ外
+      description: このIssueで扱わない内容
+      placeholder: 任意
+  - type: dropdown
+    id: impact_area
+    attributes:
+      label: 主な影響領域
+      options:
+        - UI/UX
+        - 再生
+        - エクスポート
+        - メディア管理
+        - AIナレーション
+        - ビルド/CI
+        - その他
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 確認事項
+      options:
+        - label: 既存Issueを確認し、重複がないことを確認しました。
+          required: true

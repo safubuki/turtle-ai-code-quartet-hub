@@ -1,0 +1,58 @@
+name: ドキュメント改善
+description: 不足・古い・不明瞭なドキュメントを改善する
+title: "[ドキュメント] "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ドキュメント品質と保守性を改善するためのIssueです。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: どのドキュメント課題を解決するか
+      placeholder: 課題の要点を簡潔に記載
+    validations:
+      required: true
+  - type: textarea
+    id: current_state
+    attributes:
+      label: 現状
+      description: 何が不足・古い・分かりにくいか
+      placeholder: ギャップと影響対象を記載
+    validations:
+      required: true
+  - type: textarea
+    id: desired_state
+    attributes:
+      label: あるべき状態
+      description: 改善後にどうなっているべきか
+      placeholder: 目標となる内容・構成を記載
+    validations:
+      required: true
+  - type: textarea
+    id: target_files
+    attributes:
+      label: 対象ファイル / ページ
+      description: 更新対象のパスまたはURL
+      placeholder: Docs/developer_guide.md, README.md など
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 受け入れ条件
+      description: 完了条件のチェックリスト
+      placeholder: |
+        - [ ] スコープを網羅している
+        - [ ] 手順が再現可能である
+        - [ ] 用語が一貫している
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 確認事項
+      options:
+        - label: 同内容の改善Issueが未登録であることを確認しました。
+          required: true
