@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using VscodeSquare.Panel.Models;
 using VscodeSquare.Panel.Services;
@@ -149,6 +150,7 @@ public partial class MainWindow : Window
         if (_windowArranger.FocusMaximized(slot.WindowHandle))
         {
             _statusStore.SetFocusedSlot(slot);
+            BringPanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             return;
         }
@@ -203,7 +205,21 @@ public partial class MainWindow : Window
 
     private int ArrangeSlotsOnActiveMonitor()
     {
-        return _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
+        var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
+        BringPanelToFront();
+        return arranged;
+    }
+
+    private void BringPanelToFront()
+    {
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        if (panelHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        _windowArranger.BringToFront(panelHandle);
+        Activate();
     }
 
     private int GetActiveMonitorIndex()

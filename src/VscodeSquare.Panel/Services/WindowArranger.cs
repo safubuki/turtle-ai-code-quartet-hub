@@ -8,12 +8,16 @@ public sealed class WindowArranger
     private const uint WM_CLOSE = 0x0010;
     private const int SW_MAXIMIZE = 3;
     private const int SW_RESTORE = 9;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_NOOWNERZORDER = 0x0200;
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
+    private static readonly IntPtr HWND_TOP = IntPtr.Zero;
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
     {
@@ -43,13 +47,23 @@ public sealed class WindowArranger
             var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
 
             ShowWindow(slot.WindowHandle, SW_RESTORE);
-            if (SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW))
+            if (SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW))
             {
                 arranged++;
             }
         }
 
         return arranged;
+    }
+
+    public bool BringToFront(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(windowHandle, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
     }
 
     public int GetMonitorCount()
