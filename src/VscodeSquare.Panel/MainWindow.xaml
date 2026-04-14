@@ -4,10 +4,10 @@
         xmlns:models="clr-namespace:VscodeSquare.Panel.Models"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle VSCode Quartet"
-        Width="640"
-        Height="468"
-        MinWidth="560"
-        MinHeight="408"
+        Width="600"
+        Height="344"
+        MinWidth="524"
+        MinHeight="312"
         Background="#101211"
         Foreground="#EEF4EF"
         FontFamily="Segoe UI"
@@ -20,7 +20,7 @@
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Ideal">
   <shell:WindowChrome.WindowChrome>
-    <shell:WindowChrome CaptionHeight="36"
+    <shell:WindowChrome CaptionHeight="34"
                         ResizeBorderThickness="8"
                         GlassFrameThickness="0"
                         CornerRadius="0"
@@ -141,6 +141,13 @@
       <Setter Property="Background" Value="#1B221E" />
     </Style>
 
+    <Style x:Key="SlotActionButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="MinWidth" Value="58" />
+    </Style>
+
     <Style x:Key="ChromeButton" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
       <Setter Property="Background" Value="Transparent" />
@@ -172,17 +179,19 @@
       <Setter Property="BorderBrush" Value="#3A463F" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="7,5" />
-      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="MinHeight" Value="24" />
     </Style>
 
     <Style x:Key="StatusPillTextStyle" TargetType="TextBlock">
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
-      <Setter Property="LineHeight" Value="18" />
-      <Setter Property="Margin" Value="0,-1,0,1" />
+      <Setter Property="LineHeight" Value="15" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Margin" Value="0" />
       <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+      <Setter Property="TextAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="WindowPill" TargetType="Border" BasedOn="{StaticResource TinyPill}">
@@ -207,7 +216,7 @@
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="12" />
+      <Setter Property="Padding" Value="8" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Effect">
         <Setter.Value>
@@ -275,7 +284,6 @@
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
 
@@ -305,42 +313,48 @@
                        Style="{StaticResource InlineTitleTextBox}"
                        MaxLength="40" />
               <TextBlock Text="{Binding ShortPath}"
-                         Margin="0,3,0,0"
+                         Margin="0,2,0,0"
                          Foreground="{StaticResource MutedTextBrush}" />
             </StackPanel>
           </Grid>
 
-          <WrapPanel Grid.Row="1"
-                     Margin="0,10,0,4"
-                     VerticalAlignment="Top">
-            <Border Style="{StaticResource WindowPill}" Margin="0,0,6,6">
-              <TextBlock Text="{Binding WindowStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" Style="{StaticResource StatusPillTextStyle}" />
-            </Border>
-            <Border Style="{StaticResource TinyPill}" Margin="0,0,6,6">
-              <TextBlock Text="{Binding AiStatusText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
-            </Border>
-            <Border Style="{StaticResource TinyPill}" Margin="0,0,6,6">
-              <TextBlock Text="{Binding LastEventText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
-            </Border>
-          </WrapPanel>
+          <Grid Grid.Row="1"
+                Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-          <StackPanel Grid.Row="2"
-                      Orientation="Horizontal"
-                      HorizontalAlignment="Right">
-            <Button Content="閉じる"
+            <WrapPanel Grid.Column="0"
+                       VerticalAlignment="Center">
+              <Border Style="{StaticResource WindowPill}" Margin="0,0,6,0">
+                <TextBlock Text="{Binding WindowStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" Style="{StaticResource StatusPillTextStyle}" />
+              </Border>
+              <Border Style="{StaticResource TinyPill}" Margin="0,0,6,0">
+                <TextBlock Text="{Binding AiStatusText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
+              </Border>
+              <Border Style="{StaticResource TinyPill}" Margin="0,0,6,0">
+                <TextBlock Text="{Binding LastEventText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
+              </Border>
+            </WrapPanel>
+
+            <Button Grid.Column="1"
+                    Content="停止"
                     Tag="{Binding}"
                     Click="CloseSlotButton_Click"
-                    Style="{StaticResource MiniButton}" />
-          </StackPanel>
+                    Style="{StaticResource SlotActionButton}"
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center" />
+          </Grid>
         </Grid>
       </Border>
     </DataTemplate>
   </Window.Resources>
 
-  <Grid Background="{StaticResource PanelBackgroundBrush}" Margin="12">
+  <Grid Background="{StaticResource PanelBackgroundBrush}" Margin="8">
     <Grid.RowDefinitions>
-      <RowDefinition Height="30" />
-      <RowDefinition Height="*" />
+      <RowDefinition Height="26" />
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
@@ -362,26 +376,26 @@
       </StackPanel>
     </Grid>
 
-    <UniformGrid Grid.Row="1" Columns="2" Rows="2">
+    <UniformGrid Grid.Row="1" Columns="2" Rows="2" VerticalAlignment="Top">
       <ContentControl
                       Content="{Binding Slots[0]}"
                       ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="8" />
+                      Margin="5" />
       <ContentControl
                       Content="{Binding Slots[1]}"
                       ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="8" />
+                      Margin="5" />
       <ContentControl
                       Content="{Binding Slots[2]}"
                       ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="8" />
+                      Margin="5" />
       <ContentControl
                       Content="{Binding Slots[3]}"
                       ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="8" />
+                      Margin="5" />
     </UniformGrid>
 
-    <Grid Grid.Row="2" Margin="8,4,8,6">
+    <Grid Grid.Row="2" Margin="5,2,5,3">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
@@ -391,8 +405,8 @@
               BorderBrush="{StaticResource BorderBrushSoft}"
               BorderThickness="1"
               CornerRadius="8"
-              Padding="8,4"
-              Margin="0,0,8,0">
+              Padding="7,4"
+                Margin="0,0,5,0">
         <TextBlock Text="{Binding Message}"
                    Foreground="{StaticResource MutedTextBrush}"
                    FontSize="10"
@@ -413,39 +427,39 @@
 
         <Button Grid.Row="0"
                 Grid.Column="0"
-                x:Name="TopmostAllButton"
-                Content="最前面"
-                Click="PinAllTopButton_Click"
+          x:Name="ToggleMonitorButton"
+          Content="ディスプレイ移動"
+          Click="ToggleMonitorButton_Click"
                 Style="{StaticResource BarButton}"
-                Margin="0,0,6,6" />
+                Margin="0,0,5,5" />
         <Button Grid.Row="0"
                 Grid.Column="1"
-                x:Name="BackmostAllButton"
-                Content="最背面"
-                Click="SendAllBackButton_Click"
+          x:Name="TopmostAllButton"
+          Content="最前面"
+          Click="PinAllTopButton_Click"
                 Style="{StaticResource BarButton}"
-                Margin="0,0,6,6" />
+                Margin="0,0,5,5" />
         <Button Grid.Row="0"
                 Grid.Column="2"
-                x:Name="ToggleMonitorButton"
-                Content="ディスプレイ移動"
-                Click="ToggleMonitorButton_Click"
+          x:Name="BackmostAllButton"
+          Content="最背面"
+          Click="SendAllBackButton_Click"
                 Style="{StaticResource BarButton}"
-                Margin="0,0,0,6" />
+          Margin="0,0,0,5" />
         <Button Grid.Row="1"
                 Grid.Column="0"
                 x:Name="SaveSettingsButton"
                 Content="設定保存"
                 Click="SaveSettingsButton_Click"
                 Style="{StaticResource BarButton}"
-                Margin="0,0,6,0" />
+                Margin="0,0,5,0" />
         <Button Grid.Row="1"
                 Grid.Column="1"
                 x:Name="LoadSettingsButton"
                 Content="設定読み込み"
                 Click="LoadSettingsButton_Click"
                 Style="{StaticResource BarButton}"
-                Margin="0,0,6,0" />
+                Margin="0,0,5,0" />
         <Button Grid.Row="1"
                 Grid.Column="2"
                 x:Name="CloseAllButton"
@@ -461,6 +475,6 @@
             Click="LaunchButton_Click"
             Style="{StaticResource LaunchButtonStyle}"
             HorizontalAlignment="Stretch"
-            Margin="8,0,8,0" />
+                  Margin="5,0,5,0" />
   </Grid>
 </Window>

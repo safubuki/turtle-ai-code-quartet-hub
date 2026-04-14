@@ -87,13 +87,41 @@ public sealed class AppConfig
 
     private static IEnumerable<string> CandidatePaths()
     {
-        var baseDirectory = AppContext.BaseDirectory;
-        var currentDirectory = Environment.CurrentDirectory;
+        var roots = GetSearchRoots().ToList();
 
-        yield return Path.Combine(currentDirectory, "config", "vscode-square.json");
-        yield return Path.Combine(baseDirectory, "config", "vscode-square.json");
-        yield return Path.Combine(currentDirectory, "config", "vscode-square.example.json");
-        yield return Path.Combine(baseDirectory, "config", "vscode-square.example.json");
+        foreach (var root in roots)
+        {
+            yield return Path.Combine(root, "config", "vscode-square.json");
+        }
+
+        foreach (var root in roots)
+        {
+            yield return Path.Combine(root, "config", "vscode-square.example.json");
+        }
+    }
+
+    private static IEnumerable<string> GetSearchRoots()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var startPath in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
+        {
+            if (string.IsNullOrWhiteSpace(startPath))
+            {
+                continue;
+            }
+
+            var directory = new DirectoryInfo(startPath);
+            while (directory is not null)
+            {
+                if (seen.Add(directory.FullName))
+                {
+                    yield return directory.FullName;
+                }
+
+                directory = directory.Parent;
+            }
+        }
     }
 
     private static List<SlotConfig> DefaultSlots()

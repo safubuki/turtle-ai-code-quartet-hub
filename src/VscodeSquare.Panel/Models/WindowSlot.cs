@@ -152,7 +152,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         SlotWindowStatus.Ready => "起動",
         SlotWindowStatus.Launching => "起動中",
-        SlotWindowStatus.Missing => "未検出",
+        SlotWindowStatus.Missing => "停止",
         _ => WindowStatus.ToString()
     };
 
