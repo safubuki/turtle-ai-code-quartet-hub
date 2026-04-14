@@ -5,6 +5,12 @@ namespace VscodeSquare.Panel.Models;
 
 public sealed class WindowSlot : INotifyPropertyChanged
 {
+    public enum SlotWindowLayerMode
+    {
+        Topmost,
+        Backmost
+    }
+
     private IntPtr _windowHandle;
     private string _panelTitle;
     private string _savedWorkspacePath = string.Empty;
@@ -15,6 +21,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private AiStatus _aiStatus = AiStatus.Unknown;
     private DateTimeOffset? _lastEventAt;
     private bool _isFocused;
+    private SlotWindowLayerMode _windowLayerMode = SlotWindowLayerMode.Topmost;
 
     public WindowSlot(SlotConfig config)
     {
@@ -120,14 +127,26 @@ public sealed class WindowSlot : INotifyPropertyChanged
         get => _isFocused;
         set
         {
-            if (SetField(ref _isFocused, value))
+            SetField(ref _isFocused, value);
+        }
+    }
+
+    public SlotWindowLayerMode WindowLayerMode
+    {
+        get => _windowLayerMode;
+        set
+        {
+            if (SetField(ref _windowLayerMode, value))
             {
-                OnPropertyChanged(nameof(FocusButtonText));
+                OnPropertyChanged(nameof(IsTopmostLayer));
+                OnPropertyChanged(nameof(IsBackmostLayer));
             }
         }
     }
 
-    public string FocusButtonText => IsFocused ? "フォーカス中" : "フォーカス";
+    public bool IsTopmostLayer => WindowLayerMode == SlotWindowLayerMode.Topmost;
+
+    public bool IsBackmostLayer => WindowLayerMode == SlotWindowLayerMode.Backmost;
 
     public string WindowStatusText => WindowStatus switch
     {
@@ -220,6 +239,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
         WindowTitle = string.Empty;
         WindowStatus = SlotWindowStatus.Missing;
         IsFocused = false;
+        WindowLayerMode = SlotWindowLayerMode.Topmost;
     }
 
     private string GetDefaultPanelTitle()

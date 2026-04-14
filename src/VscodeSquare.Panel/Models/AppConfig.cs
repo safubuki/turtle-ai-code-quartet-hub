@@ -21,6 +21,8 @@ public sealed class AppConfig
 
     public bool UseDedicatedUserDataDirs { get; set; } = true;
 
+    public bool InheritMainUserState { get; set; } = true;
+
     public bool ReopenLastWorkspace { get; set; } = true;
 
     public string StateDirectory { get; set; } = Path.Combine(

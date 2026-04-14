@@ -52,6 +52,11 @@ public sealed class VscodeLauncher
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (config.UseDedicatedUserDataDirs)
+            {
+                SlotUserDataPaths.PrepareDedicatedUserData(slot, config, resolvedCodeCommand);
+            }
+
             DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {resolvedCodeCommand} {GetLaunchArguments(slot, config)}");
             StartCode(resolvedCodeCommand, slot, config);
 

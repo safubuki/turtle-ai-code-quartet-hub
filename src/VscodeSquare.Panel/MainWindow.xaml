@@ -5,16 +5,20 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle VSCode Quartet"
         Width="640"
-        Height="440"
+        Height="468"
         MinWidth="560"
-        MinHeight="380"
+        MinHeight="408"
         Background="#101211"
         Foreground="#EEF4EF"
         FontFamily="Segoe UI"
         FontSize="12"
         WindowStyle="None"
         ResizeMode="CanResize"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="36"
                         ResizeBorderThickness="8"
@@ -137,18 +141,6 @@
       <Setter Property="Background" Value="#1B221E" />
     </Style>
 
-    <Style x:Key="FocusButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
-      <Setter Property="MinWidth" Value="74" />
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding IsFocused}" Value="True">
-          <Setter Property="Foreground" Value="#06120C" />
-          <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-          <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-          <Setter Property="FontWeight" Value="SemiBold" />
-        </DataTrigger>
-      </Style.Triggers>
-    </Style>
-
     <Style x:Key="ChromeButton" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
       <Setter Property="Background" Value="Transparent" />
@@ -180,7 +172,17 @@
       <Setter Property="BorderBrush" Value="#3A463F" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="Padding" Value="7,5" />
+      <Setter Property="MinHeight" Value="28" />
+    </Style>
+
+    <Style x:Key="StatusPillTextStyle" TargetType="TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+      <Setter Property="LineHeight" Value="18" />
+      <Setter Property="Margin" Value="0,-1,0,1" />
+      <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
 
     <Style x:Key="WindowPill" TargetType="Border" BasedOn="{StaticResource TinyPill}">
@@ -200,12 +202,76 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="SlotCardBorderStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Effect">
+        <Setter.Value>
+          <DropShadowEffect BlurRadius="14"
+                            ShadowDepth="0"
+                            Color="#000000"
+                            Opacity="0.18" />
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#1A211D" />
+          <Setter Property="BorderBrush" Value="#3D4E45" />
+        </Trigger>
+        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+          <Setter Property="Background" Value="#18231D" />
+          <Setter Property="BorderBrush" Value="#45D483" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect BlurRadius="26"
+                                ShadowDepth="0"
+                                Color="#45D483"
+                                Opacity="0.48" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="LedIndicatorStyle" TargetType="Ellipse">
+      <Setter Property="Width" Value="10" />
+      <Setter Property="Height" Value="10" />
+      <Setter Property="Fill" Value="#3A4941" />
+      <Setter Property="Stroke" Value="#54675C" />
+      <Setter Property="StrokeThickness" Value="1" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsTopmostLayer}" Value="True">
+          <Setter Property="Fill" Value="#2E9C5E" />
+          <Setter Property="Stroke" Value="#7EF3AF" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsBackmostLayer}" Value="True">
+          <Setter Property="Fill" Value="#59655E" />
+          <Setter Property="Stroke" Value="#7C8A82" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+          <Setter Property="Fill" Value="#7AF7B2" />
+          <Setter Property="Stroke" Value="#D7FFE8" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect BlurRadius="14"
+                                ShadowDepth="0"
+                                Color="#7AF7B2"
+                                Opacity="0.85" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <DataTemplate x:Key="SlotCardTemplate" DataType="{x:Type models:WindowSlot}">
-      <Border Background="{StaticResource SurfaceBrush}"
-              BorderBrush="{StaticResource BorderBrushSoft}"
-              BorderThickness="1"
-              CornerRadius="8"
-              Padding="12">
+      <Border Style="{StaticResource SlotCardBorderStyle}"
+              Tag="{Binding}"
+              MouseLeftButtonUp="SlotCard_MouseLeftButtonUp">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -215,6 +281,7 @@
 
           <Grid>
             <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -231,7 +298,8 @@
                          FontWeight="SemiBold"
                          Foreground="{StaticResource AccentBrush}" />
             </Border>
-            <StackPanel Grid.Column="1">
+            <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="2">
               <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=PropertyChanged}"
                        ToolTip="タイトルを編集"
                        Style="{StaticResource InlineTitleTextBox}"
@@ -243,27 +311,22 @@
           </Grid>
 
           <WrapPanel Grid.Row="1"
-                     Margin="0,10,0,0"
+                     Margin="0,10,0,4"
                      VerticalAlignment="Top">
             <Border Style="{StaticResource WindowPill}" Margin="0,0,6,6">
-              <TextBlock Text="{Binding WindowStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding WindowStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" Style="{StaticResource StatusPillTextStyle}" />
             </Border>
             <Border Style="{StaticResource TinyPill}" Margin="0,0,6,6">
-              <TextBlock Text="{Binding AiStatusText}" Foreground="{StaticResource MutedTextBrush}" />
+              <TextBlock Text="{Binding AiStatusText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
             </Border>
             <Border Style="{StaticResource TinyPill}" Margin="0,0,6,6">
-              <TextBlock Text="{Binding LastEventText}" Foreground="{StaticResource MutedTextBrush}" />
+              <TextBlock Text="{Binding LastEventText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
             </Border>
           </WrapPanel>
 
           <StackPanel Grid.Row="2"
                       Orientation="Horizontal"
                       HorizontalAlignment="Right">
-            <Button Content="{Binding FocusButtonText}"
-                    Tag="{Binding}"
-                    Click="FocusSlotButton_Click"
-                    Style="{StaticResource FocusButton}"
-                    Margin="0,0,6,0" />
             <Button Content="閉じる"
                     Tag="{Binding}"
                     Click="CloseSlotButton_Click"
@@ -329,36 +392,67 @@
               BorderThickness="1"
               CornerRadius="8"
               Padding="8,4"
-              Margin="0,0,6,0">
+              Margin="0,0,8,0">
         <TextBlock Text="{Binding Message}"
                    Foreground="{StaticResource MutedTextBrush}"
                    FontSize="10"
-                   TextWrapping="NoWrap" />
+                   TextWrapping="Wrap" />
       </Border>
 
-      <StackPanel Grid.Column="1"
-                  Orientation="Horizontal"
-                  VerticalAlignment="Center">
-        <Button x:Name="ToggleMonitorButton"
-          Content="表示切替"
-          Click="ToggleMonitorButton_Click"
-          Style="{StaticResource BarButton}"
-          Margin="0,0,6,0" />
-        <Button x:Name="SaveSettingsButton"
+      <Grid Grid.Column="1"
+            VerticalAlignment="Center">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Button Grid.Row="0"
+                Grid.Column="0"
+                x:Name="TopmostAllButton"
+                Content="最前面"
+                Click="PinAllTopButton_Click"
+                Style="{StaticResource BarButton}"
+                Margin="0,0,6,6" />
+        <Button Grid.Row="0"
+                Grid.Column="1"
+                x:Name="BackmostAllButton"
+                Content="最背面"
+                Click="SendAllBackButton_Click"
+                Style="{StaticResource BarButton}"
+                Margin="0,0,6,6" />
+        <Button Grid.Row="0"
+                Grid.Column="2"
+                x:Name="ToggleMonitorButton"
+                Content="ディスプレイ移動"
+                Click="ToggleMonitorButton_Click"
+                Style="{StaticResource BarButton}"
+                Margin="0,0,0,6" />
+        <Button Grid.Row="1"
+                Grid.Column="0"
+                x:Name="SaveSettingsButton"
                 Content="設定保存"
                 Click="SaveSettingsButton_Click"
                 Style="{StaticResource BarButton}"
                 Margin="0,0,6,0" />
-        <Button x:Name="LoadSettingsButton"
+        <Button Grid.Row="1"
+                Grid.Column="1"
+                x:Name="LoadSettingsButton"
                 Content="設定読み込み"
                 Click="LoadSettingsButton_Click"
                 Style="{StaticResource BarButton}"
                 Margin="0,0,6,0" />
-        <Button x:Name="CloseAllButton"
+        <Button Grid.Row="1"
+                Grid.Column="2"
+                x:Name="CloseAllButton"
                 Content="全て閉じる"
                 Click="CloseAllButton_Click"
                 Style="{StaticResource BarButton}" />
-      </StackPanel>
+      </Grid>
     </Grid>
 
         <Button Grid.Row="3"

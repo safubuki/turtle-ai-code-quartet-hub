@@ -54,6 +54,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         slot.CurrentWorkspacePath = string.Empty;
         slot.WindowStatus = SlotWindowStatus.Ready;
         slot.LastEventAt = DateTimeOffset.Now;
+        slot.WindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
         SaveSlotStates();
     }
 

@@ -3,6 +3,7 @@
   "monitor": "primary",
   "gap": 8,
   "useDedicatedUserDataDirs": true,
+  "inheritMainUserState": true,
   "reopenLastWorkspace": true,
   "launchTimeoutSeconds": 25,
   "slots": [

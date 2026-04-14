@@ -1,5 +1,9 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using VscodeSquare.Panel.Models;
 using VscodeSquare.Panel.Services;
@@ -13,6 +17,7 @@ public partial class MainWindow : Window
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly StatusStore _statusStore;
     private readonly DispatcherTimer _refreshTimer;
+    private WindowSlot.SlotWindowLayerMode _managedWindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
     private int? _activeMonitorIndex;
     private bool _isBusy;
 
@@ -32,7 +37,12 @@ public partial class MainWindow : Window
         _refreshTimer.Tick += (_, _) => RefreshSlots();
         _refreshTimer.Start();
 
-        Loaded += (_, _) => RefreshSlots();
+        Loaded += (_, _) =>
+        {
+            Topmost = true;
+            RefreshSlots();
+            ApplyManagedWindowLayers();
+        };
     }
 
     private async void LaunchButton_Click(object sender, RoutedEventArgs e)
@@ -129,14 +139,25 @@ public partial class MainWindow : Window
             : $"{closed}個のVS Codeを閉じて設定を保存しました。";
     }
 
-    private void FocusSlotButton_Click(object sender, RoutedEventArgs e)
+    private void SlotCard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
         }
 
+        if (IsInteractiveCardChild(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        ToggleSlotFocus(slot);
+    }
+
+    private void ToggleSlotFocus(WindowSlot slot)
+    {
         RefreshSlots();
+
         if (slot.IsFocused)
         {
             var arranged = ArrangeSlotsOnActiveMonitor();
@@ -147,6 +168,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost, false);
         if (_windowArranger.FocusMaximized(slot.WindowHandle))
         {
             _statusStore.SetFocusedSlot(slot);
@@ -156,6 +178,36 @@ public partial class MainWindow : Window
         }
 
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+    }
+
+    private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshSlots();
+        if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost))
+        {
+            _statusStore.Message = "管理中のVS Codeを最前面にしました。";
+            return;
+        }
+
+        _statusStore.Message = "最前面にできるVS Codeウィンドウがありません。";
+    }
+
+    private void SendAllBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshSlots();
+        if (_statusStore.Slots.Any(slot => slot.IsFocused))
+        {
+            _statusStore.ClearFocusedSlot();
+            ArrangeSlotsOnActiveMonitor();
+        }
+
+        if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Backmost))
+        {
+            _statusStore.Message = "管理中のVS Codeを最背面にしました。";
+            return;
+        }
+
+        _statusStore.Message = "最背面にできるVS Codeウィンドウがありません。";
     }
 
     private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
@@ -206,8 +258,55 @@ public partial class MainWindow : Window
     private int ArrangeSlotsOnActiveMonitor()
     {
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
-        BringPanelToFront();
+        ApplyManagedWindowLayers();
         return arranged;
+    }
+
+    private void ApplyManagedWindowLayers()
+    {
+        SetManagedWindowLayer(_managedWindowLayerMode);
+    }
+
+    private bool SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode layerMode, bool bringPanelAfterChange = true)
+    {
+        _managedWindowLayerMode = layerMode;
+        var appliedAny = false;
+
+        foreach (var slot in _statusStore.Slots)
+        {
+            appliedAny |= ApplyLayerToSlot(slot, layerMode, false);
+        }
+
+        if (bringPanelAfterChange)
+        {
+            BringPanelToFront();
+        }
+
+        return appliedAny;
+    }
+
+    private bool ApplyLayerToSlot(WindowSlot slot, WindowSlot.SlotWindowLayerMode layerMode, bool bringPanelAfterChange = true)
+    {
+        if (slot.WindowHandle == IntPtr.Zero)
+        {
+            slot.WindowLayerMode = layerMode;
+            return false;
+        }
+
+        slot.WindowLayerMode = layerMode;
+        var applied = layerMode switch
+        {
+            WindowSlot.SlotWindowLayerMode.Topmost => _windowArranger.SetTopmost(slot.WindowHandle),
+            WindowSlot.SlotWindowLayerMode.Backmost => _windowArranger.SetBackmost(slot.WindowHandle),
+            _ => false
+        };
+
+        if (bringPanelAfterChange)
+        {
+            BringPanelToFront();
+        }
+
+        return applied;
     }
 
     private void BringPanelToFront()
@@ -218,8 +317,27 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!Topmost)
+        {
+            Topmost = true;
+        }
+
         _windowArranger.BringToFront(panelHandle);
-        Activate();
+    }
+
+    private static bool IsInteractiveCardChild(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is ButtonBase or TextBox)
+            {
+                return true;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
     }
 
     private int GetActiveMonitorIndex()
@@ -267,6 +385,8 @@ public partial class MainWindow : Window
     private void SetBusyState(bool busy)
     {
         LaunchButton.IsEnabled = !busy;
+        TopmostAllButton.IsEnabled = !busy;
+        BackmostAllButton.IsEnabled = !busy;
         ToggleMonitorButton.IsEnabled = !busy;
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
