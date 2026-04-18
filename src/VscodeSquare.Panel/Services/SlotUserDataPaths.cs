@@ -55,6 +55,16 @@ public static class SlotUserDataPaths
         return Path.Combine(config.StateDirectory, "user-data", safeSlotName);
     }
 
+    public static string GetEffectiveUserDataDirectory(WindowSlot slot, AppConfig config)
+    {
+        if (config.UseDedicatedUserDataDirs)
+        {
+            return GetUserDataDirectory(slot, config);
+        }
+
+        return GetInstalledUserDataDirectory(config.CodeCommand) ?? GetUserDataDirectory(slot, config);
+    }
+
     public static void PrepareDedicatedUserData(WindowSlot slot, AppConfig config, string codeCommand)
     {
         var targetDirectory = GetUserDataDirectory(slot, config);

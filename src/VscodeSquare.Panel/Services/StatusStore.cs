@@ -24,6 +24,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     private string _message;
     private bool _suppressPersistence;
     private readonly Dictionary<string, DateTimeOffset> _workspaceRefreshTimestamps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AiStatusDetector _aiStatusDetector = new();
 
     public StatusStore(AppConfig config)
     {
@@ -74,6 +75,8 @@ public sealed class StatusStore : INotifyPropertyChanged
         slot.WindowTitle = window.Title;
         slot.CurrentWorkspacePath = string.Empty;
         slot.WindowStatus = SlotWindowStatus.Ready;
+        slot.AiStatus = AiStatus.Idle;
+        slot.AiStatusDetail = "AI は待機中です。";
         slot.LastEventAt = DateTimeOffset.Now;
         slot.WindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
 
@@ -250,6 +253,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                 _workspaceRefreshTimestamps.Remove(slot.Name);
                 slot.CurrentWorkspacePath = string.Empty;
                 slot.WindowStatus = SlotWindowStatus.Missing;
+                slot.AiStatus = AiStatus.Idle;
+                slot.AiStatusDetail = "VS Code は起動していません。";
                 continue;
             }
 
@@ -263,11 +268,23 @@ public sealed class StatusStore : INotifyPropertyChanged
             var previousTitle = slot.WindowTitle;
             slot.WindowTitle = window.Title;
             slot.WindowStatus = SlotWindowStatus.Ready;
+            UpdateAiStatus(slot);
             if (ShouldRefreshWorkspacePath(slot, !string.Equals(previousTitle, window.Title, StringComparison.Ordinal)))
             {
                 slot.CurrentWorkspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config) ?? string.Empty;
                 _workspaceRefreshTimestamps[slot.Name] = DateTimeOffset.UtcNow;
             }
+        }
+    }
+
+    private void UpdateAiStatus(WindowSlot slot)
+    {
+        var status = _aiStatusDetector.Detect(slot, Config);
+        slot.AiStatus = status.Status;
+        slot.AiStatusDetail = status.Detail;
+        if (status.EventAt.HasValue)
+        {
+            slot.LastEventAt = status.EventAt;
         }
     }
 

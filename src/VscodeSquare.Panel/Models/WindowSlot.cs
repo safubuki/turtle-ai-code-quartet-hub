@@ -19,7 +19,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private string _currentWorkspacePath = string.Empty;
     private string _windowTitle = string.Empty;
     private SlotWindowStatus _windowStatus = SlotWindowStatus.Missing;
-    private AiStatus _aiStatus = AiStatus.Unknown;
+    private AiStatus _aiStatus = AiStatus.Idle;
+    private string _aiStatusDetail = "AI は待機中です。";
     private DateTimeOffset? _lastEventAt;
     private bool _isFocused;
     private SlotWindowLayerMode _windowLayerMode = SlotWindowLayerMode.Topmost;
@@ -178,8 +179,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public string AiStatusText => AiStatus switch
     {
-        AiStatus.Unknown => "AI 未取得",
-        AiStatus.Idle => "AI 待機",
+        AiStatus.Unknown => "AI 待機中",
+        AiStatus.Idle => "AI 待機中",
         AiStatus.Running => "AI 実行中",
         AiStatus.Completed => "AI 完了",
         AiStatus.Error => "AI エラー",
@@ -245,6 +246,12 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
     }
 
+    public string AiStatusDetail
+    {
+        get => _aiStatusDetail;
+        set => SetField(ref _aiStatusDetail, value ?? string.Empty);
+    }
+
     public DateTimeOffset? LastEventAt
     {
         get => _lastEventAt;
@@ -265,6 +272,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
         CurrentWorkspacePath = string.Empty;
         WindowTitle = string.Empty;
         WindowStatus = SlotWindowStatus.Missing;
+        AiStatus = AiStatus.Idle;
+        AiStatusDetail = "VS Code は起動していません。";
         IsFocused = false;
         WindowLayerMode = SlotWindowLayerMode.Topmost;
     }

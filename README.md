@@ -26,7 +26,7 @@ Turtle App Launch Quartet は、4つの VS Code ウィンドウをスロット A
 - 専用 user-data-dir を使う場合でも、通常使っている VS Code の設定、globalStorage、Electron 側の認証保存領域を起動前に同期し、可能な範囲でログイン状態を引き継ぐ
 - SSH 接続などの remote workspace URI も保存し、次回の `Launch Quartet` で再オープンする
 
-AI 状態取得は今後のフェーズです。現時点の `AI 未取得` は検出結果ではなくプレースホルダーです。
+AI 状態は、VS Code ウィンドウの UI Automation とスロット別 user-data-dir の拡張ログから限定的に取得します。実行中は現在表示されている停止ボタンなどの可視 UI を優先して読み取り、完了は実行中表示が消えた直後または拡張ログの完了イベントから短時間だけ `AI 完了` を表示します。それ以外は `AI 待機中` を表示し、古い `作業中` ライブリージョンや過去ログを実行中として保持しません。
 
 フォーカス表示と4分割への復帰では、VS Code のアニメーション中のちらつきを抑えるため、パネルの最前面復帰を約500msだけ遅らせています。
 
@@ -109,7 +109,7 @@ Copy-Item .\config\vscode-square.example.json .\config\vscode-square.json
 %LOCALAPPDATA%\VscodeSquare\
 ```
 
-ここには、スロット別 user-data-dir、`slots.json`、裏保存 Quartet の状態、ログ、将来の補助拡張ステータスファイルなど、PCごとの実行時データを保存します。
+ここには、スロット別 user-data-dir、`slots.json`、裏保存 Quartet の状態、VS Code 拡張ログなど、PCごとの実行時データを保存します。
 
 ## デプロイ用 exe の作成
 
@@ -147,7 +147,9 @@ dotnet publish .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj -c Release -o 
 
 この WPF パネル単体で安定して取れるのは、Win32 で見える VS Code ウィンドウのハンドル、タイトル、プロセス情報までです。
 
-VS Code の開いているタブ、ワークスペース、インストール済み拡張機能、拡張機能の状態を正確に取るには、VS Code 補助拡張を作り、VS Code API から取得した情報をローカルファイルなどへ書き出す構成が適しています。候補 API は `vscode.window.tabGroups.all`、`vscode.workspace.workspaceFolders`、`vscode.extensions.all` です。
+AI 状態は例外的に、VS Code ウィンドウを Windows UI Automation で走査しつつ、スロット別 user-data-dir に出力される拡張ログを読み取って推定します。実行中判定は現在見えている停止ボタンなどの可視 UI を優先し、完了判定は実行中表示が消えた直後の遷移または `openai.chatgpt` の `Codex.log` と `github.copilot-chat` の `GitHub Copilot Chat.log` の直近イベントを使います。非表示の `作業中` ライブリージョンや継続的に流れる状態ログだけでは実行中にしません。VS Code API からの厳密な状態取得ではありません。
+
+VS Code の開いているタブ、ワークスペース、インストール済み拡張機能、拡張機能の詳細状態を正確に取るには、VS Code 補助拡張を作り、VS Code API から取得した情報をローカルファイルなどへ書き出す構成が適しています。候補 API は `vscode.window.tabGroups.all`、`vscode.workspace.workspaceFolders`、`vscode.extensions.all` です。
 
 ## ライセンス
 

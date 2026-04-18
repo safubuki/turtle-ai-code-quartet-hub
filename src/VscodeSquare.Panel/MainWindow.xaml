@@ -246,6 +246,31 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="AiPill" TargetType="Border" BasedOn="{StaticResource TinyPill}">
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Running}">
+          <Setter Property="Background" Value="#302817" />
+          <Setter Property="BorderBrush" Value="#8C702C" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Completed}">
+          <Setter Property="Background" Value="{StaticResource AccentDarkBrush}" />
+          <Setter Property="BorderBrush" Value="#287B4A" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Error}">
+          <Setter Property="Background" Value="#311B1A" />
+          <Setter Property="BorderBrush" Value="#79403A" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.NeedsAttention}">
+          <Setter Property="Background" Value="#302817" />
+          <Setter Property="BorderBrush" Value="#7B6129" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.WaitingForConfirmation}">
+          <Setter Property="Background" Value="#302817" />
+          <Setter Property="BorderBrush" Value="#7B6129" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="SlotCardBorderStyle" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
@@ -354,7 +379,7 @@
               <Border Style="{StaticResource WindowPill}" Margin="0,0,6,0">
                 <TextBlock Text="{Binding WindowStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" Style="{StaticResource StatusPillTextStyle}" />
               </Border>
-              <Border Style="{StaticResource TinyPill}" Margin="0,0,6,0">
+              <Border Style="{StaticResource AiPill}" Margin="0,0,6,0" ToolTip="{Binding AiStatusDetail}">
                 <TextBlock Text="{Binding AiStatusText}" Foreground="{StaticResource MutedTextBrush}" Style="{StaticResource StatusPillTextStyle}" />
               </Border>
             </WrapPanel>
