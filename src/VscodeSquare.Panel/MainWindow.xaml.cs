@@ -461,7 +461,7 @@ public partial class MainWindow : Window
         slot.WindowLayerMode = layerMode;
         var applied = layerMode switch
         {
-            WindowSlot.SlotWindowLayerMode.Topmost => _windowArranger.SetTopmost(slot.WindowHandle),
+            WindowSlot.SlotWindowLayerMode.Topmost => _windowArranger.BringToFrontOnce(slot.WindowHandle),
             WindowSlot.SlotWindowLayerMode.Backmost => _windowArranger.SetBackmost(slot.WindowHandle),
             _ => false
         };
@@ -570,6 +570,18 @@ public partial class MainWindow : Window
 
         Height = targetHeight;
         MinHeight = targetMinHeight;
+    }
+
+    private void InlineTitleTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox textBox || e.Key is not (Key.Return or Key.Enter))
+        {
+            return;
+        }
+
+        textBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        Keyboard.ClearFocus();
+        e.Handled = true;
     }
 
     private static bool IsInteractiveCardChild(DependencyObject? source)

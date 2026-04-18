@@ -7,6 +7,7 @@ namespace VscodeSquare.Panel.Services;
 
 public sealed class VscodeLauncher
 {
+    private const int LaunchStaggerMilliseconds = 350;
     private readonly WindowEnumerator _windowEnumerator;
 
     public VscodeLauncher(WindowEnumerator windowEnumerator)
@@ -39,10 +40,7 @@ public sealed class VscodeLauncher
             slot.WindowStatus = SlotWindowStatus.Launching;
         }
 
-        var knownHandles = _windowEnumerator
-            .GetVsCodeWindows()
-            .Select(window => window.Handle)
-            .ToHashSet();
+        var knownHandles = await GetKnownHandlesAsync(cancellationToken);
 
         var resolvedCodeCommand = ResolveCodeCommand(config.CodeCommand) ?? config.CodeCommand;
         var assignments = new List<WindowAssignment>();
@@ -54,11 +52,11 @@ public sealed class VscodeLauncher
 
             if (config.UseDedicatedUserDataDirs)
             {
-                SlotUserDataPaths.PrepareDedicatedUserData(slot, config, resolvedCodeCommand);
+                await PrepareDedicatedUserDataAsync(slot, config, resolvedCodeCommand, cancellationToken);
             }
 
             DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {resolvedCodeCommand} {GetLaunchArguments(slot, config)}");
-            StartCode(resolvedCodeCommand, slot, config);
+            await Task.Run(() => StartCode(resolvedCodeCommand, slot, config), cancellationToken);
 
             var window = await WaitForNewWindowAsync(knownHandles, timeout, cancellationToken);
             if (window is null)
@@ -70,6 +68,11 @@ public sealed class VscodeLauncher
 
             knownHandles.Add(window.Handle);
             assignments.Add(new WindowAssignment(slot, window));
+
+            if (assignments.Count < launchTargets.Count)
+            {
+                await Task.Delay(LaunchStaggerMilliseconds, cancellationToken);
+            }
         }
 
         foreach (var pendingSlot in launchTargets.Skip(assignments.Count))
@@ -94,12 +97,13 @@ public sealed class VscodeLauncher
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var window = _windowEnumerator
-                .GetVsCodeWindows()
-                .Where(item => !knownHandles.Contains(item.Handle))
-                .OrderBy(window => window.ProcessId)
-                .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
+            var window = await Task.Run(() => _windowEnumerator
+                    .GetVsCodeWindows()
+                    .Where(item => !knownHandles.Contains(item.Handle))
+                    .OrderBy(window => window.ProcessId)
+                    .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault(),
+                cancellationToken);
 
             if (window is not null)
             {
@@ -110,6 +114,38 @@ public sealed class VscodeLauncher
         }
 
         return null;
+    }
+
+    private async Task<HashSet<IntPtr>> GetKnownHandlesAsync(CancellationToken cancellationToken)
+    {
+        return await Task.Run(() => _windowEnumerator
+                .GetVsCodeWindows()
+                .Select(window => window.Handle)
+                .ToHashSet(),
+            cancellationToken);
+    }
+
+    private static async Task PrepareDedicatedUserDataAsync(
+        WindowSlot slot,
+        AppConfig config,
+        string resolvedCodeCommand,
+        CancellationToken cancellationToken)
+    {
+        await Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var originalPriority = Thread.CurrentThread.Priority;
+            try
+            {
+                Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+                SlotUserDataPaths.PrepareDedicatedUserData(slot, config, resolvedCodeCommand);
+            }
+            finally
+            {
+                Thread.CurrentThread.Priority = originalPriority;
+            }
+        }, cancellationToken);
     }
 
     private static void StartCode(string codeCommand, WindowSlot slot, AppConfig config)
@@ -142,10 +178,9 @@ public sealed class VscodeLauncher
         }
 
         arguments.Add("--new-window");
-        var launchPath = GetLaunchPath(slot, config);
-        if (!string.IsNullOrWhiteSpace(launchPath))
+        foreach (var argument in GetLaunchPathArguments(GetLaunchPath(slot, config)))
         {
-            arguments.Add(launchPath);
+            arguments.Add(argument);
         }
     }
 
@@ -159,10 +194,9 @@ public sealed class VscodeLauncher
         }
 
         arguments.Add("--new-window");
-        var launchPath = GetLaunchPath(slot, config);
-        if (!string.IsNullOrWhiteSpace(launchPath))
+        foreach (var argument in GetLaunchPathArguments(GetLaunchPath(slot, config)))
         {
-            arguments.Add(Quote(launchPath));
+            arguments.Add(argument.StartsWith("--", StringComparison.Ordinal) ? argument : Quote(argument));
         }
 
         return string.Join(" ", arguments);
@@ -178,6 +212,52 @@ public sealed class VscodeLauncher
         }
 
         return slot.Path;
+    }
+
+    private static IEnumerable<string> GetLaunchPathArguments(string? launchPath)
+    {
+        if (string.IsNullOrWhiteSpace(launchPath))
+        {
+            yield break;
+        }
+
+        if (IsRemoteOrVirtualUri(launchPath))
+        {
+            yield return IsWorkspaceFileUri(launchPath) ? "--file-uri" : "--folder-uri";
+            yield return launchPath;
+            yield break;
+        }
+
+        yield return launchPath;
+    }
+
+    private static bool IsRemoteOrVirtualUri(string launchPath)
+    {
+        if (IsWindowsPath(launchPath) || launchPath.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return Uri.TryCreate(launchPath, UriKind.Absolute, out var uri)
+            && !string.IsNullOrWhiteSpace(uri.Scheme)
+            && !uri.IsFile;
+    }
+
+    private static bool IsWorkspaceFileUri(string launchPath)
+    {
+        var pathPart = Uri.TryCreate(launchPath, UriKind.Absolute, out var uri)
+            ? Uri.UnescapeDataString(uri.AbsolutePath)
+            : launchPath;
+
+        return pathPart.EndsWith(".code-workspace", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsWindowsPath(string value)
+    {
+        return value.Length >= 3
+            && char.IsLetter(value[0])
+            && value[1] == ':'
+            && (value[2] == '\\' || value[2] == '/');
     }
 
     private static string? ResolveCodeCommand(string codeCommand)

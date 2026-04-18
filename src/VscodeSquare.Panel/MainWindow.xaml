@@ -18,7 +18,7 @@
         Topmost="True"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        TextOptions.TextFormattingMode="Ideal">
+        TextOptions.TextFormattingMode="Display">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="34"
                         ResizeBorderThickness="8"
@@ -76,6 +76,7 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <EventSetter Event="PreviewKeyDown" Handler="InlineTitleTextBox_PreviewKeyDown" />
     </Style>
 
     <Style x:Key="BaseButton" TargetType="Button">
@@ -252,14 +253,6 @@
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="8" />
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Effect">
-        <Setter.Value>
-          <DropShadowEffect BlurRadius="14"
-                            ShadowDepth="0"
-                            Color="#000000"
-                            Opacity="0.18" />
-        </Setter.Value>
-      </Setter>
       <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True">
           <Setter Property="Background" Value="#1A211D" />
@@ -268,14 +261,6 @@
         <DataTrigger Binding="{Binding IsFocused}" Value="True">
           <Setter Property="Background" Value="#18231D" />
           <Setter Property="BorderBrush" Value="#45D483" />
-          <Setter Property="Effect">
-            <Setter.Value>
-              <DropShadowEffect BlurRadius="26"
-                                ShadowDepth="0"
-                                Color="#45D483"
-                                Opacity="0.48" />
-            </Setter.Value>
-          </Setter>
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -312,14 +297,6 @@
         <DataTrigger Binding="{Binding IsFocused}" Value="True">
           <Setter Property="Fill" Value="#7AF7B2" />
           <Setter Property="Stroke" Value="#D7FFE8" />
-          <Setter Property="Effect">
-            <Setter.Value>
-              <DropShadowEffect BlurRadius="14"
-                                ShadowDepth="0"
-                                Color="#7AF7B2"
-                                Opacity="0.85" />
-            </Setter.Value>
-          </Setter>
         </DataTrigger>
       </Style.Triggers>
     </Style>

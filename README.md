@@ -7,7 +7,8 @@ Turtle App Launch Quartet は、4つの VS Code ウィンドウをスロット A
 - `Launch Quartet` で未起動スロットの VS Code を起動し、4分割に配置
 - パネル自体は常に最前面を維持し、管理対象の VS Code はその一段下で表示
 - 各カード全体をクリックすると対象ウィンドウを最大化し、再度クリックで4分割へ戻す
-- 下部バーの `最前面` / `最背面` で管理中の VS Code 全体の表示レイヤーを一括切り替え
+- 下部バーの `最前面` で管理中の VS Code を一度だけ前面へ出し、その後は通常の Windows 表示順序に戻す
+- 下部バーの `最背面` で管理中の VS Code 全体を背面へ送る
 - 各カードのタイトルをその場で編集して保持
 - 各カードのワークスペース名は、VS Code 側で開いているフォルダや workspace を数秒以内に反映
 - 各カードの `裏へ` で現在のスロット設定を `裏保存 Quartet` に退避し、4件まで保持
@@ -23,10 +24,13 @@ Turtle App Launch Quartet は、4つの VS Code ウィンドウをスロット A
 - `ディスプレイ移動` で 4 つの VS Code を次のディスプレイへまとめて移動
 - スロット別の VS Code user-data-dir を使い、スロットごとに最近開いたワークスペースを分けて管理
 - 専用 user-data-dir を使う場合でも、通常使っている VS Code の設定、globalStorage、Electron 側の認証保存領域を起動前に同期し、可能な範囲でログイン状態を引き継ぐ
+- SSH 接続などの remote workspace URI も保存し、次回の `Launch Quartet` で再オープンする
 
 AI 状態取得は今後のフェーズです。現時点の `AI 未取得` は検出結果ではなくプレースホルダーです。
 
 フォーカス表示と4分割への復帰では、VS Code のアニメーション中のちらつきを抑えるため、パネルの最前面復帰を約500msだけ遅らせています。
+
+低スペックPCでも起動しやすくするため、パネルは WPF の高負荷な影描画を使わず、起動時はソフトウェア描画で安定性を優先します。VS Code 起動前の user-data-dir 同期やウィンドウ検出も UI スレッドを塞がないようにバックグラウンドで処理します。
 
 ## 必要環境
 
@@ -95,7 +99,7 @@ Copy-Item .\config\vscode-square.example.json .\config\vscode-square.json
 
 `inheritMainUserState` を有効にすると、専用 user-data-dir を使う場合でも通常の VS Code の `User/globalStorage`、設定、スニペットに加えて `Local Storage`、`Network`、`Service Worker` などの認証関連ストレージも起動前に取り込みます。これにより GitHub / Microsoft などのログイン状態や拡張ごとの保存状態を、可能な範囲で毎回引き継ぎます。
 
-スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開くと、パネル上のスロット名の下に現在のフォルダ名または workspace 名が数秒以内に反映されます。さらに `設定保存` または `閉じる` / `全て閉じる` を押すと、現在のウィンドウタイトルからそのワークスペースが確認できたスロットだけ `%LOCALAPPDATA%\VscodeSquare\slots.json` に保存されます。ようこそ画面や no-folder 状態のスロットは保存対象にせず、次回 `Launch Quartet` でもようこそ画面のまま起動します。
+スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開くと、パネル上のスロット名の下に現在のフォルダ名または workspace 名が数秒以内に反映されます。さらに `設定保存` または `閉じる` / `全て閉じる` を押すと、現在のウィンドウタイトルからそのワークスペースが確認できたスロットだけ `%LOCALAPPDATA%\VscodeSquare\slots.json` に保存されます。SSH 接続などの remote workspace は `vscode-remote://...` の URI として保存し、次回は VS Code CLI の `--folder-uri` または `--file-uri` で開き直します。ようこそ画面や no-folder 状態のスロットは保存対象にせず、次回 `Launch Quartet` でもようこそ画面のまま起動します。
 
 複数ディスプレイがある場合は `ディスプレイ移動` で 4 分割の配置先を次のディスプレイへ順送りできます。2 枚なら 1 → 2 → 1、3 枚なら 1 → 2 → 3 → 1 のようにトグルします。
 

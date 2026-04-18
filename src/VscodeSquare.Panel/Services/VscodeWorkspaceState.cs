@@ -33,16 +33,21 @@ public static class VscodeWorkspaceState
 
         try
         {
+            string? latestWorkspacePath = null;
+            var latestWorkspaceTime = DateTime.MinValue;
+
             foreach (var file in Directory.EnumerateFiles(workspaceStorageDirectory, "workspace.json", SearchOption.AllDirectories)
-                         .Select(path => new FileInfo(path))
-                         .OrderByDescending(file => file.LastWriteTimeUtc))
+                         .Select(path => new FileInfo(path)))
             {
                 var workspacePath = TryReadWorkspaceJson(file.FullName);
-                if (!string.IsNullOrWhiteSpace(workspacePath))
+                if (!string.IsNullOrWhiteSpace(workspacePath) && file.LastWriteTimeUtc >= latestWorkspaceTime)
                 {
-                    return workspacePath;
+                    latestWorkspacePath = workspacePath;
+                    latestWorkspaceTime = file.LastWriteTimeUtc;
                 }
             }
+
+            return latestWorkspacePath;
         }
         catch (Exception ex)
         {
@@ -72,13 +77,13 @@ public static class VscodeWorkspaceState
 
     private static IEnumerable<string> GetWorkspaceTitleCandidates(string workspacePath)
     {
-        var normalizedPath = workspacePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedPath = GetComparableWorkspacePath(workspacePath);
         if (string.IsNullOrWhiteSpace(normalizedPath))
         {
             yield break;
         }
 
-        var fileName = Path.GetFileName(normalizedPath);
+        var fileName = Path.GetFileName(normalizedPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         if (!string.IsNullOrWhiteSpace(fileName))
         {
             yield return fileName;
@@ -93,6 +98,15 @@ public static class VscodeWorkspaceState
                 yield return fileNameWithoutExtension;
             }
         }
+
+        if (TryCreateNonFileUri(workspacePath, out var uri))
+        {
+            var authority = GetReadableRemoteAuthority(uri.Authority);
+            if (!string.IsNullOrWhiteSpace(authority))
+            {
+                yield return authority;
+            }
+        }
     }
 
     private static string? TryReadWorkspaceJson(string path)
@@ -102,19 +116,19 @@ public static class VscodeWorkspaceState
             using var document = JsonDocument.Parse(File.ReadAllText(path));
             var root = document.RootElement;
 
-            if (TryReadFileUri(root, "folder", out var folderPath))
+            if (TryReadWorkspaceLocation(root, "folder", out var folderPath))
             {
                 return folderPath;
             }
 
-            if (TryReadFileUri(root, "workspace", out var workspacePath))
+            if (TryReadWorkspaceLocation(root, "workspace", out var workspacePath))
             {
                 return workspacePath;
             }
 
             if (root.TryGetProperty("workspace", out var workspaceElement)
                 && workspaceElement.ValueKind == JsonValueKind.Object
-                && TryReadFileUri(workspaceElement, "configPath", out var configPath))
+                && TryReadWorkspaceLocation(workspaceElement, "configPath", out var configPath))
             {
                 return configPath;
             }
@@ -127,7 +141,7 @@ public static class VscodeWorkspaceState
         return null;
     }
 
-    private static bool TryReadFileUri(JsonElement element, string propertyName, out string? path)
+    private static bool TryReadWorkspaceLocation(JsonElement element, string propertyName, out string? path)
     {
         path = null;
         if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
@@ -135,11 +149,11 @@ public static class VscodeWorkspaceState
             return false;
         }
 
-        path = ToLocalPath(property.GetString());
+        path = ToWorkspaceLocation(property.GetString());
         return !string.IsNullOrWhiteSpace(path);
     }
 
-    private static string? ToLocalPath(string? value)
+    private static string? ToWorkspaceLocation(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -157,6 +171,63 @@ public static class VscodeWorkspaceState
             return localPath.Replace('/', Path.DirectorySeparatorChar);
         }
 
+        if (TryCreateNonFileUri(value, out var nonFileUri))
+        {
+            return nonFileUri.AbsoluteUri;
+        }
+
         return value;
+    }
+
+    private static string GetComparableWorkspacePath(string workspacePath)
+    {
+        if (!TryCreateNonFileUri(workspacePath, out var uri))
+        {
+            return workspacePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        var uriPath = Uri.UnescapeDataString(uri.AbsolutePath);
+        return uriPath.Replace('/', Path.DirectorySeparatorChar).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static bool TryCreateNonFileUri(string value, out Uri uri)
+    {
+        uri = null!;
+        if (IsWindowsPath(value) || value.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsedUri)
+            || parsedUri is null
+            || string.IsNullOrWhiteSpace(parsedUri.Scheme)
+            || parsedUri.IsFile)
+        {
+            return false;
+        }
+
+        uri = parsedUri;
+        return true;
+    }
+
+    private static string GetReadableRemoteAuthority(string authority)
+    {
+        if (string.IsNullOrWhiteSpace(authority))
+        {
+            return string.Empty;
+        }
+
+        var plusIndex = authority.IndexOf('+', StringComparison.Ordinal);
+        return Uri.UnescapeDataString(plusIndex >= 0 && plusIndex < authority.Length - 1
+            ? authority[(plusIndex + 1)..]
+            : authority);
+    }
+
+    private static bool IsWindowsPath(string value)
+    {
+        return value.Length >= 3
+            && char.IsLetter(value[0])
+            && value[1] == ':'
+            && (value[2] == '\\' || value[2] == '/');
     }
 }

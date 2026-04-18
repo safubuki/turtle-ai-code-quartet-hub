@@ -9,6 +9,7 @@ namespace VscodeSquare.Panel.Services;
 
 public sealed class StatusStore : INotifyPropertyChanged
 {
+    private static readonly TimeSpan WorkspaceRefreshInterval = TimeSpan.FromSeconds(4);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -22,6 +23,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
     private string _message;
     private bool _suppressPersistence;
+    private readonly Dictionary<string, DateTimeOffset> _workspaceRefreshTimestamps = new(StringComparer.OrdinalIgnoreCase);
 
     public StatusStore(AppConfig config)
     {
@@ -88,6 +90,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
     public void ClearWindow(WindowSlot slot)
     {
+        _workspaceRefreshTimestamps.Remove(slot.Name);
         slot.ClearWindow();
         SavePanelStates();
     }
@@ -126,6 +129,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
 
         var workspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config);
+        _workspaceRefreshTimestamps[slot.Name] = DateTimeOffset.UtcNow;
         slot.CurrentWorkspacePath = workspacePath ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(workspacePath))
         {
@@ -243,6 +247,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         {
             if (slot.WindowHandle == IntPtr.Zero)
             {
+                _workspaceRefreshTimestamps.Remove(slot.Name);
                 slot.CurrentWorkspacePath = string.Empty;
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
@@ -255,10 +260,26 @@ public sealed class StatusStore : INotifyPropertyChanged
                 continue;
             }
 
+            var previousTitle = slot.WindowTitle;
             slot.WindowTitle = window.Title;
             slot.WindowStatus = SlotWindowStatus.Ready;
-            slot.CurrentWorkspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config) ?? string.Empty;
+            if (ShouldRefreshWorkspacePath(slot, !string.Equals(previousTitle, window.Title, StringComparison.Ordinal)))
+            {
+                slot.CurrentWorkspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config) ?? string.Empty;
+                _workspaceRefreshTimestamps[slot.Name] = DateTimeOffset.UtcNow;
+            }
         }
+    }
+
+    private bool ShouldRefreshWorkspacePath(WindowSlot slot, bool force)
+    {
+        if (force || string.IsNullOrWhiteSpace(slot.CurrentWorkspacePath))
+        {
+            return true;
+        }
+
+        return !_workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt)
+            || DateTimeOffset.UtcNow - refreshedAt >= WorkspaceRefreshInterval;
     }
 
     private void LoadSavedPanelStates()
