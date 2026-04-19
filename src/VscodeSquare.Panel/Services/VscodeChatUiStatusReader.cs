@@ -6,10 +6,10 @@ namespace VscodeSquare.Panel.Services;
 
 public sealed class VscodeChatUiStatusReader
 {
-    private const int MaxElementsToInspect = 420;
+    private const int MaxElementsToInspect = 1800;
     private const int MaxTextLengthForStatus = 48;
 
-    private static readonly string[] RunningStatusTexts =
+    private static readonly string[] RunningStatusExactTexts =
     [
         "作業中",
         "実行中",
@@ -20,6 +20,16 @@ public sealed class VscodeChatUiStatusReader
         "Running",
         "Generating",
         "Thinking"
+    ];
+
+    private static readonly string[] RunningStatusPrefixes =
+    [
+        "Optimizing tool selection",
+        "Preparing",
+        "Planning",
+        "Thinking",
+        "Working",
+        "Generating"
     ];
 
     private static readonly string[] StopActionTexts =
@@ -153,8 +163,10 @@ public sealed class VscodeChatUiStatusReader
 
         if (isVisible
             && IsEnabled(element)
+            && ContainsAny(combinedContext, ChatContextFragments)
             && (ContainsAny(className, StopClassFragments)
-                || ContainsStopAction(name) && ContainsAny(combinedContext, ChatContextFragments)))
+                || ContainsAny(combinedContext, StopClassFragments)
+                || ContainsStopAction(name)))
         {
             detail = string.IsNullOrWhiteSpace(name)
                 ? "VS Code UI: チャット停止ボタンを検出しました。"
@@ -222,7 +234,9 @@ public sealed class VscodeChatUiStatusReader
             return false;
         }
 
-        return RunningStatusTexts.Any(signal => string.Equals(text, signal, StringComparison.OrdinalIgnoreCase));
+        var normalized = text.TrimEnd('.', '…').Trim();
+        return RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase))
+            || RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ContainsStopAction(string value)
