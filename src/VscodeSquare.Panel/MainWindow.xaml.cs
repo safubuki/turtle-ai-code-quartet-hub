@@ -22,9 +22,11 @@ public partial class MainWindow : Window
     private int? _activeMonitorIndex;
     private bool _isBusy;
     private bool _isRefreshInFlight;
+    private bool _areWindowsHidden;
     private double _collapsedWindowHeight;
     private double _collapsedWindowMinHeight;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
+    private Point _dragStartPoint;
 
     public MainWindow()
     {
@@ -169,6 +171,94 @@ public partial class MainWindow : Window
         ToggleSlotFocus(slot);
     }
 
+    private void SlotCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragStartPoint = e.GetPosition(null);
+    }
+
+    private void SlotCard_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (IsInteractiveCardChild(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        var diff = _dragStartPoint - e.GetPosition(null);
+        if (Math.Abs(diff.X) <= SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(diff.Y) <= SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        if (sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        var dragData = new DataObject("WindowSlot", slot);
+        DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
+    }
+
+    private void SlotCard_DragEnter(object sender, DragEventArgs e)
+    {
+        if (sender is not Border border || !e.Data.GetDataPresent("WindowSlot"))
+        {
+            return;
+        }
+
+        var sourceSlot = e.Data.GetData("WindowSlot") as WindowSlot;
+        var targetSlot = border.Tag as WindowSlot;
+        if (sourceSlot is not null && targetSlot is not null && !ReferenceEquals(sourceSlot, targetSlot))
+        {
+            border.BorderBrush = (SolidColorBrush)FindResource("AccentBrush");
+        }
+    }
+
+    private void SlotCard_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            border.ClearValue(Border.BorderBrushProperty);
+        }
+    }
+
+    private void SlotCard_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent("WindowSlot") ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void SlotCard_Drop(object sender, DragEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            border.ClearValue(Border.BorderBrushProperty);
+        }
+
+        if (!e.Data.GetDataPresent("WindowSlot"))
+        {
+            return;
+        }
+
+        var sourceSlot = e.Data.GetData("WindowSlot") as WindowSlot;
+        var targetSlot = (sender as FrameworkElement)?.Tag as WindowSlot;
+
+        if (sourceSlot is null || targetSlot is null || ReferenceEquals(sourceSlot, targetSlot))
+        {
+            return;
+        }
+
+        _statusStore.SwapSlotContents(sourceSlot, targetSlot);
+        ArrangeSlotsOnActiveMonitor();
+        _statusStore.Message = $"スロット{sourceSlot.Name}とスロット{targetSlot.Name}のカードを入れ替えました。";
+        e.Handled = true;
+    }
+
     private void ToggleSlotFocus(WindowSlot slot)
     {
         var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
@@ -178,10 +268,21 @@ public partial class MainWindow : Window
             var arranged = ArrangeSlotsOnActiveMonitor(false);
             _statusStore.ClearFocusedSlot();
             BringPanelToFront();
+            RestoreHiddenWindowState();
             _statusStore.Message = arranged == 0
                 ? "4分割表示に戻せるVS Codeウィンドウがありません。"
                 : $"{arranged}個のVS Codeを4分割表示に戻しました。";
             return;
+        }
+
+        if (_areWindowsHidden)
+        {
+            foreach (var s in _statusStore.Slots)
+            {
+                _windowArranger.Restore(s.WindowHandle);
+            }
+
+            RestoreHiddenWindowState();
         }
 
         if (previouslyFocusedSlot is not null)
@@ -204,6 +305,13 @@ public partial class MainWindow : Window
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_areWindowsHidden)
+        {
+            SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
+            _statusStore.Message = "最前面に設定しました（表示時に反映されます）。";
+            return;
+        }
+
         if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost))
         {
             _statusStore.Message = "管理中のVS Codeを最前面にしました。";
@@ -215,6 +323,13 @@ public partial class MainWindow : Window
 
     private void SendAllBackButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_areWindowsHidden)
+        {
+            SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Backmost);
+            _statusStore.Message = "最背面に設定しました（表示時に反映されます）。";
+            return;
+        }
+
         if (_statusStore.Slots.Any(slot => slot.IsFocused))
         {
             _statusStore.ClearFocusedSlot();
@@ -230,6 +345,49 @@ public partial class MainWindow : Window
         _statusStore.Message = "最背面にできるVS Codeウィンドウがありません。";
     }
 
+    private void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_areWindowsHidden)
+        {
+            _areWindowsHidden = false;
+            ToggleVisibilityButton.Content = "非表示";
+            foreach (var slot in _statusStore.Slots)
+            {
+                slot.IsHidden = false;
+            }
+
+            var arranged = ArrangeSlotsOnActiveMonitor();
+
+            _statusStore.Message = arranged > 0
+                ? $"{arranged}個のVS Codeを表示しました。"
+                : "表示できるVS Codeウィンドウがありません。";
+        }
+        else
+        {
+            var minimized = 0;
+            foreach (var slot in _statusStore.Slots)
+            {
+                if (_windowArranger.Minimize(slot.WindowHandle))
+                {
+                    minimized++;
+                    slot.IsHidden = true;
+                }
+            }
+
+            if (minimized > 0)
+            {
+                _areWindowsHidden = true;
+                ToggleVisibilityButton.Content = "表示";
+                _statusStore.ClearFocusedSlot();
+                _statusStore.Message = $"{minimized}個のVS Codeを非表示にしました。";
+            }
+            else
+            {
+                _statusStore.Message = "非表示にできるVS Codeウィンドウがありません。";
+            }
+        }
+    }
+
     private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
     {
         var monitorCount = _windowArranger.GetMonitorCount();
@@ -241,6 +399,12 @@ public partial class MainWindow : Window
 
         var nextMonitorIndex = (GetActiveMonitorIndex() + 1) % monitorCount;
         _activeMonitorIndex = nextMonitorIndex;
+
+        if (_areWindowsHidden)
+        {
+            _statusStore.Message = $"配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました（表示時に反映されます）。";
+            return;
+        }
 
         var arranged = ArrangeSlotsOnActiveMonitor();
         _statusStore.ClearFocusedSlot();
@@ -284,7 +448,7 @@ public partial class MainWindow : Window
 
         if (slot.WindowHandle != IntPtr.Zero && !_windowArranger.Close(slot.WindowHandle))
         {
-            _statusStore.Message = $"スロット{slot.Name}を裏保存に移す前に VS Code を閉じられませんでした。";
+            _statusStore.Message = $"スロット{slot.Name}を控えに移す前に VS Code を閉じられませんでした。";
             return;
         }
 
@@ -293,13 +457,13 @@ public partial class MainWindow : Window
         if (!_statusStore.TryStoreSlotInBack(slot, out var storedPanel))
         {
             _statusStore.Message = _statusStore.StoredPanels.All(item => item.HasContent)
-                ? "裏保存 Quartet が満杯のため保存できません。"
-                : $"スロット{slot.Name}に裏保存できるワークスペースがありません。";
+                ? "控え Quartet が満杯のため保存できません。"
+                : $"スロット{slot.Name}に控え保存できるワークスペースがありません。";
             return;
         }
 
         ArrangeSlotsOnActiveMonitor();
-        _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ裏保存しました。";
+        _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ控え保存しました。";
     }
 
     private async void ShowStoredPanelButton_Click(object sender, RoutedEventArgs e)
@@ -362,7 +526,7 @@ public partial class MainWindow : Window
 
             _statusStore.Message = assignments.Count > 0
                 ? swappedVisiblePanel
-                    ? $"{storedPanel.Label}をスロット{targetSlot.Name}へ表示し、元の内容は裏保存に戻しました。"
+                    ? $"{storedPanel.Label}をスロット{targetSlot.Name}へ表示し、元の内容は控えに戻しました。"
                     : $"{storedPanel.Label}をスロット{targetSlot.Name}へ表示しました。"
                 : $"{storedPanel.Label}の設定をスロット{targetSlot.Name}へ移しましたが、VS Code ウィンドウの起動は確認できませんでした。";
         });
@@ -538,6 +702,21 @@ public partial class MainWindow : Window
         DeleteStoredPanelOverlay.Visibility = Visibility.Collapsed;
     }
 
+    private void RestoreHiddenWindowState()
+    {
+        if (!_areWindowsHidden)
+        {
+            return;
+        }
+
+        _areWindowsHidden = false;
+        ToggleVisibilityButton.Content = "非表示";
+        foreach (var slot in _statusStore.Slots)
+        {
+            slot.IsHidden = false;
+        }
+    }
+
     private void UpdateWindowHeightForStoredPanels(bool isExpanded, bool force = false)
     {
         if (_collapsedWindowHeight <= 0)
@@ -568,6 +747,12 @@ public partial class MainWindow : Window
             extraHeight = StoredPanelsExpanderContent.DesiredSize.Height;
         }
 
+        if (extraHeight <= 0)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () => UpdateWindowHeightForStoredPanels(true));
+            return;
+        }
+
         extraHeight = Math.Max(0, extraHeight + 12);
         var targetHeight = _collapsedWindowHeight + extraHeight;
         var targetMinHeight = _collapsedWindowMinHeight + extraHeight;
@@ -578,21 +763,68 @@ public partial class MainWindow : Window
 
     private void InlineTitleTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (sender is not TextBox textBox || e.Key is not (Key.Return or Key.Enter))
+        if (sender is not TextBox textBox || e.Key is not (Key.Return or Key.Enter or Key.Escape))
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            textBox.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+        }
+        else
+        {
+            textBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        }
+
+        textBox.IsReadOnly = true;
+        textBox.Focusable = false;
+        textBox.Cursor = Cursors.Arrow;
+        Keyboard.ClearFocus();
+        e.Handled = true;
+    }
+
+    private void InlineTitleTextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TextBox textBox || !textBox.IsReadOnly)
+        {
+            return;
+        }
+
+        if (e.ClickCount >= 2)
+        {
+            textBox.IsReadOnly = false;
+            textBox.Focusable = true;
+            textBox.Cursor = Cursors.IBeam;
+            textBox.Focus();
+            textBox.SelectAll();
+            e.Handled = true;
+        }
+    }
+
+    private void InlineTitleTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is not TextBox textBox)
         {
             return;
         }
 
         textBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
-        Keyboard.ClearFocus();
-        e.Handled = true;
+        textBox.IsReadOnly = true;
+        textBox.Focusable = false;
+        textBox.Cursor = Cursors.Arrow;
     }
 
     private static bool IsInteractiveCardChild(DependencyObject? source)
     {
         while (source is not null)
         {
-            if (source is ButtonBase or TextBox)
+            if (source is ButtonBase)
+            {
+                return true;
+            }
+
+            if (source is TextBox textBox && !textBox.IsReadOnly)
             {
                 return true;
             }
@@ -670,6 +902,7 @@ public partial class MainWindow : Window
         TopmostAllButton.IsEnabled = !busy;
         BackmostAllButton.IsEnabled = !busy;
         ToggleMonitorButton.IsEnabled = !busy;
+        ToggleVisibilityButton.IsEnabled = !busy;
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;

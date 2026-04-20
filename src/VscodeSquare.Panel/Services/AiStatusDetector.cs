@@ -132,6 +132,33 @@ public sealed class AiStatusDetector
         _slotStartedAtByName[slot.Name] = DateTimeOffset.Now;
     }
 
+    public void SwapSlotSessions(string sourceSlotName, string targetSlotName)
+    {
+        SwapPrefixedEntries(_lastRunningSeenBySlot, sourceSlotName, targetSlotName);
+        SwapPrefixedEntries(_completedAtBySlot, sourceSlotName, targetSlotName);
+        SwapPrefixedEntries(_dismissedAtBySlot, sourceSlotName, targetSlotName);
+
+        var hasSource = _slotStartedAtByName.TryRemove(sourceSlotName, out var sourceStarted);
+        var hasTarget = _slotStartedAtByName.TryRemove(targetSlotName, out var targetStarted);
+        if (hasSource) _slotStartedAtByName[targetSlotName] = sourceStarted;
+        if (hasTarget) _slotStartedAtByName[sourceSlotName] = targetStarted;
+    }
+
+    private static void SwapPrefixedEntries(ConcurrentDictionary<string, DateTimeOffset> dict, string slotNameA, string slotNameB)
+    {
+        var prefixA = $"{slotNameA}:";
+        var prefixB = $"{slotNameB}:";
+
+        var entriesA = dict.Where(kv => kv.Key.StartsWith(prefixA, StringComparison.OrdinalIgnoreCase)).ToList();
+        var entriesB = dict.Where(kv => kv.Key.StartsWith(prefixB, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        foreach (var entry in entriesA) dict.TryRemove(entry.Key, out _);
+        foreach (var entry in entriesB) dict.TryRemove(entry.Key, out _);
+
+        foreach (var entry in entriesA) dict[$"{slotNameB}:{entry.Key[prefixA.Length..]}"] = entry.Value;
+        foreach (var entry in entriesB) dict[$"{slotNameA}:{entry.Key[prefixB.Length..]}"] = entry.Value;
+    }
+
     private AiStatusSnapshot KeepOnlyCurrentEvidence(
         string slotKey,
         DateTimeOffset slotStartedAt,

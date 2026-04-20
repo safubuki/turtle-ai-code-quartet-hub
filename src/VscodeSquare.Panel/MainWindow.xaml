@@ -77,7 +77,12 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="Cursor" Value="Arrow" />
       <EventSetter Event="PreviewKeyDown" Handler="InlineTitleTextBox_PreviewKeyDown" />
+      <EventSetter Event="PreviewMouseLeftButtonDown" Handler="InlineTitleTextBox_PreviewMouseLeftButtonDown" />
+      <EventSetter Event="LostKeyboardFocus" Handler="InlineTitleTextBox_LostKeyboardFocus" />
     </Style>
 
     <Style x:Key="BaseButton" TargetType="Button">
@@ -138,9 +143,10 @@
 
     <Style x:Key="BarButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
       <Setter Property="MinHeight" Value="24" />
-      <Setter Property="MinWidth" Value="74" />
-      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="6,3" />
       <Setter Property="Background" Value="#1B221E" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
 
     <Style x:Key="SlotActionButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
@@ -167,7 +173,7 @@
       <Setter Property="BorderBrush" Value="#6A3832" />
       <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="ToolTip" Value="この裏保存を削除" />
+      <Setter Property="ToolTip" Value="この控えを削除" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding HasContent}" Value="False">
           <Setter Property="Visibility" Value="Collapsed" />
@@ -248,7 +254,19 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="WindowPillTextStyle" TargetType="TextBlock" BasedOn="{StaticResource StatusPillTextStyle}">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsHidden}" Value="True">
+          <Setter Property="Foreground" Value="#D4C47A" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="WindowPill" TargetType="Border" BasedOn="{StaticResource TinyPill}">
+      <Setter Property="MinWidth" Value="52" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Ready}">
           <Setter Property="Background" Value="{StaticResource AccentDarkBrush}" />
@@ -261,6 +279,10 @@
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
           <Setter Property="Background" Value="#311B1A" />
           <Setter Property="BorderBrush" Value="#79403A" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsHidden}" Value="True">
+          <Setter Property="Background" Value="#28251A" />
+          <Setter Property="BorderBrush" Value="#8B7D3E" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -481,7 +503,14 @@
     <DataTemplate x:Key="SlotCardTemplate" DataType="{x:Type models:WindowSlot}">
       <Border Style="{StaticResource SlotCardBorderStyle}"
               Tag="{Binding}"
-              MouseLeftButtonUp="SlotCard_MouseLeftButtonUp">
+              MouseLeftButtonUp="SlotCard_MouseLeftButtonUp"
+              PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
+              PreviewMouseMove="SlotCard_PreviewMouseMove"
+              AllowDrop="True"
+              DragEnter="SlotCard_DragEnter"
+              DragLeave="SlotCard_DragLeave"
+              DragOver="SlotCard_DragOver"
+              Drop="SlotCard_Drop">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -510,7 +539,7 @@
             <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
             <StackPanel Grid.Column="2">
               <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=PropertyChanged}"
-                       ToolTip="タイトルを編集"
+                       ToolTip="ダブルクリックで名前を編集"
                        Style="{StaticResource InlineTitleTextBox}"
                        MaxLength="40" />
               <TextBlock Text="{Binding ShortPath}"
@@ -529,7 +558,7 @@
             <WrapPanel Grid.Column="0"
                        VerticalAlignment="Center">
               <Border Style="{StaticResource WindowPill}" Margin="0,0,6,0">
-                <TextBlock Text="{Binding WindowStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" Style="{StaticResource StatusPillTextStyle}" />
+                <TextBlock Text="{Binding WindowStatusText}" Style="{StaticResource WindowPillTextStyle}" />
               </Border>
               <Border Style="{StaticResource AiPill}" Margin="0,0,6,0" ToolTip="{Binding AiStatusDetail}">
                 <TextBlock Text="{Binding AiStatusText}" Style="{StaticResource AiPillTextStyle}" />
@@ -539,7 +568,7 @@
             <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         VerticalAlignment="Center">
-              <Button Content="裏へ"
+              <Button Content="控えへ"
                       Tag="{Binding}"
                       Click="StoreSlotButton_Click"
                       Style="{StaticResource SlotActionButton}"
@@ -715,7 +744,7 @@
           Collapsed="StoredPanelsExpander_Collapsed"
               Margin="5,2,5,3">
       <Expander.Header>
-        <TextBlock Text="裏保存 Quartet"
+        <TextBlock Text="控え Quartet"
                    Foreground="{StaticResource MutedTextBrush}"
                    FontSize="10" />
       </Expander.Header>
@@ -760,60 +789,68 @@
                    TextWrapping="Wrap" />
       </Border>
 
-      <Grid Grid.Column="1"
-            VerticalAlignment="Center">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
+      <StackPanel Grid.Column="1"
+                  VerticalAlignment="Center"
+                  Width="290">
+        <Grid Margin="0,0,0,4">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="5*" />
+            <ColumnDefinition Width="3*" />
+            <ColumnDefinition Width="3*" />
+            <ColumnDefinition Width="3*" />
+          </Grid.ColumnDefinitions>
 
-        <Button Grid.Row="0"
-                Grid.Column="0"
-          x:Name="ToggleMonitorButton"
-          Content="ディスプレイ移動"
-          Click="ToggleMonitorButton_Click"
-                Style="{StaticResource BarButton}"
-                Margin="0,0,5,5" />
-        <Button Grid.Row="0"
-                Grid.Column="1"
-          x:Name="TopmostAllButton"
-          Content="最前面"
-          Click="PinAllTopButton_Click"
-                Style="{StaticResource BarButton}"
-                Margin="0,0,5,5" />
-        <Button Grid.Row="0"
-                Grid.Column="2"
-          x:Name="BackmostAllButton"
-          Content="最背面"
-          Click="SendAllBackButton_Click"
-                Style="{StaticResource BarButton}"
-          Margin="0,0,0,5" />
-        <Button Grid.Row="1"
-                Grid.Column="0"
-                x:Name="SaveSettingsButton"
-                Content="設定保存"
-                Click="SaveSettingsButton_Click"
-                Style="{StaticResource BarButton}"
-                Margin="0,0,5,0" />
-        <Button Grid.Row="1"
-                Grid.Column="1"
-                x:Name="LoadSettingsButton"
-                Content="設定読み込み"
-                Click="LoadSettingsButton_Click"
-                Style="{StaticResource BarButton}"
-                Margin="0,0,5,0" />
-        <Button Grid.Row="1"
-                Grid.Column="2"
-                x:Name="CloseAllButton"
-                Content="全て閉じる"
-                Click="CloseAllButton_Click"
-                Style="{StaticResource BarButton}" />
-      </Grid>
+          <Button Grid.Column="0"
+            x:Name="ToggleMonitorButton"
+            Content="ディスプレイ移動"
+            Click="ToggleMonitorButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="1"
+            x:Name="TopmostAllButton"
+            Content="最前面"
+            Click="PinAllTopButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="2"
+            x:Name="BackmostAllButton"
+            Content="最背面"
+            Click="SendAllBackButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="3"
+            x:Name="ToggleVisibilityButton"
+            Content="非表示"
+            Click="ToggleVisibilityButton_Click"
+                  Style="{StaticResource BarButton}" />
+        </Grid>
+
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="9*" />
+            <ColumnDefinition Width="9*" />
+            <ColumnDefinition Width="10*" />
+          </Grid.ColumnDefinitions>
+
+          <Button Grid.Column="0"
+                  x:Name="SaveSettingsButton"
+                  Content="設定保存"
+                  Click="SaveSettingsButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="1"
+                  x:Name="LoadSettingsButton"
+                  Content="設定読み込み"
+                  Click="LoadSettingsButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="2"
+                  x:Name="CloseAllButton"
+                  Content="全て閉じる"
+                  Click="CloseAllButton_Click"
+                  Style="{StaticResource BarButton}" />
+        </Grid>
+      </StackPanel>
     </Grid>
 
         <Button Grid.Row="4"
@@ -869,7 +906,7 @@
               </Border>
 
               <StackPanel Grid.Column="1">
-                <TextBlock Text="裏保存を削除しますか？"
+                <TextBlock Text="控えを削除しますか？"
                            FontSize="15"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextBrush}" />
@@ -901,7 +938,7 @@
 
             <TextBlock Grid.Row="2"
                        Margin="0,12,0,0"
-                       Text="削除すると、この裏保存スロットは空きになります。"
+                       Text="削除すると、この控えスロットは空きになります。"
                        Foreground="{StaticResource MutedTextBrush}"
                        TextWrapping="Wrap" />
 

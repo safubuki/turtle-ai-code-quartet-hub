@@ -261,6 +261,42 @@ public sealed class StatusStore : INotifyPropertyChanged
         SavePanelStates();
     }
 
+    public void SwapSlotContents(WindowSlot source, WindowSlot target)
+    {
+        if (ReferenceEquals(source, target))
+        {
+            return;
+        }
+
+        _suppressPersistence = true;
+
+        try
+        {
+            (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
+            (source.Path, target.Path) = (target.Path, source.Path);
+            (source.SavedWorkspacePath, target.SavedWorkspacePath) = (target.SavedWorkspacePath, source.SavedWorkspacePath);
+            (source.SavedWorkspaceConfirmed, target.SavedWorkspaceConfirmed) = (target.SavedWorkspaceConfirmed, source.SavedWorkspaceConfirmed);
+            (source.CurrentWorkspacePath, target.CurrentWorkspacePath) = (target.CurrentWorkspacePath, source.CurrentWorkspacePath);
+            (source.WindowHandle, target.WindowHandle) = (target.WindowHandle, source.WindowHandle);
+            (source.WindowTitle, target.WindowTitle) = (target.WindowTitle, source.WindowTitle);
+            (source.WindowStatus, target.WindowStatus) = (target.WindowStatus, source.WindowStatus);
+            (source.AiStatus, target.AiStatus) = (target.AiStatus, source.AiStatus);
+            (source.AiStatusDetail, target.AiStatusDetail) = (target.AiStatusDetail, source.AiStatusDetail);
+            (source.LastEventAt, target.LastEventAt) = (target.LastEventAt, source.LastEventAt);
+            (source.IsFocused, target.IsFocused) = (target.IsFocused, source.IsFocused);
+            (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
+            (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
+        }
+        finally
+        {
+            _suppressPersistence = false;
+        }
+
+        SwapDictEntry(_workspaceRefreshTimestamps, source.Name, target.Name);
+        _aiStatusDetector.SwapSlotSessions(source.Name, target.Name);
+        SavePanelStates();
+    }
+
     public async Task RefreshWindowStatusesAsync(
         WindowEnumerator windowEnumerator,
         CancellationToken cancellationToken)
@@ -724,5 +760,14 @@ public sealed class StatusStore : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private static void SwapDictEntry<TKey, TValue>(Dictionary<TKey, TValue> dict, TKey keyA, TKey keyB)
+        where TKey : notnull
+    {
+        var hasA = dict.Remove(keyA, out var valueA);
+        var hasB = dict.Remove(keyB, out var valueB);
+        if (hasA) dict[keyB] = valueA!;
+        if (hasB) dict[keyA] = valueB!;
     }
 }

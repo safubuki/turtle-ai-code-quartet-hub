@@ -7,6 +7,7 @@ public sealed class WindowArranger
 {
     private const uint WM_CLOSE = 0x0010;
     private const int SW_MAXIMIZE = 3;
+    private const int SW_MINIMIZE = 6;
     private const int SW_RESTORE = 9;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
@@ -180,6 +181,26 @@ public sealed class WindowArranger
         }
 
         return PostMessage(windowHandle, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    public bool Minimize(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return ShowWindow(windowHandle, SW_MINIMIZE);
+    }
+
+    public bool Restore(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return ShowWindow(windowHandle, SW_RESTORE);
     }
 
     private static List<MonitorWorkArea> GetOrderedMonitors()

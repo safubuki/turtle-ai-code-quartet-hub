@@ -24,6 +24,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private DateTimeOffset? _lastEventAt;
     private bool _isFocused;
     private SlotWindowLayerMode _windowLayerMode = SlotWindowLayerMode.Topmost;
+    private bool _isHidden;
 
     public WindowSlot(SlotConfig config)
     {
@@ -169,13 +170,36 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public bool IsBackmostLayer => WindowLayerMode == SlotWindowLayerMode.Backmost;
 
-    public string WindowStatusText => WindowStatus switch
+    public bool IsHidden
     {
-        SlotWindowStatus.Ready => "起動",
-        SlotWindowStatus.Launching => "起動中",
-        SlotWindowStatus.Missing => "停止",
-        _ => WindowStatus.ToString()
-    };
+        get => _isHidden;
+        set
+        {
+            if (SetField(ref _isHidden, value))
+            {
+                OnPropertyChanged(nameof(WindowStatusText));
+            }
+        }
+    }
+
+    public string WindowStatusText
+    {
+        get
+        {
+            if (IsHidden && WindowStatus == SlotWindowStatus.Ready)
+            {
+                return "非表示";
+            }
+
+            return WindowStatus switch
+            {
+                SlotWindowStatus.Ready => "起動",
+                SlotWindowStatus.Launching => "起動中",
+                SlotWindowStatus.Missing => "停止",
+                _ => WindowStatus.ToString()
+            };
+        }
+    }
 
     public string AiStatusText => AiStatus switch
     {

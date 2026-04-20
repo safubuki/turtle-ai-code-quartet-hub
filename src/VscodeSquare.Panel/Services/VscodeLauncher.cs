@@ -57,6 +57,7 @@ public sealed class VscodeLauncher
 
             if (config.UseDedicatedUserDataDirs)
             {
+                await Task.Run(() => KillZombieProcess(slot, config), cancellationToken);
                 await PrepareDedicatedUserDataAsync(slot, config, resolvedCodeCommand, cancellationToken);
             }
 
@@ -212,6 +213,64 @@ public sealed class VscodeLauncher
         }
 
         Process.Start(startInfo);
+    }
+
+    private void KillZombieProcess(WindowSlot slot, AppConfig config)
+    {
+        var userDataDir = SlotUserDataPaths.GetUserDataDirectory(slot, config);
+        var lockFile = Path.Combine(userDataDir, "code.lock");
+
+        if (!File.Exists(lockFile))
+        {
+            return;
+        }
+
+        string lockContent;
+        try
+        {
+            lockContent = File.ReadAllText(lockFile).Trim();
+        }
+        catch
+        {
+            return;
+        }
+
+        if (!int.TryParse(lockContent, out var pid))
+        {
+            return;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            var liveWindows = _windowEnumerator.GetVsCodeWindows();
+            var hasWindow = liveWindows.Any(w => w.ProcessId == pid);
+            if (hasWindow)
+            {
+                return;
+            }
+
+            DiagnosticLog.Write($"Killing zombie VS Code process {pid} for slot {slot.Name} (lock held but no window).");
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+        }
+        catch (ArgumentException)
+        {
+            // Process no longer exists
+        }
+        catch (InvalidOperationException)
+        {
+            // Process already exited
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            DiagnosticLog.Write($"Failed to kill zombie process {pid}: {ex.Message}");
+        }
     }
 
     private static void AddLaunchArguments(Collection<string> arguments, WindowSlot slot, AppConfig config)

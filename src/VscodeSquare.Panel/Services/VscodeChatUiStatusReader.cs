@@ -67,15 +67,6 @@ public sealed class VscodeChatUiStatusReader
         "許可"
     ];
 
-    private static readonly string[] ConfirmationContextFragments =
-    [
-        "chat",
-        "copilot",
-        "codex",
-        "agent",
-        "interactive"
-    ];
-
     public AiStatusSnapshot? TryRead(WindowSlot slot)
     {
         return TryRead(slot.WindowHandle);
@@ -122,6 +113,7 @@ public sealed class VscodeChatUiStatusReader
         queue.Enqueue(root);
 
         var inspected = 0;
+        AiStatusSnapshot? runningResult = null;
         AiStatusSnapshot? confirmationResult = null;
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
@@ -129,9 +121,9 @@ public sealed class VscodeChatUiStatusReader
             var element = queue.Dequeue();
             inspected++;
 
-            if (TryReadRunningSignal(element, out var detail))
+            if (runningResult is null && TryReadRunningSignal(element, out var detail))
             {
-                return new AiStatusSnapshot(AiStatus.Running, detail, DateTimeOffset.Now);
+                runningResult = new AiStatusSnapshot(AiStatus.Running, detail, DateTimeOffset.Now);
             }
 
             if (confirmationResult is null && TryReadConfirmationSignal(element, out var confirmDetail))
@@ -139,10 +131,16 @@ public sealed class VscodeChatUiStatusReader
                 confirmationResult = new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmDetail, DateTimeOffset.Now);
             }
 
+            if (runningResult is not null && confirmationResult is not null)
+            {
+                break;
+            }
+
             EnqueueChildren(walker, element, queue);
         }
 
-        return confirmationResult;
+        // Confirmation takes priority: if AI is waiting for user approval, that is the true state
+        return confirmationResult ?? runningResult;
     }
 
     private static void EnqueueChildren(
@@ -271,13 +269,9 @@ public sealed class VscodeChatUiStatusReader
     private static bool TryReadConfirmationSignal(AutomationElement element, out string detail)
     {
         var name = GetStringProperty(element, AutomationElement.NameProperty);
-        var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
-        var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{automationId} {className}";
 
         if (IsVisible(element)
             && IsEnabled(element)
-            && ContainsAny(combinedContext, ConfirmationContextFragments)
             && IsConfirmationActionName(name))
         {
             detail = string.IsNullOrWhiteSpace(name)
