@@ -1,4 +1,4 @@
-namespace VscodeSquare.Panel.Models;
+﻿namespace TurtleAIQuartetHub.Panel.Models;
 
 public sealed class SlotConfig
 {

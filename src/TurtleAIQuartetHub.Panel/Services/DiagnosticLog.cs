@@ -1,12 +1,12 @@
-using System.IO;
+﻿using System.IO;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public static class DiagnosticLog
 {
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "VscodeSquare",
+        "TurtleAIQuartetHub",
         "panel.log");
 
     public static void Write(string message)

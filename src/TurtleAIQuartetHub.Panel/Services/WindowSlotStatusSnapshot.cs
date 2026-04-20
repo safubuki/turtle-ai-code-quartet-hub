@@ -1,4 +1,4 @@
-namespace VscodeSquare.Panel.Services;
+﻿namespace TurtleAIQuartetHub.Panel.Services;
 
 internal enum WindowSlotRefreshState
 {

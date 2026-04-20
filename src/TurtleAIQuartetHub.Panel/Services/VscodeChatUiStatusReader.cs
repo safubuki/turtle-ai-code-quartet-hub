@@ -1,8 +1,8 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows.Automation;
-using VscodeSquare.Panel.Models;
+using TurtleAIQuartetHub.Panel.Models;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class VscodeChatUiStatusReader
 {

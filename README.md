@@ -1,4 +1,4 @@
-# Turtle AI Quartet Hub
+﻿# Turtle AI Quartet Hub
 
 Turtle AI Quartet Hub は、4つの VS Code ウィンドウをスロット A-D として起動し、2x2 に配置する Windows 向けの小さな WPF パネルです。
 
@@ -59,26 +59,26 @@ VS Code の `code` コマンドも確認します。
 code --version
 ```
 
-`code` が見つからない場合は、VS Code のコマンドパレットから `Shell Command: Install 'code' command in PATH` 相当の設定を有効にするか、`config\vscode-square.json` の `codeCommand` に VS Code の `Code.exe` パスを設定してください。`code.cmd` を指定していても、アプリは可能なら実体の `Code.exe` を優先して起動し、余計なコマンドプロンプトが残らないようにします。
+`code` が見つからない場合は、VS Code のコマンドパレットから `Shell Command: Install 'code' command in PATH` 相当の設定を有効にするか、`config\turtle-ai-quartet-hub.json` の `codeCommand` に VS Code の `Code.exe` パスを設定してください。`code.cmd` を指定していても、アプリは可能なら実体の `Code.exe` を優先して起動し、余計なコマンドプロンプトが残らないようにします。
 
 ## 開発環境での起動
 
 ビルド:
 
 ```powershell
-dotnet build .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj
+dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj
 ```
 
 開発実行:
 
 ```powershell
-dotnet run --project .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj
+dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj
 ```
 
 ビルド済み exe を直接起動:
 
 ```powershell
-.\src\VscodeSquare.Panel\bin\Debug\net10.0-windows\VscodeSquare.Panel.exe
+.\src\TurtleAIQuartetHub.Panel\bin\Debug\net10.0-windows\TurtleAIQuartetHub.exe
 ```
 
 ## 設定
@@ -86,27 +86,27 @@ dotnet run --project .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj
 設定ファイルを作る場合:
 
 ```powershell
-Copy-Item .\config\vscode-square.example.json .\config\vscode-square.json
+Copy-Item .\config\turtle-ai-quartet-hub.example.json .\config\turtle-ai-quartet-hub.json
 ```
 
 アプリは次の順で設定を探します。
 
-1. `config\vscode-square.json`
-2. `config\vscode-square.example.json`
+1. `config\turtle-ai-quartet-hub.json`
+2. `config\turtle-ai-quartet-hub.example.json`
 3. アプリ内の既定値
 
-`config\vscode-square.json` は、スロット名、初期ワークスペースパス、起動タイムアウト、スロット別 user-data-dir の有無など、配布時にも固定したい設定を置く場所です。
+`config\turtle-ai-quartet-hub.json` は、スロット名、初期ワークスペースパス、起動タイムアウト、スロット別 user-data-dir の有無など、配布時にも固定したい設定を置く場所です。
 
 `inheritMainUserState` を有効にすると、専用 user-data-dir を使う場合でも通常の VS Code の `User/globalStorage`、設定、スニペットに加えて `Local Storage`、`Network`、`Service Worker` などの認証関連ストレージも起動前に取り込みます。これにより GitHub / Microsoft などのログイン状態や拡張ごとの保存状態を、可能な範囲で毎回引き継ぎます。
 
-スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開くと、パネル上のスロット名の下に現在のフォルダ名または workspace 名が数秒以内に反映されます。さらに `設定保存` または `閉じる` / `全て閉じる` を押すと、現在のウィンドウタイトルからそのワークスペースが確認できたスロットだけ `%LOCALAPPDATA%\VscodeSquare\slots.json` に保存されます。SSH 接続などの remote workspace は `vscode-remote://...` の URI として保存し、次回は VS Code CLI の `--folder-uri` または `--file-uri` で開き直します。ようこそ画面や no-folder 状態のスロットは保存対象にせず、次回 `Launch Quartet` でもようこそ画面のまま起動します。
+スロットの `path` を空にすると、初回起動では VS Code のようこそ画面やフォルダ未選択状態になります。その後、VS Code でフォルダやワークスペースを開くと、パネル上のスロット名の下に現在のフォルダ名または workspace 名が数秒以内に反映されます。さらに `設定保存` または `閉じる` / `全て閉じる` を押すと、現在のウィンドウタイトルからそのワークスペースが確認できたスロットだけ `%LOCALAPPDATA%\TurtleAIQuartetHub\slots.json` に保存されます。SSH 接続などの remote workspace は `vscode-remote://...` の URI として保存し、次回は VS Code CLI の `--folder-uri` または `--file-uri` で開き直します。ようこそ画面や no-folder 状態のスロットは保存対象にせず、次回 `Launch Quartet` でもようこそ画面のまま起動します。
 
 複数ディスプレイがある場合は `ディスプレイ移動` で 4 分割の配置先を次のディスプレイへ順送りできます。2 枚なら 1 → 2 → 1、3 枚なら 1 → 2 → 3 → 1 のようにトグルします。
 
 実行時状態の既定保存先:
 
 ```text
-%LOCALAPPDATA%\VscodeSquare\
+%LOCALAPPDATA%\TurtleAIQuartetHub\
 ```
 
 ここには、スロット別 user-data-dir、`slots.json`、控え Quartet の状態、VS Code 拡張ログなど、PCごとの実行時データを保存します。
@@ -116,31 +116,31 @@ Copy-Item .\config\vscode-square.example.json .\config\vscode-square.json
 自己完結型の win-x64 exe を作る場合:
 
 ```powershell
-dotnet publish .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\dist\vscode-square
+dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\dist\turtle-ai-quartet-hub
 ```
 
 出力先:
 
 ```text
 dist/
-  vscode-square/
-    VscodeSquare.Panel.exe
+  turtle-ai-quartet-hub/
+    TurtleAIQuartetHub.exe
     config/
-      vscode-square.example.json
+      turtle-ai-quartet-hub.example.json
 ```
 
-配布時に固定設定を同梱する場合は、同じ階層に `config\vscode-square.json` を置きます。
+配布時に固定設定を同梱する場合は、同じ階層に `config\turtle-ai-quartet-hub.json` を置きます。
 
 GPL-3.0 で配布する場合は、出力物と一緒にルートの `LICENSE.txt` も同梱してください。
 
 ```powershell
-Copy-Item .\config\vscode-square.example.json .\dist\vscode-square\config\vscode-square.json
+Copy-Item .\config\turtle-ai-quartet-hub.example.json .\dist\turtle-ai-quartet-hub\config\turtle-ai-quartet-hub.json
 ```
 
 軽量なフレームワーク依存版でよい場合は、実行先PCに .NET 10 Desktop Runtime が必要です。
 
 ```powershell
-dotnet publish .\src\VscodeSquare.Panel\VscodeSquare.Panel.csproj -c Release -o .\dist\vscode-square-framework
+dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c Release -o .\dist\turtle-ai-quartet-hub-framework
 ```
 
 ## AI・タブ・拡張機能情報

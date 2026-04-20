@@ -1,10 +1,10 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using VscodeSquare.Panel.Models;
+using TurtleAIQuartetHub.Panel.Models;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class VscodeLauncher
 {

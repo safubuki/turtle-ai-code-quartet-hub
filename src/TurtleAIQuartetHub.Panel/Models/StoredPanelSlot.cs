@@ -1,7 +1,7 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace VscodeSquare.Panel.Models;
+namespace TurtleAIQuartetHub.Panel.Models;
 
 public sealed class StoredPanelSlot : INotifyPropertyChanged
 {

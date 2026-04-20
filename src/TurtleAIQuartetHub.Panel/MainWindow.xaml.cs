@@ -1,14 +1,14 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using VscodeSquare.Panel.Models;
-using VscodeSquare.Panel.Services;
+using TurtleAIQuartetHub.Panel.Models;
+using TurtleAIQuartetHub.Panel.Services;
 
-namespace VscodeSquare.Panel;
+namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow : Window
 {

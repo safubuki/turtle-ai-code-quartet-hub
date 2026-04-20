@@ -1,10 +1,10 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using VscodeSquare.Panel.Services;
+using TurtleAIQuartetHub.Panel.Services;
 
-namespace VscodeSquare.Panel;
+namespace TurtleAIQuartetHub.Panel;
 
 public partial class App : Application
 {

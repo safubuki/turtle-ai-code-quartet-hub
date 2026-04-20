@@ -1,4 +1,4 @@
-# Turtle AI Quartet Hub 実装計画書
+﻿# Turtle AI Quartet Hub 実装計画書
 
 作成日: 2026-04-14
 
@@ -350,11 +350,11 @@ Win32 API候補:
 ## 9. 推奨リポジトリ構成
 
 ```text
-vscode-square/
+turtle-ai-quartet-hub/
   IMPLEMENTATION_PLAN.md
   src/
-    VscodeSquare.Panel/
-      VscodeSquare.Panel.csproj
+    TurtleAIQuartetHub.Panel/
+      TurtleAIQuartetHub.Panel.csproj
       App.xaml
       MainWindow.xaml
       Services/
@@ -367,14 +367,14 @@ vscode-square/
         SlotConfig.cs
         WindowSlot.cs
         AiStatus.cs
-    vscode-square-extension/
+    turtle-ai-quartet-hub-extension/
       package.json
       src/
         extension.ts
         statusReporter.ts
         terminalMonitor.ts
   config/
-    vscode-square.example.json
+    turtle-ai-quartet-hub.example.json
   docs/
     telemetry-notes.md
 ```

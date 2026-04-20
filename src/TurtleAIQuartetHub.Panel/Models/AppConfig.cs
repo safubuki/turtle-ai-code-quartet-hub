@@ -1,8 +1,8 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace VscodeSquare.Panel.Models;
+namespace TurtleAIQuartetHub.Panel.Models;
 
 public sealed class AppConfig
 {
@@ -27,7 +27,7 @@ public sealed class AppConfig
 
     public string StateDirectory { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "VscodeSquare");
+        "TurtleAIQuartetHub");
 
     public int LaunchTimeoutSeconds { get; set; } = 25;
 
@@ -63,7 +63,7 @@ public sealed class AppConfig
         Monitor = string.IsNullOrWhiteSpace(Monitor) ? "primary" : Monitor.Trim();
         Gap = Math.Clamp(Gap, 0, 64);
         StateDirectory = string.IsNullOrWhiteSpace(StateDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VscodeSquare")
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TurtleAIQuartetHub")
             : Environment.ExpandEnvironmentVariables(StateDirectory.Trim());
         LaunchTimeoutSeconds = Math.Clamp(LaunchTimeoutSeconds, 5, 120);
 
@@ -91,12 +91,12 @@ public sealed class AppConfig
 
         foreach (var root in roots)
         {
-            yield return Path.Combine(root, "config", "vscode-square.json");
+            yield return Path.Combine(root, "config", "turtle-ai-quartet-hub.json");
         }
 
         foreach (var root in roots)
         {
-            yield return Path.Combine(root, "config", "vscode-square.example.json");
+            yield return Path.Combine(root, "config", "turtle-ai-quartet-hub.example.json");
         }
     }
 

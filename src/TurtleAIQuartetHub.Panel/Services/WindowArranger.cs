@@ -1,7 +1,7 @@
-using System.Runtime.InteropServices;
-using VscodeSquare.Panel.Models;
+﻿using System.Runtime.InteropServices;
+using TurtleAIQuartetHub.Panel.Models;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class WindowArranger
 {

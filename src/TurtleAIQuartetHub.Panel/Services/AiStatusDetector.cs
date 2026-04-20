@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
-using VscodeSquare.Panel.Models;
+using TurtleAIQuartetHub.Panel.Models;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class AiStatusDetector
 {

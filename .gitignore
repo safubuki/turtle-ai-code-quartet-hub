@@ -2,6 +2,6 @@ bin/
 obj/
 .vs/
 .vscode/
-.vscode-square/
+.turtle-ai-quartet-hub/
 .dotnet_home/
-config/vscode-square.json
+config/turtle-ai-quartet-hub.json

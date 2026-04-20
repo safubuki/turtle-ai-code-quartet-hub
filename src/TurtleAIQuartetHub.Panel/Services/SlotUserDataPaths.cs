@@ -1,7 +1,7 @@
-using System.IO;
-using VscodeSquare.Panel.Models;
+﻿using System.IO;
+using TurtleAIQuartetHub.Panel.Models;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public static class SlotUserDataPaths
 {

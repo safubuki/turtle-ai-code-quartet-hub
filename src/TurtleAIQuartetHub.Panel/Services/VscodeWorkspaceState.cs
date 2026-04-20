@@ -1,8 +1,8 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
-using VscodeSquare.Panel.Models;
+using TurtleAIQuartetHub.Panel.Models;
 
-namespace VscodeSquare.Panel.Services;
+namespace TurtleAIQuartetHub.Panel.Services;
 
 public static class VscodeWorkspaceState
 {
