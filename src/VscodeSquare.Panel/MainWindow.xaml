@@ -18,7 +18,8 @@
         Topmost="True"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        TextOptions.TextFormattingMode="Display">
+        TextOptions.TextFormattingMode="Display"
+        Icon="app.ico">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="34"
                         ResizeBorderThickness="8"
@@ -568,15 +569,51 @@
             <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         VerticalAlignment="Center">
-              <Button Content="控えへ"
-                      Tag="{Binding}"
+              <Button Tag="{Binding}"
                       Click="StoreSlotButton_Click"
-                      Style="{StaticResource SlotActionButton}"
-                      Margin="8,0,6,0" />
-              <Button Content="停止"
-                      Tag="{Binding}"
-                      Click="CloseSlotButton_Click"
-                      Style="{StaticResource SlotActionButton}" />
+                      Margin="8,0,6,0">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                    <Setter Property="Content" Value="控えへ" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
+                        <Setter Property="IsEnabled" Value="False" />
+                        <Setter Property="Opacity" Value="0.4" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
+              <Button Tag="{Binding}"
+                      Click="SlotMainActionButton_Click"
+                      MinWidth="58">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                    <Setter Property="Content" Value="停止" />
+                    <Style.Triggers>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
+                          <Condition Binding="{Binding HasPanelContent}" Value="True" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Content" Value="起動" />
+                      </MultiDataTrigger>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
+                          <Condition Binding="{Binding HasPanelContent}" Value="False" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Content" Value="新規" />
+                      </MultiDataTrigger>
+                      <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+                        <Setter Property="Content" Value="起動中" />
+                        <Setter Property="IsEnabled" Value="False" />
+                        <Setter Property="Opacity" Value="0.5" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
             </StackPanel>
           </Grid>
         </Grid>
@@ -855,11 +892,14 @@
 
         <Button Grid.Row="4"
           x:Name="LaunchButton"
-              Content="Launch Quartet"
             Click="LaunchButton_Click"
             Style="{StaticResource LaunchButtonStyle}"
             HorizontalAlignment="Stretch"
-            Margin="5,5,5,0" />
+            Margin="5,5,5,0">
+          <TextBlock>
+            <Run Text="Launch Quartet" /><Run Text=" （一括起動）" FontSize="11" BaselineAlignment="Center" />
+          </TextBlock>
+        </Button>
 
     <Border x:Name="DeleteStoredPanelOverlay"
             Grid.RowSpan="5"

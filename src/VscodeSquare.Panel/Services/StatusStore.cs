@@ -639,6 +639,11 @@ public sealed class StatusStore : INotifyPropertyChanged
         return new PanelSnapshot(slot.PanelTitle, slot.WorkspacePath);
     }
 
+    public string MakeUniqueTitle(string desiredTitle, params object?[] excludedItems)
+    {
+        return MakeUniquePanelTitle(desiredTitle, excludedItems);
+    }
+
     private string MakeUniquePanelTitle(string desiredTitle, params object?[] excludedItems)
     {
         var baseTitle = string.IsNullOrWhiteSpace(desiredTitle) ? "スロット" : desiredTitle.Trim();

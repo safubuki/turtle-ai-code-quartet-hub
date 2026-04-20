@@ -455,6 +455,73 @@ public partial class MainWindow : Window
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
     }
 
+    private async void SlotMainActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        if (slot.WindowStatus == SlotWindowStatus.Ready)
+        {
+            // 停止: 既存の CloseSlotButton_Click と同じ
+            CloseSlotButton_Click(sender, e);
+            return;
+        }
+
+        if (slot.WindowStatus != SlotWindowStatus.Missing)
+        {
+            return;
+        }
+
+        // 新規: 空きスロットにデフォルト名を設定
+        if (!slot.HasPanelContent)
+        {
+            var defaultTitle = $"スロット{slot.Name}";
+            slot.PanelTitle = _statusStore.MakeUniqueTitle(defaultTitle, slot);
+        }
+
+        // 起動 / 新規: 個別に VS Code を起動
+        await RunBusyAsync(async () =>
+        {
+            if (_areWindowsHidden)
+            {
+                _areWindowsHidden = false;
+                ToggleVisibilityButton.Content = "非表示";
+                foreach (var s in _statusStore.Slots)
+                {
+                    s.IsHidden = false;
+                }
+            }
+
+            _statusStore.Message = $"スロット{slot.Name}のVS Codeを起動しています...";
+            var assignments = await _vscodeLauncher.LaunchMissingAsync(
+                new[] { slot },
+                _statusStore.Config,
+                CancellationToken.None);
+
+            foreach (var assignment in assignments)
+            {
+                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
+            }
+
+            await RefreshSlotsAsync(allowDuringBusy: true);
+            ArrangeSlotsOnActiveMonitor();
+
+            await Task.Delay(500);
+            ArrangeSlotsOnActiveMonitor();
+
+            _statusStore.Message = assignments.Count > 0
+                ? $"スロット{slot.Name}のVS Codeを起動しました。"
+                : $"スロット{slot.Name}のVS Codeウィンドウの起動を確認できませんでした。";
+        });
+    }
+
     private void StoreSlotButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isBusy)
