@@ -51,7 +51,8 @@ public sealed class WindowArranger
             var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
 
             ShowWindow(slot.WindowHandle, SW_RESTORE);
-            if (SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW))
+            SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+            if (SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER))
             {
                 arranged++;
             }

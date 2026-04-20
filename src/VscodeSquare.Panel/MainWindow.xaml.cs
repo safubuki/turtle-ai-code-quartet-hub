@@ -64,6 +64,17 @@ public partial class MainWindow : Window
 
         await RunBusyAsync(async () =>
         {
+            // 非表示中にLaunchが押された場合は非表示状態を解除
+            if (_areWindowsHidden)
+            {
+                _areWindowsHidden = false;
+                ToggleVisibilityButton.Content = "非表示";
+                foreach (var slot in _statusStore.Slots)
+                {
+                    slot.IsHidden = false;
+                }
+            }
+
             _statusStore.LoadSavedSettings();
             await RefreshSlotsAsync(allowDuringBusy: true);
 
@@ -254,7 +265,11 @@ public partial class MainWindow : Window
         }
 
         _statusStore.SwapSlotContents(sourceSlot, targetSlot);
-        ArrangeSlotsOnActiveMonitor();
+        if (!_areWindowsHidden)
+        {
+            ArrangeSlotsOnActiveMonitor();
+        }
+
         _statusStore.Message = $"スロット{sourceSlot.Name}とスロット{targetSlot.Name}のカードを入れ替えました。";
         e.Handled = true;
     }
@@ -265,13 +280,21 @@ public partial class MainWindow : Window
 
         if (slot.IsFocused)
         {
-            var arranged = ArrangeSlotsOnActiveMonitor(false);
-            _statusStore.ClearFocusedSlot();
-            BringPanelToFront();
-            RestoreHiddenWindowState();
-            _statusStore.Message = arranged == 0
-                ? "4分割表示に戻せるVS Codeウィンドウがありません。"
-                : $"{arranged}個のVS Codeを4分割表示に戻しました。";
+            if (!_areWindowsHidden)
+            {
+                var arranged = ArrangeSlotsOnActiveMonitor(false);
+                _statusStore.ClearFocusedSlot();
+                BringPanelToFront();
+                _statusStore.Message = arranged == 0
+                    ? "4分割表示に戻せるVS Codeウィンドウがありません。"
+                    : $"{arranged}個のVS Codeを4分割表示に戻しました。";
+            }
+            else
+            {
+                _statusStore.ClearFocusedSlot();
+                _statusStore.Message = "フォーカスを解除しました。";
+            }
+
             return;
         }
 
@@ -462,7 +485,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        ArrangeSlotsOnActiveMonitor();
+        if (!_areWindowsHidden)
+        {
+            ArrangeSlotsOnActiveMonitor();
+        }
+
         _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ控え保存しました。";
     }
 
@@ -518,11 +545,24 @@ public partial class MainWindow : Window
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
-            ArrangeSlotsOnActiveMonitor();
 
-            // VS Code が起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
-            await Task.Delay(500);
-            ArrangeSlotsOnActiveMonitor();
+            if (_areWindowsHidden)
+            {
+                // 非表示中は起動したウィンドウも最小化して非表示を維持
+                foreach (var assignment in assignments)
+                {
+                    _windowArranger.Minimize(assignment.Slot.WindowHandle);
+                    assignment.Slot.IsHidden = true;
+                }
+            }
+            else
+            {
+                ArrangeSlotsOnActiveMonitor();
+
+                // VS Code が起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
+                await Task.Delay(500);
+                ArrangeSlotsOnActiveMonitor();
+            }
 
             _statusStore.Message = assignments.Count > 0
                 ? swappedVisiblePanel
@@ -866,6 +906,24 @@ public partial class MainWindow : Window
         }
 
         base.OnPreviewKeyDown(e);
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // 非表示中にアプリが終了される場合、VS Codeウィンドウを復元してから閉じる
+        if (_areWindowsHidden)
+        {
+            foreach (var slot in _statusStore.Slots)
+            {
+                _windowArranger.Restore(slot.WindowHandle);
+                slot.IsHidden = false;
+            }
+
+            _areWindowsHidden = false;
+            ArrangeSlotsOnActiveMonitor(false);
+        }
+
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)
