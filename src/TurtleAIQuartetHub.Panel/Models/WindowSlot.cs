@@ -209,7 +209,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
         AiStatus.Completed => "AI 完了",
         AiStatus.Error => "AI エラー",
         AiStatus.NeedsAttention => "AI 要確認",
-        AiStatus.WaitingForConfirmation => "AI 確認待ち",
+        AiStatus.WaitingForConfirmation => "AI 確認中",
         _ => $"AI {AiStatus}"
     };
 

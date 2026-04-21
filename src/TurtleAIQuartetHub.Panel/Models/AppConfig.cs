@@ -29,7 +29,7 @@ public sealed class AppConfig
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "TurtleAIQuartetHub");
 
-    public int LaunchTimeoutSeconds { get; set; } = 25;
+    public int LaunchTimeoutSeconds { get; set; } = 40;
 
     public List<SlotConfig> Slots { get; set; } = DefaultSlots();
 

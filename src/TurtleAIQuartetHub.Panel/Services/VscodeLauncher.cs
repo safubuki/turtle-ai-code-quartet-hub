@@ -54,6 +54,7 @@ public sealed class VscodeLauncher
         foreach (var slot in launchTargets)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            knownHandles.UnionWith(await GetKnownHandlesAsync(cancellationToken));
 
             if (config.UseDedicatedUserDataDirs)
             {
@@ -62,27 +63,19 @@ public sealed class VscodeLauncher
             }
 
             DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {resolvedCodeCommand} {GetLaunchArguments(slot, config)}");
-            await Task.Run(() => StartCode(resolvedCodeCommand, slot, config), cancellationToken);
+            var launchedProcessId = await Task.Run(() => StartCode(resolvedCodeCommand, slot, config), cancellationToken);
 
-            var window = await WaitForNewWindowAsync(knownHandles, timeout, cancellationToken);
+            var window = await WaitForNewWindowAsync(knownHandles, timeout, launchedProcessId, cancellationToken);
             if (window is null)
             {
                 DiagnosticLog.Write($"No new VS Code window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
                 slot.WindowStatus = SlotWindowStatus.Missing;
-                break;
+                continue;
             }
 
             knownHandles.Add(window.Handle);
             assignments.Add(new WindowAssignment(slot, window));
 
-        }
-
-        foreach (var pendingSlot in launchTargets.Skip(assignments.Count))
-        {
-            if (pendingSlot.WindowHandle == IntPtr.Zero)
-            {
-                pendingSlot.WindowStatus = SlotWindowStatus.Missing;
-            }
         }
 
         return assignments;
@@ -91,9 +84,10 @@ public sealed class VscodeLauncher
     private async Task<WindowInfo?> WaitForNewWindowAsync(
         HashSet<IntPtr> knownHandles,
         TimeSpan timeout,
+        uint? expectedProcessId,
         CancellationToken cancellationToken)
     {
-        var existingWindow = FindNewWindow(knownHandles);
+        var existingWindow = FindNewWindow(knownHandles, expectedProcessId);
         if (existingWindow is not null)
         {
             return existingWindow;
@@ -112,7 +106,9 @@ public sealed class VscodeLauncher
             }
 
             var window = _windowEnumerator.TryGetWindow(windowHandle);
-            if (window is not null && !knownHandles.Contains(window.Handle))
+            if (window is not null
+                && !knownHandles.Contains(window.Handle)
+                && (!expectedProcessId.HasValue || window.ProcessId == expectedProcessId.Value))
             {
                 completionSource.TrySetResult(window);
             }
@@ -135,7 +131,7 @@ public sealed class VscodeLauncher
 
         try
         {
-            existingWindow = FindNewWindow(knownHandles);
+            existingWindow = FindNewWindow(knownHandles, expectedProcessId);
             if (existingWindow is not null)
             {
                 return existingWindow;
@@ -152,11 +148,12 @@ public sealed class VscodeLauncher
         }
     }
 
-    private WindowInfo? FindNewWindow(HashSet<IntPtr> knownHandles)
+    private WindowInfo? FindNewWindow(HashSet<IntPtr> knownHandles, uint? expectedProcessId = null)
     {
         return _windowEnumerator
             .GetVsCodeWindows()
             .Where(item => !knownHandles.Contains(item.Handle))
+            .Where(item => !expectedProcessId.HasValue || item.ProcessId == expectedProcessId.Value)
             .OrderBy(window => window.ProcessId)
             .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
@@ -194,7 +191,7 @@ public sealed class VscodeLauncher
         }, cancellationToken);
     }
 
-    private static void StartCode(string codeCommand, WindowSlot slot, AppConfig config)
+    private static uint? StartCode(string codeCommand, WindowSlot slot, AppConfig config)
     {
         var canUseArgumentList = string.Equals(Path.GetExtension(codeCommand), ".exe", StringComparison.OrdinalIgnoreCase);
         var startInfo = new ProcessStartInfo
@@ -212,7 +209,8 @@ public sealed class VscodeLauncher
             startInfo.Arguments = GetLaunchArguments(slot, config);
         }
 
-        Process.Start(startInfo);
+        using var process = Process.Start(startInfo);
+        return process is null ? null : (uint)process.Id;
     }
 
     private void KillZombieProcess(WindowSlot slot, AppConfig config)

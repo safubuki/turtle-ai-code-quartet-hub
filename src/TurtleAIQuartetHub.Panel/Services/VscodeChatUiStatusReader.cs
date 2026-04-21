@@ -6,7 +6,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class VscodeChatUiStatusReader
 {
-    private const int MaxElementsToInspect = 1800;
+    private const int MaxElementsToInspect = 2400;
     private const int MaxTextLengthForStatus = 48;
 
     private static readonly string[] RunningStatusExactTexts =

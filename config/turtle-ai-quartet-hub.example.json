@@ -5,7 +5,7 @@
   "useDedicatedUserDataDirs": true,
   "inheritMainUserState": true,
   "reopenLastWorkspace": true,
-  "launchTimeoutSeconds": 25,
+  "launchTimeoutSeconds": 40,
   "slots": [
     {
       "name": "A",

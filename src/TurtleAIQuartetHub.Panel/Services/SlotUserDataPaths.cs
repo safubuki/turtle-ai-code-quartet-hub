@@ -25,24 +25,11 @@ public static class SlotUserDataPaths
         "machineid",
         "languagepacks.json",
         "Local State",
-        "Preferences",
-        "SharedStorage",
-        "SharedStorage-wal",
-        "DIPS",
-        "DIPS-wal"
+        "Preferences"
     ];
 
-    private static readonly string[] SharedRootDirectories =
-    [
-        "Local Storage",
-        "Network",
-        "Session Storage",
-        "WebStorage",
-        "Service Worker",
-        "Partitions",
-        "shared_proto_db",
-        "Shared Dictionary"
-    ];
+    // Chromium/Electron storage trees are intentionally excluded to avoid heavy startup copies on lower-spec PCs.
+    private static readonly string[] SharedRootDirectories = [];
 
     public static string GetUserDataDirectory(WindowSlot slot, AppConfig config)
     {

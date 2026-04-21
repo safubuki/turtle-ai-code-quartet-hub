@@ -10,6 +10,7 @@ public sealed class AiStatusDetector
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan CodexStreamQuietCompletionWindow = TimeSpan.FromSeconds(10);
     private const int MaxRecentLogBytes = 96 * 1024;
+    private static readonly string[] ExtensionHostDirectoryNames = ["exthost", "remoteexthost", "remoteexhost"];
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly VscodeChatUiStatusReader _uiStatusReader = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastRunningSeenBySlot = new(StringComparer.OrdinalIgnoreCase);
@@ -314,14 +315,75 @@ public sealed class AiStatusDetector
 
             foreach (var window in windows)
             {
-                foreach (var extensionDirectoryName in source.ExtensionDirectoryNames)
+                foreach (var logPath in EnumerateExtensionHostLogFiles(window.FullName, source))
                 {
-                    var logPath = Path.Combine(window.FullName, "exthost", extensionDirectoryName, source.LogFileName);
-                    if (File.Exists(logPath))
-                    {
-                        yield return logPath;
-                    }
+                    yield return logPath;
                 }
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateExtensionHostLogFiles(string windowDirectory, ExtensionLogSource source)
+    {
+        var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var hostDirectoryName in ExtensionHostDirectoryNames)
+        {
+            foreach (var logPath in EnumerateHostLogFiles(Path.Combine(windowDirectory, hostDirectoryName), source))
+            {
+                if (yieldedPaths.Add(logPath))
+                {
+                    yield return logPath;
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateHostLogFiles(string hostDirectory, ExtensionLogSource source)
+    {
+        if (!Directory.Exists(hostDirectory))
+        {
+            yield break;
+        }
+
+        foreach (var logPath in EnumerateDirectLogFiles(hostDirectory, source))
+        {
+            yield return logPath;
+        }
+
+        HashSet<string> extensionDirectoryNames = new(source.ExtensionDirectoryNames, StringComparer.OrdinalIgnoreCase);
+        List<DirectoryInfo> nestedDirectories;
+        try
+        {
+            nestedDirectories = new DirectoryInfo(hostDirectory)
+                .EnumerateDirectories()
+                .Where(directory => !extensionDirectoryNames.Contains(directory.Name))
+                .OrderByDescending(directory => directory.LastWriteTimeUtc)
+                .Take(12)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+            yield break;
+        }
+
+        foreach (var nestedDirectory in nestedDirectories)
+        {
+            foreach (var logPath in EnumerateDirectLogFiles(nestedDirectory.FullName, source))
+            {
+                yield return logPath;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateDirectLogFiles(string parentDirectory, ExtensionLogSource source)
+    {
+        foreach (var extensionDirectoryName in source.ExtensionDirectoryNames)
+        {
+            var logPath = Path.Combine(parentDirectory, extensionDirectoryName, source.LogFileName);
+            if (File.Exists(logPath))
+            {
+                yield return logPath;
             }
         }
     }
