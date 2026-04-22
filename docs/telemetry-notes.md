@@ -6,10 +6,19 @@ The next practical step is a VS Code helper extension that writes heartbeat and 
 
 Current panel behavior:
 
-- `AI 未取得` is a placeholder, not a detected state.
-- Window `Ready` / `Missing` comes from Win32 HWND checks.
-- Terminal or agent execution state is not read yet.
-- Editor tabs and extension status are not reliably available from Win32. Use a VS Code helper extension for those details.
+- `AI 待機中` は検知結果ではなく、明示的な根拠が取れないときの既定表示。
+- Window `Ready` / `Missing` は Win32 HWND の有無から判定する。
+- ターミナルや agent の厳密な実行状態はまだ直接取得していない。
+- エディタタブや拡張機能状態は Win32 だけでは安定取得できないため、必要なら VS Code helper extension を使う。
+- 可視チャット UI の `思考中` / `考え中` / `Thinking` や明示的な停止ボタンは running hint として扱う。
+- Codex fallback ではスロット別 `openai.chatgpt/Codex.log` を読み、`thread-stream-state-changed` の連続発生で `Running` を維持し、`commandExecution/requestApproval` は開始イベントが末尾から消えた後でも confirmation-waiting の根拠に使う。
+
+Panel affordances:
+
+- パネルは `標準` と `縮小` の 2 モードを持ち、縮小時は A-D の簡易ボタンだけを低いバー状に残す。
+- 縮小ボタンとタスクバー JumpList の A-D 操作は、対象スロットのフォーカス切替とパネルの標準/縮小表示を連動させる。
+- タスクバー右クリックメニューは単一起動の既存インスタンスにコマンド転送し、2個目のパネルは開かない。
+- 管理中の VS Code ウィンドウには AI 状態に応じた発光フレームを重ね、遠目でも状態を把握できるようにする。
 
 Recommended implementation order:
 
@@ -17,4 +26,4 @@ Recommended implementation order:
 2. Report workspace title, active editor, installed extension IDs, and terminal shell execution start/end.
 3. Map slot identity through the slot-specific `--user-data-dir` already used by the panel.
 4. Add Copilot/OpenTelemetry ingestion only after the slot heartbeat path is stable.
-5. Keep uncertain states as `Needs attention?`, not `Waiting for confirmation`, unless the source is explicit.
+5. Keep uncertain states as `Needs attention`, not `Waiting for confirmation`, unless the source is explicit.

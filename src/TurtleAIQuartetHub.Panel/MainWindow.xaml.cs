@@ -12,9 +12,14 @@ namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow : Window
 {
+    private const double CompactWindowHeight = 84;
+    private const double CompactWindowMinHeight = 84;
+    private const double CompactWindowMinWidth = 396;
+    private const double CompactWindowWidthScale = 0.67;
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(120);
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
+    private readonly WindowFrameOverlayManager _overlayManager;
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly StatusStore _statusStore;
     private readonly DispatcherTimer _refreshTimer;
@@ -24,8 +29,13 @@ public partial class MainWindow : Window
     private bool _isBusy;
     private bool _isRefreshInFlight;
     private bool _areWindowsHidden;
+    private bool _isCompactMode;
     private double _collapsedWindowHeight;
     private double _collapsedWindowMinHeight;
+    private double _standardWindowWidth;
+    private double _standardWindowHeight;
+    private double _standardWindowMinWidth;
+    private double _standardWindowMinHeight;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private Point _dragStartPoint;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
@@ -36,6 +46,7 @@ public partial class MainWindow : Window
 
         var config = AppConfig.Load();
         _statusStore = new StatusStore(config);
+        _overlayManager = new WindowFrameOverlayManager(_windowArranger);
         _vscodeLauncher = new VscodeLauncher(_windowEnumerator);
         DataContext = _statusStore;
 
@@ -51,9 +62,12 @@ public partial class MainWindow : Window
             Topmost = true;
             _collapsedWindowHeight = Height;
             _collapsedWindowMinHeight = MinHeight;
+            RememberStandardWindowMetrics();
+            UpdateDisplayModeChrome();
             await RefreshSlotsAsync(allowDuringBusy: true);
             ApplyManagedWindowLayers();
             UpdateWindowHeightForStoredPanels(StoredPanelsExpander.IsExpanded, true);
+            RefreshAuxiliaryUi();
         };
     }
 
@@ -126,6 +140,84 @@ public partial class MainWindow : Window
         Close();
     }
 
+    public void ExecuteExternalCommand(string[]? args)
+    {
+        _ = ExecuteExternalCommandAsync(args ?? []);
+    }
+
+    private async Task ExecuteExternalCommandAsync(string[] args)
+    {
+        ActivatePanelWindow();
+        await RefreshSlotsAsync(allowDuringBusy: true);
+
+        if (args.Length == 0)
+        {
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        switch (args[0].ToLowerInvariant())
+        {
+            case "--activate":
+                break;
+
+            case "--slot-toggle" when args.Length >= 2:
+            {
+                var slot = _statusStore.FindSlot(args[1]);
+                if (slot is not null)
+                {
+                    HandleCompactSlotToggle(slot);
+                }
+
+                break;
+            }
+
+            case "--mode" when args.Length >= 2:
+                SetCompactMode(string.Equals(args[1], "compact", StringComparison.OrdinalIgnoreCase));
+                break;
+
+            case "--layer" when args.Length >= 2 && string.Equals(args[1], "top", StringComparison.OrdinalIgnoreCase):
+                PinAllTopButton_Click(this, new RoutedEventArgs());
+                break;
+
+            case "--layer" when args.Length >= 2 && string.Equals(args[1], "back", StringComparison.OrdinalIgnoreCase):
+                SendAllBackButton_Click(this, new RoutedEventArgs());
+                break;
+        }
+
+        RefreshAuxiliaryUi();
+    }
+
+    private void DisplayModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetCompactMode(!_isCompactMode);
+        ActivatePanelWindow();
+    }
+
+    private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        HandleCompactSlotToggle(slot);
+    }
+
+    private void HandleCompactSlotToggle(WindowSlot slot)
+    {
+        _statusStore.AcknowledgeAiStatus(slot);
+        ActivatePanelWindow();
+
+        if (slot.IsFocused)
+        {
+            ToggleSlotFocus(slot);
+            return;
+        }
+
+        ToggleSlotFocus(slot);
+    }
+
     private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         _statusStore.SaveCurrentSettings();
@@ -166,6 +258,7 @@ public partial class MainWindow : Window
         _statusStore.Message = closed == 0
             ? "閉じるVS Codeウィンドウがありません。"
             : $"{closed}個のVS Codeを閉じて設定を保存しました。";
+        RefreshAuxiliaryUi();
     }
 
     private void SlotCard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -273,6 +366,7 @@ public partial class MainWindow : Window
         }
 
         _statusStore.Message = $"スロット{sourceSlot.Name}とスロット{targetSlot.Name}のカードを入れ替えました。";
+        RefreshAuxiliaryUi();
         e.Handled = true;
     }
 
@@ -298,6 +392,7 @@ public partial class MainWindow : Window
                 _statusStore.Message = "フォーカスを解除しました。";
             }
 
+            RefreshAuxiliaryUi();
             return;
         }
 
@@ -327,10 +422,12 @@ public partial class MainWindow : Window
             _statusStore.SetFocusedSlot(slot);
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
+            RefreshAuxiliaryUi();
             return;
         }
 
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+        RefreshAuxiliaryUi();
     }
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
@@ -418,6 +515,8 @@ public partial class MainWindow : Window
                 _statusStore.Message = "非表示にできるVS Codeウィンドウがありません。";
             }
         }
+
+        RefreshAuxiliaryUi();
     }
 
     private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
@@ -459,10 +558,12 @@ public partial class MainWindow : Window
             _statusStore.CaptureWorkspacePath(slot);
             _statusStore.ClearWindow(slot);
             _statusStore.Message = $"スロット{slot.Name}を閉じました。";
+            RefreshAuxiliaryUi();
             return;
         }
 
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+        RefreshAuxiliaryUi();
     }
 
     private async void SlotMainActionButton_Click(object sender, RoutedEventArgs e)
@@ -568,6 +669,7 @@ public partial class MainWindow : Window
         }
 
         _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ控え保存しました。";
+        RefreshAuxiliaryUi();
     }
 
     private async void ShowStoredPanelButton_Click(object sender, RoutedEventArgs e)
@@ -690,6 +792,7 @@ public partial class MainWindow : Window
         _statusStore.ClearStoredPanel(_pendingStoredPanelDeletion);
         _statusStore.Message = $"{label} を空きスロットに戻しました。";
         HideDeleteStoredPanelDialog();
+        RefreshAuxiliaryUi();
     }
 
     private void CancelDeleteStoredPanelButton_Click(object sender, RoutedEventArgs e)
@@ -732,6 +835,7 @@ public partial class MainWindow : Window
         finally
         {
             _isRefreshInFlight = false;
+            RefreshAuxiliaryUi();
         }
     }
 
@@ -739,6 +843,7 @@ public partial class MainWindow : Window
     {
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
         ApplyManagedWindowLayers(bringPanelAfterArrange);
+        RefreshAuxiliaryUi();
         return arranged;
     }
 
@@ -754,6 +859,8 @@ public partial class MainWindow : Window
         {
             slot.WindowLayerMode = layerMode;
         }
+
+        RefreshAuxiliaryUi();
     }
 
     private bool SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode layerMode, bool bringPanelAfterChange = true)
@@ -802,6 +909,18 @@ public partial class MainWindow : Window
         BringPanelToFrontImmediate();
     }
 
+    private void ActivatePanelWindow()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Show();
+        Activate();
+        BringPanelToFront();
+    }
+
     private void BringPanelToFrontImmediate()
     {
         var panelHandle = new WindowInteropHelper(this).Handle;
@@ -816,6 +935,91 @@ public partial class MainWindow : Window
         }
 
         _windowArranger.BringToFront(panelHandle);
+    }
+
+    private void SetCompactMode(bool compact, bool updateMessage = true)
+    {
+        if (_isCompactMode == compact)
+        {
+            UpdateDisplayModeChrome();
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        if (compact)
+        {
+            RememberStandardWindowMetrics();
+        }
+
+        _isCompactMode = compact;
+
+        StandardSlotsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactBarPanel.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        StoredPanelsExpander.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        FooterControlsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        LaunchButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+
+        if (compact)
+        {
+            MinWidth = CompactWindowMinWidth;
+            MinHeight = CompactWindowMinHeight;
+            var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : Width;
+            var compactWidth = Math.Max(CompactWindowMinWidth, Math.Round(baseWidth * CompactWindowWidthScale));
+            Width = compactWidth;
+            Height = CompactWindowHeight;
+        }
+        else
+        {
+            MinWidth = _standardWindowMinWidth > 0 ? _standardWindowMinWidth : MinWidth;
+            MinHeight = _standardWindowMinHeight > 0 ? _standardWindowMinHeight : MinHeight;
+
+            if (_standardWindowWidth > 0)
+            {
+                Width = Math.Max(MinWidth, _standardWindowWidth);
+            }
+
+            if (_standardWindowHeight > 0)
+            {
+                Height = Math.Max(MinHeight, _standardWindowHeight);
+            }
+        }
+
+        UpdateDisplayModeChrome();
+        RefreshAuxiliaryUi();
+
+        if (updateMessage)
+        {
+            _statusStore.Message = compact
+                ? "縮小表示に切り替えました。"
+                : "標準表示に戻しました。";
+        }
+    }
+
+    private void UpdateDisplayModeChrome()
+    {
+        DisplayModeButton.Content = _isCompactMode ? "▦" : "▁";
+        DisplayModeButton.ToolTip = _isCompactMode
+            ? "標準表示へ戻す"
+            : "縮小表示へ切り替え";
+    }
+
+    private void RememberStandardWindowMetrics()
+    {
+        if (_isCompactMode)
+        {
+            return;
+        }
+
+        _standardWindowWidth = Width;
+        _standardWindowHeight = Height;
+        _standardWindowMinWidth = MinWidth;
+        _standardWindowMinHeight = MinHeight;
+    }
+
+    private void RefreshAuxiliaryUi()
+    {
+        TaskbarJumpListService.Update(_statusStore.Slots, _isCompactMode);
+        _overlayManager.Update(_statusStore.Slots, !_areWindowsHidden);
     }
 
     private void EnsurePreferredLayout(WindowSlot slot)
@@ -904,6 +1108,8 @@ public partial class MainWindow : Window
         {
             slot.IsHidden = false;
         }
+
+        RefreshAuxiliaryUi();
     }
 
     private void UpdateWindowHeightForStoredPanels(bool isExpanded, bool force = false)
@@ -926,6 +1132,7 @@ public partial class MainWindow : Window
                 Height = _collapsedWindowHeight;
             }
 
+            RememberStandardWindowMetrics();
             return;
         }
 
@@ -948,6 +1155,7 @@ public partial class MainWindow : Window
 
         Height = targetHeight;
         MinHeight = targetMinHeight;
+        RememberStandardWindowMetrics();
     }
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -1134,6 +1342,7 @@ public partial class MainWindow : Window
         _refreshCancellation.Cancel();
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
+        _overlayManager.Dispose();
         base.OnClosed(e);
     }
 
@@ -1168,5 +1377,7 @@ public partial class MainWindow : Window
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;
+        DisplayModeButton.IsEnabled = !busy;
+        CompactBarPanel.IsEnabled = !busy;
     }
 }

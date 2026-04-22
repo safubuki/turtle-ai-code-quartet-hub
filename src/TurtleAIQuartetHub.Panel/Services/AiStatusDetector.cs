@@ -9,7 +9,9 @@ public sealed class AiStatusDetector
 {
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan CodexStreamQuietCompletionWindow = TimeSpan.FromSeconds(10);
-    private const int MaxRecentLogBytes = 96 * 1024;
+    private static readonly TimeSpan RunningStartupGraceWindow = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ActivityOnlyRunningStartupGraceWindow = TimeSpan.FromSeconds(8);
+    private const int MaxRecentLogBytes = 192 * 1024;
     private static readonly string[] ExtensionHostDirectoryNames = ["exthost", "remoteexthost", "remoteexhost"];
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly VscodeChatUiStatusReader _uiStatusReader = new();
@@ -71,8 +73,9 @@ public sealed class AiStatusDetector
         var slotKey = GetSlotKey(slot);
         var slotStartedAt = GetSlotStartedAt(slot);
         var now = DateTimeOffset.Now;
+        var isWithinRunningStartupGrace = now - slotStartedAt < RunningStartupGraceWindow;
         var uiEvidence = _uiStatusReader.TryRead(slot);
-        if (uiEvidence is { Status: AiStatus.Running })
+        if (uiEvidence is { Status: AiStatus.Running } && !isWithinRunningStartupGrace)
         {
             _lastRunningSeenBySlot[slotKey] = now;
             _completedAtBySlot.TryRemove(slotKey, out _);
@@ -95,14 +98,20 @@ public sealed class AiStatusDetector
         if (canReadLogs)
         {
             var evidences = LogSources
-                .Select(source => ReadEvidence(userDataDirectory!, source))
+                .Select(source => ReadEvidence(userDataDirectory!, source, slotStartedAt))
                 .Select(evidence => KeepOnlyCurrentEvidence(slotKey, slotStartedAt, evidence))
                 .Where(evidence => evidence.Status is AiStatus.Running or AiStatus.Completed or AiStatus.Error or AiStatus.NeedsAttention or AiStatus.WaitingForConfirmation)
                 .ToList();
 
             if (evidences.Count > 0)
             {
-                return GetBestEvidence(evidences);
+                var bestEvidence = GetBestEvidence(evidences);
+                if (bestEvidence.Status == AiStatus.Running && isWithinRunningStartupGrace)
+                {
+                    return new AiStatusSnapshot(AiStatus.Idle, "起動直後のため AI 状態を安定化中です。", null);
+                }
+
+                return bestEvidence;
             }
         }
 
@@ -260,7 +269,7 @@ public sealed class AiStatusDetector
         };
     }
 
-    private static AiStatusSnapshot ReadEvidence(string userDataDirectory, ExtensionLogSource source)
+    private static AiStatusSnapshot ReadEvidence(string userDataDirectory, ExtensionLogSource source, DateTimeOffset slotStartedAt)
     {
         var newestEvidence = AiLogEvidence.Empty(source);
 
@@ -274,7 +283,7 @@ public sealed class AiStatusDetector
             }
         }
 
-        return ToSnapshot(newestEvidence);
+        return ToSnapshot(newestEvidence, slotStartedAt);
     }
 
     private static IEnumerable<string> EnumerateCandidateLogFiles(string userDataDirectory, ExtensionLogSource source)
@@ -425,21 +434,22 @@ public sealed class AiStatusDetector
                 if (source.SecondaryRunningSignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase)))
                 {
                     evidence = evidence with { LastSecondaryRunningSignalAt = Max(evidence.LastSecondaryRunningSignalAt, timestamp) };
-                    continue;
                 }
 
                 if (source.ActivitySignals.Length > 0
                     && source.ActivitySignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase)))
                 {
-                    evidence = evidence with { LastActivitySignalAt = Max(evidence.LastActivitySignalAt, timestamp) };
-                    continue;
+                    evidence = evidence with
+                    {
+                        LastActivitySignalAt = Max(evidence.LastActivitySignalAt, timestamp),
+                        ActivitySignalCount = evidence.ActivitySignalCount + 1
+                    };
                 }
 
                 if (source.ConfirmationSignals.Length > 0
                     && source.ConfirmationSignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase)))
                 {
                     evidence = evidence with { LastConfirmationSignalAt = Max(evidence.LastConfirmationSignalAt, timestamp) };
-                    continue;
                 }
 
                 if (source.IdleSignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase)))
@@ -500,7 +510,7 @@ public sealed class AiStatusDetector
         return true;
     }
 
-    private static AiStatusSnapshot ToSnapshot(AiLogEvidence evidence)
+    private static AiStatusSnapshot ToSnapshot(AiLogEvidence evidence, DateTimeOffset slotStartedAt)
     {
         var now = DateTimeOffset.Now;
 
@@ -524,6 +534,17 @@ public sealed class AiStatusDetector
         if (hasSecondaryRunning)
         {
             effectiveRunningAt = Max(effectiveRunningAt, evidence.LastSecondaryRunningSignalAt!.Value);
+        }
+
+        if (evidence.LastConfirmationSignalAt is { } standaloneConfirmAt
+            && (!evidence.LastCompletionSignalAt.HasValue || standaloneConfirmAt >= evidence.LastCompletionSignalAt.Value)
+            && (!effectiveRunningAt.HasValue || standaloneConfirmAt >= effectiveRunningAt.Value)
+            && (!evidence.LastActivitySignalAt.HasValue || standaloneConfirmAt >= evidence.LastActivitySignalAt.Value))
+        {
+            return new AiStatusSnapshot(
+                AiStatus.WaitingForConfirmation,
+                $"{evidence.SourceName}: {standaloneConfirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。",
+                standaloneConfirmAt);
         }
 
         if (effectiveRunningAt is { } runningAt)
@@ -560,6 +581,20 @@ public sealed class AiStatusDetector
             }
 
             return new AiStatusSnapshot(AiStatus.Running, $"{evidence.SourceName}: {runningAt:HH:mm:ss} に実行イベントを検出しました。", runningAt, evidence.RunningSignalQuietCompletionWindow);
+        }
+
+        if (evidence.RunningSignalQuietCompletionWindow is { } activityQuietWindow
+            && evidence.LastActivitySignalAt is { } activityOnlyAt
+            && evidence.ActivitySignalCount >= 3
+            && now - slotStartedAt >= ActivityOnlyRunningStartupGraceWindow
+            && now - activityOnlyAt <= activityQuietWindow
+            && (!evidence.LastCompletionSignalAt.HasValue || evidence.LastCompletionSignalAt.Value < activityOnlyAt))
+        {
+            return new AiStatusSnapshot(
+                AiStatus.Running,
+                $"{evidence.SourceName}: {activityOnlyAt:HH:mm:ss} にストリーム更新を検出しました。",
+                activityOnlyAt,
+                activityQuietWindow);
         }
 
         if (evidence.LastCompletionSignalAt is { } standaloneCompletedAt)
@@ -599,14 +634,15 @@ public sealed class AiStatusDetector
         DateTimeOffset? LastIdleSignalAt,
         DateTimeOffset? LastSecondaryRunningSignalAt,
         DateTimeOffset? LastActivitySignalAt,
-        DateTimeOffset? LastConfirmationSignalAt)
+        DateTimeOffset? LastConfirmationSignalAt,
+        int ActivitySignalCount)
     {
         public static AiLogEvidence Empty(ExtensionLogSource source)
         {
             return new AiLogEvidence(
                 source.DisplayName,
                 source.RunningSignalQuietCompletionWindow,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, 0);
         }
     }
 }

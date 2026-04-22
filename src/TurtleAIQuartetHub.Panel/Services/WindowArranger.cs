@@ -25,6 +25,7 @@ public sealed class WindowArranger
     private static readonly IntPtr HWND_NOTOPMOST = new(-2);
     private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS;
     private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
+    private static readonly uint OverlayFlags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS;
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
     {
@@ -266,6 +267,26 @@ public sealed class WindowArranger
             Math.Max(0, rect.Right - rect.Left),
             Math.Max(0, rect.Bottom - rect.Top));
         return true;
+    }
+
+    public bool PositionOverlayAbove(IntPtr overlayHandle, IntPtr targetHandle, WindowBounds bounds)
+    {
+        if (overlayHandle == IntPtr.Zero
+            || targetHandle == IntPtr.Zero
+            || !IsWindow(overlayHandle)
+            || !IsWindow(targetHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(
+            overlayHandle,
+            targetHandle,
+            bounds.Left,
+            bounds.Top,
+            Math.Max(12, bounds.Width),
+            Math.Max(12, bounds.Height),
+            OverlayFlags);
     }
 
     private static void RestoreForResize(IntPtr windowHandle)
