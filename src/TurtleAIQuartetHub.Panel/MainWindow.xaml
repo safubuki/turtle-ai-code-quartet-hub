@@ -151,6 +151,14 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
 
+    <Style x:Key="CompactBarActionButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="MinHeight" Value="18" />
+      <Setter Property="MinWidth" Value="28" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
     <Style x:Key="SlotActionButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
       <Setter Property="MinHeight" Value="24" />
       <Setter Property="Padding" Value="8,3" />
@@ -445,6 +453,149 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="CompactSlotButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="Padding" Value="5,2" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="CompactButtonBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="7">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#1A211D" />
+                <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#3D4E45" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#121715" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
+          <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+          <Setter Property="BorderBrush" Value="#505B55" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+          <Setter Property="Background" Value="#241F15" />
+          <Setter Property="BorderBrush" Value="#A27E39" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Running}">
+          <Setter Property="Background" Value="#18231D" />
+          <Setter Property="BorderBrush" Value="#45D483" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#45D483"
+                                BlurRadius="6"
+                                ShadowDepth="0"
+                                Opacity="0.22" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Completed}">
+          <Setter Property="Background" Value="#172534" />
+          <Setter Property="BorderBrush" Value="#43C8FF" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#43C8FF"
+                                BlurRadius="6"
+                                ShadowDepth="0"
+                                Opacity="0.2" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.WaitingForConfirmation}">
+          <Setter Property="Background" Value="#272113" />
+          <Setter Property="BorderBrush" Value="#F2CA57" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#F2CA57"
+                                BlurRadius="6"
+                                ShadowDepth="0"
+                                Opacity="0.2" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.NeedsAttention}">
+          <Setter Property="Background" Value="#242014" />
+          <Setter Property="BorderBrush" Value="#C9A441" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Error}">
+          <Setter Property="Background" Value="#261918" />
+          <Setter Property="BorderBrush" Value="#E37B70" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+          <Setter Property="BorderThickness" Value="2" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#9BF6C1"
+                                BlurRadius="8"
+                                ShadowDepth="0"
+                                Opacity="0.24" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CompactStatusDotStyle" TargetType="Ellipse">
+      <Setter Property="Width" Value="5" />
+      <Setter Property="Height" Value="5" />
+      <Setter Property="Fill" Value="#54675C" />
+      <Setter Property="Stroke" Value="#73847B" />
+      <Setter Property="StrokeThickness" Value="0.8" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
+          <Setter Property="Fill" Value="#666F6A" />
+          <Setter Property="Stroke" Value="#87928B" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+          <Setter Property="Fill" Value="#C9A441" />
+          <Setter Property="Stroke" Value="#F2CA57" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Running}">
+          <Setter Property="Fill" Value="#45D483" />
+          <Setter Property="Stroke" Value="#BDF9D4" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Completed}">
+          <Setter Property="Fill" Value="#43C8FF" />
+          <Setter Property="Stroke" Value="#C9F2FF" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.WaitingForConfirmation}">
+          <Setter Property="Fill" Value="#F2CA57" />
+          <Setter Property="Stroke" Value="#FFF0B5" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.NeedsAttention}">
+          <Setter Property="Fill" Value="#C9A441" />
+          <Setter Property="Stroke" Value="#F2DD95" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Error}">
+          <Setter Property="Fill" Value="#E37B70" />
+          <Setter Property="Stroke" Value="#FFD2CE" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="StoredCardBorderStyle" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
@@ -621,6 +772,51 @@
       </Border>
     </DataTemplate>
 
+    <DataTemplate x:Key="CompactSlotTemplate" DataType="{x:Type models:WindowSlot}">
+      <Button Tag="{Binding}"
+              Click="CompactSlotButton_Click"
+              Style="{StaticResource CompactSlotButtonStyle}"
+              ToolTip="{Binding AiStatusDetail}">
+        <Grid VerticalAlignment="Center">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <Border Width="16"
+                  Height="16"
+                  CornerRadius="4"
+                  Background="#223027"
+                  BorderBrush="#335A43"
+                  BorderThickness="1"
+                  Margin="0,0,4,0"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding Name}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource AccentBrush}" />
+          </Border>
+
+          <TextBlock Grid.Column="1"
+                     Text="{Binding DisplayTitle}"
+                     ToolTip="{Binding DisplayTitle}"
+                     VerticalAlignment="Center"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis"
+                     Foreground="{StaticResource TextBrush}" />
+
+          <Ellipse Grid.Column="2"
+                   Margin="4,0,0,0"
+                   VerticalAlignment="Center"
+                   Style="{StaticResource CompactStatusDotStyle}" />
+        </Grid>
+      </Button>
+    </DataTemplate>
+
     <DataTemplate x:Key="StoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
       <Border Style="{StaticResource StoredCardBorderStyle}">
         <Grid>
@@ -730,7 +926,12 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Grid Background="{StaticResource PanelBackgroundBrush}" Margin="8">
+  <Border x:Name="PanelFrameBorder"
+          Background="Transparent"
+          BorderBrush="Transparent"
+          BorderThickness="0"
+          CornerRadius="0">
+  <Grid x:Name="RootLayoutGrid" Background="{StaticResource PanelBackgroundBrush}" Margin="8">
     <Grid.RowDefinitions>
       <RowDefinition Height="26" />
       <RowDefinition Height="Auto" />
@@ -744,10 +945,20 @@
                  FontWeight="SemiBold"
                  Foreground="{StaticResource TextBrush}" />
       <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+        <Button x:Name="DisplayModeButton"
+                Content="&#xE73F;"
+                Width="30"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="12"
+                FontWeight="SemiBold"
+                ToolTip="縮小表示へ切り替え"
+                Click="DisplayModeButton_Click"
+                Style="{StaticResource ChromeButton}" />
         <Button Content="_"
                 ToolTip="最小化"
                 Click="MinimizeButton_Click"
-                Style="{StaticResource ChromeButton}" />
+                Style="{StaticResource ChromeButton}"
+                Margin="2,0,0,0" />
         <Button Content="X"
                 ToolTip="パネルを閉じる"
                 Click="CloseButton_Click"
@@ -756,7 +967,7 @@
       </StackPanel>
     </Grid>
 
-    <UniformGrid Grid.Row="1" Columns="2" Rows="2" VerticalAlignment="Top">
+    <UniformGrid x:Name="StandardSlotsGrid" Grid.Row="1" Columns="2" Rows="2" VerticalAlignment="Top">
       <ContentControl
                       Content="{Binding Slots[0]}"
                       ContentTemplate="{StaticResource SlotCardTemplate}"
@@ -774,6 +985,61 @@
                       ContentTemplate="{StaticResource SlotCardTemplate}"
                       Margin="5" />
     </UniformGrid>
+
+    <Border x:Name="CompactBarPanel"
+            Grid.Row="1"
+            Visibility="Collapsed"
+            Margin="5,3,5,0"
+            Padding="3"
+            Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="1"
+            CornerRadius="8">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ContentControl Grid.Row="0"
+                        Grid.Column="0"
+                        Content="{Binding Slots[0]}"
+                        ContentTemplate="{StaticResource CompactSlotTemplate}"
+                        Margin="0,0,3,3" />
+        <ContentControl Grid.Row="0"
+                        Grid.Column="1"
+                        Content="{Binding Slots[1]}"
+                        ContentTemplate="{StaticResource CompactSlotTemplate}"
+                        Margin="0,0,3,3" />
+        <ContentControl Grid.Row="1"
+                        Grid.Column="0"
+                        Content="{Binding Slots[2]}"
+                        ContentTemplate="{StaticResource CompactSlotTemplate}"
+                        Margin="0,0,3,0" />
+        <ContentControl Grid.Row="1"
+                        Grid.Column="1"
+                        Content="{Binding Slots[3]}"
+                        ContentTemplate="{StaticResource CompactSlotTemplate}"
+                        Margin="0,0,3,0" />
+
+        <Button Grid.Row="0"
+                Grid.Column="2"
+                Content="前"
+                Click="PinAllTopButton_Click"
+                Style="{StaticResource CompactBarActionButtonStyle}"
+                Margin="0,0,0,3" />
+        <Button Grid.Row="1"
+                Grid.Column="2"
+                Content="背"
+                Click="SendAllBackButton_Click"
+                Style="{StaticResource CompactBarActionButtonStyle}" />
+      </Grid>
+    </Border>
 
     <Expander Grid.Row="2"
           x:Name="StoredPanelsExpander"
@@ -810,7 +1076,7 @@
       </Border>
     </Expander>
 
-    <Grid Grid.Row="3" Margin="5,2,5,3">
+    <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,2,5,3">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
@@ -1004,4 +1270,5 @@
       </Grid>
     </Border>
   </Grid>
+  </Border>
 </Window>

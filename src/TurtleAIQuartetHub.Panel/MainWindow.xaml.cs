@@ -4,6 +4,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using TurtleAIQuartetHub.Panel.Models;
 using TurtleAIQuartetHub.Panel.Services;
@@ -12,9 +13,15 @@ namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow : Window
 {
-    private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(120);
+    private const double CompactWindowMinHeight = 72;
+    private const double CompactWindowMinWidth = 320;
+    private const double CompactWindowWidthScale = 0.58;
+    private const string CompactModeGlyph = "\uE73F";
+    private const string StandardModeGlyph = "\uE740";
+    private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
+    private readonly WindowFrameOverlayManager _overlayManager;
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly StatusStore _statusStore;
     private readonly DispatcherTimer _refreshTimer;
@@ -24,11 +31,20 @@ public partial class MainWindow : Window
     private bool _isBusy;
     private bool _isRefreshInFlight;
     private bool _areWindowsHidden;
+    private bool _isCompactMode;
     private double _collapsedWindowHeight;
     private double _collapsedWindowMinHeight;
+    private double _standardWindowWidth;
+    private double _standardWindowHeight;
+    private double _standardWindowMinWidth;
+    private double _standardWindowMinHeight;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private Point _dragStartPoint;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
+    private CancellationTokenSource? _panelLocateCancellation;
+    private CompactRoundTripState? _compactRoundTripState;
+    private bool _compactRoundTripEligible;
+    private bool _suppressPanelLocationTracking;
 
     public MainWindow()
     {
@@ -36,6 +52,7 @@ public partial class MainWindow : Window
 
         var config = AppConfig.Load();
         _statusStore = new StatusStore(config);
+        _overlayManager = new WindowFrameOverlayManager(_windowArranger);
         _vscodeLauncher = new VscodeLauncher(_windowEnumerator);
         DataContext = _statusStore;
 
@@ -45,19 +62,34 @@ public partial class MainWindow : Window
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
         _refreshTimer.Start();
+        LocationChanged += MainWindow_LocationChanged;
 
         Loaded += async (_, _) =>
         {
             Topmost = true;
             _collapsedWindowHeight = Height;
             _collapsedWindowMinHeight = MinHeight;
+            RememberStandardWindowMetrics();
+            UpdateDisplayModeChrome();
             await RefreshSlotsAsync(allowDuringBusy: true);
             ApplyManagedWindowLayers();
             UpdateWindowHeightForStoredPanels(StoredPanelsExpander.IsExpanded, true);
+            UpdateCompactPanelFrame();
+            RefreshAuxiliaryUi();
         };
     }
 
     private async void LaunchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        await LaunchAllMissingAsync();
+    }
+
+    private async Task LaunchAllMissingAsync()
     {
         if (_isBusy)
         {
@@ -126,6 +158,92 @@ public partial class MainWindow : Window
         Close();
     }
 
+    public void ExecuteExternalCommand(string[]? args)
+    {
+        _ = ExecuteExternalCommandAsync(args ?? []);
+    }
+
+    private async Task ExecuteExternalCommandAsync(string[] args)
+    {
+        ActivatePanelWindow();
+        await RefreshSlotsAsync(allowDuringBusy: true);
+
+        if (args.Length == 0)
+        {
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        switch (args[0].ToLowerInvariant())
+        {
+            case "--activate":
+                break;
+
+            case "--locate":
+                await LocatePanelAsync();
+                break;
+
+            case "--slot-toggle" when args.Length >= 2:
+            {
+                var slot = _statusStore.FindSlot(args[1]);
+                if (slot is not null)
+                {
+                    HandleCompactSlotToggle(slot);
+                }
+
+                break;
+            }
+
+            case "--mode" when args.Length >= 2:
+                SetCompactMode(string.Equals(args[1], "compact", StringComparison.OrdinalIgnoreCase));
+                break;
+
+            case "--launch-all":
+                await LaunchAllMissingAsync();
+                break;
+
+            case "--layer" when args.Length >= 2 && string.Equals(args[1], "top", StringComparison.OrdinalIgnoreCase):
+                PinAllTopButton_Click(this, new RoutedEventArgs());
+                break;
+
+            case "--layer" when args.Length >= 2 && string.Equals(args[1], "back", StringComparison.OrdinalIgnoreCase):
+                SendAllBackButton_Click(this, new RoutedEventArgs());
+                break;
+        }
+
+        RefreshAuxiliaryUi();
+    }
+
+    private void DisplayModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetCompactMode(!_isCompactMode);
+        ActivatePanelWindow();
+    }
+
+    private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        HandleCompactSlotToggle(slot);
+    }
+
+    private void HandleCompactSlotToggle(WindowSlot slot)
+    {
+        _statusStore.AcknowledgeAiStatus(slot);
+        ActivatePanelWindow();
+
+        if (slot.IsFocused)
+        {
+            ToggleSlotFocus(slot);
+            return;
+        }
+
+        ToggleSlotFocus(slot);
+    }
+
     private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         _statusStore.SaveCurrentSettings();
@@ -166,6 +284,7 @@ public partial class MainWindow : Window
         _statusStore.Message = closed == 0
             ? "閉じるVS Codeウィンドウがありません。"
             : $"{closed}個のVS Codeを閉じて設定を保存しました。";
+        RefreshAuxiliaryUi();
     }
 
     private void SlotCard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -273,12 +392,14 @@ public partial class MainWindow : Window
         }
 
         _statusStore.Message = $"スロット{sourceSlot.Name}とスロット{targetSlot.Name}のカードを入れ替えました。";
+        RefreshAuxiliaryUi();
         e.Handled = true;
     }
 
     private void ToggleSlotFocus(WindowSlot slot)
     {
         var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
+        _overlayManager.HideAll();
 
         if (slot.IsFocused)
         {
@@ -298,6 +419,7 @@ public partial class MainWindow : Window
                 _statusStore.Message = "フォーカスを解除しました。";
             }
 
+            RefreshAuxiliaryUi();
             return;
         }
 
@@ -327,10 +449,12 @@ public partial class MainWindow : Window
             _statusStore.SetFocusedSlot(slot);
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
+            RefreshAuxiliaryUi();
             return;
         }
 
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+        RefreshAuxiliaryUi();
     }
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
@@ -418,6 +542,8 @@ public partial class MainWindow : Window
                 _statusStore.Message = "非表示にできるVS Codeウィンドウがありません。";
             }
         }
+
+        RefreshAuxiliaryUi();
     }
 
     private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
@@ -459,10 +585,12 @@ public partial class MainWindow : Window
             _statusStore.CaptureWorkspacePath(slot);
             _statusStore.ClearWindow(slot);
             _statusStore.Message = $"スロット{slot.Name}を閉じました。";
+            RefreshAuxiliaryUi();
             return;
         }
 
         _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+        RefreshAuxiliaryUi();
     }
 
     private async void SlotMainActionButton_Click(object sender, RoutedEventArgs e)
@@ -568,6 +696,7 @@ public partial class MainWindow : Window
         }
 
         _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ控え保存しました。";
+        RefreshAuxiliaryUi();
     }
 
     private async void ShowStoredPanelButton_Click(object sender, RoutedEventArgs e)
@@ -690,6 +819,7 @@ public partial class MainWindow : Window
         _statusStore.ClearStoredPanel(_pendingStoredPanelDeletion);
         _statusStore.Message = $"{label} を空きスロットに戻しました。";
         HideDeleteStoredPanelDialog();
+        RefreshAuxiliaryUi();
     }
 
     private void CancelDeleteStoredPanelButton_Click(object sender, RoutedEventArgs e)
@@ -732,19 +862,21 @@ public partial class MainWindow : Window
         finally
         {
             _isRefreshInFlight = false;
+            RefreshAuxiliaryUi();
         }
     }
 
     private int ArrangeSlotsOnActiveMonitor(bool bringPanelAfterArrange = true)
     {
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
-        ApplyManagedWindowLayers(bringPanelAfterArrange);
+        ApplyManagedWindowLayers(bringPanelAfterArrange, refreshOverlayAfterChange: false);
+        RefreshAuxiliaryUi();
         return arranged;
     }
 
-    private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true)
+    private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true, bool refreshOverlayAfterChange = true)
     {
-        SetManagedWindowLayer(_managedWindowLayerMode, bringPanelAfterChange);
+        SetManagedWindowLayer(_managedWindowLayerMode, bringPanelAfterChange, refreshOverlayAfterChange);
     }
 
     private void SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode layerMode)
@@ -756,7 +888,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode layerMode, bool bringPanelAfterChange = true)
+    private bool SetManagedWindowLayer(
+        WindowSlot.SlotWindowLayerMode layerMode,
+        bool bringPanelAfterChange = true,
+        bool refreshOverlayAfterChange = true)
     {
         SetManagedWindowLayerState(layerMode);
         var appliedAny = false;
@@ -769,6 +904,11 @@ public partial class MainWindow : Window
         if (bringPanelAfterChange)
         {
             SchedulePanelToFront();
+        }
+
+        if (refreshOverlayAfterChange)
+        {
+            RefreshOverlayUi();
         }
 
         return appliedAny;
@@ -802,6 +942,18 @@ public partial class MainWindow : Window
         BringPanelToFrontImmediate();
     }
 
+    private void ActivatePanelWindow()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Show();
+        Activate();
+        BringPanelToFront();
+    }
+
     private void BringPanelToFrontImmediate()
     {
         var panelHandle = new WindowInteropHelper(this).Handle;
@@ -816,6 +968,321 @@ public partial class MainWindow : Window
         }
 
         _windowArranger.BringToFront(panelHandle);
+    }
+
+    private void SetCompactMode(bool compact, bool updateMessage = true)
+    {
+        if (_isCompactMode == compact)
+        {
+            UpdateDisplayModeChrome();
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        if (!compact)
+        {
+            StopPanelLocateBlink();
+            ClearCompactPanelFrame();
+            Dispatcher.Invoke(static () => { }, DispatcherPriority.Render);
+        }
+
+        if (compact)
+        {
+            RememberStandardWindowMetrics();
+        }
+
+        _isCompactMode = compact;
+
+        StandardSlotsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactBarPanel.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        StoredPanelsExpander.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        FooterControlsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        LaunchButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+
+        if (compact)
+        {
+            MinWidth = CompactWindowMinWidth;
+            var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : Width;
+            var compactWidth = Math.Max(CompactWindowMinWidth, Math.Round(baseWidth * CompactWindowWidthScale));
+            Width = compactWidth;
+            UpdateLayout();
+            var compactHeight = GetCompactModeHeight();
+            MinHeight = compactHeight;
+            Height = compactHeight;
+
+            if (TryGetReusableCompactBounds(out var compactBounds))
+            {
+                SetWindowBounds(compactBounds.Left, compactBounds.Top, Width, Height);
+            }
+            else
+            {
+                _compactRoundTripState = null;
+                _compactRoundTripEligible = false;
+            }
+        }
+        else
+        {
+            var compactBounds = GetCurrentWindowBounds();
+            MinWidth = _standardWindowMinWidth > 0 ? _standardWindowMinWidth : MinWidth;
+            MinHeight = _standardWindowMinHeight > 0 ? _standardWindowMinHeight : MinHeight;
+            var targetWidth = _standardWindowWidth > 0
+                ? Math.Max(MinWidth, _standardWindowWidth)
+                : Width;
+            var targetHeight = _standardWindowHeight > 0
+                ? Math.Max(MinHeight, _standardWindowHeight)
+                : Height;
+            var targetBounds = GetStandardModeRestoreBounds(targetWidth, targetHeight);
+
+            SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+            _compactRoundTripState = new CompactRoundTripState(compactBounds, targetBounds);
+            _compactRoundTripEligible = true;
+        }
+
+        UpdateDisplayModeChrome();
+        UpdateCompactPanelFrame();
+        RefreshAuxiliaryUi();
+
+        if (updateMessage)
+        {
+            _statusStore.Message = compact
+                ? "縮小表示に切り替えました。"
+                : "標準表示に戻しました。";
+        }
+    }
+
+    private void UpdateDisplayModeChrome()
+    {
+        DisplayModeButton.Content = _isCompactMode ? StandardModeGlyph : CompactModeGlyph;
+        DisplayModeButton.ToolTip = _isCompactMode
+            ? "標準表示へ戻す"
+            : "縮小表示へ切り替え";
+    }
+
+    private void RememberStandardWindowMetrics()
+    {
+        if (_isCompactMode)
+        {
+            return;
+        }
+
+        _standardWindowWidth = Width;
+        _standardWindowHeight = Height;
+        _standardWindowMinWidth = MinWidth;
+        _standardWindowMinHeight = MinHeight;
+    }
+
+    private double GetCompactModeHeight()
+    {
+        const double titleRowHeight = 26;
+        const double edgePadding = 2;
+        var compactPanelHeight = CompactBarPanel.ActualHeight + CompactBarPanel.Margin.Top + CompactBarPanel.Margin.Bottom;
+        var rootMarginHeight = RootLayoutGrid.Margin.Top + RootLayoutGrid.Margin.Bottom;
+        return Math.Max(CompactWindowMinHeight, Math.Ceiling(titleRowHeight + compactPanelHeight + rootMarginHeight + edgePadding));
+    }
+
+    private WindowArranger.WindowBounds GetCurrentWindowBounds()
+    {
+        return new WindowArranger.WindowBounds(
+            (int)Math.Round(Left),
+            (int)Math.Round(Top),
+            (int)Math.Round(Width),
+            (int)Math.Round(Height));
+    }
+
+    private bool TryGetReusableCompactBounds(out WindowArranger.WindowBounds compactBounds)
+    {
+        compactBounds = default;
+        if (!_compactRoundTripEligible || _compactRoundTripState is not { } state)
+        {
+            return false;
+        }
+
+        if (!IsSameTopLeft(GetCurrentWindowBounds(), state.StandardBounds))
+        {
+            _compactRoundTripEligible = false;
+            return false;
+        }
+
+        compactBounds = state.CompactBounds;
+        return true;
+    }
+
+    private void SetWindowBounds(double left, double top, double width, double height)
+    {
+        _suppressPanelLocationTracking = true;
+        try
+        {
+            Left = left;
+            Top = top;
+            Width = width;
+            Height = height;
+        }
+        finally
+        {
+            _suppressPanelLocationTracking = false;
+        }
+    }
+
+    private static bool IsSameTopLeft(WindowArranger.WindowBounds current, WindowArranger.WindowBounds expected)
+    {
+        return Math.Abs(current.Left - expected.Left) <= 1
+            && Math.Abs(current.Top - expected.Top) <= 1;
+    }
+
+    private async Task LocatePanelAsync()
+    {
+        if (!_isCompactMode)
+        {
+            return;
+        }
+
+        ActivatePanelWindow();
+        StopPanelLocateBlink();
+
+        var cancellation = new CancellationTokenSource();
+        _panelLocateCancellation = cancellation;
+
+        try
+        {
+            var endAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+            var emphasis = true;
+            while (DateTimeOffset.UtcNow < endAt && !cancellation.IsCancellationRequested)
+            {
+                UpdateCompactPanelFrame(emphasis ? PanelFrameVisual.Emphasis : PanelFrameVisual.Dimmed);
+                emphasis = !emphasis;
+                await Task.Delay(260, cancellation.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_panelLocateCancellation, cancellation))
+            {
+                _panelLocateCancellation = null;
+            }
+
+            cancellation.Dispose();
+            UpdateCompactPanelFrame();
+        }
+    }
+
+    private void StopPanelLocateBlink()
+    {
+        _panelLocateCancellation?.Cancel();
+        _panelLocateCancellation?.Dispose();
+        _panelLocateCancellation = null;
+    }
+
+    private void UpdateCompactPanelFrame(PanelFrameVisual visual = PanelFrameVisual.Normal)
+    {
+        if (!_isCompactMode)
+        {
+            ClearCompactPanelFrame();
+            return;
+        }
+
+        var color = visual switch
+        {
+            PanelFrameVisual.Emphasis => (Color)ColorConverter.ConvertFromString("#8AFCB7"),
+            PanelFrameVisual.Dimmed => (Color)ColorConverter.ConvertFromString("#1F8E54"),
+            _ => (Color)ColorConverter.ConvertFromString("#45D483")
+        };
+
+        var borderOpacity = visual switch
+        {
+            PanelFrameVisual.Emphasis => 1.0,
+            PanelFrameVisual.Dimmed => 0.36,
+            _ => 0.82
+        };
+
+        PanelFrameBorder.BorderBrush = new SolidColorBrush(color) { Opacity = borderOpacity };
+        PanelFrameBorder.BorderThickness = new Thickness(1.5);
+        PanelFrameBorder.Effect = null;
+    }
+
+    private void ClearCompactPanelFrame()
+    {
+        PanelFrameBorder.BorderBrush = Brushes.Transparent;
+        PanelFrameBorder.BorderThickness = new Thickness(0);
+        PanelFrameBorder.Effect = null;
+    }
+
+    private WindowArranger.WindowBounds GetStandardModeRestoreBounds(double targetWidth, double targetHeight)
+    {
+        var defaultBounds = new WindowArranger.WindowBounds(
+            (int)Math.Round(Left),
+            (int)Math.Round(Top),
+            (int)Math.Round(targetWidth),
+            (int)Math.Round(targetHeight));
+
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        if (panelHandle == IntPtr.Zero
+            || !_windowArranger.TryGetMonitorWorkAreaForWindow(panelHandle, out var workArea)
+            || !WouldClip(workArea, defaultBounds))
+        {
+            return defaultBounds;
+        }
+
+        var compactRight = Left + Width;
+        var compactBottom = Top + Height;
+        var anchorRight = Left + Width / 2 >= workArea.Left + workArea.Width / 2.0;
+        var anchorBottom = Top + Height / 2 >= workArea.Top + workArea.Height / 2.0;
+
+        var adjustedLeft = anchorRight ? compactRight - targetWidth : Left;
+        var adjustedTop = anchorBottom ? compactBottom - targetHeight : Top;
+        adjustedLeft = ClampToWorkArea(adjustedLeft, workArea.Left, workArea.Width, targetWidth);
+        adjustedTop = ClampToWorkArea(adjustedTop, workArea.Top, workArea.Height, targetHeight);
+
+        return new WindowArranger.WindowBounds(
+            (int)Math.Round(adjustedLeft),
+            (int)Math.Round(adjustedTop),
+            (int)Math.Round(targetWidth),
+            (int)Math.Round(targetHeight));
+    }
+
+    private static bool WouldClip(WindowArranger.WindowBounds workArea, WindowArranger.WindowBounds targetBounds)
+    {
+        return targetBounds.Left < workArea.Left
+            || targetBounds.Top < workArea.Top
+            || targetBounds.Left + targetBounds.Width > workArea.Left + workArea.Width
+            || targetBounds.Top + targetBounds.Height > workArea.Top + workArea.Height;
+    }
+
+    private static double ClampToWorkArea(double value, int workAreaStart, int workAreaLength, double targetLength)
+    {
+        var min = workAreaStart;
+        var max = workAreaStart + Math.Max(0, workAreaLength - targetLength);
+        if (max < min)
+        {
+            return min;
+        }
+
+        return Math.Min(Math.Max(value, min), max);
+    }
+
+    private void MainWindow_LocationChanged(object? sender, EventArgs e)
+    {
+        if (_suppressPanelLocationTracking
+            || _isCompactMode
+            || !_compactRoundTripEligible)
+        {
+            return;
+        }
+
+        _compactRoundTripEligible = false;
+    }
+
+    private void RefreshAuxiliaryUi()
+    {
+        TaskbarJumpListService.Update(_statusStore.Slots, _isCompactMode);
+        RefreshOverlayUi();
+    }
+
+    private void RefreshOverlayUi()
+    {
+        _overlayManager.Update(_statusStore.Slots, !_areWindowsHidden);
     }
 
     private void EnsurePreferredLayout(WindowSlot slot)
@@ -904,6 +1371,8 @@ public partial class MainWindow : Window
         {
             slot.IsHidden = false;
         }
+
+        RefreshAuxiliaryUi();
     }
 
     private void UpdateWindowHeightForStoredPanels(bool isExpanded, bool force = false)
@@ -926,6 +1395,7 @@ public partial class MainWindow : Window
                 Height = _collapsedWindowHeight;
             }
 
+            RememberStandardWindowMetrics();
             return;
         }
 
@@ -948,6 +1418,7 @@ public partial class MainWindow : Window
 
         Height = targetHeight;
         MinHeight = targetMinHeight;
+        RememberStandardWindowMetrics();
     }
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -1134,6 +1605,8 @@ public partial class MainWindow : Window
         _refreshCancellation.Cancel();
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
+        StopPanelLocateBlink();
+        _overlayManager.Dispose();
         base.OnClosed(e);
     }
 
@@ -1168,5 +1641,18 @@ public partial class MainWindow : Window
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;
+        DisplayModeButton.IsEnabled = !busy;
+        CompactBarPanel.IsEnabled = !busy;
+    }
+
+    private readonly record struct CompactRoundTripState(
+        WindowArranger.WindowBounds CompactBounds,
+        WindowArranger.WindowBounds StandardBounds);
+
+    private enum PanelFrameVisual
+    {
+        Normal,
+        Dimmed,
+        Emphasis
     }
 }

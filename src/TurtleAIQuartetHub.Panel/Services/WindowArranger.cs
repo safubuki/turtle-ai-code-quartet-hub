@@ -25,6 +25,7 @@ public sealed class WindowArranger
     private static readonly IntPtr HWND_NOTOPMOST = new(-2);
     private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS;
     private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
+    private static readonly uint OverlayFlags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS;
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
     {
@@ -266,6 +267,58 @@ public sealed class WindowArranger
             Math.Max(0, rect.Right - rect.Left),
             Math.Max(0, rect.Bottom - rect.Top));
         return true;
+    }
+
+    public bool TryGetMonitorWorkAreaForWindow(IntPtr windowHandle, out WindowBounds workAreaBounds)
+    {
+        workAreaBounds = default;
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        var monitorHandle = MonitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST);
+        if (monitorHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var info = new MONITORINFO
+        {
+            cbSize = Marshal.SizeOf<MONITORINFO>()
+        };
+
+        if (!GetMonitorInfo(monitorHandle, ref info))
+        {
+            return false;
+        }
+
+        workAreaBounds = new WindowBounds(
+            info.rcWork.Left,
+            info.rcWork.Top,
+            Math.Max(0, info.rcWork.Right - info.rcWork.Left),
+            Math.Max(0, info.rcWork.Bottom - info.rcWork.Top));
+        return true;
+    }
+
+    public bool PositionOverlayAbove(IntPtr overlayHandle, IntPtr targetHandle, WindowBounds bounds)
+    {
+        if (overlayHandle == IntPtr.Zero
+            || targetHandle == IntPtr.Zero
+            || !IsWindow(overlayHandle)
+            || !IsWindow(targetHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(
+            overlayHandle,
+            targetHandle,
+            bounds.Left,
+            bounds.Top,
+            Math.Max(12, bounds.Width),
+            Math.Max(12, bounds.Height),
+            OverlayFlags);
     }
 
     private static void RestoreForResize(IntPtr windowHandle)
