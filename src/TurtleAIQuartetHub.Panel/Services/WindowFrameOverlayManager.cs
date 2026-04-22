@@ -22,14 +22,15 @@ public sealed class WindowFrameOverlayManager : IDisposable
 
     public void Update(IEnumerable<WindowSlot> slots, bool overlaysVisible)
     {
-        if (!overlaysVisible)
+        var slotList = slots as IReadOnlyCollection<WindowSlot> ?? slots.ToArray();
+        if (!overlaysVisible || slotList.Any(slot => slot.IsFocused))
         {
             HideAll();
             return;
         }
 
         var visibleKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var slot in slots)
+        foreach (var slot in slotList)
         {
             if (!ShouldShowOverlay(slot)
                 || !_windowArranger.TryGetWindowBounds(slot.WindowHandle, out var bounds))
@@ -52,10 +53,10 @@ public sealed class WindowFrameOverlayManager : IDisposable
             {
                 overlay.ApplyVisual(visual);
                 overlay.UpdateBounds(overlayBounds);
-                _windowArranger.PositionOverlayAbove(overlay.Handle, slot.WindowHandle, overlayBounds);
                 _snapshots[slot.Name] = snapshot;
             }
 
+            _windowArranger.PositionOverlayAbove(overlay.Handle, slot.WindowHandle, overlayBounds);
             overlay.EnsureShown();
             visibleKeys.Add(slot.Name);
         }

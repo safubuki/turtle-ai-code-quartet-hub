@@ -155,7 +155,7 @@
       <Setter Property="MinHeight" Value="18" />
       <Setter Property="MinWidth" Value="28" />
       <Setter Property="Padding" Value="4,0" />
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="12" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
@@ -454,9 +454,9 @@
     </Style>
 
     <Style x:Key="CompactSlotButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
-      <Setter Property="MinHeight" Value="18" />
+      <Setter Property="MinHeight" Value="24" />
       <Setter Property="MinWidth" Value="44" />
-      <Setter Property="Padding" Value="4,1" />
+      <Setter Property="Padding" Value="5,2" />
       <Setter Property="Margin" Value="0" />
       <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
@@ -784,8 +784,8 @@
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
-          <Border Width="14"
-                  Height="14"
+          <Border Width="16"
+                  Height="16"
                   CornerRadius="4"
                   Background="#223027"
                   BorderBrush="#335A43"
@@ -795,16 +795,18 @@
             <TextBlock Text="{Binding Name}"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center"
-                       FontSize="9"
+                       FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource AccentBrush}" />
           </Border>
 
           <TextBlock Grid.Column="1"
                      Text="{Binding DisplayTitle}"
+                     ToolTip="{Binding DisplayTitle}"
                      VerticalAlignment="Center"
-                     FontSize="9"
+                     FontSize="12"
                      FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis"
                      Foreground="{StaticResource TextBrush}" />
 
           <Ellipse Grid.Column="2"

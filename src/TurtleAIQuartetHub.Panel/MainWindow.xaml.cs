@@ -40,6 +40,9 @@ public partial class MainWindow : Window
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private Point _dragStartPoint;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
+    private CompactRoundTripState? _compactRoundTripState;
+    private bool _compactRoundTripEligible;
+    private bool _suppressPanelLocationTracking;
 
     public MainWindow()
     {
@@ -57,6 +60,7 @@ public partial class MainWindow : Window
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
         _refreshTimer.Start();
+        LocationChanged += MainWindow_LocationChanged;
 
         Loaded += async (_, _) =>
         {
@@ -374,6 +378,7 @@ public partial class MainWindow : Window
     private void ToggleSlotFocus(WindowSlot slot)
     {
         var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
+        _overlayManager.HideAll();
 
         if (slot.IsFocused)
         {
@@ -843,14 +848,14 @@ public partial class MainWindow : Window
     private int ArrangeSlotsOnActiveMonitor(bool bringPanelAfterArrange = true)
     {
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
-        ApplyManagedWindowLayers(bringPanelAfterArrange);
+        ApplyManagedWindowLayers(bringPanelAfterArrange, refreshOverlayAfterChange: false);
         RefreshAuxiliaryUi();
         return arranged;
     }
 
-    private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true)
+    private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true, bool refreshOverlayAfterChange = true)
     {
-        SetManagedWindowLayer(_managedWindowLayerMode, bringPanelAfterChange);
+        SetManagedWindowLayer(_managedWindowLayerMode, bringPanelAfterChange, refreshOverlayAfterChange);
     }
 
     private void SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode layerMode)
@@ -862,7 +867,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode layerMode, bool bringPanelAfterChange = true)
+    private bool SetManagedWindowLayer(
+        WindowSlot.SlotWindowLayerMode layerMode,
+        bool bringPanelAfterChange = true,
+        bool refreshOverlayAfterChange = true)
     {
         SetManagedWindowLayerState(layerMode);
         var appliedAny = false;
@@ -875,6 +883,11 @@ public partial class MainWindow : Window
         if (bringPanelAfterChange)
         {
             SchedulePanelToFront();
+        }
+
+        if (refreshOverlayAfterChange)
+        {
+            RefreshOverlayUi();
         }
 
         return appliedAny;
@@ -968,9 +981,20 @@ public partial class MainWindow : Window
             var compactHeight = GetCompactModeHeight();
             MinHeight = compactHeight;
             Height = compactHeight;
+
+            if (TryGetReusableCompactBounds(out var compactBounds))
+            {
+                SetWindowBounds(compactBounds.Left, compactBounds.Top, Width, Height);
+            }
+            else
+            {
+                _compactRoundTripState = null;
+                _compactRoundTripEligible = false;
+            }
         }
         else
         {
+            var compactBounds = GetCurrentWindowBounds();
             MinWidth = _standardWindowMinWidth > 0 ? _standardWindowMinWidth : MinWidth;
             MinHeight = _standardWindowMinHeight > 0 ? _standardWindowMinHeight : MinHeight;
             var targetWidth = _standardWindowWidth > 0
@@ -981,10 +1005,9 @@ public partial class MainWindow : Window
                 : Height;
             var targetBounds = GetStandardModeRestoreBounds(targetWidth, targetHeight);
 
-            Left = targetBounds.Left;
-            Top = targetBounds.Top;
-            Width = targetBounds.Width;
-            Height = targetBounds.Height;
+            SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+            _compactRoundTripState = new CompactRoundTripState(compactBounds, targetBounds);
+            _compactRoundTripEligible = true;
         }
 
         UpdateDisplayModeChrome();
@@ -1026,6 +1049,55 @@ public partial class MainWindow : Window
         var compactPanelHeight = CompactBarPanel.ActualHeight + CompactBarPanel.Margin.Top + CompactBarPanel.Margin.Bottom;
         var rootMarginHeight = RootLayoutGrid.Margin.Top + RootLayoutGrid.Margin.Bottom;
         return Math.Max(CompactWindowMinHeight, Math.Ceiling(titleRowHeight + compactPanelHeight + rootMarginHeight + edgePadding));
+    }
+
+    private WindowArranger.WindowBounds GetCurrentWindowBounds()
+    {
+        return new WindowArranger.WindowBounds(
+            (int)Math.Round(Left),
+            (int)Math.Round(Top),
+            (int)Math.Round(Width),
+            (int)Math.Round(Height));
+    }
+
+    private bool TryGetReusableCompactBounds(out WindowArranger.WindowBounds compactBounds)
+    {
+        compactBounds = default;
+        if (!_compactRoundTripEligible || _compactRoundTripState is not { } state)
+        {
+            return false;
+        }
+
+        if (!IsSameTopLeft(GetCurrentWindowBounds(), state.StandardBounds))
+        {
+            _compactRoundTripEligible = false;
+            return false;
+        }
+
+        compactBounds = state.CompactBounds;
+        return true;
+    }
+
+    private void SetWindowBounds(double left, double top, double width, double height)
+    {
+        _suppressPanelLocationTracking = true;
+        try
+        {
+            Left = left;
+            Top = top;
+            Width = width;
+            Height = height;
+        }
+        finally
+        {
+            _suppressPanelLocationTracking = false;
+        }
+    }
+
+    private static bool IsSameTopLeft(WindowArranger.WindowBounds current, WindowArranger.WindowBounds expected)
+    {
+        return Math.Abs(current.Left - expected.Left) <= 1
+            && Math.Abs(current.Top - expected.Top) <= 1;
     }
 
     private WindowArranger.WindowBounds GetStandardModeRestoreBounds(double targetWidth, double targetHeight)
@@ -1081,9 +1153,26 @@ public partial class MainWindow : Window
         return Math.Min(Math.Max(value, min), max);
     }
 
+    private void MainWindow_LocationChanged(object? sender, EventArgs e)
+    {
+        if (_suppressPanelLocationTracking
+            || _isCompactMode
+            || !_compactRoundTripEligible)
+        {
+            return;
+        }
+
+        _compactRoundTripEligible = false;
+    }
+
     private void RefreshAuxiliaryUi()
     {
         TaskbarJumpListService.Update(_statusStore.Slots, _isCompactMode);
+        RefreshOverlayUi();
+    }
+
+    private void RefreshOverlayUi()
+    {
         _overlayManager.Update(_statusStore.Slots, !_areWindowsHidden);
     }
 
@@ -1445,4 +1534,8 @@ public partial class MainWindow : Window
         DisplayModeButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
     }
+
+    private readonly record struct CompactRoundTripState(
+        WindowArranger.WindowBounds CompactBounds,
+        WindowArranger.WindowBounds StandardBounds);
 }
