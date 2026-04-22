@@ -129,6 +129,18 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
     }
 
+    public bool UpdatePreferredLayout(WindowSlot slot, VscodeLayoutPreference preference)
+    {
+        if (!preference.HasAnyValue || Equals(slot.PreferredLayout, preference))
+        {
+            return false;
+        }
+
+        slot.PreferredLayout = preference;
+        SavePanelStates();
+        return true;
+    }
+
     public void CaptureWorkspacePaths()
     {
         foreach (var slot in Slots)
@@ -286,6 +298,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             (source.IsFocused, target.IsFocused) = (target.IsFocused, source.IsFocused);
             (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
             (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
+            (source.PreferredLayout, target.PreferredLayout) = (target.PreferredLayout, source.PreferredLayout);
         }
         finally
         {
@@ -534,7 +547,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                         AssignedPath = slot.Path,
                         SavedWorkspacePath = slot.SavedWorkspacePath,
                         SavedWorkspaceConfirmed = slot.SavedWorkspaceConfirmed,
-                        WindowHandle = slot.WindowHandle.ToInt64()
+                        WindowHandle = slot.WindowHandle.ToInt64(),
+                        PreferredLayout = slot.PreferredLayout.HasAnyValue ? slot.PreferredLayout : null
                     })
                     .ToList(),
                 StoredPanels = StoredPanels
@@ -572,6 +586,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             slot.CurrentWorkspacePath = string.Empty;
             slot.WindowTitle = string.Empty;
             slot.WindowStatus = SlotWindowStatus.Missing;
+            slot.PreferredLayout = VscodeLayoutPreference.Empty;
         }
 
         foreach (var state in states)
@@ -595,6 +610,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             }
 
             slot.SavedWorkspaceConfirmed = state.SavedWorkspaceConfirmed;
+            slot.PreferredLayout = state.PreferredLayout ?? VscodeLayoutPreference.Empty;
 
             if (state.WindowHandle != 0)
             {

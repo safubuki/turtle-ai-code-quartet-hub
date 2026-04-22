@@ -13,4 +13,6 @@ public sealed class SavedSlotState
     public bool SavedWorkspaceConfirmed { get; set; }
 
     public long WindowHandle { get; set; }
+
+    public VscodeLayoutPreference? PreferredLayout { get; set; }
 }

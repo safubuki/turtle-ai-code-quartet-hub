@@ -12,6 +12,7 @@ namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(120);
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
     private readonly VscodeLauncher _vscodeLauncher;
@@ -27,6 +28,7 @@ public partial class MainWindow : Window
     private double _collapsedWindowMinHeight;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private Point _dragStartPoint;
+    private CancellationTokenSource? _panelFrontRestoreCancellation;
 
     public MainWindow()
     {
@@ -282,9 +284,10 @@ public partial class MainWindow : Window
         {
             if (!_areWindowsHidden)
             {
+                CapturePreferredLayout(slot);
                 var arranged = ArrangeSlotsOnActiveMonitor(false);
                 _statusStore.ClearFocusedSlot();
-                BringPanelToFront();
+                SchedulePanelToFront();
                 _statusStore.Message = arranged == 0
                     ? "4分割表示に戻せるVS Codeウィンドウがありません。"
                     : $"{arranged}個のVS Codeを4分割表示に戻しました。";
@@ -310,15 +313,19 @@ public partial class MainWindow : Window
 
         if (previouslyFocusedSlot is not null)
         {
+            CapturePreferredLayout(previouslyFocusedSlot);
             ArrangeSlotsOnActiveMonitor(false);
             _statusStore.ClearFocusedSlot();
             _windowArranger.SetBackmost(previouslyFocusedSlot.WindowHandle);
         }
 
+        EnsurePreferredLayout(slot);
+        VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
         if (_windowArranger.FocusMaximized(slot.WindowHandle))
         {
             _statusStore.SetFocusedSlot(slot);
+            SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             return;
         }
@@ -355,6 +362,7 @@ public partial class MainWindow : Window
 
         if (_statusStore.Slots.Any(slot => slot.IsFocused))
         {
+            CaptureFocusedLayout();
             _statusStore.ClearFocusedSlot();
             ArrangeSlotsOnActiveMonitor(false);
         }
@@ -387,6 +395,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            CaptureFocusedLayout();
             var minimized = 0;
             foreach (var slot in _statusStore.Slots)
             {
@@ -429,6 +438,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        CaptureFocusedLayout();
         var arranged = ArrangeSlotsOnActiveMonitor();
         _statusStore.ClearFocusedSlot();
         _statusStore.Message = arranged > 0
@@ -758,7 +768,7 @@ public partial class MainWindow : Window
 
         if (bringPanelAfterChange)
         {
-            BringPanelToFront();
+            SchedulePanelToFront();
         }
 
         return appliedAny;
@@ -781,13 +791,18 @@ public partial class MainWindow : Window
 
         if (bringPanelAfterChange)
         {
-            BringPanelToFront();
+            SchedulePanelToFront();
         }
 
         return applied;
     }
 
     private void BringPanelToFront()
+    {
+        BringPanelToFrontImmediate();
+    }
+
+    private void BringPanelToFrontImmediate()
     {
         var panelHandle = new WindowInteropHelper(this).Handle;
         if (panelHandle == IntPtr.Zero)
@@ -801,6 +816,73 @@ public partial class MainWindow : Window
         }
 
         _windowArranger.BringToFront(panelHandle);
+    }
+
+    private void EnsurePreferredLayout(WindowSlot slot)
+    {
+        if (slot.PreferredLayout.HasAnyValue)
+        {
+            return;
+        }
+
+        if (VscodeLayoutState.TryReadLayoutPreference(slot, _statusStore.Config, out var preference))
+        {
+            _statusStore.UpdatePreferredLayout(slot, preference);
+        }
+    }
+
+    private void CapturePreferredLayout(WindowSlot slot)
+    {
+        if (VscodeLayoutState.TryCapturePreferredLayout(slot, _statusStore.Config, _windowArranger, out var preference))
+        {
+            _statusStore.UpdatePreferredLayout(slot, preference);
+        }
+    }
+
+    private void CaptureFocusedLayout()
+    {
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
+        if (focusedSlot is not null)
+        {
+            CapturePreferredLayout(focusedSlot);
+        }
+    }
+
+    private void SchedulePanelToFront(TimeSpan? delay = null)
+    {
+        _panelFrontRestoreCancellation?.Cancel();
+        _panelFrontRestoreCancellation?.Dispose();
+
+        var cancellation = new CancellationTokenSource();
+        _panelFrontRestoreCancellation = cancellation;
+        _ = BringPanelToFrontAfterDelayAsync(delay ?? PanelFrontRestoreDelay, cancellation.Token);
+    }
+
+    private async Task BringPanelToFrontAfterDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    BringPanelToFrontImmediate();
+                }
+            }, DispatcherPriority.Background);
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private void HideDeleteStoredPanelDialog()
@@ -1050,6 +1132,8 @@ public partial class MainWindow : Window
     {
         _refreshTimer.Stop();
         _refreshCancellation.Cancel();
+        _panelFrontRestoreCancellation?.Cancel();
+        _panelFrontRestoreCancellation?.Dispose();
         base.OnClosed(e);
     }
 

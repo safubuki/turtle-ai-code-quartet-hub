@@ -15,6 +15,7 @@ public sealed class WindowArranger
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_NOOWNERZORDER = 0x0200;
     private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint SWP_ASYNCWINDOWPOS = 0x4000;
     private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
@@ -22,6 +23,8 @@ public sealed class WindowArranger
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
     private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+    private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS;
+    private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
     {
@@ -35,7 +38,7 @@ public sealed class WindowArranger
         var normalizedGap = Math.Clamp(gap, 0, 64);
         var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
         var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
-        var arranged = 0;
+        var placements = new List<WindowPlacement>(Math.Min(4, slots.Count));
 
         for (var index = 0; index < Math.Min(4, slots.Count); index++)
         {
@@ -50,9 +53,54 @@ public sealed class WindowArranger
             var x = workArea.Left + normalizedGap + column * (cellWidth + normalizedGap);
             var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
 
-            ShowWindow(slot.WindowHandle, SW_RESTORE);
-            SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
-            if (SetWindowPos(slot.WindowHandle, IntPtr.Zero, x, y, cellWidth, cellHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER))
+            RestoreForResize(slot.WindowHandle);
+            placements.Add(new WindowPlacement(slot.WindowHandle, x, y, cellWidth, cellHeight));
+        }
+
+        if (placements.Count == 0)
+        {
+            return 0;
+        }
+
+        var deferredWindowPos = BeginDeferWindowPos(placements.Count);
+        if (deferredWindowPos != IntPtr.Zero)
+        {
+            var queued = true;
+            foreach (var placement in placements)
+            {
+                deferredWindowPos = DeferWindowPos(
+                    deferredWindowPos,
+                    placement.Handle,
+                    IntPtr.Zero,
+                    placement.X,
+                    placement.Y,
+                    placement.Width,
+                    placement.Height,
+                    ArrangeFlags);
+                if (deferredWindowPos == IntPtr.Zero)
+                {
+                    queued = false;
+                    break;
+                }
+            }
+
+            if (queued && EndDeferWindowPos(deferredWindowPos))
+            {
+                return placements.Count;
+            }
+        }
+
+        var arranged = 0;
+        foreach (var placement in placements)
+        {
+            if (SetWindowPos(
+                placement.Handle,
+                IntPtr.Zero,
+                placement.X,
+                placement.Y,
+                placement.Width,
+                placement.Height,
+                ArrangeFlags))
             {
                 arranged++;
             }
@@ -68,7 +116,7 @@ public sealed class WindowArranger
             return false;
         }
 
-        return SetWindowPos(windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+        return SetWindowPos(windowHandle, HWND_TOPMOST, 0, 0, 0, 0, LayerFlags);
     }
 
     public bool BringToFrontOnce(IntPtr windowHandle)
@@ -83,8 +131,8 @@ public sealed class WindowArranger
             ShowWindow(windowHandle, SW_RESTORE);
         }
 
-        var raised = SetWindowPos(windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
-        var demoted = SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+        var raised = SetWindowPos(windowHandle, HWND_TOPMOST, 0, 0, 0, 0, LayerFlags);
+        var demoted = SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
         return raised || demoted;
     }
 
@@ -95,8 +143,8 @@ public sealed class WindowArranger
             return false;
         }
 
-        var demoted = SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
-        var sentToBack = SetWindowPos(windowHandle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+        var demoted = SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
+        var sentToBack = SetWindowPos(windowHandle, HWND_BOTTOM, 0, 0, 0, 0, LayerFlags);
         return demoted || sentToBack;
     }
 
@@ -204,6 +252,30 @@ public sealed class WindowArranger
         return ShowWindow(windowHandle, SW_RESTORE);
     }
 
+    public bool TryGetWindowBounds(IntPtr windowHandle, out WindowBounds bounds)
+    {
+        bounds = default;
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle) || !GetWindowRect(windowHandle, out var rect))
+        {
+            return false;
+        }
+
+        bounds = new WindowBounds(
+            rect.Left,
+            rect.Top,
+            Math.Max(0, rect.Right - rect.Left),
+            Math.Max(0, rect.Bottom - rect.Top));
+        return true;
+    }
+
+    private static void RestoreForResize(IntPtr windowHandle)
+    {
+        if (IsIconic(windowHandle) || IsZoomed(windowHandle))
+        {
+            ShowWindow(windowHandle, SW_RESTORE);
+        }
+    }
+
     private static List<MonitorWorkArea> GetOrderedMonitors()
     {
         var monitors = new List<MonitorWorkArea>();
@@ -285,6 +357,9 @@ public sealed class WindowArranger
     private static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern bool IsZoomed(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
     [DllImport("user32.dll")]
@@ -299,13 +374,37 @@ public sealed class WindowArranger
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr BeginDeferWindowPos(int nNumWindows);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr DeferWindowPos(
+        IntPtr hWinPosInfo,
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EndDeferWindowPos(IntPtr hWinPosInfo);
+
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
+
+    public readonly record struct WindowBounds(int Left, int Top, int Width, int Height);
+
+    private readonly record struct WindowPlacement(IntPtr Handle, int X, int Y, int Width, int Height);
 
     private readonly record struct WorkArea(int Left, int Top, int Width, int Height);
 

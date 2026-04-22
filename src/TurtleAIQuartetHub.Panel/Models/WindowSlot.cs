@@ -25,6 +25,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private bool _isFocused;
     private SlotWindowLayerMode _windowLayerMode = SlotWindowLayerMode.Topmost;
     private bool _isHidden;
+    private VscodeLayoutPreference _preferredLayout = VscodeLayoutPreference.Empty;
 
     public WindowSlot(SlotConfig config)
     {
@@ -180,6 +181,12 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(WindowStatusText));
             }
         }
+    }
+
+    public VscodeLayoutPreference PreferredLayout
+    {
+        get => _preferredLayout;
+        set => _preferredLayout = value ?? VscodeLayoutPreference.Empty;
     }
 
     public string WindowStatusText

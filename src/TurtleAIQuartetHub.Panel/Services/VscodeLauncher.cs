@@ -62,6 +62,8 @@ public sealed class VscodeLauncher
                 await PrepareDedicatedUserDataAsync(slot, config, resolvedCodeCommand, cancellationToken);
             }
 
+            VscodeLayoutState.TryApplyPreferredLayout(slot, config, slot.PreferredLayout);
+
             DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {resolvedCodeCommand} {GetLaunchArguments(slot, config)}");
             var launchedProcessId = await Task.Run(() => StartCode(resolvedCodeCommand, slot, config), cancellationToken);
 
