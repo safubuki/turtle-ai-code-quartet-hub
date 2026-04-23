@@ -9,7 +9,9 @@ public sealed class AiStatusDetector
 {
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan CodexStreamQuietCompletionWindow = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CodexCarryForwardRunningWindow = TimeSpan.FromMinutes(30);
     private const int MaxRecentLogBytes = 96 * 1024;
+    private const int MaxCodexCarryForwardLogBytes = 512 * 1024;
     private static readonly string[] ExtensionHostDirectoryNames = ["exthost", "remoteexthost", "remoteexhost"];
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly VscodeChatUiStatusReader _uiStatusReader = new();
@@ -84,7 +86,8 @@ public sealed class AiStatusDetector
             return uiEvidence;
         }
 
-        if (_lastRunningSeenBySlot.TryRemove(slotKey, out var lastRunningSeenAt))
+        var hadPreviousRunningState = _lastRunningSeenBySlot.TryGetValue(slotKey, out var lastRunningSeenAt);
+        if (false && _lastRunningSeenBySlot.TryRemove(slotKey, out _))
         {
             _completedAtBySlot[slotKey] = now;
             return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI: {lastRunningSeenAt:HH:mm:ss} の実行中表示が終了しました。", now);
@@ -102,13 +105,39 @@ public sealed class AiStatusDetector
 
             if (evidences.Count > 0)
             {
-                return GetBestEvidence(evidences);
+                var bestEvidence = GetBestEvidence(evidences);
+                if (bestEvidence.Status == AiStatus.Running)
+                {
+                    _lastRunningSeenBySlot[slotKey] = bestEvidence.EventAt ?? now;
+                    _completedAtBySlot.TryRemove(slotKey, out _);
+                }
+
+                return bestEvidence;
+            }
+
+            var codexContinuation = TryDetectCodexStreamContinuation(slotKey, slotStartedAt, userDataDirectory!);
+            if (codexContinuation is not null)
+            {
+                if (codexContinuation.Status == AiStatus.Running)
+                {
+                    _lastRunningSeenBySlot[slotKey] = codexContinuation.EventAt ?? now;
+                    _completedAtBySlot.TryRemove(slotKey, out _);
+                }
+
+                return codexContinuation;
             }
         }
 
         if (_completedAtBySlot.TryGetValue(slotKey, out var completedAt))
         {
             return new AiStatusSnapshot(AiStatus.Completed, "VS Code UI: 直前のAI実行は完了しました。", completedAt);
+        }
+
+        if (hadPreviousRunningState)
+        {
+            _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+            _completedAtBySlot[slotKey] = now;
+            return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI: {lastRunningSeenAt:HH:mm:ss} の実行表示が消えました。", now);
         }
 
         if (!canReadLogs)
@@ -262,11 +291,106 @@ public sealed class AiStatusDetector
 
     private static AiStatusSnapshot ReadEvidence(string userDataDirectory, ExtensionLogSource source)
     {
+        return ToSnapshot(ReadLatestEvidence(userDataDirectory, source));
+    }
+
+    private AiStatusSnapshot? TryDetectCodexStreamContinuation(string slotKey, DateTimeOffset slotStartedAt, string userDataDirectory)
+    {
+        var source = LogSources.FirstOrDefault(candidate => string.Equals(candidate.DisplayName, "Codex", StringComparison.Ordinal));
+        if (source is null)
+        {
+            return null;
+        }
+
+        var recentEvidence = ReadLatestEvidence(userDataDirectory, source);
+        if (!_lastRunningSeenBySlot.TryGetValue(slotKey, out var lastRunningSeenAt))
+        {
+            return TryCarryForwardCodexFromCurrentSession(source, userDataDirectory, recentEvidence);
+        }
+
+        if (!recentEvidence.LastEventAt.HasValue
+            || recentEvidence.LastEventAt.Value < _startedAt
+            || recentEvidence.LastEventAt.Value < slotStartedAt
+            || recentEvidence.LastEventAt.Value <= lastRunningSeenAt)
+        {
+            return null;
+        }
+
+        if (recentEvidence.LastCompletionSignalAt is { } completedAt && completedAt >= lastRunningSeenAt)
+        {
+            _completedAtBySlot[slotKey] = completedAt;
+            return new AiStatusSnapshot(AiStatus.Completed, $"{source.DisplayName}: {completedAt:HH:mm:ss} に完了イベントを検出しました。", completedAt);
+        }
+
+        if (recentEvidence.LastConfirmationSignalAt is { } confirmAt
+            && confirmAt >= lastRunningSeenAt
+            && (!recentEvidence.LastActivitySignalAt.HasValue || recentEvidence.LastActivitySignalAt.Value <= confirmAt))
+        {
+            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{source.DisplayName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。", confirmAt);
+        }
+
+        if (recentEvidence.RunningSignalQuietCompletionWindow is not { } quietWindow
+            || recentEvidence.LastActivitySignalAt is not { } activityAt
+            || activityAt <= lastRunningSeenAt)
+        {
+            return null;
+        }
+
+        if (DateTimeOffset.Now - activityAt <= quietWindow)
+        {
+            return new AiStatusSnapshot(AiStatus.Running, $"{source.DisplayName}: {activityAt:HH:mm:ss} にストリーム更新を検出しました。", activityAt, quietWindow);
+        }
+
+        _completedAtBySlot[slotKey] = activityAt;
+        return new AiStatusSnapshot(AiStatus.Completed, $"{source.DisplayName}: {activityAt:HH:mm:ss} 以降のストリーム停止を検出しました。", activityAt, quietWindow);
+    }
+
+    private static AiStatusSnapshot? TryCarryForwardCodexFromCurrentSession(
+        ExtensionLogSource source,
+        string userDataDirectory,
+        AiLogEvidence recentEvidence)
+    {
+        if (recentEvidence.RunningSignalQuietCompletionWindow is not { } quietWindow
+            || recentEvidence.LastActivitySignalAt is not { } activityAt
+            || DateTimeOffset.Now - activityAt > quietWindow)
+        {
+            return null;
+        }
+
+        var carryForwardEvidence = ReadLatestEvidence(userDataDirectory, source, MaxCodexCarryForwardLogBytes);
+        var runningAt = GetEffectiveRunningSignalAt(carryForwardEvidence);
+        if (!runningAt.HasValue
+            || DateTimeOffset.Now - runningAt.Value > CodexCarryForwardRunningWindow
+            || activityAt < runningAt.Value)
+        {
+            return null;
+        }
+
+        if (carryForwardEvidence.LastCompletionSignalAt is { } completedAt && completedAt >= runningAt.Value)
+        {
+            return null;
+        }
+
+        if (carryForwardEvidence.LastConfirmationSignalAt is { } confirmAt && confirmAt >= runningAt.Value)
+        {
+            var resumedAfterConfirm = carryForwardEvidence.LastActivitySignalAt.HasValue
+                && carryForwardEvidence.LastActivitySignalAt.Value > confirmAt;
+            if (!resumedAfterConfirm)
+            {
+                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{source.DisplayName}: approval requested at {confirmAt:HH:mm:ss}.", confirmAt);
+            }
+        }
+
+        return new AiStatusSnapshot(AiStatus.Running, $"{source.DisplayName}: carried forward from current session activity at {activityAt:HH:mm:ss}.", activityAt, quietWindow);
+    }
+
+    private static AiLogEvidence ReadLatestEvidence(string userDataDirectory, ExtensionLogSource source, int maxRecentLogBytes = MaxRecentLogBytes)
+    {
         var newestEvidence = AiLogEvidence.Empty(source);
 
         foreach (var logPath in EnumerateCandidateLogFiles(userDataDirectory, source))
         {
-            var evidence = ReadLogEvidence(logPath, source);
+            var evidence = ReadLogEvidence(logPath, source, maxRecentLogBytes);
             if (evidence.LastEventAt.HasValue
                 && (!newestEvidence.LastEventAt.HasValue || evidence.LastEventAt.Value > newestEvidence.LastEventAt.Value))
             {
@@ -274,7 +398,7 @@ public sealed class AiStatusDetector
             }
         }
 
-        return ToSnapshot(newestEvidence);
+        return newestEvidence;
     }
 
     private static IEnumerable<string> EnumerateCandidateLogFiles(string userDataDirectory, ExtensionLogSource source)
@@ -388,13 +512,13 @@ public sealed class AiStatusDetector
         }
     }
 
-    private static AiLogEvidence ReadLogEvidence(string logPath, ExtensionLogSource source)
+    private static AiLogEvidence ReadLogEvidence(string logPath, ExtensionLogSource source, int maxRecentLogBytes)
     {
         var evidence = AiLogEvidence.Empty(source);
 
         try
         {
-            foreach (var line in ReadRecentLines(logPath))
+            foreach (var line in ReadRecentLines(logPath, maxRecentLogBytes))
             {
                 if (!TryParseLogTimestamp(line, out var timestamp))
                 {
@@ -456,10 +580,10 @@ public sealed class AiStatusDetector
         return evidence;
     }
 
-    private static IEnumerable<string> ReadRecentLines(string path)
+    private static IEnumerable<string> ReadRecentLines(string path, int maxRecentLogBytes)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var bytesToRead = (int)Math.Min(stream.Length, MaxRecentLogBytes);
+        var bytesToRead = (int)Math.Min(stream.Length, maxRecentLogBytes);
         if (bytesToRead <= 0)
         {
             yield break;
@@ -573,6 +697,22 @@ public sealed class AiStatusDetector
     private static DateTimeOffset? Max(DateTimeOffset? current, DateTimeOffset candidate)
     {
         return !current.HasValue || candidate > current.Value ? candidate : current;
+    }
+
+    private static DateTimeOffset? GetEffectiveRunningSignalAt(AiLogEvidence evidence)
+    {
+        DateTimeOffset? runningAt = null;
+        if (evidence.LastRunningSignalAt.HasValue)
+        {
+            runningAt = evidence.LastRunningSignalAt.Value;
+        }
+
+        if (evidence.LastSecondaryRunningSignalAt.HasValue)
+        {
+            runningAt = Max(runningAt, evidence.LastSecondaryRunningSignalAt.Value);
+        }
+
+        return runningAt;
     }
 
     private sealed record ExtensionLogSource(

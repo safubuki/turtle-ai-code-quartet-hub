@@ -15,6 +15,7 @@ public sealed class VscodeChatUiStatusReader
         "実行中",
         "処理中",
         "生成中",
+        "思考中",
         "考え中",
         "Working",
         "Running",

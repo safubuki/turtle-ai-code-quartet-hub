@@ -89,6 +89,18 @@ dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csp
 .\src\TurtleAIQuartetHub.Panel\bin\Debug\net10.0-windows\TurtleAIQuartetHub.exe
 ```
 
+AI 状態のスモーク確認:
+
+```powershell
+dotnet run --project .\tools\AiStatusSmoke\AiStatusSmoke.csproj -- --json
+```
+
+対象スロットへ実際に入力して状態遷移を追う:
+
+```powershell
+.\scripts\Invoke-AiStatusSmoke.ps1 -Slot A -Prompt "status smoke test"
+```
+
 ## 設定
 
 設定ファイルを作る場合:

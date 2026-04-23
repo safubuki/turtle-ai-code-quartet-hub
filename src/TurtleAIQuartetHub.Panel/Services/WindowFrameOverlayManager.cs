@@ -107,11 +107,11 @@ public sealed class WindowFrameOverlayManager : IDisposable
     {
         return slot.AiStatus switch
         {
-            AiStatus.Running => new FrameVisual(ColorFromHex("#49E88F"), ColorFromHex("#49E88F"), 3.4, 16, slot.IsFocused ? 0.88 : 0.72, TimeSpan.FromMilliseconds(680)),
-            AiStatus.Completed => new FrameVisual(ColorFromHex("#43C8FF"), ColorFromHex("#43C8FF"), 3.0, 15, slot.IsFocused ? 0.84 : 0.62, TimeSpan.FromSeconds(2.0)),
-            AiStatus.WaitingForConfirmation => new FrameVisual(ColorFromHex("#F2CA57"), ColorFromHex("#F2CA57"), 3.2, 16, slot.IsFocused ? 0.88 : 0.7, TimeSpan.FromSeconds(1.3)),
-            AiStatus.Error => new FrameVisual(ColorFromHex("#E37B70"), ColorFromHex("#E37B70"), 3.0, 14, slot.IsFocused ? 0.8 : 0.58, TimeSpan.FromSeconds(1.6)),
-            AiStatus.NeedsAttention => new FrameVisual(ColorFromHex("#C9A441"), ColorFromHex("#C9A441"), 3.0, 14, slot.IsFocused ? 0.8 : 0.58, TimeSpan.FromSeconds(1.6)),
+            AiStatus.Running => new FrameVisual(ColorFromHex("#49E88F"), ColorFromHex("#49E88F"), 3.5, 16, slot.IsFocused ? 0.92 : 0.86, TimeSpan.FromMilliseconds(680)),
+            AiStatus.Completed => new FrameVisual(ColorFromHex("#43C8FF"), ColorFromHex("#43C8FF"), 3.1, 15, slot.IsFocused ? 0.88 : 0.78, TimeSpan.FromSeconds(2.0)),
+            AiStatus.WaitingForConfirmation => new FrameVisual(ColorFromHex("#F2CA57"), ColorFromHex("#F2CA57"), 3.3, 16, slot.IsFocused ? 0.92 : 0.84, TimeSpan.FromSeconds(1.3)),
+            AiStatus.Error => new FrameVisual(ColorFromHex("#E37B70"), ColorFromHex("#E37B70"), 3.1, 14, slot.IsFocused ? 0.86 : 0.74, TimeSpan.FromSeconds(1.6)),
+            AiStatus.NeedsAttention => new FrameVisual(ColorFromHex("#C9A441"), ColorFromHex("#C9A441"), 3.1, 14, slot.IsFocused ? 0.86 : 0.74, TimeSpan.FromSeconds(1.6)),
             _ => new FrameVisual(ColorFromHex("#000000"), ColorFromHex("#000000"), 0, 0, 0, null)
         };
     }
