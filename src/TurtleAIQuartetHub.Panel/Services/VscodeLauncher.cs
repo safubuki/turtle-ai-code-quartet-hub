@@ -13,6 +13,7 @@ public sealed class VscodeLauncher
     private const int ObjectIdWindow = 0;
     private const uint WineventOutOfContext = 0x0000;
     private const uint WineventSkipOwnProcess = 0x0002;
+    private static readonly TimeSpan RemoteWindowProbeInterval = TimeSpan.FromMilliseconds(500);
     private readonly WindowEnumerator _windowEnumerator;
 
     public VscodeLauncher(WindowEnumerator windowEnumerator)
@@ -64,23 +65,105 @@ public sealed class VscodeLauncher
 
             VscodeLayoutState.TryApplyPreferredLayout(slot, config, slot.PreferredLayout);
 
-            DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {resolvedCodeCommand} {GetLaunchArguments(slot, config)}");
-            var launchedProcessId = await Task.Run(() => StartCode(resolvedCodeCommand, slot, config), cancellationToken);
-
-            var window = await WaitForNewWindowAsync(knownHandles, timeout, launchedProcessId, cancellationToken);
-            if (window is null)
+            var launchPath = GetLaunchPath(slot, config);
+            var assignment = await LaunchWindowAsync(slot, config, resolvedCodeCommand, launchPath, knownHandles, timeout, cancellationToken);
+            if (assignment is null)
             {
                 DiagnosticLog.Write($"No new VS Code window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
 
-            knownHandles.Add(window.Handle);
-            assignments.Add(new WindowAssignment(slot, window));
-
+            knownHandles.Add(assignment.Window.Handle);
+            assignments.Add(assignment);
         }
 
         return assignments;
+    }
+
+    private async Task<WindowAssignment?> LaunchWindowAsync(
+        WindowSlot slot,
+        AppConfig config,
+        string codeCommand,
+        string? launchPath,
+        HashSet<IntPtr> knownHandles,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var launchCodeCommand = GetCodeCommandForLaunch(config.CodeCommand, codeCommand, launchPath);
+
+        if (ShouldAttemptRemoteFallback(config, launchPath))
+        {
+            return await LaunchRemoteWindowWithFallbackAsync(
+                slot,
+                config,
+                launchCodeCommand,
+                launchPath!,
+                knownHandles,
+                timeout,
+                cancellationToken);
+        }
+
+        DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {launchCodeCommand} {GetLaunchArguments(slot, config, launchPath)}");
+        var launchedProcessId = await Task.Run(() => StartCode(launchCodeCommand, slot, config, launchPath), cancellationToken);
+        var window = await WaitForNewWindowAsync(
+            knownHandles,
+            timeout,
+            CanTrackLaunchedProcess(launchCodeCommand) ? launchedProcessId : null,
+            cancellationToken);
+        return window is null ? null : new WindowAssignment(slot, window);
+    }
+
+    private async Task<WindowAssignment?> LaunchRemoteWindowWithFallbackAsync(
+        WindowSlot slot,
+        AppConfig config,
+        string codeCommand,
+        string launchPath,
+        HashSet<IntPtr> knownHandles,
+        TimeSpan totalTimeout,
+        CancellationToken cancellationToken)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
+        var reconnectTimeout = GetRemoteReconnectTimeout(config, totalTimeout);
+
+        DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {codeCommand} {GetLaunchArguments(slot, config, launchPath)}");
+        var launchedProcessId = await Task.Run(() => StartCode(codeCommand, slot, config, launchPath), cancellationToken);
+        var trackedProcessId = CanTrackLaunchedProcess(codeCommand) ? launchedProcessId : null;
+
+        var reconnectStopwatch = Stopwatch.StartNew();
+        var remoteWindow = await WaitForNewWindowAsync(knownHandles, reconnectTimeout, trackedProcessId, cancellationToken);
+        if (remoteWindow is not null)
+        {
+            var remainingReconnectTime = GetRemainingTime(reconnectTimeout, reconnectStopwatch);
+            remoteWindow = await WaitForLaunchPathVisibleAsync(remoteWindow, launchPath, remainingReconnectTime, cancellationToken);
+        }
+
+        if (remoteWindow is not null)
+        {
+            return new WindowAssignment(slot, remoteWindow);
+        }
+
+        DiagnosticLog.Write(
+            $"Remote workspace reconnect timed out for slot {slot.Name} after {reconnectTimeout.TotalSeconds:0} seconds. Falling back to an empty VS Code window.");
+
+        await Task.Run(() =>
+        {
+            TryTerminateLaunchProcess(remoteWindow?.ProcessId ?? launchedProcessId, slot.Name);
+            KillZombieProcess(slot, config);
+        }, cancellationToken);
+        knownHandles.UnionWith(await GetKnownHandlesAsync(cancellationToken));
+
+        var fallbackTimeout = GetRemainingTime(totalTimeout, totalStopwatch);
+        if (fallbackTimeout <= TimeSpan.Zero)
+        {
+            DiagnosticLog.Write($"No timeout budget remains for slot {slot.Name} fallback launch.");
+            return null;
+        }
+
+        DiagnosticLog.Write($"Starting fallback VS Code window for slot {slot.Name}: {codeCommand} {GetLaunchArguments(slot, config, null)}");
+        var fallbackProcessId = await Task.Run(() => StartCode(codeCommand, slot, config, null), cancellationToken);
+        var fallbackWindow = await WaitForNewWindowAsync(knownHandles, fallbackTimeout, fallbackProcessId, cancellationToken);
+        return fallbackWindow is null ? null : new WindowAssignment(slot, fallbackWindow);
     }
 
     private async Task<WindowInfo?> WaitForNewWindowAsync(
@@ -170,6 +253,50 @@ public sealed class VscodeLauncher
             cancellationToken);
     }
 
+    private async Task<WindowInfo?> WaitForLaunchPathVisibleAsync(
+        WindowInfo window,
+        string launchPath,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        if (VscodeWorkspaceState.IsWorkspaceVisibleInWindowTitle(window.Title, launchPath))
+        {
+            return window;
+        }
+
+        if (timeout <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var refreshedWindow = _windowEnumerator.TryGetWindow(window.Handle);
+            if (refreshedWindow is null)
+            {
+                return null;
+            }
+
+            if (VscodeWorkspaceState.IsWorkspaceVisibleInWindowTitle(refreshedWindow.Title, launchPath))
+            {
+                return refreshedWindow;
+            }
+
+            var remainingTime = GetRemainingTime(timeout, stopwatch);
+            if (remainingTime <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            await Task.Delay(remainingTime < RemoteWindowProbeInterval ? remainingTime : RemoteWindowProbeInterval, cancellationToken);
+        }
+
+        return null;
+    }
+
     private static async Task PrepareDedicatedUserDataAsync(
         WindowSlot slot,
         AppConfig config,
@@ -193,7 +320,7 @@ public sealed class VscodeLauncher
         }, cancellationToken);
     }
 
-    private static uint? StartCode(string codeCommand, WindowSlot slot, AppConfig config)
+    private static uint? StartCode(string codeCommand, WindowSlot slot, AppConfig config, string? launchPath)
     {
         var canUseArgumentList = string.Equals(Path.GetExtension(codeCommand), ".exe", StringComparison.OrdinalIgnoreCase);
         var startInfo = new ProcessStartInfo
@@ -204,11 +331,11 @@ public sealed class VscodeLauncher
 
         if (canUseArgumentList)
         {
-            AddLaunchArguments(startInfo.ArgumentList, slot, config);
+            AddLaunchArguments(startInfo.ArgumentList, slot, config, launchPath);
         }
         else
         {
-            startInfo.Arguments = GetLaunchArguments(slot, config);
+            startInfo.Arguments = GetLaunchArguments(slot, config, launchPath);
         }
 
         using var process = Process.Start(startInfo);
@@ -273,7 +400,7 @@ public sealed class VscodeLauncher
         }
     }
 
-    private static void AddLaunchArguments(Collection<string> arguments, WindowSlot slot, AppConfig config)
+    private static void AddLaunchArguments(Collection<string> arguments, WindowSlot slot, AppConfig config, string? launchPath)
     {
         if (config.UseDedicatedUserDataDirs)
         {
@@ -282,13 +409,13 @@ public sealed class VscodeLauncher
         }
 
         arguments.Add("--new-window");
-        foreach (var argument in GetLaunchPathArguments(GetLaunchPath(slot, config)))
+        foreach (var argument in GetLaunchPathArguments(launchPath))
         {
             arguments.Add(argument);
         }
     }
 
-    private static string GetLaunchArguments(WindowSlot slot, AppConfig config)
+    private static string GetLaunchArguments(WindowSlot slot, AppConfig config, string? launchPath)
     {
         var arguments = new List<string>();
         if (config.UseDedicatedUserDataDirs)
@@ -298,7 +425,7 @@ public sealed class VscodeLauncher
         }
 
         arguments.Add("--new-window");
-        foreach (var argument in GetLaunchPathArguments(GetLaunchPath(slot, config)))
+        foreach (var argument in GetLaunchPathArguments(launchPath))
         {
             arguments.Add(argument.StartsWith("--", StringComparison.Ordinal) ? argument : Quote(argument));
         }
@@ -342,16 +469,16 @@ public sealed class VscodeLauncher
             return false;
         }
 
-        return Uri.TryCreate(launchPath, UriKind.Absolute, out var uri)
-            && !string.IsNullOrWhiteSpace(uri.Scheme)
-            && !uri.IsFile;
+        return TryParseNonFileUri(launchPath, out _);
     }
 
     private static bool IsWorkspaceFileUri(string launchPath)
     {
         var pathPart = Uri.TryCreate(launchPath, UriKind.Absolute, out var uri)
             ? Uri.UnescapeDataString(uri.AbsolutePath)
-            : launchPath;
+            : TryParseUriParts(launchPath, out var uriParts)
+                ? Uri.UnescapeDataString(uriParts.AbsolutePath)
+                : launchPath;
 
         return pathPart.EndsWith(".code-workspace", StringComparison.OrdinalIgnoreCase);
     }
@@ -362,6 +489,209 @@ public sealed class VscodeLauncher
             && char.IsLetter(value[0])
             && value[1] == ':'
             && (value[2] == '\\' || value[2] == '/');
+    }
+
+    private static bool TryParseNonFileUri(string value, out UriParts uriParts)
+    {
+        uriParts = default;
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri is not null
+            && !string.IsNullOrWhiteSpace(uri.Scheme)
+            && !uri.IsFile)
+        {
+            uriParts = new UriParts(uri.Scheme, uri.Authority, uri.AbsolutePath, uri.AbsoluteUri);
+            return true;
+        }
+
+        return TryParseUriParts(value, out uriParts)
+            && !string.Equals(uriParts.Scheme, "file", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryParseUriParts(string value, out UriParts uriParts)
+    {
+        uriParts = default;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var schemeSeparatorIndex = value.IndexOf("://", StringComparison.Ordinal);
+        if (schemeSeparatorIndex <= 0)
+        {
+            return false;
+        }
+
+        var scheme = value[..schemeSeparatorIndex];
+        if (!IsValidUriScheme(scheme))
+        {
+            return false;
+        }
+
+        var remainder = value[(schemeSeparatorIndex + 3)..];
+        var pathIndex = remainder.IndexOf('/');
+        var authority = pathIndex >= 0 ? remainder[..pathIndex] : remainder;
+        var absolutePath = pathIndex >= 0 ? remainder[pathIndex..] : "/";
+        uriParts = new UriParts(scheme, authority, absolutePath, value);
+        return true;
+    }
+
+    private static bool IsValidUriScheme(string scheme)
+    {
+        if (string.IsNullOrWhiteSpace(scheme) || !char.IsLetter(scheme[0]))
+        {
+            return false;
+        }
+
+        for (var index = 1; index < scheme.Length; index++)
+        {
+            var character = scheme[index];
+            if (!char.IsLetterOrDigit(character)
+                && character != '+'
+                && character != '-'
+                && character != '.')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string GetCodeCommandForLaunch(string configuredCodeCommand, string resolvedCodeCommand, string? launchPath)
+    {
+        if (string.IsNullOrWhiteSpace(launchPath) || !IsRemoteOrVirtualUri(launchPath))
+        {
+            return resolvedCodeCommand;
+        }
+
+        return ResolveVsCodeCliCommand(configuredCodeCommand, resolvedCodeCommand) ?? resolvedCodeCommand;
+    }
+
+    private static bool CanTrackLaunchedProcess(string codeCommand)
+    {
+        return string.Equals(Path.GetExtension(codeCommand), ".exe", StringComparison.OrdinalIgnoreCase)
+            && !IsVsCodeWrapperScript(codeCommand);
+    }
+
+    private static string? ResolveVsCodeCliCommand(string configuredCodeCommand, string resolvedCodeCommand)
+    {
+        var normalizedConfigured = string.IsNullOrWhiteSpace(configuredCodeCommand)
+            ? "code"
+            : configuredCodeCommand.Trim().Trim('"');
+
+        if (File.Exists(normalizedConfigured) && IsVsCodeWrapperScript(normalizedConfigured))
+        {
+            return normalizedConfigured;
+        }
+
+        if (IsVsCodeCliAlias(normalizedConfigured))
+        {
+            foreach (var pathCandidate in GetPathCandidates(normalizedConfigured))
+            {
+                if (File.Exists(pathCandidate) && IsVsCodeWrapperScript(pathCandidate))
+                {
+                    return pathCandidate;
+                }
+            }
+
+            foreach (var wellKnownPath in GetWellKnownCodePaths(normalizedConfigured))
+            {
+                if (File.Exists(wellKnownPath) && IsVsCodeWrapperScript(wellKnownPath))
+                {
+                    return wellKnownPath;
+                }
+            }
+        }
+
+        return TryResolveVsCodeCliWrapper(resolvedCodeCommand);
+    }
+
+    private static string? TryResolveVsCodeCliWrapper(string commandPath)
+    {
+        if (string.IsNullOrWhiteSpace(commandPath))
+        {
+            return null;
+        }
+
+        if (IsVsCodeWrapperScript(commandPath))
+        {
+            return commandPath;
+        }
+
+        var wrapperName = GetPreferredWrapperName(commandPath);
+        if (string.IsNullOrWhiteSpace(wrapperName))
+        {
+            return null;
+        }
+
+        var directory = Path.GetDirectoryName(commandPath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return null;
+        }
+
+        var wrapperPath = Path.Combine(directory, "bin", wrapperName);
+        return File.Exists(wrapperPath) ? wrapperPath : null;
+    }
+
+    private static bool ShouldAttemptRemoteFallback(AppConfig config, string? launchPath)
+    {
+        return config.UseDedicatedUserDataDirs
+            && !string.IsNullOrWhiteSpace(launchPath)
+            && IsRemoteOrVirtualUri(launchPath);
+    }
+
+    private static TimeSpan GetRemoteReconnectTimeout(AppConfig config, TimeSpan totalTimeout)
+    {
+        var reconnectTimeout = TimeSpan.FromSeconds(config.RemoteReconnectTimeoutSeconds);
+        if (reconnectTimeout >= totalTimeout)
+        {
+            return totalTimeout > TimeSpan.FromSeconds(1)
+                ? totalTimeout - TimeSpan.FromSeconds(1)
+                : totalTimeout;
+        }
+
+        return reconnectTimeout;
+    }
+
+    private static TimeSpan GetRemainingTime(TimeSpan budget, Stopwatch stopwatch)
+    {
+        var remaining = budget - stopwatch.Elapsed;
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    private static void TryTerminateLaunchProcess(uint? processId, string slotName)
+    {
+        if (!processId.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById((int)processId.Value);
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            DiagnosticLog.Write($"Killing failed VS Code launch {processId.Value} for slot {slotName} before fallback.");
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+        }
+        catch (ArgumentException)
+        {
+            // Process no longer exists
+        }
+        catch (InvalidOperationException)
+        {
+            // Process already exited
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            DiagnosticLog.Write($"Failed to kill launch process {processId.Value} for slot {slotName}: {ex.Message}");
+        }
     }
 
     private static string? ResolveCodeCommand(string codeCommand)
@@ -458,6 +788,22 @@ public sealed class VscodeLauncher
             || fileName.Equals("code-insiders.bat", StringComparison.OrdinalIgnoreCase))
         {
             return "Code - Insiders.exe";
+        }
+
+        return null;
+    }
+
+    private static string? GetPreferredWrapperName(string commandPath)
+    {
+        var fileName = Path.GetFileName(commandPath);
+        if (fileName.Equals("Code.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return "code.cmd";
+        }
+
+        if (fileName.Equals("Code - Insiders.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return "code-insiders.cmd";
         }
 
         return null;
@@ -567,6 +913,8 @@ public sealed class VscodeLauncher
 
     [DllImport("user32.dll")]
     private static extern bool UnhookWinEvent(IntPtr winEventHook);
+
+    private readonly record struct UriParts(string Scheme, string Authority, string AbsolutePath, string AbsoluteUri);
 }
 
 public sealed record WindowAssignment(WindowSlot Slot, WindowInfo Window);

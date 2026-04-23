@@ -17,6 +17,7 @@ public sealed class AiStatusDetector
     private readonly VscodeChatUiStatusReader _uiStatusReader = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastRunningSeenBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _completedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _confirmationRequestedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dismissedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _slotStartedAtByName = new(StringComparer.OrdinalIgnoreCase);
 
@@ -78,11 +79,14 @@ public sealed class AiStatusDetector
         {
             _lastRunningSeenBySlot[slotKey] = now;
             _completedAtBySlot.TryRemove(slotKey, out _);
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
             return uiEvidence;
         }
 
         if (uiEvidence is { Status: AiStatus.WaitingForConfirmation })
         {
+            _confirmationRequestedAtBySlot[slotKey] = uiEvidence.EventAt ?? now;
+            _completedAtBySlot.TryRemove(slotKey, out _);
             return uiEvidence;
         }
 
@@ -106,26 +110,21 @@ public sealed class AiStatusDetector
             if (evidences.Count > 0)
             {
                 var bestEvidence = GetBestEvidence(evidences);
-                if (bestEvidence.Status == AiStatus.Running)
-                {
-                    _lastRunningSeenBySlot[slotKey] = bestEvidence.EventAt ?? now;
-                    _completedAtBySlot.TryRemove(slotKey, out _);
-                }
-
+                RememberDetectedState(slotKey, bestEvidence, now);
                 return bestEvidence;
             }
 
             var codexContinuation = TryDetectCodexStreamContinuation(slotKey, slotStartedAt, userDataDirectory!);
             if (codexContinuation is not null)
             {
-                if (codexContinuation.Status == AiStatus.Running)
-                {
-                    _lastRunningSeenBySlot[slotKey] = codexContinuation.EventAt ?? now;
-                    _completedAtBySlot.TryRemove(slotKey, out _);
-                }
-
+                RememberDetectedState(slotKey, codexContinuation, now);
                 return codexContinuation;
             }
+        }
+
+        if (_confirmationRequestedAtBySlot.TryGetValue(slotKey, out var confirmationRequestedAt))
+        {
+            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, "VS Code UI: 直前のユーザー確認待ちを保持しています。", confirmationRequestedAt);
         }
 
         if (_completedAtBySlot.TryGetValue(slotKey, out var completedAt))
@@ -137,6 +136,7 @@ public sealed class AiStatusDetector
         {
             _lastRunningSeenBySlot.TryRemove(slotKey, out _);
             _completedAtBySlot[slotKey] = now;
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
             return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI: {lastRunningSeenAt:HH:mm:ss} の実行表示が消えました。", now);
         }
 
@@ -153,6 +153,7 @@ public sealed class AiStatusDetector
         var slotKey = GetSlotKey(slot);
         _lastRunningSeenBySlot.TryRemove(slotKey, out _);
         _completedAtBySlot.TryRemove(slotKey, out _);
+        _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
         _dismissedAtBySlot[slotKey] = DateTimeOffset.Now;
     }
 
@@ -166,6 +167,7 @@ public sealed class AiStatusDetector
     {
         SwapPrefixedEntries(_lastRunningSeenBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_completedAtBySlot, sourceSlotName, targetSlotName);
+        SwapPrefixedEntries(_confirmationRequestedAtBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_dismissedAtBySlot, sourceSlotName, targetSlotName);
 
         var hasSource = _slotStartedAtByName.TryRemove(sourceSlotName, out var sourceStarted);
@@ -187,6 +189,34 @@ public sealed class AiStatusDetector
 
         foreach (var entry in entriesA) dict[$"{slotNameB}:{entry.Key[prefixA.Length..]}"] = entry.Value;
         foreach (var entry in entriesB) dict[$"{slotNameA}:{entry.Key[prefixB.Length..]}"] = entry.Value;
+    }
+
+    private void RememberDetectedState(string slotKey, AiStatusSnapshot snapshot, DateTimeOffset fallbackAt)
+    {
+        var eventAt = snapshot.EventAt ?? fallbackAt;
+        switch (snapshot.Status)
+        {
+            case AiStatus.Running:
+                _lastRunningSeenBySlot[slotKey] = eventAt;
+                _completedAtBySlot.TryRemove(slotKey, out _);
+                _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+                break;
+            case AiStatus.WaitingForConfirmation:
+                _confirmationRequestedAtBySlot[slotKey] = eventAt;
+                _completedAtBySlot.TryRemove(slotKey, out _);
+                break;
+            case AiStatus.Completed:
+                _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+                _completedAtBySlot[slotKey] = eventAt;
+                _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+                break;
+            case AiStatus.Error:
+            case AiStatus.NeedsAttention:
+            case AiStatus.Idle:
+                _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+                _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+                break;
+        }
     }
 
     private AiStatusSnapshot KeepOnlyCurrentEvidence(
@@ -268,6 +298,10 @@ public sealed class AiStatusDetector
         {
             _completedAtBySlot.TryRemove(key, out _);
         }
+        foreach (var key in _confirmationRequestedAtBySlot.Keys.Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            _confirmationRequestedAtBySlot.TryRemove(key, out _);
+        }
 
         foreach (var key in _dismissedAtBySlot.Keys.Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
         {
@@ -279,8 +313,8 @@ public sealed class AiStatusDetector
     {
         return evidence.Status switch
         {
+            AiStatus.WaitingForConfirmation => 6,
             AiStatus.Running => 5,
-            AiStatus.WaitingForConfirmation => 4,
             AiStatus.NeedsAttention => 3,
             AiStatus.Error => 2,
             AiStatus.Completed => 1,
@@ -323,8 +357,7 @@ public sealed class AiStatusDetector
         }
 
         if (recentEvidence.LastConfirmationSignalAt is { } confirmAt
-            && confirmAt >= lastRunningSeenAt
-            && (!recentEvidence.LastActivitySignalAt.HasValue || recentEvidence.LastActivitySignalAt.Value <= confirmAt))
+            && confirmAt >= lastRunningSeenAt)
         {
             return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{source.DisplayName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。", confirmAt);
         }
@@ -373,12 +406,7 @@ public sealed class AiStatusDetector
 
         if (carryForwardEvidence.LastConfirmationSignalAt is { } confirmAt && confirmAt >= runningAt.Value)
         {
-            var resumedAfterConfirm = carryForwardEvidence.LastActivitySignalAt.HasValue
-                && carryForwardEvidence.LastActivitySignalAt.Value > confirmAt;
-            if (!resumedAfterConfirm)
-            {
-                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{source.DisplayName}: approval requested at {confirmAt:HH:mm:ss}.", confirmAt);
-            }
+            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{source.DisplayName}: approval requested at {confirmAt:HH:mm:ss}.", confirmAt);
         }
 
         return new AiStatusSnapshot(AiStatus.Running, $"{source.DisplayName}: carried forward from current session activity at {activityAt:HH:mm:ss}.", activityAt, quietWindow);
@@ -662,11 +690,7 @@ public sealed class AiStatusDetector
 
             if (evidence.LastConfirmationSignalAt is { } confirmAt && confirmAt >= runningAt)
             {
-                var resumedAfterConfirm = evidence.LastActivitySignalAt.HasValue && evidence.LastActivitySignalAt.Value > confirmAt;
-                if (!resumedAfterConfirm)
-                {
-                    return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{evidence.SourceName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。", confirmAt);
-                }
+                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{evidence.SourceName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。", confirmAt);
             }
 
             if (evidence.RunningSignalQuietCompletionWindow is { } quietWindow)

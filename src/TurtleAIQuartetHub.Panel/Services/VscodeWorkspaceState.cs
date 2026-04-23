@@ -67,7 +67,7 @@ public static class VscodeWorkspaceState
         return null;
     }
 
-    private static bool IsWorkspaceVisibleInWindowTitle(string? windowTitle, string workspacePath)
+    public static bool IsWorkspaceVisibleInWindowTitle(string? windowTitle, string workspacePath)
     {
         if (string.IsNullOrWhiteSpace(windowTitle))
         {
@@ -200,23 +200,74 @@ public static class VscodeWorkspaceState
         return uriPath.Replace('/', Path.DirectorySeparatorChar).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
-    private static bool TryCreateNonFileUri(string value, out Uri uri)
+    private static bool TryCreateNonFileUri(string value, out NonFileUriInfo uri)
     {
-        uri = null!;
+        uri = default;
         if (IsWindowsPath(value) || value.StartsWith(@"\\", StringComparison.Ordinal))
         {
             return false;
         }
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsedUri)
-            || parsedUri is null
-            || string.IsNullOrWhiteSpace(parsedUri.Scheme)
-            || parsedUri.IsFile)
+        if (Uri.TryCreate(value, UriKind.Absolute, out var parsedUri)
+            && parsedUri is not null
+            && !string.IsNullOrWhiteSpace(parsedUri.Scheme)
+            && !parsedUri.IsFile)
+        {
+            uri = new NonFileUriInfo(parsedUri.Scheme, parsedUri.Authority, parsedUri.AbsolutePath, parsedUri.AbsoluteUri);
+            return true;
+        }
+
+        return TryParseUriParts(value, out uri)
+            && !string.Equals(uri.Scheme, "file", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryParseUriParts(string value, out NonFileUriInfo uri)
+    {
+        uri = default;
+        if (string.IsNullOrWhiteSpace(value))
         {
             return false;
         }
 
-        uri = parsedUri;
+        var schemeSeparatorIndex = value.IndexOf("://", StringComparison.Ordinal);
+        if (schemeSeparatorIndex <= 0)
+        {
+            return false;
+        }
+
+        var scheme = value[..schemeSeparatorIndex];
+        if (!IsValidUriScheme(scheme))
+        {
+            return false;
+        }
+
+        var remainder = value[(schemeSeparatorIndex + 3)..];
+        var pathIndex = remainder.IndexOf('/');
+        var authority = pathIndex >= 0 ? remainder[..pathIndex] : remainder;
+        var absolutePath = pathIndex >= 0 ? remainder[pathIndex..] : "/";
+        uri = new NonFileUriInfo(scheme, authority, absolutePath, value);
+        return true;
+    }
+
+    private static bool IsValidUriScheme(string scheme)
+    {
+        if (string.IsNullOrWhiteSpace(scheme) || !char.IsLetter(scheme[0]))
+        {
+            return false;
+        }
+
+        for (var index = 1; index < scheme.Length; index++)
+        {
+            var character = scheme[index];
+            if (!char.IsLetterOrDigit(character)
+                && character != '+'
+                && character != '-'
+                && character != '.')
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -240,4 +291,6 @@ public static class VscodeWorkspaceState
             && value[1] == ':'
             && (value[2] == '\\' || value[2] == '/');
     }
+
+    private readonly record struct NonFileUriInfo(string Scheme, string Authority, string AbsolutePath, string AbsoluteUri);
 }

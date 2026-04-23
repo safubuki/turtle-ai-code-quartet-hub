@@ -31,6 +31,8 @@ public sealed class AppConfig
 
     public int LaunchTimeoutSeconds { get; set; } = 40;
 
+    public int RemoteReconnectTimeoutSeconds { get; set; } = 15;
+
     public List<SlotConfig> Slots { get; set; } = DefaultSlots();
 
     [JsonIgnore]
@@ -66,6 +68,7 @@ public sealed class AppConfig
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TurtleAIQuartetHub")
             : Environment.ExpandEnvironmentVariables(StateDirectory.Trim());
         LaunchTimeoutSeconds = Math.Clamp(LaunchTimeoutSeconds, 5, 120);
+        RemoteReconnectTimeoutSeconds = Math.Clamp(RemoteReconnectTimeoutSeconds, 1, LaunchTimeoutSeconds);
 
         var configuredSlots = Slots ?? DefaultSlots();
         Slots = configuredSlots

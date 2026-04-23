@@ -6,6 +6,7 @@
   "inheritMainUserState": true,
   "reopenLastWorkspace": true,
   "launchTimeoutSeconds": 40,
+  "remoteReconnectTimeoutSeconds": 15,
   "slots": [
     {
       "name": "A",
