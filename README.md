@@ -41,6 +41,13 @@ AI 状態は、VS Code ウィンドウの UI Automation とスロット別 user-
 
 低スペックPCでも起動しやすくするため、パネルは WPF の高負荷な影描画を使わず、起動時はソフトウェア描画で安定性を優先します。VS Code 起動前の user-data-dir 同期やウィンドウ検出も UI スレッドを塞がないようにバックグラウンドで処理します。
 
+## 公開準備とプライバシー
+
+- [PRIVACY.md](PRIVACY.md) に、Store 公開前レビュー用のプライバシーポリシー草案を用意しています。
+- [docs/store-readiness.md](docs/store-readiness.md) に、Microsoft Store 公開前のチェックリストと残タスクをまとめています。
+- [docs/store-listing-draft.md](docs/store-listing-draft.md) に、Store 掲載文案の下書きをまとめています。
+- [docs/telemetry-notes.md](docs/telemetry-notes.md) に、AI 状態検出で参照するローカル情報と、外部送信しない方針を整理しています。
+
 ## 必要環境
 
 - Windows
@@ -107,16 +114,19 @@ dotnet run --project .\tools\AiStatusSmoke\AiStatusSmoke.csproj -- --json
 設定ファイルを作る場合:
 
 ```powershell
-Copy-Item .\config\turtle-ai-quartet-hub.example.json .\config\turtle-ai-quartet-hub.json
+$configDir = Join-Path $env:LOCALAPPDATA 'TurtleAIQuartetHub\config'
+New-Item -ItemType Directory -Force $configDir
+Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'turtle-ai-quartet-hub.json')
 ```
 
 アプリは次の順で設定を探します。
 
-1. `config\turtle-ai-quartet-hub.json`
-2. `config\turtle-ai-quartet-hub.example.json`
-3. アプリ内の既定値
+1. `%LOCALAPPDATA%\TurtleAIQuartetHub\config\turtle-ai-quartet-hub.json`
+2. `config\turtle-ai-quartet-hub.json`
+3. `config\turtle-ai-quartet-hub.example.json`
+4. アプリ内の既定値
 
-`config\turtle-ai-quartet-hub.json` は、スロット名、初期ワークスペースパス、起動タイムアウト、remote 再接続の待ち時間、AI 状態更新間隔、スロット別 user-data-dir の有無など、配布時にも固定したい設定を置く場所です。`launchTimeoutSeconds` の既定値は 40 秒、`remoteReconnectTimeoutSeconds` の既定値は 15 秒、`statusRefreshIntervalMilliseconds` の既定値は 750ms です。
+`%LOCALAPPDATA%` 側の `turtle-ai-quartet-hub.json` は、Store / MSIX 配布のようにアプリのインストール先がユーザー編集に向かない場合の優先設定です。スロット名、初期ワークスペースパス、起動タイムアウト、remote 再接続の待ち時間、AI 状態更新間隔、スロット別 user-data-dir の有無などを置けます。`launchTimeoutSeconds` の既定値は 40 秒、`remoteReconnectTimeoutSeconds` の既定値は 15 秒、`statusRefreshIntervalMilliseconds` の既定値は 750ms です。
 
 `inheritMainUserState` を有効にすると、専用 user-data-dir を使う場合でも通常の VS Code の `User/globalStorage`、設定、スニペット、`prompts` を起動前に取り込みます。低スペック PC での起動遅延を避けるため、`Local Storage`、`Session Storage`、`WebStorage`、`Network`、`Service Worker`、`Partitions` などの Chromium 系ストレージはコピーしません。
 

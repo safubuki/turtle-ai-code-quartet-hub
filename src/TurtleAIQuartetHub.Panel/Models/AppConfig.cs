@@ -25,9 +25,7 @@ public sealed class AppConfig
 
     public bool ReopenLastWorkspace { get; set; } = true;
 
-    public string StateDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TurtleAIQuartetHub");
+    public string StateDirectory { get; set; } = GetDefaultStateDirectory();
 
     public int LaunchTimeoutSeconds { get; set; } = 40;
 
@@ -67,7 +65,7 @@ public sealed class AppConfig
         Monitor = string.IsNullOrWhiteSpace(Monitor) ? "primary" : Monitor.Trim();
         Gap = Math.Clamp(Gap, 0, 64);
         StateDirectory = string.IsNullOrWhiteSpace(StateDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TurtleAIQuartetHub")
+            ? GetDefaultStateDirectory()
             : Environment.ExpandEnvironmentVariables(StateDirectory.Trim());
         LaunchTimeoutSeconds = Math.Clamp(LaunchTimeoutSeconds, 5, 120);
         RemoteReconnectTimeoutSeconds = Math.Clamp(RemoteReconnectTimeoutSeconds, 1, LaunchTimeoutSeconds);
@@ -93,6 +91,8 @@ public sealed class AppConfig
 
     private static IEnumerable<string> CandidatePaths()
     {
+        yield return Path.Combine(GetDefaultStateDirectory(), "config", "turtle-ai-quartet-hub.json");
+
         var roots = GetSearchRoots().ToList();
 
         foreach (var root in roots)
@@ -104,6 +104,13 @@ public sealed class AppConfig
         {
             yield return Path.Combine(root, "config", "turtle-ai-quartet-hub.example.json");
         }
+    }
+
+    private static string GetDefaultStateDirectory()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TurtleAIQuartetHub");
     }
 
     private static IEnumerable<string> GetSearchRoots()

@@ -1,30 +1,27 @@
-# Telemetry Notes
+# テレメトリとローカル状態検出メモ
 
-Phase 1 does not ingest Copilot, Codex, terminal, or OpenTelemetry events.
+Turtle AI Code Quartet Hub は、アプリ独自のテレメトリ送信を実装していません。
 
-The next practical step is a VS Code helper extension that writes heartbeat and terminal execution state to a local status file. That provides a stable slot-to-window bridge before adding an OTLP receiver for Copilot Chat telemetry.
+現在のパネルは、次のローカル情報だけを使って状態を推定します。
 
-Current panel behavior:
+- ウィンドウの起動状態は Win32 HWND の有無から判定します。
+- ワークスペース表示は VS Code ウィンドウタイトルとスロット保存状態から推定します。
+- AI 状態は、表示中の VS Code UI Automation 情報と、スロット別 VS Code user-data-dir にある一部のローカル拡張ログから推定します。
+- Codex と GitHub Copilot Chat のログは、実行中、完了、確認待ちなどの状態マーカーを探すために直近行だけを読みます。
+- 生の拡張ログをアプリの状態ファイルへコピーせず、公開者へ送信しません。
+- 不確かな状態は保守的に扱います。明示的な確認・承認シグナルがない限り `AI 確認中` にはしません。
 
-- `AI 待機中` は検知結果ではなく、明示的な根拠が取れないときの既定表示。
-- Window `Ready` / `Missing` は Win32 HWND の有無から判定する。
-- ターミナルや agent の厳密な実行状態はまだ直接取得していない。
-- エディタタブや拡張機能状態は Win32 だけでは安定取得できないため、必要なら VS Code helper extension を使う。
-- 可視チャット UI の `思考中` / `考え中` / `Thinking` や明示的な停止ボタンは running hint として扱う。
-- Codex fallback ではスロット別 `openai.chatgpt/Codex.log` を読み、起動時の `Conversation created` や単発の `thread-stream-state-changed` だけでは `Running` にしない。明示的な生成ログまたは直前の実行中状態の継続としてのみストリーム更新を使い、`commandExecution/requestApproval` は開始イベントが末尾から消えた後でも confirmation-waiting の根拠に使う。
-- UI Automation の一時的な読み落としでは直前の `Running` を短時間保持し、Codex のログ静止は SSH 接続時の遅延を見込んで十数秒の猶予後に `Completed` へ切り替える。
+実行時データはローカルの次の場所に保存します。
 
-Panel affordances:
+```text
+%LOCALAPPDATA%\TurtleAIQuartetHub\
+```
 
-- パネルは `標準` と `縮小` の 2 モードを持ち、縮小時は A-D の小枠で AI 状態を点灯・点滅し、簡易ボタン本体の枠はフォーカス表示に使う。
-- 縮小ボタンとタスクバー JumpList の A-D 操作は、対象スロットのフォーカス切替とパネルの標準/縮小表示を連動させる。
-- タスクバー右クリックメニューは単一起動の既存インスタンスにコマンド転送し、2個目のパネルは開かない。
-- 管理中の VS Code ウィンドウには AI 状態に応じた発光フレームを重ね、遠目でも状態を把握できるようにする。
+今後の推奨実装順:
 
-Recommended implementation order:
+1. スロットごとに heartbeat ファイルを書き出す VS Code 補助拡張を追加する。
+2. 補助拡張から、ワークスペース名、アクティブエディタ、インストール済み拡張 ID、ターミナル実行状態を報告する。
+3. 既存のスロット別 `--user-data-dir` を使ってスロット識別を安定させる。
+4. Copilot / OpenTelemetry 連携は、heartbeat 経路が安定してから追加する。
+5. 新しいローカルデータ参照元を追加した場合は、プライバシー文書と Store 掲載文案を必ず更新する。
 
-1. Add a VS Code helper extension that writes one heartbeat file per slot.
-2. Report workspace title, active editor, installed extension IDs, and terminal shell execution start/end.
-3. Map slot identity through the slot-specific `--user-data-dir` already used by the panel.
-4. Add Copilot/OpenTelemetry ingestion only after the slot heartbeat path is stable.
-5. Keep uncertain states as `Needs attention`, not `Waiting for confirmation`, unless the source is explicit.
