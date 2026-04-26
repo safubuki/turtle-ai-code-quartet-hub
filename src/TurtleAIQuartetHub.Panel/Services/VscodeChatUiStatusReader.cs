@@ -7,7 +7,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 public sealed class VscodeChatUiStatusReader
 {
     private const int MaxElementsToInspect = 6000;
-    private const int MaxTextLengthForStatus = 48;
+    private const int MaxTextLengthForStatus = 100;
     private const int MaxTextLengthForConfirmation = 140;
 
     private static readonly string[] RunningStatusExactTexts =
@@ -31,7 +31,12 @@ public sealed class VscodeChatUiStatusReader
         "Planning",
         "Thinking",
         "Working",
-        "Generating"
+        "Generating",
+        "Ran ",
+        "ran ",
+        "実行済みコマンド",
+        "ウェブを",
+        "編集済みファイル"
     ];
 
     private static readonly string[] StopActionTexts =
@@ -269,7 +274,9 @@ public sealed class VscodeChatUiStatusReader
 
         var normalized = text.TrimEnd('.', '…').Trim();
         return RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase))
-            || RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
+            || RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase))
+            || normalized.Contains("個のファイルを編集しました")
+            || (normalized.Contains("コマンド") && normalized.Contains("ran ", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsStopActionName(string value)

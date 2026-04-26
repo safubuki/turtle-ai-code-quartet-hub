@@ -104,6 +104,28 @@ public sealed class AiStatusDetector
         var uiEvidence = _uiStatusReader.TryRead(slot);
         if (uiEvidence is { Status: AiStatus.Running })
         {
+            if (canReadLogs)
+            {
+                var source = LogSources.FirstOrDefault(s => string.Equals(s.DisplayName, "Codex", StringComparison.Ordinal));
+                if (source != null)
+                {
+                    var recentEvidence = ReadLatestEvidence(userDataDirectory!, source);
+                    var quietWindow = recentEvidence.RunningSignalQuietCompletionWindow ?? CodexStreamQuietCompletionWindow;
+                    var activityAt = recentEvidence.LastActivitySignalAt ?? recentEvidence.LastEventAt;
+
+                    // ログに何らかのイベントがあり、かつ最後のストリーム活動から一定時間経過している場合は
+                    // UIが「Ran 3 commands」等の過去の履歴に反応しているとみなして Completed とする。
+                    if (activityAt.HasValue && now - activityAt.Value > quietWindow)
+                    {
+                        var detectedCompletedAt = activityAt.Value;
+                        _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+                        _completedAtBySlot[slotKey] = detectedCompletedAt;
+                        _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+                        return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI は実行中を示していますが、{detectedCompletedAt:HH:mm:ss} 以降のストリーム停止を検出しました。", detectedCompletedAt, quietWindow);
+                    }
+                }
+            }
+
             _lastRunningSeenBySlot[slotKey] = now;
             _completedAtBySlot.TryRemove(slotKey, out _);
             _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
