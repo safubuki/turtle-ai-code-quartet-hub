@@ -189,7 +189,11 @@ file static class WindowMatchResolver
 
         AddFragmentsFromWorkspace(slot.EffectiveWorkspacePath, 140, "saved-workspace", fragments, seen);
         AddFragmentsFromWorkspace(slot.AssignedPath, 110, "assigned-path", fragments, seen);
-        AddFragmentsFromWorkspace(VscodeWorkspaceState.TryReadLastWorkspacePath(slot.Name, config), 150, "workspace-storage", fragments, seen);
+
+        if (!slot.SavedWorkspaceConfirmed || string.IsNullOrWhiteSpace(slot.SavedWorkspacePath))
+        {
+            AddFragmentsFromWorkspace(VscodeWorkspaceState.TryReadLastWorkspacePath(slot.Name, config), 90, "workspace-storage", fragments, seen);
+        }
 
         var trimmedTitle = slot.PanelTitle.Trim();
         if (!string.IsNullOrWhiteSpace(trimmedTitle) && seen.Add(trimmedTitle))

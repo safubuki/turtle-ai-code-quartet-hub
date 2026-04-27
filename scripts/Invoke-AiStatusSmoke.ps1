@@ -15,6 +15,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$smokeProjectPath = Join-Path $repoRoot 'tools\AiStatusSmoke\AiStatusSmoke.csproj'
+$smokeOutputPath = Join-Path $repoRoot '.build-tmp\invoke-ai-status-smoke\bin'
+$smokeDllPath = Join-Path $smokeOutputPath 'AiStatusSmoke.dll'
+
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 
@@ -34,8 +39,20 @@ public static class NativeMethods
 
 Add-Type -TypeDefinition $signature | Out-Null
 
+function Ensure-SmokeTool {
+    New-Item -ItemType Directory -Force -Path $smokeOutputPath | Out-Null
+    & dotnet build $smokeProjectPath -o $smokeOutputPath | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Failed to build AiStatusSmoke.'
+    }
+
+    if (-not (Test-Path $smokeDllPath)) {
+        throw 'AiStatusSmoke.dll was not produced.'
+    }
+}
+
 function Get-ProbeResult {
-    $json = dotnet run --project .\tools\AiStatusSmoke\AiStatusSmoke.csproj -- --slot $Slot --json
+    $json = & dotnet $smokeDllPath --slot $Slot --json
     $result = $json | ConvertFrom-Json
     if ($result -is [System.Array]) {
         return $result[0]
@@ -106,7 +123,7 @@ function Show-UiHints {
         return
     }
 
-    $keywords = '思考','考え','Working','Running','Generating','Thinking','Stop','停止','Continue','Allow','承認','Try Again','実行中','待機中','完了','codex','copilot','agent'
+    $keywords = @('Working', 'Running', 'Generating', 'Thinking', 'Stop', 'Continue', 'Allow', 'Try Again', 'Optimizing', 'Compiling', 'codex', 'copilot', 'agent', 'response')
     $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
     $queue = [System.Collections.Generic.Queue[System.Windows.Automation.AutomationElement]]::new()
     $queue.Enqueue($root)
@@ -155,7 +172,7 @@ function Focus-WindowAndInput {
 
     $input = Find-ChatInputElement -Handle $Handle
     if ($null -eq $input) {
-        throw "チャット入力欄を見つけられませんでした。対象ウィンドウでチャット入力欄を開いた状態にしてください。"
+        throw 'Chat input element was not found. Open the chat input in the target window and try again.'
     }
 
     $input.SetFocus()
@@ -170,13 +187,15 @@ function Focus-WindowAndInput {
     $shell.SendKeys('~')
 }
 
+Ensure-SmokeTool
+
 $probe = Get-ProbeResult
 if ($null -eq $probe) {
-    throw "スロット $Slot の検証情報を取得できませんでした。"
+    throw "Probe result for slot $Slot was not available."
 }
 
 if (-not [bool]$probe.Resolved -or [int64]$probe.WindowHandle -eq 0) {
-    throw "スロット $Slot の VS Code ウィンドウを解決できませんでした。現在のウィンドウタイトルと保存済みワークスペース名を確認してください。"
+    throw "The VS Code window for slot $Slot could not be resolved. Check the current window title and saved workspace name."
 }
 
 $handle = [IntPtr]([int64]$probe.WindowHandle)
@@ -199,7 +218,7 @@ while (((Get-Date) - $startAt).TotalSeconds -lt $TimeoutSeconds) {
     }
 
     if (-not [bool]$probe.Resolved) {
-        Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Slot] unresolved - VS Code ウィンドウを再解決できませんでした。"
+        Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Slot] unresolved - VS Code window could not be resolved again."
         break
     }
 

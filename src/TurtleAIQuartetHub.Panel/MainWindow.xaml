@@ -421,6 +421,136 @@
           <Setter Property="Background" Value="#1A211D" />
           <Setter Property="BorderBrush" Value="#3D4E45" />
         </Trigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsFocused}" Value="False" />
+            <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Running}" />
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Background" Value="#123222" />
+          <Setter Property="BorderBrush" Value="#45D483" />
+          <Setter Property="BorderThickness" Value="1.4" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#45D483"
+                                BlurRadius="10"
+                                ShadowDepth="0"
+                                Opacity="0.34" />
+            </Setter.Value>
+          </Setter>
+          <MultiDataTrigger.EnterActions>
+            <BeginStoryboard Name="SlotCardRunningPulse">
+              <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                To="#17482F"
+                                Duration="0:0:0.68"
+                                EasingFunction="{StaticResource LedEase}" />
+                <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                To="#7EF3AF"
+                                Duration="0:0:0.68"
+                                EasingFunction="{StaticResource LedEase}" />
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 To="0.88"
+                                 Duration="0:0:0.68"
+                                 EasingFunction="{StaticResource LedEase}" />
+              </Storyboard>
+            </BeginStoryboard>
+          </MultiDataTrigger.EnterActions>
+          <MultiDataTrigger.ExitActions>
+            <RemoveStoryboard BeginStoryboardName="SlotCardRunningPulse" />
+          </MultiDataTrigger.ExitActions>
+        </MultiDataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsFocused}" Value="False" />
+            <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Completed}" />
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Background" Value="#123044" />
+          <Setter Property="BorderBrush" Value="#43C8FF" />
+          <Setter Property="BorderThickness" Value="1.35" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#43C8FF"
+                                BlurRadius="10"
+                                ShadowDepth="0"
+                                Opacity="0.32" />
+            </Setter.Value>
+          </Setter>
+          <MultiDataTrigger.EnterActions>
+            <BeginStoryboard Name="SlotCardCompletedPulse">
+              <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                To="#19536D"
+                                Duration="0:0:2.1"
+                                EasingFunction="{StaticResource LedEase}" />
+                <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                To="#7CDBFF"
+                                Duration="0:0:2.1"
+                                EasingFunction="{StaticResource LedEase}" />
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 To="0.92"
+                                 Duration="0:0:2.1"
+                                 EasingFunction="{StaticResource LedEase}" />
+              </Storyboard>
+            </BeginStoryboard>
+          </MultiDataTrigger.EnterActions>
+          <MultiDataTrigger.ExitActions>
+            <RemoveStoryboard BeginStoryboardName="SlotCardCompletedPulse" />
+          </MultiDataTrigger.ExitActions>
+        </MultiDataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsFocused}" Value="False" />
+            <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.WaitingForConfirmation}" />
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Background" Value="#2E2813" />
+          <Setter Property="BorderBrush" Value="#F2CA57" />
+          <Setter Property="BorderThickness" Value="1.4" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#F2CA57"
+                                BlurRadius="10"
+                                ShadowDepth="0"
+                                Opacity="0.34" />
+            </Setter.Value>
+          </Setter>
+          <MultiDataTrigger.EnterActions>
+            <BeginStoryboard Name="SlotCardConfirmPulse">
+              <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                To="#3D3418"
+                                Duration="0:0:1.4"
+                                EasingFunction="{StaticResource LedEase}" />
+                <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                To="#FFE081"
+                                Duration="0:0:1.4"
+                                EasingFunction="{StaticResource LedEase}" />
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 To="0.9"
+                                 Duration="0:0:1.4"
+                                 EasingFunction="{StaticResource LedEase}" />
+              </Storyboard>
+            </BeginStoryboard>
+          </MultiDataTrigger.EnterActions>
+          <MultiDataTrigger.ExitActions>
+            <RemoveStoryboard BeginStoryboardName="SlotCardConfirmPulse" />
+          </MultiDataTrigger.ExitActions>
+        </MultiDataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsFocused}" Value="False" />
+            <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.NeedsAttention}" />
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Background" Value="#242014" />
+          <Setter Property="BorderBrush" Value="#C9A441" />
+        </MultiDataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsFocused}" Value="False" />
+            <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Error}" />
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Background" Value="#261918" />
+          <Setter Property="BorderBrush" Value="#E37B70" />
+        </MultiDataTrigger>
         <DataTrigger Binding="{Binding IsFocused}" Value="True">
           <Setter Property="Background" Value="#18231D" />
           <Setter Property="BorderBrush" Value="#45D483" />

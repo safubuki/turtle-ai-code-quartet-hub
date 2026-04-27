@@ -320,6 +320,23 @@ public sealed class WindowArranger
             OverlayFlags);
     }
 
+    public bool SetWindowBounds(IntPtr windowHandle, WindowBounds bounds)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(
+            windowHandle,
+            IntPtr.Zero,
+            bounds.Left,
+            bounds.Top,
+            Math.Max(1, bounds.Width),
+            Math.Max(1, bounds.Height),
+            ArrangeFlags);
+    }
+
     private static void RestoreForResize(IntPtr windowHandle)
     {
         if (IsIconic(windowHandle) || IsZoomed(windowHandle))

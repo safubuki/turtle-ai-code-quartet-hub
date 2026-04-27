@@ -8,6 +8,12 @@ config/turtle-ai-quartet-hub.json
 dist/
 AppPackages/
 TestResults/
+**/.build-tmp/
+inspect_ui*.ps1
+smoke*.json
+output.txt
+ui_result.txt
+scripts/Invoke-AiStatusSmoke.*.ps1
 *.appinstaller
 *.appx
 *.appxupload

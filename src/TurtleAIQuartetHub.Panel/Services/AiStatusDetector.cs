@@ -8,10 +8,12 @@ namespace TurtleAIQuartetHub.Panel.Services;
 public sealed class AiStatusDetector
 {
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
-    private static readonly TimeSpan CodexStreamQuietCompletionWindow = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan CodexStreamQuietCompletionWindow = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan UiRunningObservationHoldWindow = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan CrossSourceEvidenceMergeWindow = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan ConfirmationObservationHoldWindow = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan LogConfirmationFreshnessWindow = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan LogCompletionObservationWindow = TimeSpan.FromSeconds(45);
     private const int MaxRecentLogBytes = 96 * 1024;
     private const int MaxCandidateLogFilesPerSource = 6;
     private static readonly string[] ExtensionHostDirectoryNames = ["exthost", "remoteexthost", "remoteexhost"];
@@ -34,6 +36,7 @@ public sealed class AiStatusDetector
             ["Activating Codex extension", "Initialize received", "method=client-status-changed"],
             [],
             [],
+            [],
             CodexStreamQuietCompletionWindow,
             ["ephemeral-generation"],
             ["thread-stream-state-changed"],
@@ -43,9 +46,10 @@ public sealed class AiStatusDetector
             ["GitHub.copilot-chat", "github.copilot-chat"],
             "GitHub Copilot Chat.log",
             "ccreq:",
-            [" | success |", " | cancelled |", " | unknown |", "request done:", "message 0 returned", "Stop hook result:"],
+            [],
             ["Copilot Chat:", "Logged in as", "Got Copilot token"],
             ["Latest entry:", " | markdown", " | success |", " | cancelled |", " | networkError |"],
+            ["[title]", "[copilotLanguageModelWrapper]"],
             [" | networkError |"],
             null,
             [],
@@ -83,6 +87,14 @@ public sealed class AiStatusDetector
             ? TryDetectFromLogs(slotKey, slotStartedAt, userDataDirectory!)
             : null;
 
+        if (logEvidence is { Status: AiStatus.Completed, EventAt: { } logCompletedAt }
+            && !_completedAtBySlot.ContainsKey(slotKey)
+            && !hadPreviousRunningState
+            && now - logCompletedAt > LogCompletionObservationWindow)
+        {
+            logEvidence = null;
+        }
+
         if (logEvidence is { Status: AiStatus.WaitingForConfirmation }
             && _completedAtBySlot.TryGetValue(slotKey, out var completedBeforeConfirmationAt))
         {
@@ -104,6 +116,8 @@ public sealed class AiStatusDetector
         var uiEvidence = _uiStatusReader.TryRead(slot);
         if (uiEvidence is { Status: AiStatus.Running })
         {
+            var shouldIgnoreUiRunning = false;
+
             if (canReadLogs)
             {
                 var source = LogSources.FirstOrDefault(s => string.Equals(s.DisplayName, "Codex", StringComparison.Ordinal));
@@ -117,25 +131,44 @@ public sealed class AiStatusDetector
                     // UIが「Ran 3 commands」等の過去の履歴に反応しているとみなして Completed とする。
                     if (activityAt.HasValue && now - activityAt.Value > quietWindow)
                     {
-                        var detectedCompletedAt = activityAt.Value;
-                        _lastRunningSeenBySlot.TryRemove(slotKey, out _);
-                        _completedAtBySlot[slotKey] = detectedCompletedAt;
-                        _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
-                        return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI は実行中を示していますが、{detectedCompletedAt:HH:mm:ss} 以降のストリーム停止を検出しました。", detectedCompletedAt, quietWindow);
+                        if (now - activityAt.Value > LogCompletionObservationWindow)
+                        {
+                            shouldIgnoreUiRunning = true;
+                        }
+                        else
+                        {
+                            var detectedCompletedAt = activityAt.Value;
+                            _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+                            _completedAtBySlot[slotKey] = detectedCompletedAt;
+                            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+                            return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI は実行中を示していますが、{detectedCompletedAt:HH:mm:ss} 以降のストリーム停止を検出しました。", detectedCompletedAt, quietWindow);
+                        }
                     }
                 }
             }
 
-            _lastRunningSeenBySlot[slotKey] = now;
-            _completedAtBySlot.TryRemove(slotKey, out _);
-            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
-            return uiEvidence;
+            if (shouldIgnoreUiRunning)
+            {
+                uiEvidence = null;
+            }
+            else
+            {
+                _lastRunningSeenBySlot[slotKey] = now;
+                _completedAtBySlot.TryRemove(slotKey, out _);
+                _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+                return uiEvidence;
+            }
         }
 
         if (logEvidence is { Status: AiStatus.Completed or AiStatus.Error or AiStatus.NeedsAttention })
         {
             RememberDetectedState(slotKey, logEvidence, now);
             return logEvidence;
+        }
+
+        if (uiEvidence is { Status: AiStatus.Error or AiStatus.NeedsAttention })
+        {
+            return uiEvidence;
         }
 
         if (uiEvidence is { Status: AiStatus.WaitingForConfirmation })
@@ -176,7 +209,12 @@ public sealed class AiStatusDetector
 
         if (_completedAtBySlot.TryGetValue(slotKey, out var completedAt))
         {
-            return new AiStatusSnapshot(AiStatus.Completed, "VS Code UI: 直前のAI実行は完了しました。", completedAt);
+            if (IsFreshCompletion(completedAt, now))
+            {
+                return new AiStatusSnapshot(AiStatus.Completed, "VS Code UI: 直前のAI実行は完了しました。", completedAt);
+            }
+
+            _completedAtBySlot.TryRemove(slotKey, out _);
         }
 
         if (hadPreviousRunningState)
@@ -304,6 +342,11 @@ public sealed class AiStatusDetector
             return new AiStatusSnapshot(AiStatus.Idle, "AI は待機中です。", eventAt);
         }
 
+        if (evidence.Status == AiStatus.Completed && !IsFreshCompletion(eventAt, DateTimeOffset.Now))
+        {
+            return new AiStatusSnapshot(AiStatus.Idle, "AI は待機中です。", eventAt);
+        }
+
         if (evidence.Status == AiStatus.Running
             && _completedAtBySlot.TryGetValue(slotKey, out var completedAt)
             && eventAt <= completedAt)
@@ -325,7 +368,24 @@ public sealed class AiStatusDetector
 
     private static AiStatusSnapshot GetBestEvidence(IEnumerable<AiStatusSnapshot> evidences)
     {
-        return evidences
+        var orderedByTime = evidences
+            .OrderByDescending(evidence => evidence.EventAt ?? DateTimeOffset.MinValue)
+            .ToList();
+
+        if (orderedByTime.Count == 0)
+        {
+            return new AiStatusSnapshot(AiStatus.Idle, "AI は待機中です。", null);
+        }
+
+        var newestEventAt = orderedByTime[0].EventAt;
+        var comparableEvidence = newestEventAt.HasValue
+            ? orderedByTime
+                .Where(evidence => !evidence.EventAt.HasValue
+                    || newestEventAt.Value - evidence.EventAt.Value <= CrossSourceEvidenceMergeWindow)
+                .ToList()
+            : orderedByTime;
+
+        return comparableEvidence
             .OrderByDescending(GetStatusPriority)
             .ThenByDescending(evidence => evidence.EventAt ?? DateTimeOffset.MinValue)
             .First();
@@ -618,7 +678,8 @@ public sealed class AiStatusDetector
                     continue;
                 }
 
-                if (source.CompletionSignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase)))
+                if (source.CompletionSignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase))
+                    && !source.IgnoredCompletionSignals.Any(signal => line.Contains(signal, StringComparison.OrdinalIgnoreCase)))
                 {
                     evidence = evidence with { LastCompletionSignalAt = Max(evidence.LastCompletionSignalAt, timestamp) };
                     continue;
@@ -788,9 +849,19 @@ public sealed class AiStatusDetector
         return IsFreshConfirmation(confirmationAt, DateTimeOffset.Now);
     }
 
+    private static bool IsFreshCompletion(DateTimeOffset completedAt)
+    {
+        return IsFreshCompletion(completedAt, DateTimeOffset.Now);
+    }
+
     private static bool IsFreshConfirmation(DateTimeOffset confirmationAt, DateTimeOffset now)
     {
         return now - confirmationAt <= LogConfirmationFreshnessWindow;
+    }
+
+    private static bool IsFreshCompletion(DateTimeOffset completedAt, DateTimeOffset now)
+    {
+        return now - completedAt <= LogCompletionObservationWindow;
     }
 
     private static bool HasActivityAfterConfirmation(AiLogEvidence evidence, DateTimeOffset confirmationAt)
@@ -808,6 +879,7 @@ public sealed class AiStatusDetector
         string[] CompletionSignals,
         string[] IdleSignals,
         string[] IgnoredRunningSignals,
+        string[] IgnoredCompletionSignals,
         string[] ErrorSignals,
         TimeSpan? RunningSignalQuietCompletionWindow,
         string[] SecondaryRunningSignals,
