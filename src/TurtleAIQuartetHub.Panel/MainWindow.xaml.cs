@@ -109,7 +109,7 @@ public partial class MainWindow : Window
             if (_areWindowsHidden)
             {
                 _areWindowsHidden = false;
-                ToggleVisibilityButton.Content = "非表示";
+                UpdateVisibilityButtonVisual();
                 foreach (var slot in _statusStore.Slots)
                 {
                     slot.IsHidden = false;
@@ -291,6 +291,39 @@ public partial class MainWindow : Window
 
     private void CloseAllButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+
+        var closeTargets = _statusStore.Slots.Count(slot => slot.WindowHandle != IntPtr.Zero);
+        if (closeTargets == 0)
+        {
+            _statusStore.Message = "閉じるVS Codeウィンドウがありません。";
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        CloseAllConfirmCountText.Text = $"{closeTargets}個の VS Code ウィンドウを閉じます。";
+        CloseAllConfirmOverlay.Visibility = Visibility.Visible;
+        CancelCloseAllButton.Focus();
+    }
+
+    private void ConfirmCloseAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideCloseAllConfirmDialog();
+        CloseAllManagedWindows();
+    }
+
+    private void CancelCloseAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideCloseAllConfirmDialog();
+    }
+
+    private void CloseAllManagedWindows()
+    {
         var closedSlots = new List<WindowSlot>();
         var closed = 0;
         foreach (var slot in _statusStore.Slots)
@@ -309,9 +342,13 @@ public partial class MainWindow : Window
             _statusStore.SaveCurrentSettings();
             foreach (var slot in closedSlots)
             {
+                slot.IsHidden = false;
                 _statusStore.ClearWindow(slot);
             }
         }
+
+        _areWindowsHidden = _statusStore.Slots.Any(slot => slot.WindowHandle != IntPtr.Zero && slot.IsHidden);
+        UpdateVisibilityButtonVisual();
 
         _statusStore.Message = closed == 0
             ? "閉じるVS Codeウィンドウがありません。"
@@ -761,7 +798,7 @@ public partial class MainWindow : Window
         if (_areWindowsHidden)
         {
             _areWindowsHidden = false;
-            ToggleVisibilityButton.Content = "非表示";
+            UpdateVisibilityButtonVisual();
             foreach (var slot in _statusStore.Slots)
             {
                 slot.IsHidden = false;
@@ -794,7 +831,7 @@ public partial class MainWindow : Window
             if (minimized > 0)
             {
                 _areWindowsHidden = true;
-                ToggleVisibilityButton.Content = "表示";
+                UpdateVisibilityButtonVisual();
                 _statusStore.Message = $"{minimized}個のVS Codeを非表示にしました。";
             }
             else
@@ -899,7 +936,7 @@ public partial class MainWindow : Window
             if (_areWindowsHidden)
             {
                 _areWindowsHidden = false;
-                ToggleVisibilityButton.Content = "非表示";
+                UpdateVisibilityButtonVisual();
                 foreach (var s in _statusStore.Slots)
                 {
                     s.IsHidden = false;
@@ -1762,6 +1799,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private void HideCloseAllConfirmDialog()
+    {
+        CloseAllConfirmOverlay.Visibility = Visibility.Collapsed;
+    }
+
     private void HideDeleteStoredPanelDialog()
     {
         _pendingStoredPanelDeletion = null;
@@ -1776,13 +1818,21 @@ public partial class MainWindow : Window
         }
 
         _areWindowsHidden = false;
-        ToggleVisibilityButton.Content = "非表示";
+        UpdateVisibilityButtonVisual();
         foreach (var slot in _statusStore.Slots)
         {
             slot.IsHidden = false;
         }
 
         RefreshAuxiliaryUi();
+    }
+
+    private void UpdateVisibilityButtonVisual()
+    {
+        ToggleVisibilityButton.Content = _areWindowsHidden ? "表示" : "非表示";
+        ToggleVisibilityButton.Style = (Style)FindResource(_areWindowsHidden
+            ? "VisibilityRestoreButtonStyle"
+            : "BarButton");
     }
 
     private void UpdateWindowHeightForStoredPanels(bool isExpanded, bool force = false)
@@ -1983,6 +2033,13 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (CloseAllConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideCloseAllConfirmDialog();
+            e.Handled = true;
+            return;
+        }
+
         if (DeleteStoredPanelOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideDeleteStoredPanelDialog();

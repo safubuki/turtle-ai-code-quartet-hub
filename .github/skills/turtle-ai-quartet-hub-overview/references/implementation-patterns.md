@@ -157,6 +157,25 @@
   - どれか 1 スロットでも `IsFocused` なら `HideAll` する。
 - **注意**: ユーザー要求が「focused 中でも対象枠は維持」に変わる場合、この条件式の見直しが必要。
 
+### 4-4. 破壊的な一括操作はアプリ内 overlay で確認する
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/MainWindow.xaml`, `src/TurtleAIQuartetHub.Panel/MainWindow.xaml.cs`
+- **問題**: `MessageBox` など OS 標準ダイアログに寄せると、常時最前面 panel / focused VS Code の z-order と競合しやすく、見た目もアプリから浮く。
+- **対策**:
+  - `DeleteStoredPanelOverlay` と同じ、暗い scrim + `SurfaceBrush` の中央カードで確認 UI を作る。
+  - `CloseAllConfirmOverlay` は `すべて閉じる` を即実行せず、中央で確認してから既存の close 処理を実行する。
+  - Escape は overlay を閉じるだけにし、VS Code 側の window 操作は行わない。
+- **注意**: panel 上の確認 UI は `Panel.ZIndex` を明示し、既存 overlay と重ならないようにする。
+
+### 4-5. 非表示中の復帰ボタンは yellow accent で状態を示す
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/MainWindow.xaml`, `src/TurtleAIQuartetHub.Panel/MainWindow.xaml.cs`
+- **問題**: 非表示中に `表示` ボタンが通常色のままだと、現在が hidden state であることが伝わりにくい。
+- **対策**:
+  - `_areWindowsHidden` が true の間は `ToggleVisibilityButton` に `VisibilityRestoreButtonStyle` を適用する。
+  - hidden 解除時は content と style を `UpdateVisibilityButtonVisual` で必ず通常状態へ戻す。
+- **注意**: `ToggleVisibilityButton.Content` を直接書き換えると style 更新漏れが起きるため、今後は helper を通す。
+
 ## 5. AI 状態検出
 
 ### 5-1. 判定優先順位は `UI Automation > ログ > 短時間キャッシュ` が基本

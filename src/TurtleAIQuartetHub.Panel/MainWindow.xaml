@@ -151,6 +151,13 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
 
+    <Style x:Key="VisibilityRestoreButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="Foreground" Value="#1A1406" />
+      <Setter Property="Background" Value="#F2CA57" />
+      <Setter Property="BorderBrush" Value="#FFF0B5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
     <Style x:Key="CompactBarActionButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
       <Setter Property="MinHeight" Value="18" />
       <Setter Property="MinWidth" Value="28" />
@@ -1387,7 +1394,7 @@
           Collapsed="StoredPanelsExpander_Collapsed"
               Margin="5,2,5,3">
       <Expander.Header>
-        <TextBlock Text="控え Quartet"
+        <TextBlock Text="控え Quartet（クリックで開く）"
                    Foreground="{StaticResource TextBrush}"
                    FontSize="12"
                    FontWeight="SemiBold" />
@@ -1503,7 +1510,7 @@
                   Margin="0,0,4,0" />
           <Button Grid.Column="2"
                   x:Name="CloseAllButton"
-                  Content="全て閉じる"
+                  Content="すべて閉じる"
                   Click="CloseAllButton_Click"
                   Style="{StaticResource BarButton}" />
         </Grid>
@@ -1520,6 +1527,107 @@
             <Run Text="Launch Quartet" /><Run Text=" （一括起動）" FontSize="11" BaselineAlignment="Center" />
           </TextBlock>
         </Button>
+
+    <Border x:Name="CloseAllConfirmOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="21">
+      <Grid>
+        <Border Width="372"
+                MaxWidth="420"
+                Padding="16"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="#A88734"
+                BorderThickness="1"
+                CornerRadius="12"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <Border Width="34"
+                      Height="34"
+                      CornerRadius="10"
+                      Background="#2B2415"
+                      BorderBrush="#A88734"
+                      BorderThickness="1"
+                      Margin="0,0,12,0">
+                <TextBlock Text="!"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           Foreground="#F2CA57"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+              </Border>
+
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="すべて閉じていいですか？"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="CloseAllConfirmCountText"
+                           Margin="0,5,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}" />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Margin="0,14,0,0"
+                    Padding="10,8"
+                    Background="#1D2420"
+                    BorderBrush="{StaticResource BorderBrushSoft}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <StackPanel>
+                <TextBlock Text="対象の VS Code ウィンドウを終了します。"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock Text="現在のスロット設定は閉じる前に保存されます。"
+                           Margin="0,4,0,0"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="2"
+                       Margin="0,12,0,0"
+                       Text="未保存のエディター変更がある場合は、VS Code 側の確認が表示されます。"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Grid.Row="3"
+                        Margin="0,16,0,0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+              <Button x:Name="CancelCloseAllButton"
+                      Content="キャンセル"
+                      Click="CancelCloseAllButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="96"
+                      Margin="0,0,8,0" />
+              <Button x:Name="ConfirmCloseAllButton"
+                      Content="閉じる"
+                      Click="ConfirmCloseAllButton_Click"
+                      Style="{StaticResource DangerButtonStyle}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
 
     <Border x:Name="DeleteStoredPanelOverlay"
             Grid.RowSpan="5"
