@@ -10,6 +10,7 @@ public sealed class AiStatusDetector
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan CodexStreamQuietCompletionWindow = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan UiRunningObservationHoldWindow = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan UiAutomationCachedEvidenceWindow = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CodexCarryForwardRunningWindow = TimeSpan.FromMinutes(30);
     private const int MaxRecentLogBytes = 96 * 1024;
     private const int MaxCodexCarryForwardLogBytes = 512 * 1024;
@@ -22,6 +23,7 @@ public sealed class AiStatusDetector
     private readonly ConcurrentDictionary<string, DateTimeOffset> _confirmationRequestedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dismissedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _slotStartedAtByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, AiStatusSnapshot> _lastUiEvidenceBySlot = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly ExtensionLogSource[] LogSources =
     [
@@ -61,7 +63,8 @@ public sealed class AiStatusDetector
                 slot.WindowHandle,
                 slot.WindowTitle,
                 slot.CurrentWorkspacePath,
-                null),
+                null,
+                true),
             config);
     }
 
@@ -89,7 +92,7 @@ public sealed class AiStatusDetector
             return logEvidence;
         }
 
-        var uiEvidence = _uiStatusReader.TryRead(slot);
+        var uiEvidence = TryReadUiEvidence(slotKey, slot);
         if (uiEvidence is { Status: AiStatus.Running })
         {
             _lastRunningSeenBySlot[slotKey] = now;
@@ -152,6 +155,7 @@ public sealed class AiStatusDetector
         _lastRunningSeenBySlot.TryRemove(slotKey, out _);
         _completedAtBySlot.TryRemove(slotKey, out _);
         _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+        _lastUiEvidenceBySlot.TryRemove(slotKey, out _);
         _dismissedAtBySlot[slotKey] = DateTimeOffset.Now;
     }
 
@@ -167,6 +171,7 @@ public sealed class AiStatusDetector
         SwapPrefixedEntries(_completedAtBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_confirmationRequestedAtBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_dismissedAtBySlot, sourceSlotName, targetSlotName);
+        SwapPrefixedEntries(_lastUiEvidenceBySlot, sourceSlotName, targetSlotName);
 
         var hasSource = _slotStartedAtByName.TryRemove(sourceSlotName, out var sourceStarted);
         var hasTarget = _slotStartedAtByName.TryRemove(targetSlotName, out var targetStarted);
@@ -174,7 +179,7 @@ public sealed class AiStatusDetector
         if (hasTarget) _slotStartedAtByName[sourceSlotName] = targetStarted;
     }
 
-    private static void SwapPrefixedEntries(ConcurrentDictionary<string, DateTimeOffset> dict, string slotNameA, string slotNameB)
+    private static void SwapPrefixedEntries<TValue>(ConcurrentDictionary<string, TValue> dict, string slotNameA, string slotNameB)
     {
         var prefixA = $"{slotNameA}:";
         var prefixB = $"{slotNameB}:";
@@ -215,6 +220,33 @@ public sealed class AiStatusDetector
                 _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
                 break;
         }
+    }
+
+    private AiStatusSnapshot? TryReadUiEvidence(string slotKey, WindowSlotStatusSnapshot slot)
+    {
+        if (slot.AllowUiAutomationProbe)
+        {
+            var evidence = _uiStatusReader.TryRead(slot);
+            if (evidence is { Status: AiStatus.Running or AiStatus.WaitingForConfirmation })
+            {
+                _lastUiEvidenceBySlot[slotKey] = evidence;
+            }
+            else
+            {
+                _lastUiEvidenceBySlot.TryRemove(slotKey, out _);
+            }
+
+            return evidence;
+        }
+
+        if (_lastUiEvidenceBySlot.TryGetValue(slotKey, out var cachedEvidence)
+            && cachedEvidence.EventAt is { } eventAt
+            && DateTimeOffset.Now - eventAt <= UiAutomationCachedEvidenceWindow)
+        {
+            return cachedEvidence;
+        }
+
+        return null;
     }
 
     private AiStatusSnapshot? TryDetectFromLogs(string slotKey, DateTimeOffset slotStartedAt, string userDataDirectory)
@@ -320,6 +352,11 @@ public sealed class AiStatusDetector
         foreach (var key in _dismissedAtBySlot.Keys.Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
         {
             _dismissedAtBySlot.TryRemove(key, out _);
+        }
+
+        foreach (var key in _lastUiEvidenceBySlot.Keys.Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            _lastUiEvidenceBySlot.TryRemove(key, out _);
         }
     }
 

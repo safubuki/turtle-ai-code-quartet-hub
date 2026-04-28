@@ -12,7 +12,8 @@ internal sealed record WindowSlotStatusSnapshot(
     IntPtr WindowHandle,
     string WindowTitle,
     string CurrentWorkspacePath,
-    DateTimeOffset? WorkspaceRefreshedAt);
+    DateTimeOffset? WorkspaceRefreshedAt,
+    bool AllowUiAutomationProbe);
 
 internal sealed record WindowSlotStatusRefreshResult(
     string SlotName,

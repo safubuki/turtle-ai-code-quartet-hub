@@ -157,6 +157,39 @@
   - A-D の各スロットで focused → 背面化 → 前面復帰を試す。
   - タスクバー経由、Alt+Tab 経由の両方を確認する。
 
+### 2-5. AI 実行中の標準/縮小切替や配置変更でパネルが固まる
+
+- **現象**:
+  - AI 実行中に標準表示/縮小表示の切替、表示/非表示、モニター移動などを行うと、パネルが固まることがある。
+- **原因**:
+  - `VscodeChatUiStatusReader` が VS Code の UI Automation RawView を最大 6000 要素まで走査していた。
+  - 750ms の status refresh ごとに全スロットが UIA 対象になり、`panel.log` では 1 回の refresh が 2.5〜5.4 秒へ伸びていた。
+  - AI 状態 overlay 更新や Win32 ウィンドウ操作と UIA 走査が重なり、リサイズ/ズーム系操作時に固まりやすくなっていた。
+- **2026-04-28 実装反映**:
+  - UIA probe は 1 refresh 最大 1 スロットへ制限し、A-D をラウンドロビンで回すよう変更。
+  - UIA の Running / WaitingForConfirmation は短時間キャッシュし、probe を間引いても表示が途切れにくいよう変更。
+  - RawView 走査は最大 1500 要素、約 220ms、Running 検出後 240 要素までに制限。Confirmation は見つけた時点で即返すよう変更。
+- **最低限の確認**:
+  - AI 実行中に標準/縮小を連続切替しても固まらないこと。
+  - `panel.log` の `Status refresh took` が常時 1 秒を大きく超え続けないこと。
+  - Running / WaitingForConfirmation の検出が完全に失われていないこと。
+
+### 2-6. focused 1面表示中に panel のボタンが効かない
+
+- **現象**:
+  - focused 1面表示中だけ、縮小、最小化、閉じる、ディスプレイ移動、最前面、最背面、非表示などの panel ボタンが反応しなくなる。
+- **原因**:
+  - panel がマウスクリックでアクティブ化された直後、`MainWindow_Activated` が同期的に `ReassertFocusedSlotIfNeeded` を呼んでいた。
+  - `ReassertFocusedSlotIfNeeded` は `FocusMaximized(SetForegroundWindow)` で focused VS Code を前面化するため、Button の MouseUp / Click 前に VS Code が foreground を奪い、クリックがキャンセルされていた。
+- **2026-04-28 実装反映**:
+  - `Activated` / `StateChanged` からの focused 再適用を即時実行から遅延実行へ変更。
+  - panel の `PreviewMouseDown` で pending reassert をキャンセルし、短時間 focused 再適用を抑止するよう変更。
+  - 最小化、終了、最小化状態、busy、非表示、マウス押下中は `FocusMaximized` を呼ばないよう変更。
+- **最低限の確認**:
+  - focused 1面表示中に縮小、最小化、閉じる、ディスプレイ移動、最前面、最背面、非表示がそれぞれ反応すること。
+  - Alt+Tab やタスクバーから panel へ戻したとき、クリック操作なしなら focused slot の最大化状態が維持されること。
+  - 最背面ボタン後に遅延 reassert が走って focused VS Code を勝手に前面へ戻さないこと。
+
 ## 3. 対応優先順
 
 1. 最小化ハング
@@ -170,6 +203,8 @@
 - 2026-04-28: 右上基準でも見た目のボタン位置がずれないよう、panel の move/resize は Win32 で一括反映するよう変更した。
 - 2026-04-28: 2回目以降の drift と異常な compact サイズ変動を防ぐため、compact/standard の right/top 計算は WPF プロパティではなく HWND 実測 bounds を使い、compact 高さも target width ベースで measure するよう変更した。
 - 2026-04-28: 縮小時の下側余白を減らすため、compact 高さは `RootLayoutGrid` 全体ではなく title row と `CompactBarPanel` のみから算出するよう変更した。
+- 2026-04-28: AI 状態 UIA 走査が過剰で status refresh が数秒化していたため、1 refresh 最大 1 スロットのラウンドロビン、短時間キャッシュ、RawView 走査予算を導入した。
+- 2026-04-28: focused 1面表示中に panel クリックが `Activated` 直後の `FocusMaximized` で奪われていたため、focused reassert を遅延化し、panel mouse input 中は短時間抑止するよう変更した。
 
 ## 5. 以後の更新ルール
 

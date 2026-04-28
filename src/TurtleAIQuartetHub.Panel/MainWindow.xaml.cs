@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private const string CompactModeGlyph = "\uE73F";
     private const string StandardModeGlyph = "\uE740";
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
     private readonly WindowFrameOverlayManager _overlayManager;
@@ -40,8 +42,10 @@ public partial class MainWindow : Window
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private Point _dragStartPoint;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
+    private CancellationTokenSource? _focusedSlotReassertCancellation;
     private CancellationTokenSource? _panelLocateCancellation;
     private bool _isReassertingFocusedSlot;
+    private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
 
     public MainWindow()
     {
@@ -169,11 +173,14 @@ public partial class MainWindow : Window
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
     {
         CancelScheduledPanelFrontRestore();
+        CancelScheduledFocusedSlotReassert();
         WindowState = WindowState.Minimized;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
+        CancelScheduledPanelFrontRestore();
+        CancelScheduledFocusedSlotReassert();
         Close();
     }
 
@@ -191,6 +198,11 @@ public partial class MainWindow : Window
         {
             RefreshAuxiliaryUi();
             return;
+        }
+
+        if (!string.Equals(args[0], "--activate", StringComparison.OrdinalIgnoreCase))
+        {
+            SuppressFocusedSlotReassertForPanelInput();
         }
 
         switch (args[0].ToLowerInvariant())
@@ -235,6 +247,7 @@ public partial class MainWindow : Window
 
     private void DisplayModeButton_Click(object sender, RoutedEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         SetCompactMode(!_isCompactMode);
         ActivatePanelWindow();
     }
@@ -657,6 +670,7 @@ public partial class MainWindow : Window
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         if (_areWindowsHidden)
         {
             SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
@@ -673,6 +687,7 @@ public partial class MainWindow : Window
 
     private void SendAllBackButton_Click(object sender, RoutedEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         if (_areWindowsHidden)
         {
             SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Backmost);
@@ -718,6 +733,7 @@ public partial class MainWindow : Window
 
     private void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         if (_areWindowsHidden)
         {
             _areWindowsHidden = false;
@@ -768,6 +784,7 @@ public partial class MainWindow : Window
 
     private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         var monitorCount = _windowArranger.GetMonitorCount();
         if (monitorCount <= 1)
         {
@@ -1517,10 +1534,13 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized)
         {
             CancelScheduledPanelFrontRestore();
+            CancelScheduledFocusedSlotReassert();
             return;
         }
 
-        ReassertFocusedSlotIfNeeded();
+        // マウスクリックで panel がアクティブになった直後に SetForegroundWindow すると、
+        // Button の MouseUp/Click が成立しないため、focused 再適用は遅延実行する。
+        ScheduleFocusedSlotReassert();
         RefreshAuxiliaryUi();
     }
 
@@ -1531,7 +1551,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ReassertFocusedSlotIfNeeded();
+        ScheduleFocusedSlotReassert();
         RefreshOverlayUi();
     }
 
@@ -1596,6 +1616,54 @@ public partial class MainWindow : Window
         _panelFrontRestoreCancellation = null;
     }
 
+    private void ScheduleFocusedSlotReassert(TimeSpan? delay = null)
+    {
+        CancelScheduledFocusedSlotReassert();
+        if (WindowState == WindowState.Minimized
+            || DateTimeOffset.UtcNow < _suppressFocusedSlotReassertUntil)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _focusedSlotReassertCancellation = cancellation;
+        _ = ReassertFocusedSlotAfterDelayAsync(delay ?? FocusedSlotReassertDelay, cancellation.Token);
+    }
+
+    private void CancelScheduledFocusedSlotReassert()
+    {
+        _focusedSlotReassertCancellation?.Cancel();
+        _focusedSlotReassertCancellation?.Dispose();
+        _focusedSlotReassertCancellation = null;
+    }
+
+    private async Task ReassertFocusedSlotAfterDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    ReassertFocusedSlotIfNeeded();
+                }
+            }, DispatcherPriority.ContextIdle);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private async Task BringPanelToFrontAfterDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
         try
@@ -1628,7 +1696,10 @@ public partial class MainWindow : Window
     {
         if (_isReassertingFocusedSlot
             || _areWindowsHidden
-            || _isBusy)
+            || _isBusy
+            || WindowState == WindowState.Minimized
+            || DateTimeOffset.UtcNow < _suppressFocusedSlotReassertUntil
+            || IsAnyMouseButtonPressed())
         {
             return;
         }
@@ -1738,6 +1809,8 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
+
         if (Keyboard.FocusedElement is not TextBox textBox || textBox.IsReadOnly)
         {
             return;
@@ -1898,6 +1971,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        CancelScheduledFocusedSlotReassert();
+
         // 非表示中にアプリが終了される場合、VS Codeウィンドウを復元してから閉じる
         if (_areWindowsHidden)
         {
@@ -1920,6 +1995,8 @@ public partial class MainWindow : Window
         _refreshCancellation.Cancel();
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
+        _focusedSlotReassertCancellation?.Cancel();
+        _focusedSlotReassertCancellation?.Dispose();
         StopPanelLocateBlink();
         _overlayManager.Dispose();
         base.OnClosed(e);
@@ -1966,5 +2043,25 @@ public partial class MainWindow : Window
         Normal,
         Dimmed,
         Emphasis
+    }
+
+    private void SuppressFocusedSlotReassertForPanelInput()
+    {
+        if (!_statusStore.Slots.Any(slot => slot.IsFocused))
+        {
+            return;
+        }
+
+        _suppressFocusedSlotReassertUntil = DateTimeOffset.UtcNow + FocusedSlotReassertInputSuppressWindow;
+        CancelScheduledFocusedSlotReassert();
+    }
+
+    private static bool IsAnyMouseButtonPressed()
+    {
+        return Mouse.LeftButton == MouseButtonState.Pressed
+            || Mouse.RightButton == MouseButtonState.Pressed
+            || Mouse.MiddleButton == MouseButtonState.Pressed
+            || Mouse.XButton1 == MouseButtonState.Pressed
+            || Mouse.XButton2 == MouseButtonState.Pressed;
     }
 }

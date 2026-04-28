@@ -102,6 +102,16 @@
   - `StateChanged` / `Activated` で focused slot の前面状態を再適用する。
 - **注意**: 最小化遷移中までこの遅延前面復帰を走らせると、ハングや最小化失敗の原因になり得る。
 
+### 3-5. focused 再適用は panel 入力中に割り込ませない
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/MainWindow.xaml.cs`
+- **問題**: focused slot を維持するために `MainWindow_Activated` / `StateChanged` から即 `FocusMaximized(SetForegroundWindow)` を呼ぶと、パネルがマウスクリックでアクティブ化された瞬間に VS Code が前面を取り返し、Button の MouseUp / Click が成立しない。結果として focused 1面表示中だけ、縮小、最小化、閉じる、ディスプレイ移動、最前面、最背面、非表示などのボタンが効かなく見える。
+- **対策**:
+  - `Activated` / `StateChanged` では即時 reassert せず、短い遅延後に focused slot を再適用する。
+  - panel 上で `PreviewMouseDown` が発生したら、focused 再適用を短時間抑止して pending reassert をキャンセルする。
+  - 抑止中、最小化中、busy 中、非表示中、またはマウスボタン押下中は `FocusMaximized` を呼ばない。
+- **注意**: この問題を「ボタン側で個別に Focus を解除する」だけで直すと、未対応ボタンや将来追加ボタンで再発する。入力ルート側で reassert を抑止すること。
+
 ### 3-4. 標準表示と縮小表示の切替は右上基準で往復させる
 
 - **ファイル**: `src/TurtleAIQuartetHub.Panel/MainWindow.xaml.cs`
@@ -308,6 +318,16 @@
   - UI Automation の検出経路を削除する際は、代替経路が十分に機能することを確認してから削除すること。
 - **注意**: **このパターンの再発防止が最優先。** AI 状態検出の条件を変更するときは、「実行中に Running を検出できるか」「確認待ちに Confirmation を検出できるか」「完了後に Completed を検出できるか」の 3 点を smoke で必ず検証すること。
 
+### 5-12. UI Automation の状態走査は予算制限とラウンドロビンを維持する
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/Services/StatusStore.cs`, `src/TurtleAIQuartetHub.Panel/Services/VscodeChatUiStatusReader.cs`, `src/TurtleAIQuartetHub.Panel/Services/AiStatusDetector.cs`
+- **問題**: VS Code の `RawViewWalker` を 750ms 更新ごとに全スロットで最大 6000 要素走査すると、UIA COM 呼び出しが数万回規模になり、`panel.log` 上でも 1 回の status refresh が 2.5〜5.4 秒へ伸びる。AI 実行中に標準/縮小切替や配置変更を行うと、overlay 更新やウィンドウ操作と競合してハングしやすい。
+- **対策**:
+  - `StatusStore` で UI Automation probe 対象を 1 refresh につき最大 1 スロットへ絞り、A-D をラウンドロビンで回す。
+  - `AiStatusDetector` は UIA の Running / WaitingForConfirmation を短時間キャッシュし、probe しないスロットでも表示が即座に途切れないようにする。
+  - `VscodeChatUiStatusReader` は最大 1500 要素、約 220ms、Running 検出後 240 要素の上限を持つ。Confirmation は見つけた時点で即返す。
+- **注意**: 全スロット同時 UIA 走査や無制限 RawView 走査に戻さない。検出語彙を増やす場合も、`panel.log` の `Status refresh took` が常時 1 秒を超えないことと、AI 実行中の標準/縮小切替で固まらないことを確認する。
+
 ## 横断的な注意点まとめ
 
 | カテゴリ | 注意点 |
@@ -323,6 +343,8 @@
 | Codex quiet window | 既定は 15 秒。調整時は smoke で検証する |
 | スロット交換 | detector session と timestamp を一緒に swap しないと状態が混線する |
 | **AI 検出条件変更** | **Running/Confirmation/Completed の検出経路を削除・制限する場合は必ず smoke で検出可能性を確認する。誤検知防止と検出感度はトレードオフ** |
+| **AI UIA負荷** | `RawViewWalker` は全スロットで毎回走査しない。1 refresh 最大 1 スロット、要素数・時間・Running 後 lookahead の予算制限を維持する |
 | フォーカスモードとレイヤー | 1面表示中のレイヤー変更では `FocusMaximized` (`SetForegroundWindow`) を**絶対に呼ばない**。`ApplyLayerPreservingFocusMode` で `SetWindowPos(SWP_NOACTIVATE)` のみ使用する。`SetForegroundWindow` を呼ぶとパネルとVS Codeのアクティベーション争奪で無限ループしハングする |
+| **focused中のpanel入力** | `Activated` / `StateChanged` から同期的に `FocusMaximized` を呼ばない。panel の `PreviewMouseDown` 後は短時間 reassert を抑止し、Button の Click を成立させる |
 | フォーカス解除の順序 | 非表示・モニター移動などでウィンドウ操作する際、`ClearFocusedSlot` は操作の**前**に呼ぶ。後に呼ぶと操作中に `MainWindow_Activated` → `ReassertFocusedSlotIfNeeded` → `FocusMaximized` が走り無限ループになる |
 | Dispatcher.Invoke(Render) | UI描画完了を同期待ちする `Dispatcher.Invoke(Render)` は、リフレッシュタイマーや overlay 更新と競合してデッドロックする可能性がある。try-catch で保護するか、非同期版を使う |

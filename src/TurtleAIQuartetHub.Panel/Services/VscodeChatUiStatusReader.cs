@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using TurtleAIQuartetHub.Panel.Models;
@@ -6,9 +7,11 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class VscodeChatUiStatusReader
 {
-    private const int MaxElementsToInspect = 6000;
+    private const int MaxElementsToInspect = 1500;
+    private const int MaxElementsAfterRunningSignal = 240;
     private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
+    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(220);
 
     private static readonly string[] RunningStatusExactTexts =
     [
@@ -121,39 +124,58 @@ public sealed class VscodeChatUiStatusReader
 
     private static AiStatusSnapshot? TryRead(AutomationElement root)
     {
+        var stopwatch = Stopwatch.StartNew();
         var walker = TreeWalker.RawViewWalker;
         var queue = new Queue<AutomationElement>();
         queue.Enqueue(root);
 
         var inspected = 0;
+        int? runningFoundAt = null;
         AiStatusSnapshot? runningResult = null;
-        AiStatusSnapshot? confirmationResult = null;
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
         {
             var element = queue.Dequeue();
             inspected++;
 
-            if (runningResult is null && TryReadRunningSignal(element, out var detail))
+            var snapshot = ReadElementSnapshot(element);
+            if (TryReadConfirmationSignal(snapshot, out var confirmDetail))
+            {
+                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmDetail, DateTimeOffset.Now);
+            }
+
+            if (runningResult is null && TryReadRunningSignal(snapshot, out var detail))
             {
                 runningResult = new AiStatusSnapshot(AiStatus.Running, detail, DateTimeOffset.Now);
+                runningFoundAt = inspected;
             }
 
-            if (confirmationResult is null && TryReadConfirmationSignal(element, out var confirmDetail))
-            {
-                confirmationResult = new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmDetail, DateTimeOffset.Now);
-            }
-
-            if (runningResult is not null && confirmationResult is not null)
+            if (runningFoundAt.HasValue
+                && inspected - runningFoundAt.Value >= MaxElementsAfterRunningSignal)
             {
                 break;
             }
 
             EnqueueChildren(walker, element, queue);
+
+            if (stopwatch.Elapsed >= MaxScanDuration)
+            {
+                break;
+            }
         }
 
-        // Confirmation takes priority: if AI is waiting for user approval, that is the true state
-        return confirmationResult ?? runningResult;
+        return runningResult;
+    }
+
+    private static ElementSnapshot ReadElementSnapshot(AutomationElement element)
+    {
+        var isVisible = IsVisible(element);
+        return new ElementSnapshot(
+            GetStringProperty(element, AutomationElement.NameProperty),
+            GetStringProperty(element, AutomationElement.AutomationIdProperty),
+            GetStringProperty(element, AutomationElement.ClassNameProperty),
+            isVisible,
+            isVisible && IsEnabled(element));
     }
 
     private static void EnqueueChildren(
@@ -182,30 +204,26 @@ public sealed class VscodeChatUiStatusReader
         }
     }
 
-    private static bool TryReadRunningSignal(AutomationElement element, out string detail)
+    private static bool TryReadRunningSignal(ElementSnapshot element, out string detail)
     {
-        var name = GetStringProperty(element, AutomationElement.NameProperty);
-        var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
-        var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{automationId} {className}";
-        var isVisible = IsVisible(element);
+        var combinedContext = $"{element.AutomationId} {element.ClassName}";
 
-        if (isVisible && IsCurrentStatusText(name))
+        if (element.IsVisible && IsCurrentStatusText(element.Name))
         {
-            detail = $"VS Code UI: {name} を検出しました。";
+            detail = $"VS Code UI: {element.Name} を検出しました。";
             return true;
         }
 
-        if (isVisible
-            && IsEnabled(element)
+        if (element.IsVisible
+            && element.IsEnabled
             && ContainsAny(combinedContext, ChatContextFragments)
-            && (ContainsAny(className, StopClassFragments)
+            && (ContainsAny(element.ClassName, StopClassFragments)
                 || ContainsAny(combinedContext, StopClassFragments)
-                || ContainsStopAction(name)))
+                || ContainsStopAction(element.Name)))
         {
-            detail = string.IsNullOrWhiteSpace(name)
+            detail = string.IsNullOrWhiteSpace(element.Name)
                 ? "VS Code UI: チャット中断ボタンを検出しました。"
-                : $"VS Code UI: {TrimForDetail(name)} を検出しました。";
+                : $"VS Code UI: {TrimForDetail(element.Name)} を検出しました。";
             return true;
         }
 
@@ -279,21 +297,18 @@ public sealed class VscodeChatUiStatusReader
         return StopActionTexts.Any(signal => value.Contains(signal, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool TryReadConfirmationSignal(AutomationElement element, out string detail)
+    private static bool TryReadConfirmationSignal(ElementSnapshot element, out string detail)
     {
-        var name = GetStringProperty(element, AutomationElement.NameProperty);
-        var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
-        var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{automationId} {className} {name}";
+        var combinedContext = $"{element.AutomationId} {element.ClassName} {element.Name}";
 
-        if (IsVisible(element)
-            && IsEnabled(element)
-            && IsConfirmationActionName(name, out var requiresContext)
+        if (element.IsVisible
+            && element.IsEnabled
+            && IsConfirmationActionName(element.Name, out var requiresContext)
             && (!requiresContext || ContainsAny(combinedContext, ChatContextFragments)))
         {
-            detail = string.IsNullOrWhiteSpace(name)
+            detail = string.IsNullOrWhiteSpace(element.Name)
                 ? "VS Code UI: チャット確認ボタンを検出しました。"
-                : $"VS Code UI: {TrimForDetail(name)} を検出しました。";
+                : $"VS Code UI: {TrimForDetail(element.Name)} を検出しました。";
             return true;
         }
 
@@ -388,4 +403,11 @@ public sealed class VscodeChatUiStatusReader
         var trimmed = value.Trim();
         return trimmed.Length <= 80 ? trimmed : $"{trimmed[..77]}...";
     }
+
+    private readonly record struct ElementSnapshot(
+        string Name,
+        string AutomationId,
+        string ClassName,
+        bool IsVisible,
+        bool IsEnabled);
 }

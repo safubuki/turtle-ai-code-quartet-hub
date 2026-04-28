@@ -11,6 +11,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 public sealed class StatusStore : INotifyPropertyChanged
 {
     private static readonly TimeSpan WorkspaceRefreshInterval = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan UiAutomationProbeInterval = TimeSpan.FromMilliseconds(750);
     private const int StoredPanelsPerPage = 4;
     private const int StoredPanelPageCount = 3;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -29,6 +30,8 @@ public sealed class StatusStore : INotifyPropertyChanged
     private bool _suppressPersistence;
     private readonly Dictionary<string, DateTimeOffset> _workspaceRefreshTimestamps = new(StringComparer.OrdinalIgnoreCase);
     private readonly AiStatusDetector _aiStatusDetector = new();
+    private int _nextUiAutomationProbeSlotIndex;
+    private DateTimeOffset _lastUiAutomationProbeAt = DateTimeOffset.MinValue;
 
     public StatusStore(AppConfig config)
     {
@@ -405,13 +408,15 @@ public sealed class StatusStore : INotifyPropertyChanged
         CancellationToken cancellationToken)
     {
         var refreshStartedAt = DateTimeOffset.UtcNow;
+        var uiProbeSlotName = SelectUiAutomationProbeSlot(refreshStartedAt);
         var requests = Slots
             .Select(slot => new WindowSlotStatusSnapshot(
                 slot.Name,
                 slot.WindowHandle,
                 slot.WindowTitle,
                 slot.CurrentWorkspacePath,
-                _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null))
+                _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null,
+                string.Equals(slot.Name, uiProbeSlotName, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
         var stopwatch = Stopwatch.StartNew();
@@ -425,6 +430,38 @@ public sealed class StatusStore : INotifyPropertyChanged
         {
             DiagnosticLog.Write($"Status refresh took {stopwatch.ElapsedMilliseconds}ms for {results.Count} slots.");
         }
+    }
+
+    private string? SelectUiAutomationProbeSlot(DateTimeOffset refreshStartedAt)
+    {
+        if (refreshStartedAt - _lastUiAutomationProbeAt < UiAutomationProbeInterval)
+        {
+            return null;
+        }
+
+        var slots = Slots.Take(4).ToList();
+        if (slots.Count == 0)
+        {
+            return null;
+        }
+
+        for (var offset = 0; offset < slots.Count; offset++)
+        {
+            var index = (_nextUiAutomationProbeSlotIndex + offset) % slots.Count;
+            var slot = slots[index];
+            if (slot.WindowHandle == IntPtr.Zero
+                || slot.WindowStatus == SlotWindowStatus.Missing
+                || slot.IsHidden)
+            {
+                continue;
+            }
+
+            _nextUiAutomationProbeSlotIndex = (index + 1) % slots.Count;
+            _lastUiAutomationProbeAt = refreshStartedAt;
+            return slot.Name;
+        }
+
+        return null;
     }
 
     private IReadOnlyList<WindowSlotStatusRefreshResult> RefreshWindowStatusesInBackground(
