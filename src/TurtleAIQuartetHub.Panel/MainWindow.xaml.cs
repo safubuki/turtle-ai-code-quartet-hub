@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private double _standardWindowMinWidth;
     private double _standardWindowMinHeight;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
+    private WindowSlot? _hiddenFocusedSlot;
     private Point _dragStartPoint;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
     private CancellationTokenSource? _focusedSlotReassertCancellation;
@@ -109,6 +110,7 @@ public partial class MainWindow : Window
             if (_areWindowsHidden)
             {
                 _areWindowsHidden = false;
+                _hiddenFocusedSlot = null;
                 UpdateVisibilityButtonVisual();
                 foreach (var slot in _statusStore.Slots)
                 {
@@ -348,6 +350,11 @@ public partial class MainWindow : Window
         }
 
         _areWindowsHidden = _statusStore.Slots.Any(slot => slot.WindowHandle != IntPtr.Zero && slot.IsHidden);
+        if (!_areWindowsHidden)
+        {
+            _hiddenFocusedSlot = null;
+        }
+
         UpdateVisibilityButtonVisual();
 
         _statusStore.Message = closed == 0
@@ -683,17 +690,18 @@ public partial class MainWindow : Window
         if (previouslyFocusedSlot is not null)
         {
             CapturePreferredLayout(previouslyFocusedSlot);
-            ArrangeSlotsOnActiveMonitor(false);
-            _statusStore.ClearFocusedSlot();
-            _windowArranger.SetBackmost(previouslyFocusedSlot.WindowHandle);
         }
 
         EnsurePreferredLayout(slot);
         VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
-        SendOtherSlotsToBack(slot);
         if (_windowArranger.FocusMaximized(slot.WindowHandle))
         {
+            // 対象を先に前面化してから他スロットを背面で整える。
+            // 他スロット退避を先に行うと、背後の画面が一瞬見えてちらつく。
+            ArrangeSlotsExceptOnActiveMonitor(slot, false);
+            SendOtherSlotsToBack(slot);
+            _windowArranger.BringToFrontOnce(slot.WindowHandle);
             _statusStore.SetFocusedSlot(slot);
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
@@ -797,15 +805,16 @@ public partial class MainWindow : Window
         SuppressFocusedSlotReassertForPanelInput();
         if (_areWindowsHidden)
         {
-            _areWindowsHidden = false;
-            UpdateVisibilityButtonVisual();
-            foreach (var slot in _statusStore.Slots)
+            RestoreHiddenWindows();
+
+            if (TryRestoreHiddenFocusedSlot(out var restoredFocusedSlot))
             {
-                slot.IsHidden = false;
+                _statusStore.Message = $"スロット{restoredFocusedSlot.Name}をフォーカス表示に戻しました。";
+                RefreshAuxiliaryUi();
+                return;
             }
 
             var arranged = ArrangeSlotsOnActiveMonitor();
-
             _statusStore.Message = arranged > 0
                 ? $"{arranged}個のVS Codeを表示しました。"
                 : "表示できるVS Codeウィンドウがありません。";
@@ -815,6 +824,7 @@ public partial class MainWindow : Window
             // フォーカスモード中の場合、先にフォーカスを解除してから最小化する。
             // ClearFocusedSlot を最小化の後に呼ぶと、最小化中にパネルがアクティブになり
             // ReassertFocusedSlotIfNeeded が走って FocusMaximized でウィンドウが復元され、無限ループになる。
+            _hiddenFocusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
             CaptureFocusedLayout();
             _statusStore.ClearFocusedSlot();
 
@@ -836,6 +846,7 @@ public partial class MainWindow : Window
             }
             else
             {
+                _hiddenFocusedSlot = null;
                 _statusStore.Message = "非表示にできるVS Codeウィンドウがありません。";
             }
         }
@@ -936,6 +947,7 @@ public partial class MainWindow : Window
             if (_areWindowsHidden)
             {
                 _areWindowsHidden = false;
+                _hiddenFocusedSlot = null;
                 UpdateVisibilityButtonVisual();
                 foreach (var s in _statusStore.Slots)
                 {
@@ -1182,6 +1194,17 @@ public partial class MainWindow : Window
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
         ApplyManagedWindowLayers(bringPanelAfterArrange, refreshOverlayAfterChange: false);
         RefreshAuxiliaryUi();
+        return arranged;
+    }
+
+    private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshOverlayAfterArrange = true)
+    {
+        var arranged = _windowArranger.ArrangeExcept(_statusStore.Slots, excludedSlot, _statusStore.Config.Gap, GetActiveMonitorIndex());
+        if (refreshOverlayAfterArrange)
+        {
+            RefreshAuxiliaryUi();
+        }
+
         return arranged;
     }
 
@@ -1774,9 +1797,10 @@ public partial class MainWindow : Window
         _isReassertingFocusedSlot = true;
         try
         {
-            SendOtherSlotsToBack(focusedSlot);
             if (_windowArranger.FocusMaximized(focusedSlot.WindowHandle))
             {
+                SendOtherSlotsToBack(focusedSlot);
+                _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
                 SchedulePanelToFront();
             }
         }
@@ -1817,14 +1841,46 @@ public partial class MainWindow : Window
             return;
         }
 
+        _hiddenFocusedSlot = null;
+        RestoreHiddenWindows();
+        RefreshAuxiliaryUi();
+    }
+
+    private void RestoreHiddenWindows()
+    {
         _areWindowsHidden = false;
         UpdateVisibilityButtonVisual();
         foreach (var slot in _statusStore.Slots)
         {
+            _windowArranger.Restore(slot.WindowHandle);
             slot.IsHidden = false;
         }
+    }
 
-        RefreshAuxiliaryUi();
+    private bool TryRestoreHiddenFocusedSlot(out WindowSlot restoredFocusedSlot)
+    {
+        restoredFocusedSlot = null!;
+        var focusedSlot = _hiddenFocusedSlot;
+        _hiddenFocusedSlot = null;
+
+        if (focusedSlot is null || focusedSlot.WindowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        _overlayManager.HideAll();
+        SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
+        _windowArranger.Maximize(focusedSlot.WindowHandle);
+        SendOtherSlotsToBack(focusedSlot);
+        if (!_windowArranger.BringToFrontOnce(focusedSlot.WindowHandle))
+        {
+            return false;
+        }
+
+        _statusStore.SetFocusedSlot(focusedSlot);
+        SchedulePanelToFront();
+        restoredFocusedSlot = focusedSlot;
+        return true;
     }
 
     private void UpdateVisibilityButtonVisual()
@@ -2064,6 +2120,7 @@ public partial class MainWindow : Window
             }
 
             _areWindowsHidden = false;
+            _hiddenFocusedSlot = null;
             ArrangeSlotsOnActiveMonitor(false);
         }
 

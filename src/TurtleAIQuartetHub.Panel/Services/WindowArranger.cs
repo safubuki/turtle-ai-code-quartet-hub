@@ -28,6 +28,16 @@ public sealed class WindowArranger
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
     {
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null);
+    }
+
+    public int ArrangeExcept(IReadOnlyList<WindowSlot> slots, WindowSlot excludedSlot, int gap, int monitorIndex)
+    {
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot);
+    }
+
+    private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot)
+    {
         var monitors = GetOrderedMonitors();
         if (monitors.Count == 0)
         {
@@ -43,6 +53,11 @@ public sealed class WindowArranger
         for (var index = 0; index < Math.Min(4, slots.Count); index++)
         {
             var slot = slots[index];
+            if (ReferenceEquals(slot, excludedSlot))
+            {
+                continue;
+            }
+
             if (slot.WindowHandle == IntPtr.Zero || !IsWindow(slot.WindowHandle))
             {
                 continue;
@@ -220,6 +235,16 @@ public sealed class WindowArranger
 
         ShowWindow(windowHandle, SW_MAXIMIZE);
         return SetForegroundWindow(windowHandle);
+    }
+
+    public bool Maximize(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return ShowWindow(windowHandle, SW_MAXIMIZE);
     }
 
     public bool Close(IntPtr windowHandle)

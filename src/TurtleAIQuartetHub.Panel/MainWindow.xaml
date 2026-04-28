@@ -419,7 +419,7 @@
     <Style x:Key="SlotCardBorderStyle" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="8" />
       <Setter Property="Cursor" Value="Hand" />
@@ -428,14 +428,23 @@
           <Setter Property="Background" Value="#1A211D" />
           <Setter Property="BorderBrush" Value="#3D4E45" />
         </Trigger>
+        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+          <Setter Property="BorderBrush" Value="#45D483" />
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="#45D483"
+                                BlurRadius="10"
+                                ShadowDepth="0"
+                                Opacity="0.3" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
         <MultiDataTrigger>
           <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding IsFocused}" Value="False" />
             <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Running}" />
           </MultiDataTrigger.Conditions>
           <Setter Property="Background" Value="#123222" />
           <Setter Property="BorderBrush" Value="#45D483" />
-          <Setter Property="BorderThickness" Value="1.4" />
           <Setter Property="Effect">
             <Setter.Value>
               <DropShadowEffect Color="#45D483"
@@ -449,15 +458,15 @@
               <Storyboard RepeatBehavior="Forever" AutoReverse="True">
                 <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                 To="#17482F"
-                                Duration="0:0:0.68"
+                                Duration="0:0:1.35"
                                 EasingFunction="{StaticResource LedEase}" />
                 <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                 To="#7EF3AF"
-                                Duration="0:0:0.68"
+                                Duration="0:0:1.35"
                                 EasingFunction="{StaticResource LedEase}" />
                 <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                 To="0.88"
-                                 Duration="0:0:0.68"
+                                 To="0.94"
+                                 Duration="0:0:1.35"
                                  EasingFunction="{StaticResource LedEase}" />
               </Storyboard>
             </BeginStoryboard>
@@ -468,12 +477,10 @@
         </MultiDataTrigger>
         <MultiDataTrigger>
           <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding IsFocused}" Value="False" />
             <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Completed}" />
           </MultiDataTrigger.Conditions>
           <Setter Property="Background" Value="#123044" />
           <Setter Property="BorderBrush" Value="#43C8FF" />
-          <Setter Property="BorderThickness" Value="1.35" />
           <Setter Property="Effect">
             <Setter.Value>
               <DropShadowEffect Color="#43C8FF"
@@ -487,15 +494,15 @@
               <Storyboard RepeatBehavior="Forever" AutoReverse="True">
                 <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                 To="#19536D"
-                                Duration="0:0:2.1"
+                                Duration="0:0:2.2"
                                 EasingFunction="{StaticResource LedEase}" />
                 <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                 To="#7CDBFF"
-                                Duration="0:0:2.1"
+                                Duration="0:0:2.2"
                                 EasingFunction="{StaticResource LedEase}" />
                 <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                 To="0.92"
-                                 Duration="0:0:2.1"
+                                 To="0.95"
+                                 Duration="0:0:2.2"
                                  EasingFunction="{StaticResource LedEase}" />
               </Storyboard>
             </BeginStoryboard>
@@ -506,12 +513,10 @@
         </MultiDataTrigger>
         <MultiDataTrigger>
           <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding IsFocused}" Value="False" />
             <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.WaitingForConfirmation}" />
           </MultiDataTrigger.Conditions>
           <Setter Property="Background" Value="#2E2813" />
           <Setter Property="BorderBrush" Value="#F2CA57" />
-          <Setter Property="BorderThickness" Value="1.4" />
           <Setter Property="Effect">
             <Setter.Value>
               <DropShadowEffect Color="#F2CA57"
@@ -525,15 +530,15 @@
               <Storyboard RepeatBehavior="Forever" AutoReverse="True">
                 <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                 To="#3D3418"
-                                Duration="0:0:1.4"
+                                Duration="0:0:1.6"
                                 EasingFunction="{StaticResource LedEase}" />
                 <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                 To="#FFE081"
-                                Duration="0:0:1.4"
+                                Duration="0:0:1.6"
                                 EasingFunction="{StaticResource LedEase}" />
                 <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                 To="0.9"
-                                 Duration="0:0:1.4"
+                                 To="0.94"
+                                 Duration="0:0:1.6"
                                  EasingFunction="{StaticResource LedEase}" />
               </Storyboard>
             </BeginStoryboard>
@@ -544,7 +549,6 @@
         </MultiDataTrigger>
         <MultiDataTrigger>
           <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding IsFocused}" Value="False" />
             <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.NeedsAttention}" />
           </MultiDataTrigger.Conditions>
           <Setter Property="Background" Value="#242014" />
@@ -552,41 +556,11 @@
         </MultiDataTrigger>
         <MultiDataTrigger>
           <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding IsFocused}" Value="False" />
             <Condition Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Error}" />
           </MultiDataTrigger.Conditions>
           <Setter Property="Background" Value="#261918" />
           <Setter Property="BorderBrush" Value="#E37B70" />
         </MultiDataTrigger>
-        <DataTrigger Binding="{Binding IsFocused}" Value="True">
-          <Setter Property="Background" Value="#18231D" />
-          <Setter Property="BorderBrush" Value="#45D483" />
-          <Setter Property="Effect">
-            <Setter.Value>
-              <DropShadowEffect Color="#45D483"
-                                BlurRadius="11"
-                                ShadowDepth="0"
-                                Opacity="0.3" />
-            </Setter.Value>
-          </Setter>
-          <DataTrigger.EnterActions>
-            <BeginStoryboard Name="FocusedCardPulse">
-              <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
-                                To="#1C3327"
-                                Duration="0:0:1.65"
-                                EasingFunction="{StaticResource LedEase}" />
-                <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
-                                To="#7EF3AF"
-                                Duration="0:0:1.65"
-                                EasingFunction="{StaticResource LedEase}" />
-              </Storyboard>
-            </BeginStoryboard>
-          </DataTrigger.EnterActions>
-          <DataTrigger.ExitActions>
-            <RemoveStoryboard BeginStoryboardName="FocusedCardPulse" />
-          </DataTrigger.ExitActions>
-        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -600,7 +574,7 @@
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Stretch" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderThickness" Value="1.4" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -622,34 +596,107 @@
                 <Setter TargetName="CompactButtonBorder" Property="Background" Value="#121715" />
               </Trigger>
               <DataTrigger Binding="{Binding IsFocused}" Value="True">
-                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#18231D" />
                 <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#45D483" />
                 <Setter TargetName="CompactButtonBorder" Property="Effect">
                   <Setter.Value>
                     <DropShadowEffect Color="#45D483"
-                                      BlurRadius="11"
+                                      BlurRadius="9"
                                       ShadowDepth="0"
                                       Opacity="0.3" />
                   </Setter.Value>
                 </Setter>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Running}">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#123222" />
+                <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#45D483" />
+                <Setter TargetName="CompactButtonBorder" Property="Effect">
+                  <Setter.Value>
+                    <DropShadowEffect Color="#45D483"
+                                      BlurRadius="9"
+                                      ShadowDepth="0"
+                                      Opacity="0.34" />
+                  </Setter.Value>
+                </Setter>
                 <DataTrigger.EnterActions>
-                  <BeginStoryboard Name="FocusedCompactCardPulse">
+                  <BeginStoryboard Name="CompactSlotRunningPulse">
                     <Storyboard RepeatBehavior="Forever" AutoReverse="True">
                       <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
                                       Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
-                                      To="#1C3327"
-                                      Duration="0:0:1.65"
+                                      To="#17482F"
+                                      Duration="0:0:1.35"
                                       EasingFunction="{StaticResource LedEase}" />
                       <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
                                       Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                       To="#7EF3AF"
-                                      Duration="0:0:1.65"
+                                      Duration="0:0:1.35"
                                       EasingFunction="{StaticResource LedEase}" />
                     </Storyboard>
                   </BeginStoryboard>
                 </DataTrigger.EnterActions>
                 <DataTrigger.ExitActions>
-                  <RemoveStoryboard BeginStoryboardName="FocusedCompactCardPulse" />
+                  <RemoveStoryboard BeginStoryboardName="CompactSlotRunningPulse" />
+                </DataTrigger.ExitActions>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.Completed}">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#123044" />
+                <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#43C8FF" />
+                <Setter TargetName="CompactButtonBorder" Property="Effect">
+                  <Setter.Value>
+                    <DropShadowEffect Color="#43C8FF"
+                                      BlurRadius="9"
+                                      ShadowDepth="0"
+                                      Opacity="0.32" />
+                  </Setter.Value>
+                </Setter>
+                <DataTrigger.EnterActions>
+                  <BeginStoryboard Name="CompactSlotCompletedPulse">
+                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                      <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
+                                      Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                      To="#19536D"
+                                      Duration="0:0:2.2"
+                                      EasingFunction="{StaticResource LedEase}" />
+                      <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
+                                      Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                      To="#7CDBFF"
+                                      Duration="0:0:2.2"
+                                      EasingFunction="{StaticResource LedEase}" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                  <RemoveStoryboard BeginStoryboardName="CompactSlotCompletedPulse" />
+                </DataTrigger.ExitActions>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding AiStatus}" Value="{x:Static models:AiStatus.WaitingForConfirmation}">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#2E2813" />
+                <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#F2CA57" />
+                <Setter TargetName="CompactButtonBorder" Property="Effect">
+                  <Setter.Value>
+                    <DropShadowEffect Color="#F2CA57"
+                                      BlurRadius="9"
+                                      ShadowDepth="0"
+                                      Opacity="0.34" />
+                  </Setter.Value>
+                </Setter>
+                <DataTrigger.EnterActions>
+                  <BeginStoryboard Name="CompactSlotConfirmPulse">
+                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                      <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
+                                      Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                      To="#3D3418"
+                                      Duration="0:0:1.6"
+                                      EasingFunction="{StaticResource LedEase}" />
+                      <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
+                                      Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                      To="#FFE081"
+                                      Duration="0:0:1.6"
+                                      EasingFunction="{StaticResource LedEase}" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                  <RemoveStoryboard BeginStoryboardName="CompactSlotConfirmPulse" />
                 </DataTrigger.ExitActions>
               </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">

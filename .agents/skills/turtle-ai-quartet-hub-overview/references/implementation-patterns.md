@@ -75,6 +75,9 @@
   - focused slot を `StatusStore.SetFocusedSlot` で保持する。
   - 対象 VS Code は `FocusMaximized` で最大化・前面化する。
   - 解除時は 4 分割へ戻し、focused フラグを外す。
+- **実装メモ 2026-04-29**:
+  - focused 開始時は対象 slot を先に `FocusMaximized` してから、対象以外だけを `ArrangeExcept` で 4 面位置へ戻し、最後に `SendOtherSlotsToBack` と `BringToFrontOnce` で z-order を確定する。
+  - 他スロット退避を先に行うと背後の desktop / 別アプリが一瞬見えてちらつくため、退避は focused 対象が画面を覆った後に行う。
 - **注意**: focused 状態の再現は `IsFocused` だけでは不十分。前面復帰時の再適用が必要な場面がある。
 
 ### 3-2. managed VS Code の層制御は `BringToFrontOnce` と `SetBackmost` を明示的に使い分ける
@@ -146,8 +149,13 @@
 - **問題**: 外周 overlay だけに頼ると、パネル内の状態視認性が不足する。
 - **対策**:
   - `AiPill` と compact badge に Running / Completed / WaitingForConfirmation の pulse animation を持たせる。
-  - focused カードにも別の pulse animation を持たせる。
-- **注意**: focused カードの pulse と AI 状態の pulse は別概念。カード全体の AI 色付けを戻す場合、focused スタイルとの優先順位を設計すること。
+  - focused カード単体は border glow のみで選択状態を示す。
+  - Running / Completed / WaitingForConfirmation は focused 状態でもカード内側と border を緩やかに pulse させ、選択状態より AI 状態を視覚的に優先する。
+- **実装メモ 2026-04-29**:
+  - `SlotCardBorderStyle` の AI pulse は `IsFocused=False` 条件を持たせない。focused 中でも AI 状態が分かるようにする。
+  - focused trigger は背景を変更せず border/effect だけに限定する。背景まで pulse させるのは AI 状態だけにする。
+  - focused / AI 状態で `BorderThickness` を変えない。枠幅の変化は WPF の再計測で panel 全体サイズの微妙な伸縮を起こすため、厚みは既定値で固定し、色と glow のみ変える。
+- **注意**: focused 表現と AI 状態表現は別概念。focused は選択枠、AI は状態面発光という役割を崩さないこと。
 
 ### 4-3. focused 中は overlay を全面非表示にする設計になっている
 
@@ -174,6 +182,10 @@
 - **対策**:
   - `_areWindowsHidden` が true の間は `ToggleVisibilityButton` に `VisibilityRestoreButtonStyle` を適用する。
   - hidden 解除時は content と style を `UpdateVisibilityButtonVisual` で必ず通常状態へ戻す。
+- **実装メモ 2026-04-29**:
+  - focused 1面表示から非表示に入る場合は、`ClearFocusedSlot` 前に `_hiddenFocusedSlot` へ focused slot を退避する。
+  - `表示` で戻すとき、退避した focused slot があれば 4分割 `ArrangeSlotsOnActiveMonitor` に流さず、全 window を restore してから focused slot を最大化し、非 focused slot を背面へ送って focused slot を最後に `BringToFrontOnce` する。
+  - 非表示中に Launch / 個別起動 / 別 slot focus など別操作へ進む場合は `_hiddenFocusedSlot` を破棄し、古い focused 状態を復元しない。
 - **注意**: `ToggleVisibilityButton.Content` を直接書き換えると style 更新漏れが起きるため、今後は helper を通す。
 
 ## 5. AI 状態検出

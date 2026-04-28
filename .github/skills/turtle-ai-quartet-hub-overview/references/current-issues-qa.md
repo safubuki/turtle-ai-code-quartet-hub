@@ -207,6 +207,34 @@
   - A-D の各スロットで focused → `最前面` を押し、focused slot が引き続き前面に残ること。
   - `最背面`、panel クリック、縮小/標準切替で focused reassert との競合が再発しないこと。
 
+### 2-8. focused 中に非表示→表示すると focused slot が背面へ回る
+
+- **現象**:
+  - A を focused 1面表示した状態で `非表示` にし、その後 `表示` に戻すと、A の VS Code は最大化されたまま他の 4面配置 window の後ろへ回る。
+- **原因**:
+  - 非表示に入る際、reassert ループ防止のため `ClearFocusedSlot` していた。
+  - 表示復帰時は focused 情報が失われた状態で `ArrangeSlotsOnActiveMonitor` に流れ、A-D 順の layer 適用で後続スロットが z-order 上で勝っていた。
+- **2026-04-29 実装反映**:
+  - 非表示に入る前に focused slot を `_hiddenFocusedSlot` へ退避。
+  - `表示` 復帰時に退避 slot があれば 4分割 arrange を行わず、全 window restore 後に focused slot を最大化し、非 focused slot を背面へ送り、focused slot を最後に `BringToFrontOnce` する。
+  - 非表示中に別操作へ進む場合は `_hiddenFocusedSlot` を破棄し、古い focused 状態を誤復元しない。
+- **最低限の確認**:
+  - A-D の各スロットで focused → 非表示 → 表示を試し、focused slot が最前面に戻ること。
+  - 非表示中に別スロットをクリックした場合、古い focused slot ではなくクリックした slot が優先されること。
+
+### 2-9. focused 開始時に背後の画面が一瞬見えてちらつく
+
+- **現象**:
+  - 4 面表示から 1 面 focused に切り替える瞬間、他スロットを先に背面へ退避するため、desktop や別アプリが一瞬見える。
+- **原因**:
+  - focused 対象を最大化する前に `SendOtherSlotsToBack` / 4 面復帰系の処理が走り、画面を覆う window がない短い時間ができていた。
+- **2026-04-29 実装反映**:
+  - focused 対象を先に `FocusMaximized` して画面を覆ってから、対象以外だけを `ArrangeExcept` で 4 面位置へ戻す。
+  - その後に `SendOtherSlotsToBack` と focused 対象の `BringToFrontOnce` を行い、z-order を最後に確定する。
+- **最低限の確認**:
+  - A-D の各スロットで 4 面表示から focused に入り、背後の desktop / 別アプリが見えないこと。
+  - A focused から B focused へ切り替えても、A の最大化が前に残らず B が最前面になること。
+
 ## 3. 対応優先順
 
 1. 最小化ハング
