@@ -664,41 +664,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused);
-        if (focusedSlot is not null)
-        {
-            // フォーカスモード中: ReassertFocusedSlotIfNeeded を抑止しながら
-            // 一旦解除 → レイヤー適用 → 再フォーカス の安全な手順で実行
-            _isReassertingFocusedSlot = true;
-            try
-            {
-                CapturePreferredLayout(focusedSlot);
-                _statusStore.ClearFocusedSlot();
-                ArrangeSlotsOnActiveMonitor(false);
-                SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost, false);
-                SendOtherSlotsToBack(focusedSlot);
-                if (_windowArranger.FocusMaximized(focusedSlot.WindowHandle))
-                {
-                    _statusStore.SetFocusedSlot(focusedSlot);
-                }
-            }
-            finally
-            {
-                _isReassertingFocusedSlot = false;
-            }
-
-            SchedulePanelToFront();
-            _statusStore.Message = "管理中のVS Codeを最前面にしました。";
-            return;
-        }
-
-        if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost))
-        {
-            _statusStore.Message = "管理中のVS Codeを最前面にしました。";
-            return;
-        }
-
-        _statusStore.Message = "最前面にできるVS Codeウィンドウがありません。";
+        // フォーカスモード中: フォーカスを維持したまま全スロットのレイヤーだけ変更。
+        // FocusMaximized (SetForegroundWindow) は呼ばない。呼ぶとパネルとVS Codeの
+        // アクティベーション争奪で無限ループしてハングする。
+        ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Topmost);
+        _statusStore.Message = "管理中のVS Codeを最前面にしました。";
     }
 
     private void SendAllBackButton_Click(object sender, RoutedEventArgs e)
@@ -710,41 +680,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused);
-        if (focusedSlot is not null)
-        {
-            // フォーカスモード中: ReassertFocusedSlotIfNeeded を抑止しながら
-            // 一旦解除 → レイヤー適用 → 再フォーカス の安全な手順で実行
-            _isReassertingFocusedSlot = true;
-            try
-            {
-                CapturePreferredLayout(focusedSlot);
-                _statusStore.ClearFocusedSlot();
-                ArrangeSlotsOnActiveMonitor(false);
-                SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Backmost, false);
-                SendOtherSlotsToBack(focusedSlot);
-                if (_windowArranger.FocusMaximized(focusedSlot.WindowHandle))
-                {
-                    _statusStore.SetFocusedSlot(focusedSlot);
-                }
-            }
-            finally
-            {
-                _isReassertingFocusedSlot = false;
-            }
-
-            SchedulePanelToFront();
-            _statusStore.Message = "管理中のVS Codeを最背面にしました。";
-            return;
-        }
-
-        if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Backmost))
-        {
-            _statusStore.Message = "管理中のVS Codeを最背面にしました。";
-            return;
-        }
-
-        _statusStore.Message = "最背面にできるVS Codeウィンドウがありません。";
+        // フォーカスモード中: フォーカスを維持したまま全スロットのレイヤーだけ変更。
+        ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Backmost);
+        _statusStore.Message = "管理中のVS Codeを最背面にしました。";
     }
 
     private void ExitFocusedModeForGlobalLayerChange()
@@ -757,6 +695,25 @@ public partial class MainWindow : Window
         CaptureFocusedLayout();
         _statusStore.ClearFocusedSlot();
         ArrangeSlotsOnActiveMonitor(false);
+    }
+
+    /// <summary>
+    /// フォーカスモード中でも安全にレイヤーを変更する。
+    /// フォーカスを維持したまま全スロットに SetWindowPos(SWP_NOACTIVATE) でレイヤーを適用する。
+    /// FocusMaximized (SetForegroundWindow) を呼ばないため、パネルとVS Code間の
+    /// アクティベーション争奪による無限ループが発生しない。
+    /// 4面表示・1面フォーカス表示のどちらでも動作する。
+    /// </summary>
+    private void ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode layerMode)
+    {
+        SetManagedWindowLayerState(layerMode);
+
+        foreach (var slot in _statusStore.Slots)
+        {
+            ApplyLayerToSlot(slot, layerMode, false);
+        }
+
+        BringPanelToFrontImmediate();
     }
 
     private void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
@@ -827,9 +784,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        // フォーカスモード中の場合、先にフォーカスを解除してからArrangeする。
+        // ClearFocusedSlot を後に呼ぶと、Arrange 中にパネルがアクティブ化して
+        // ReassertFocusedSlotIfNeeded が走り、無限ループでハングする。
         CaptureFocusedLayout();
-        var arranged = ArrangeSlotsOnActiveMonitor();
         _statusStore.ClearFocusedSlot();
+        var arranged = ArrangeSlotsOnActiveMonitor();
         _statusStore.Message = arranged > 0
             ? $"{arranged}個のVS Codeを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に移動しました。"
             : $"次回の配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました。";

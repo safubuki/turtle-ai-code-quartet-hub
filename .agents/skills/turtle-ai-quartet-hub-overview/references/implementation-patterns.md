@@ -323,6 +323,6 @@
 | Codex quiet window | 既定は 15 秒。調整時は smoke で検証する |
 | スロット交換 | detector session と timestamp を一緒に swap しないと状態が混線する |
 | **AI 検出条件変更** | **Running/Confirmation/Completed の検出経路を削除・制限する場合は必ず smoke で検出可能性を確認する。誤検知防止と検出感度はトレードオフ** |
-| フォーカスモードとレイヤー | 1面表示中に最前面/最背面ボタンを押す場合、`_isReassertingFocusedSlot` で `ReassertFocusedSlotIfNeeded` を抑止し、一旦解除→レイヤー適用→再フォーカスの手順で実行する。直接 `BringToFrontOnce` / `SetBackmost` + `SchedulePanelToFront` を呼ぶと、パネルとVS Codeが交互にアクティブ化する無限ループでハングする |
-| フォーカス解除の順序 | 非表示ボタンなどでウィンドウを最小化する際、`ClearFocusedSlot` は最小化の**前**に呼ぶ。後に呼ぶと最小化中に `MainWindow_Activated` → `ReassertFocusedSlotIfNeeded` → `FocusMaximized` が走り、最小化したウィンドウが即座に復元されて無限ループになる |
+| フォーカスモードとレイヤー | 1面表示中のレイヤー変更では `FocusMaximized` (`SetForegroundWindow`) を**絶対に呼ばない**。`ApplyLayerPreservingFocusMode` で `SetWindowPos(SWP_NOACTIVATE)` のみ使用する。`SetForegroundWindow` を呼ぶとパネルとVS Codeのアクティベーション争奪で無限ループしハングする |
+| フォーカス解除の順序 | 非表示・モニター移動などでウィンドウ操作する際、`ClearFocusedSlot` は操作の**前**に呼ぶ。後に呼ぶと操作中に `MainWindow_Activated` → `ReassertFocusedSlotIfNeeded` → `FocusMaximized` が走り無限ループになる |
 | Dispatcher.Invoke(Render) | UI描画完了を同期待ちする `Dispatcher.Invoke(Render)` は、リフレッシュタイマーや overlay 更新と競合してデッドロックする可能性がある。try-catch で保護するか、非同期版を使う |
