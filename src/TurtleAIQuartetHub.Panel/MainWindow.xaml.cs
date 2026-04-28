@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
@@ -664,7 +664,33 @@ public partial class MainWindow : Window
             return;
         }
 
-        ExitFocusedModeForGlobalLayerChange();
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused);
+        if (focusedSlot is not null)
+        {
+            // フォーカスモード中: ReassertFocusedSlotIfNeeded を抑止しながら
+            // 一旦解除 → レイヤー適用 → 再フォーカス の安全な手順で実行
+            _isReassertingFocusedSlot = true;
+            try
+            {
+                CapturePreferredLayout(focusedSlot);
+                _statusStore.ClearFocusedSlot();
+                ArrangeSlotsOnActiveMonitor(false);
+                SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost, false);
+                SendOtherSlotsToBack(focusedSlot);
+                if (_windowArranger.FocusMaximized(focusedSlot.WindowHandle))
+                {
+                    _statusStore.SetFocusedSlot(focusedSlot);
+                }
+            }
+            finally
+            {
+                _isReassertingFocusedSlot = false;
+            }
+
+            SchedulePanelToFront();
+            _statusStore.Message = "管理中のVS Codeを最前面にしました。";
+            return;
+        }
 
         if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Topmost))
         {
@@ -684,7 +710,33 @@ public partial class MainWindow : Window
             return;
         }
 
-        ExitFocusedModeForGlobalLayerChange();
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused);
+        if (focusedSlot is not null)
+        {
+            // フォーカスモード中: ReassertFocusedSlotIfNeeded を抑止しながら
+            // 一旦解除 → レイヤー適用 → 再フォーカス の安全な手順で実行
+            _isReassertingFocusedSlot = true;
+            try
+            {
+                CapturePreferredLayout(focusedSlot);
+                _statusStore.ClearFocusedSlot();
+                ArrangeSlotsOnActiveMonitor(false);
+                SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Backmost, false);
+                SendOtherSlotsToBack(focusedSlot);
+                if (_windowArranger.FocusMaximized(focusedSlot.WindowHandle))
+                {
+                    _statusStore.SetFocusedSlot(focusedSlot);
+                }
+            }
+            finally
+            {
+                _isReassertingFocusedSlot = false;
+            }
+
+            SchedulePanelToFront();
+            _statusStore.Message = "管理中のVS Codeを最背面にしました。";
+            return;
+        }
 
         if (SetManagedWindowLayer(WindowSlot.SlotWindowLayerMode.Backmost))
         {
@@ -726,7 +778,12 @@ public partial class MainWindow : Window
         }
         else
         {
+            // フォーカスモード中の場合、先にフォーカスを解除してから最小化する。
+            // ClearFocusedSlot を最小化の後に呼ぶと、最小化中にパネルがアクティブになり
+            // ReassertFocusedSlotIfNeeded が走って FocusMaximized でウィンドウが復元され、無限ループになる。
             CaptureFocusedLayout();
+            _statusStore.ClearFocusedSlot();
+
             var minimized = 0;
             foreach (var slot in _statusStore.Slots)
             {
@@ -741,7 +798,6 @@ public partial class MainWindow : Window
             {
                 _areWindowsHidden = true;
                 ToggleVisibilityButton.Content = "表示";
-                _statusStore.ClearFocusedSlot();
                 _statusStore.Message = $"{minimized}個のVS Codeを非表示にしました。";
             }
             else
@@ -1206,7 +1262,14 @@ public partial class MainWindow : Window
         {
             StopPanelLocateBlink();
             ClearCompactPanelFrame();
-            Dispatcher.Invoke(static () => { }, DispatcherPriority.Render);
+            try
+            {
+                Dispatcher.Invoke(static () => { }, DispatcherPriority.Render);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+            }
         }
 
         if (compact)
