@@ -11,6 +11,7 @@ public sealed class WindowFrameOverlayManager : IDisposable
     private readonly WindowArranger _windowArranger;
     private readonly Dictionary<string, SlotFrameOverlayWindow> _overlays = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, OverlaySnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
+    private bool _allOverlaysHidden = true;
 
     public WindowFrameOverlayManager(WindowArranger windowArranger)
     {
@@ -56,6 +57,7 @@ public sealed class WindowFrameOverlayManager : IDisposable
 
             _windowArranger.PositionOverlayAbove(overlay.Handle, slot.WindowHandle, overlayBounds);
             overlay.EnsureShown();
+            _allOverlaysHidden = false;
             visibleKeys.Add(slot.Name);
         }
 
@@ -67,16 +69,24 @@ public sealed class WindowFrameOverlayManager : IDisposable
                 _snapshots.Remove(entry.Key);
             }
         }
+
+        _allOverlaysHidden = visibleKeys.Count == 0;
     }
 
     public void HideAll()
     {
+        if (_allOverlaysHidden && _snapshots.Count == 0)
+        {
+            return;
+        }
+
         foreach (var overlay in _overlays.Values)
         {
             overlay.Hide();
         }
 
         _snapshots.Clear();
+        _allOverlaysHidden = true;
     }
 
     private SlotFrameOverlayWindow GetOrCreate(string slotName)
@@ -127,6 +137,7 @@ public sealed class WindowFrameOverlayManager : IDisposable
         }
 
         _snapshots.Remove(slotName);
+        _allOverlaysHidden = _overlays.Values.All(overlay => !overlay.IsVisible);
     }
 
     public void Dispose()

@@ -8,6 +8,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 public static class TaskbarJumpListService
 {
     private static string? _lastSignature;
+    private static string? _cachedAppPath;
 
     public static void Update(IReadOnlyList<WindowSlot> slots, bool compactMode)
     {
@@ -125,12 +126,18 @@ public static class TaskbarJumpListService
 
     private static string? GetCurrentAppPath()
     {
+        if (!string.IsNullOrWhiteSpace(_cachedAppPath))
+        {
+            return _cachedAppPath;
+        }
+
         if (Application.Current is null)
         {
             return null;
         }
 
-        return Process.GetCurrentProcess().MainModule?.FileName;
+        _cachedAppPath = Process.GetCurrentProcess().MainModule?.FileName;
+        return _cachedAppPath;
     }
 
     private static void Apply(JumpList jumpList, string signature)

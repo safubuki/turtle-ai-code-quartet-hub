@@ -24,6 +24,7 @@ public sealed class AiStatusDetector
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dismissedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _slotStartedAtByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, AiStatusSnapshot> _lastUiEvidenceBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, CachedLogEvidence> LogEvidenceCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly ExtensionLogSource[] LogSources =
     [
@@ -466,15 +467,14 @@ public sealed class AiStatusDetector
     {
         var newestEvidence = AiLogEvidence.Empty(source);
 
-        foreach (var logPath in EnumerateCandidateLogFiles(userDataDirectory, source)
+        foreach (var fileInfo in EnumerateCandidateLogFiles(userDataDirectory, source)
                      .Select(TryGetLogFileInfo)
                      .Where(fileInfo => fileInfo is not null)
                      .Cast<FileInfo>()
                      .OrderByDescending(fileInfo => fileInfo.LastWriteTimeUtc)
-                     .Take(MaxCandidateLogFilesPerSource)
-                     .Select(fileInfo => fileInfo.FullName))
+                     .Take(MaxCandidateLogFilesPerSource))
         {
-            var evidence = ReadLogEvidence(logPath, source, maxRecentLogBytes);
+            var evidence = ReadLogEvidence(fileInfo, source, maxRecentLogBytes);
             if (evidence.LastEventAt.HasValue
                 && (!newestEvidence.LastEventAt.HasValue || evidence.LastEventAt.Value > newestEvidence.LastEventAt.Value))
             {
@@ -610,13 +610,22 @@ public sealed class AiStatusDetector
         }
     }
 
-    private static AiLogEvidence ReadLogEvidence(string logPath, ExtensionLogSource source, int maxRecentLogBytes)
+    private static AiLogEvidence ReadLogEvidence(FileInfo fileInfo, ExtensionLogSource source, int maxRecentLogBytes)
     {
+        var cacheKey = $"{maxRecentLogBytes}:{fileInfo.FullName}";
+        if (LogEvidenceCache.TryGetValue(cacheKey, out var cached)
+            && cached.Length == fileInfo.Length
+            && cached.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
+        {
+            return cached.Evidence;
+        }
+
         var evidence = AiLogEvidence.Empty(source);
+        var readSucceeded = false;
 
         try
         {
-            foreach (var line in ReadRecentLines(logPath, maxRecentLogBytes))
+            foreach (var line in ReadRecentLines(fileInfo.FullName, maxRecentLogBytes))
             {
                 if (!TryParseLogTimestamp(line, out var timestamp))
                 {
@@ -669,10 +678,17 @@ public sealed class AiStatusDetector
                     evidence = evidence with { LastIdleSignalAt = Max(evidence.LastIdleSignalAt, timestamp) };
                 }
             }
+
+            readSucceeded = true;
         }
         catch (Exception ex)
         {
             DiagnosticLog.Write(ex);
+        }
+
+        if (readSucceeded)
+        {
+            LogEvidenceCache[cacheKey] = new CachedLogEvidence(fileInfo.Length, fileInfo.LastWriteTimeUtc, evidence);
         }
 
         return evidence;
@@ -822,6 +838,11 @@ public sealed class AiStatusDetector
         string[] SecondaryRunningSignals,
         string[] ActivitySignals,
         string[] ConfirmationSignals);
+
+    private readonly record struct CachedLogEvidence(
+        long Length,
+        DateTime LastWriteTimeUtc,
+        AiLogEvidence Evidence);
 
     private readonly record struct AiLogEvidence(
         string SourceName,

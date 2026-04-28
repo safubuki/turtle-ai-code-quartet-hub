@@ -419,7 +419,7 @@
     <Style x:Key="SlotCardBorderStyle" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
-      <Setter Property="BorderThickness" Value="1.6" />
+      <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="8" />
       <Setter Property="Cursor" Value="Hand" />
@@ -430,6 +430,8 @@
         </Trigger>
         <DataTrigger Binding="{Binding IsFocused}" Value="True">
           <Setter Property="BorderBrush" Value="#45D483" />
+          <Setter Property="BorderThickness" Value="1.6" />
+          <Setter Property="Padding" Value="7.4" />
           <Setter Property="Effect">
             <Setter.Value>
               <DropShadowEffect Color="#45D483"
@@ -458,15 +460,15 @@
               <Storyboard RepeatBehavior="Forever" AutoReverse="True">
                 <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                 To="#17482F"
-                                Duration="0:0:1.35"
+                                Duration="0:0:0.68"
                                 EasingFunction="{StaticResource LedEase}" />
                 <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                 To="#7EF3AF"
-                                Duration="0:0:1.35"
+                                Duration="0:0:0.68"
                                 EasingFunction="{StaticResource LedEase}" />
                 <DoubleAnimation Storyboard.TargetProperty="Opacity"
                                  To="0.94"
-                                 Duration="0:0:1.35"
+                                 Duration="0:0:0.68"
                                  EasingFunction="{StaticResource LedEase}" />
               </Storyboard>
             </BeginStoryboard>
@@ -574,7 +576,7 @@
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Stretch" />
-      <Setter Property="BorderThickness" Value="1.4" />
+      <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -597,6 +599,8 @@
               </Trigger>
               <DataTrigger Binding="{Binding IsFocused}" Value="True">
                 <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#45D483" />
+                <Setter TargetName="CompactButtonBorder" Property="BorderThickness" Value="1.4" />
+                <Setter Property="Padding" Value="4.6,1.6" />
                 <Setter TargetName="CompactButtonBorder" Property="Effect">
                   <Setter.Value>
                     <DropShadowEffect Color="#45D483"
@@ -623,12 +627,12 @@
                       <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
                                       Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                       To="#17482F"
-                                      Duration="0:0:1.35"
+                                      Duration="0:0:0.68"
                                       EasingFunction="{StaticResource LedEase}" />
                       <ColorAnimation Storyboard.TargetName="CompactButtonBorder"
                                       Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                       To="#7EF3AF"
-                                      Duration="0:0:1.35"
+                                      Duration="0:0:0.68"
                                       EasingFunction="{StaticResource LedEase}" />
                     </Storyboard>
                   </BeginStoryboard>

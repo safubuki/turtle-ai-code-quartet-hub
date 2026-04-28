@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -12,6 +13,8 @@ public sealed class StatusStore : INotifyPropertyChanged
 {
     private static readonly TimeSpan WorkspaceRefreshInterval = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan UiAutomationProbeInterval = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan SlowRefreshLogInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan SlowSlotProbeLogInterval = TimeSpan.FromSeconds(5);
     private const int StoredPanelsPerPage = 4;
     private const int StoredPanelPageCount = 3;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -29,9 +32,11 @@ public sealed class StatusStore : INotifyPropertyChanged
     private StoredPanelPage? _selectedStoredPanelPage;
     private bool _suppressPersistence;
     private readonly Dictionary<string, DateTimeOffset> _workspaceRefreshTimestamps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastSlowSlotProbeLogAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly AiStatusDetector _aiStatusDetector = new();
     private int _nextUiAutomationProbeSlotIndex;
     private DateTimeOffset _lastUiAutomationProbeAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastSlowRefreshLogAt = DateTimeOffset.MinValue;
 
     public StatusStore(AppConfig config)
     {
@@ -426,7 +431,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         stopwatch.Stop();
 
         ApplyWindowStatusRefreshResults(results);
-        if (stopwatch.ElapsedMilliseconds >= 250)
+        if (stopwatch.ElapsedMilliseconds >= 250 && ShouldLogSlowRefresh(refreshStartedAt))
         {
             DiagnosticLog.Write($"Status refresh took {stopwatch.ElapsedMilliseconds}ms for {results.Count} slots.");
         }
@@ -550,11 +555,32 @@ public sealed class StatusStore : INotifyPropertyChanged
         finally
         {
             stopwatch.Stop();
-            if (stopwatch.ElapsedMilliseconds >= 150)
+            if (stopwatch.ElapsedMilliseconds >= 150 && ShouldLogSlowSlotProbe(request.Name, DateTimeOffset.UtcNow))
             {
                 DiagnosticLog.Write($"Slot {request.Name} status probe took {stopwatch.ElapsedMilliseconds}ms.");
             }
         }
+    }
+
+    private bool ShouldLogSlowRefresh(DateTimeOffset now)
+    {
+        if (now - _lastSlowRefreshLogAt < SlowRefreshLogInterval)
+        {
+            return false;
+        }
+
+        _lastSlowRefreshLogAt = now;
+        return true;
+    }
+
+    private bool ShouldLogSlowSlotProbe(string slotName, DateTimeOffset now)
+    {
+        var updated = _lastSlowSlotProbeLogAtBySlot.AddOrUpdate(
+            slotName,
+            now,
+            (_, previous) => now - previous >= SlowSlotProbeLogInterval ? now : previous);
+
+        return updated == now;
     }
 
     private void ApplyWindowStatusRefreshResults(IReadOnlyList<WindowSlotStatusRefreshResult> results)

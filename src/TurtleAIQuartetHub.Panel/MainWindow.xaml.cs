@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
     private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
     private readonly WindowFrameOverlayManager _overlayManager;
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _panelLocateCancellation;
     private bool _isReassertingFocusedSlot;
     private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
+    private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
 
     public MainWindow()
     {
@@ -66,6 +68,8 @@ public partial class MainWindow : Window
         _refreshTimer.Start();
         Activated += MainWindow_Activated;
         StateChanged += MainWindow_StateChanged;
+        SizeChanged += MainWindow_SizeChanged;
+        LocationChanged += MainWindow_LocationChanged;
 
         Loaded += async (_, _) =>
         {
@@ -1174,6 +1178,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!allowDuringBusy && DateTimeOffset.UtcNow < _suppressPeriodicRefreshUntil)
+        {
+            return;
+        }
+
         _isRefreshInFlight = true;
         try
         {
@@ -1637,6 +1646,21 @@ public partial class MainWindow : Window
 
         ScheduleFocusedSlotReassert();
         RefreshOverlayUi();
+    }
+
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SuppressPeriodicRefreshForInteractiveLayout();
+    }
+
+    private void MainWindow_LocationChanged(object? sender, EventArgs e)
+    {
+        SuppressPeriodicRefreshForInteractiveLayout();
+    }
+
+    private void SuppressPeriodicRefreshForInteractiveLayout()
+    {
+        _suppressPeriodicRefreshUntil = DateTimeOffset.UtcNow + InteractiveRefreshSuppressWindow;
     }
 
     private void RefreshAuxiliaryUi()

@@ -364,6 +364,7 @@
 
 | カテゴリ | 注意点 |
 | -------- | ------ |
+| **低スペック最適化** | 見た目・アニメーション品質を落とす前に、ログ evidence cache、操作中 refresh debounce、診断ログ throttling、overlay/JumpList の冗長更新削減を優先する。既定の status refresh 間隔や AI 検出条件は安易に下げない |
 | 設定探索 | 実行 EXE 直下固定に戻さず、親階層遡りと `%LOCALAPPDATA%` 優先を維持する |
 | 保存復元 | `slots.json` の object 形式と legacy 互換を壊さない |
 | ワークスペース推定 | workspaceStorage だけで確定せず、現在タイトルとの一致を必ず見る |
@@ -380,3 +381,4 @@
 | **focused中のpanel入力** | `Activated` / `StateChanged` から同期的に `FocusMaximized` を呼ばない。panel の `PreviewMouseDown` 後は短時間 reassert を抑止し、Button の Click を成立させる |
 | フォーカス解除の順序 | 非表示・モニター移動などでウィンドウ操作する際、`ClearFocusedSlot` は操作の**前**に呼ぶ。後に呼ぶと操作中に `MainWindow_Activated` → `ReassertFocusedSlotIfNeeded` → `FocusMaximized` が走り無限ループになる |
 | Dispatcher.Invoke(Render) | UI描画完了を同期待ちする `Dispatcher.Invoke(Render)` は、リフレッシュタイマーや overlay 更新と競合してデッドロックする可能性がある。try-catch で保護するか、非同期版を使う |
+<!-- 2026-04-29 UI note: Running の面パルスは AI pill と同じ 0.68 秒周期に合わせる。通常/Running は細枠、focused は太枠で選択状態を区別する。太枠化で layout が動かないよう Padding を相殺する。 -->
