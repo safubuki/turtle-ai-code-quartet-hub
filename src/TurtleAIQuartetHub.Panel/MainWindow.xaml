@@ -421,7 +421,6 @@
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="8" />
       <Setter Property="Cursor" Value="Hand" />
       <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True">
@@ -429,9 +428,6 @@
           <Setter Property="BorderBrush" Value="#3D4E45" />
         </Trigger>
         <DataTrigger Binding="{Binding IsFocused}" Value="True">
-          <Setter Property="BorderBrush" Value="#45D483" />
-          <Setter Property="BorderThickness" Value="1.6" />
-          <Setter Property="Padding" Value="7.4" />
           <Setter Property="Effect">
             <Setter.Value>
               <DropShadowEffect Color="#45D483"
@@ -580,14 +576,20 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="CompactButtonBorder"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="7">
-              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                Margin="{TemplateBinding Padding}" />
+            <Border x:Name="CompactFocusFrame"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="2"
+                    CornerRadius="8">
+              <Border x:Name="CompactButtonBorder"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="7">
+                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Margin="{TemplateBinding Padding}" />
+              </Border>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -598,9 +600,7 @@
                 <Setter TargetName="CompactButtonBorder" Property="Background" Value="#121715" />
               </Trigger>
               <DataTrigger Binding="{Binding IsFocused}" Value="True">
-                <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="#45D483" />
-                <Setter TargetName="CompactButtonBorder" Property="BorderThickness" Value="1.4" />
-                <Setter Property="Padding" Value="4.6,1.6" />
+                <Setter TargetName="CompactFocusFrame" Property="BorderBrush" Value="#45D483" />
                 <Setter TargetName="CompactButtonBorder" Property="Effect">
                   <Setter.Value>
                     <DropShadowEffect Color="#45D483"
@@ -1042,8 +1042,12 @@
     </Style>
 
     <DataTemplate x:Key="SlotCardTemplate" DataType="{x:Type models:WindowSlot}">
-      <Border Style="{StaticResource SlotCardBorderStyle}"
+      <Border x:Name="SlotCardFocusFrame"
+              Background="Transparent"
+              BorderThickness="2"
+              CornerRadius="10"
               Tag="{Binding}"
+              Cursor="Hand"
               MouseLeftButtonUp="SlotCard_MouseLeftButtonUp"
               PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="SlotCard_PreviewMouseMove"
@@ -1052,111 +1056,125 @@
               DragLeave="SlotCard_DragLeave"
               DragOver="SlotCard_DragOver"
               Drop="SlotCard_Drop">
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-          </Grid.RowDefinitions>
+        <Border x:Name="SlotCardBorder"
+                Style="{StaticResource SlotCardBorderStyle}"
+                Padding="0">
+          <Grid Margin="8">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Border Width="28"
-                    Height="28"
-                    CornerRadius="8"
-                    Background="#223027"
-                    BorderBrush="#335A43"
-                    BorderThickness="1"
-                    Margin="0,0,8,0">
-              <TextBlock Text="{Binding Name}"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center"
-                         FontWeight="SemiBold"
-                         Foreground="{StaticResource AccentBrush}" />
-            </Border>
-            <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="2">
-              <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=PropertyChanged}"
-                       ToolTip="ダブルクリックで名前を編集"
-                       Style="{StaticResource InlineTitleTextBox}"
-                       MaxLength="40" />
-              <TextBlock Text="{Binding ShortPath}"
-                         Margin="0,2,0,0"
-                         Foreground="{StaticResource MutedTextBrush}" />
-            </StackPanel>
-          </Grid>
-
-          <Grid Grid.Row="1"
-                Margin="0,6,0,0">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <WrapPanel Grid.Column="0"
-                       VerticalAlignment="Center">
-              <Border Style="{StaticResource WindowPill}" Margin="0,0,6,0">
-                <TextBlock Text="{Binding WindowStatusText}" Style="{StaticResource WindowPillTextStyle}" />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Width="28"
+                      Height="28"
+                      CornerRadius="8"
+                      Background="#223027"
+                      BorderBrush="#335A43"
+                      BorderThickness="1"
+                      Margin="0,0,8,0">
+                <TextBlock Text="{Binding Name}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource AccentBrush}" />
               </Border>
-              <Border Style="{StaticResource AiPill}" Margin="0,0,6,0" ToolTip="{Binding AiStatusDetail}">
-                <TextBlock Text="{Binding AiStatusText}" Style="{StaticResource AiPillTextStyle}" />
-              </Border>
-            </WrapPanel>
+              <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="2">
+                <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="ダブルクリックで名前を編集"
+                         Style="{StaticResource InlineTitleTextBox}"
+                         MaxLength="40" />
+                <TextBlock Text="{Binding ShortPath}"
+                           Margin="0,2,0,0"
+                           Foreground="{StaticResource MutedTextBrush}" />
+              </StackPanel>
+            </Grid>
 
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center">
-              <Button Tag="{Binding}"
-                      Click="StoreSlotButton_Click"
-                      Margin="8,0,6,0">
-                <Button.Style>
-                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                    <Setter Property="Content" Value="控えへ" />
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
-                        <Setter Property="IsEnabled" Value="False" />
-                        <Setter Property="Opacity" Value="0.4" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </Button.Style>
-              </Button>
-              <Button Tag="{Binding}"
-                      Click="SlotMainActionButton_Click"
-                      MinWidth="58">
-                <Button.Style>
-                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                    <Setter Property="Content" Value="停止" />
-                    <Style.Triggers>
-                      <MultiDataTrigger>
-                        <MultiDataTrigger.Conditions>
-                          <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
-                          <Condition Binding="{Binding HasPanelContent}" Value="True" />
-                        </MultiDataTrigger.Conditions>
-                        <Setter Property="Content" Value="起動" />
-                      </MultiDataTrigger>
-                      <MultiDataTrigger>
-                        <MultiDataTrigger.Conditions>
-                          <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
-                          <Condition Binding="{Binding HasPanelContent}" Value="False" />
-                        </MultiDataTrigger.Conditions>
-                        <Setter Property="Content" Value="新規" />
-                      </MultiDataTrigger>
-                      <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
-                        <Setter Property="Content" Value="起動中" />
-                        <Setter Property="IsEnabled" Value="False" />
-                        <Setter Property="Opacity" Value="0.5" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </Button.Style>
-              </Button>
-            </StackPanel>
+            <Grid Grid.Row="1"
+                  Margin="0,6,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <WrapPanel Grid.Column="0"
+                         VerticalAlignment="Center">
+                <Border Style="{StaticResource WindowPill}" Margin="0,0,6,0">
+                  <TextBlock Text="{Binding WindowStatusText}" Style="{StaticResource WindowPillTextStyle}" />
+                </Border>
+                <Border Style="{StaticResource AiPill}" Margin="0,0,6,0" ToolTip="{Binding AiStatusDetail}">
+                  <TextBlock Text="{Binding AiStatusText}" Style="{StaticResource AiPillTextStyle}" />
+                </Border>
+              </WrapPanel>
+
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          VerticalAlignment="Center">
+                <Button Tag="{Binding}"
+                        Click="StoreSlotButton_Click"
+                        Margin="8,0,6,0">
+                  <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                      <Setter Property="Content" Value="控えへ" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
+                          <Setter Property="IsEnabled" Value="False" />
+                          <Setter Property="Opacity" Value="0.4" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+                <Button Tag="{Binding}"
+                        Click="SlotMainActionButton_Click"
+                        MinWidth="58">
+                  <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                      <Setter Property="Content" Value="停止" />
+                      <Style.Triggers>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
+                            <Condition Binding="{Binding HasPanelContent}" Value="True" />
+                          </MultiDataTrigger.Conditions>
+                          <Setter Property="Content" Value="起動" />
+                        </MultiDataTrigger>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
+                            <Condition Binding="{Binding HasPanelContent}" Value="False" />
+                          </MultiDataTrigger.Conditions>
+                          <Setter Property="Content" Value="新規" />
+                        </MultiDataTrigger>
+                        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+                          <Setter Property="Content" Value="起動中" />
+                          <Setter Property="IsEnabled" Value="False" />
+                          <Setter Property="Opacity" Value="0.5" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+              </StackPanel>
+            </Grid>
           </Grid>
-        </Grid>
+        </Border>
+        <Border.Style>
+          <Style TargetType="Border">
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding IsFocused}" Value="True">
+                <Setter Property="BorderBrush" Value="#45D483" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
       </Border>
     </DataTemplate>
 

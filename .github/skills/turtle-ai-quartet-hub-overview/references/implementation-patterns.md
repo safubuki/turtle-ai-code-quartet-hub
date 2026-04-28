@@ -154,7 +154,9 @@
 - **実装メモ 2026-04-29**:
   - `SlotCardBorderStyle` の AI pulse は `IsFocused=False` 条件を持たせない。focused 中でも AI 状態が分かるようにする。
   - focused trigger は背景を変更せず border/effect だけに限定する。背景まで pulse させるのは AI 状態だけにする。
-  - focused / AI 状態で `BorderThickness` を変えない。枠幅の変化は WPF の再計測で panel 全体サイズの微妙な伸縮を起こすため、厚みは既定値で固定し、色と glow のみ変える。
+  - focused / AI 状態でレイアウト本体の `BorderThickness` を変えない。slot card / compact slot button は透明な外枠領域を常時確保し、選択中だけその外枠の `BorderBrush` を点灯させて太枠に見せる。
+  - 標準表示の focused 見た目は縮小表示と揃え、内側の card border を選択色へ変えず、外枠フレームだけを選択色にする。
+  - WPF の standard card 側で focused 枠を Style trigger で切り替える場合、対象 Border に `BorderBrush` のローカル値を置かない。ローカル値は Style trigger より優先され、選択時でも太枠が表示されない。
 - **注意**: focused 表現と AI 状態表現は別概念。focused は選択枠、AI は状態面発光という役割を崩さないこと。
 
 ### 4-3. focused 中は overlay を全面非表示にする設計になっている
