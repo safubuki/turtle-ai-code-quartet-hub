@@ -86,7 +86,8 @@
   - 一括最背面は `SetBackmost` を使う。
   - パネル自体は最後に前へ戻す。
 - **実装メモ 2026-04-28**:
-  - focused mode は `SendOtherSlotsToBack` と `FocusMaximized` で z-order を専有するため、グローバルな `最前面` / `最背面` 操作の前には必ず focused を解除して 4 分割へ戻す。
+  - focused mode の `最前面` / `最背面` 操作では A-D 全スロットへ順次 `BringToFrontOnce` / `SetBackmost` を適用しない。スロット順で後続の C/D が focused slot より前へ出る。
+  - `最前面` は `SendOtherSlotsToBack(focusedSlot)` の後に focused slot だけを最後に `BringToFrontOnce` する。`最背面` は focused slot を先に `SetBackmost` してから他スロットを背面へ送り、group 内では focused slot を一番上に残す。
 - **注意**: `BringToFrontOnce` は race に弱い。最小化や再アクティブ化と競合させないこと。
 
 ### 3-3. パネル前面復帰は遅延タスクで行われる
@@ -344,7 +345,7 @@
 | スロット交換 | detector session と timestamp を一緒に swap しないと状態が混線する |
 | **AI 検出条件変更** | **Running/Confirmation/Completed の検出経路を削除・制限する場合は必ず smoke で検出可能性を確認する。誤検知防止と検出感度はトレードオフ** |
 | **AI UIA負荷** | `RawViewWalker` は全スロットで毎回走査しない。1 refresh 最大 1 スロット、要素数・時間・Running 後 lookahead の予算制限を維持する |
-| フォーカスモードとレイヤー | 1面表示中のレイヤー変更では `FocusMaximized` (`SetForegroundWindow`) を**絶対に呼ばない**。`ApplyLayerPreservingFocusMode` で `SetWindowPos(SWP_NOACTIVATE)` のみ使用する。`SetForegroundWindow` を呼ぶとパネルとVS Codeのアクティベーション争奪で無限ループしハングする |
+| フォーカスモードとレイヤー | 1面表示中のレイヤー変更では `FocusMaximized` (`SetForegroundWindow`) を**絶対に呼ばない**。`ApplyLayerPreservingFocusMode` で `SetWindowPos(SWP_NOACTIVATE)` のみ使用し、focused 中は全スロット順次 `BringToFrontOnce` しない。`SetForegroundWindow` を呼ぶとパネルとVS Codeのアクティベーション争奪で無限ループしハングする |
 | **focused中のpanel入力** | `Activated` / `StateChanged` から同期的に `FocusMaximized` を呼ばない。panel の `PreviewMouseDown` 後は短時間 reassert を抑止し、Button の Click を成立させる |
 | フォーカス解除の順序 | 非表示・モニター移動などでウィンドウ操作する際、`ClearFocusedSlot` は操作の**前**に呼ぶ。後に呼ぶと操作中に `MainWindow_Activated` → `ReassertFocusedSlotIfNeeded` → `FocusMaximized` が走り無限ループになる |
 | Dispatcher.Invoke(Render) | UI描画完了を同期待ちする `Dispatcher.Invoke(Render)` は、リフレッシュタイマーや overlay 更新と競合してデッドロックする可能性がある。try-catch で保護するか、非同期版を使う |

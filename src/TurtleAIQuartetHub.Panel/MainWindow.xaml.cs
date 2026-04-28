@@ -714,7 +714,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// フォーカスモード中でも安全にレイヤーを変更する。
-    /// フォーカスを維持したまま全スロットに SetWindowPos(SWP_NOACTIVATE) でレイヤーを適用する。
+    /// フォーカス中は対象スロットを最後に前面化し、非フォーカススロットを背面に保つ。
     /// FocusMaximized (SetForegroundWindow) を呼ばないため、パネルとVS Code間の
     /// アクティベーション争奪による無限ループが発生しない。
     /// 4面表示・1面フォーカス表示のどちらでも動作する。
@@ -723,12 +723,36 @@ public partial class MainWindow : Window
     {
         SetManagedWindowLayerState(layerMode);
 
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
+        if (focusedSlot is not null)
+        {
+            ApplyLayerPreservingFocusedSlotOrder(focusedSlot, layerMode);
+            BringPanelToFrontImmediate();
+            return;
+        }
+
         foreach (var slot in _statusStore.Slots)
         {
             ApplyLayerToSlot(slot, layerMode, false);
         }
 
         BringPanelToFrontImmediate();
+    }
+
+    private void ApplyLayerPreservingFocusedSlotOrder(WindowSlot focusedSlot, WindowSlot.SlotWindowLayerMode layerMode)
+    {
+        switch (layerMode)
+        {
+            case WindowSlot.SlotWindowLayerMode.Topmost:
+                SendOtherSlotsToBack(focusedSlot);
+                _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
+                break;
+
+            case WindowSlot.SlotWindowLayerMode.Backmost:
+                _windowArranger.SetBackmost(focusedSlot.WindowHandle);
+                SendOtherSlotsToBack(focusedSlot);
+                break;
+        }
     }
 
     private void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)

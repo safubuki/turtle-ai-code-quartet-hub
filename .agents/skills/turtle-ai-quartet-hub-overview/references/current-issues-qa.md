@@ -149,7 +149,7 @@
 - **2026-04-28 実装反映**:
   - focused slot に入る際は他スロットを背面へ送るよう修正。
   - `Activated` / `StateChanged` で focused slot の前面状態を再適用するよう修正。
-  - focused 中に `最前面` / `最背面` を押した場合は、先に focused を解除して 4 分割へ戻してから全 managed window の layer を変更するよう修正。
+  - focused 中に `最前面` / `最背面` を押した場合は、focused を解除せず、非 focused slot を背面へ送り、focused slot が group 内の最前面を保つよう修正。
 - **回帰リスク**:
   - panel 側の TopMost 維持と focused VS Code の再前面化が競合する。
   - hidden モードや最背面モードとの組合せで順序が崩れる。
@@ -189,6 +189,23 @@
   - focused 1面表示中に縮小、最小化、閉じる、ディスプレイ移動、最前面、最背面、非表示がそれぞれ反応すること。
   - Alt+Tab やタスクバーから panel へ戻したとき、クリック操作なしなら focused slot の最大化状態が維持されること。
   - 最背面ボタン後に遅延 reassert が走って focused VS Code を勝手に前面へ戻さないこと。
+
+### 2-7. focused 中に最前面を押すと後続スロットが前へ出る
+
+- **現象**:
+  - C を focused 表示して `最前面` を押すと D が前へ出る。
+  - B を focused 表示して `最前面` を押すと C/D が前へ出る。
+- **原因**:
+  - `ApplyLayerPreservingFocusMode` が focused 中でも A-D 順に全スロットへ `BringToFrontOnce` を適用していた。
+  - `BringToFrontOnce` は topmost 化後に notopmost へ戻すため、最後に処理された後続スロットが z-order 上で勝っていた。
+- **2026-04-29 実装反映**:
+  - focused slot がある場合、全スロット順次適用をやめ、`ApplyLayerPreservingFocusedSlotOrder` で dedicated order に分岐。
+  - `最前面` は非 focused slot を先に `SetBackmost` し、focused slot だけを最後に `BringToFrontOnce` する。
+  - `最背面` は focused slot を先に `SetBackmost` し、その後に非 focused slot を背面化して、group 内では focused slot が上に残るようにした。
+  - `FocusMaximized` / `SetForegroundWindow` は呼ばない。
+- **最低限の確認**:
+  - A-D の各スロットで focused → `最前面` を押し、focused slot が引き続き前面に残ること。
+  - `最背面`、panel クリック、縮小/標準切替で focused reassert との競合が再発しないこと。
 
 ## 3. 対応優先順
 
