@@ -291,6 +291,23 @@
   - UI 文言だけ `非表示` に寄せる。
 - **注意**: `IsWindowVisible` だけで Missing 判定してはいけない。
 
+### 5-11. AI 状態検出の条件強化は検出感度を殺すリスクがある
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/Services/VscodeChatUiStatusReader.cs`, `src/TurtleAIQuartetHub.Panel/Services/AiStatusDetector.cs`
+- **問題**: 誤検知防止のために検出条件を強化した結果、AI 状態が全く取得できなくなる事故が 2026-04-28 に発生。
+- **原因**: 以下の 5 つの変更が複合して検出感度を殺した。
+  1. `VscodeChatUiStatusReader` の Running 検出に `HasChatContext`（親要10階層遍歴）を必須化 → VS Code の UI 構造次第で親に chat 文脈がない場合に Running を見落とす
+  2. Stopボタン（codicon-stop、中断、Cancel）による Running 検出を完全削除 → もう一つの Running 検出経路が消失
+  3. Confirmation 検出に `IsActionLikeElement` + `HasChatContext` を追加 → 検出感度激減
+  4. Copilot の `CompletionSignals` を空配列に変更 → ログからの Copilot 完了検出が不可能に
+  5. `TryCarryForwardCodexFromCurrentSession` を削除 → 初回起動時の Codex 実行状態引き継ぎが不可能に
+- **対策**: 上記 5 点をすべて旧版にロールバックして復旧。
+- **教訓**:
+  - 誤検知防止のための条件強化と、検出感度の維持はトレードオフの関係にある。強化するときは必ず smoke テストで「実行中に Running を検出できるか」を確認すること。
+  - `CompletionSignals` を空にすると、そのエンジンの完了検出が不可能になる。除外したいシグナルがある場合は空にせず `IgnoredRunningSignals` のように除外リストで対応すること。
+  - UI Automation の検出経路を削除する際は、代替経路が十分に機能することを確認してから削除すること。
+- **注意**: **このパターンの再発防止が最優先。** AI 状態検出の条件を変更するときは、「実行中に Running を検出できるか」「確認待ちに Confirmation を検出できるか」「完了後に Completed を検出できるか」の 3 点を smoke で必ず検証すること。
+
 ## 横断的な注意点まとめ
 
 | カテゴリ | 注意点 |
@@ -303,5 +320,6 @@
 | overlay | overlay は別ウィンドウ。最小化・focused・hidden と必ず同期させる |
 | UI 表現 | focused 表現と AI 状態表現は別概念なので、優先順位を明示して実装する |
 | AI 検出 | Confirmation を Running より優先し、source priority を崩さない |
-| Codex quiet window | 既定は 10 秒。調整時は smoke で検証する |
+| Codex quiet window | 既定は 15 秒。調整時は smoke で検証する |
 | スロット交換 | detector session と timestamp を一緒に swap しないと状態が混線する |
+| **AI 検出条件変更** | **Running/Confirmation/Completed の検出経路を削除・制限する場合は必ず smoke で検出可能性を確認する。誤検知防止と検出感度はトレードオフ** |

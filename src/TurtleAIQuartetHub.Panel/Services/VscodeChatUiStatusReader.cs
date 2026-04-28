@@ -7,7 +7,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 public sealed class VscodeChatUiStatusReader
 {
     private const int MaxElementsToInspect = 6000;
-    private const int MaxTextLengthForStatus = 100;
+    private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
 
     private static readonly string[] RunningStatusExactTexts =
@@ -34,41 +34,31 @@ public sealed class VscodeChatUiStatusReader
         "Generating"
     ];
 
-    private static readonly string[] CompletedStatusPrefixes =
+    private static readonly string[] StopActionTexts =
     [
-        "Ran ",
-        "ran ",
-        "実行済みコマンド",
-        "ウェブを",
-        "編集済みファイル"
+        "中断",
+        "中止",
+        "キャンセル",
+        "Stop",
+        "Cancel"
     ];
 
     private static readonly string[] ChatContextFragments =
     [
         "chat",
-        "チャット",
         "copilot",
         "codex",
         "agent",
-        "response",
-        "interactive-response",
-        "interactive-item-container",
-        "editing-session",
-        "system-initiated-request",
-        "interactive-session-status",
-        "interactive-session-status-item",
-        "chat-progress-reservable",
-        "chat-response-loading",
-        "chat-most-recent-response"
+        "interactive",
+        "action-label",
+        "codicon"
     ];
 
-    private static readonly string[] ErrorStatusFragments =
+    private static readonly string[] StopClassFragments =
     [
-        "service disruption",
-        "no response was returned",
-        "network error",
-        "networkerror",
-        "internal server error"
+        "codicon-stop",
+        "codicon-debug-stop",
+        "codicon-circle-slash"
     ];
 
     private static readonly string[] ConfirmationActionTexts =
@@ -88,28 +78,6 @@ public sealed class VscodeChatUiStatusReader
         "実行する",
         "Approve",
         "承認"
-    ];
-
-    private static readonly string[] ConfirmationContextFragments =
-    [
-        "approval",
-        "approve",
-        "confirmation",
-        "confirm",
-        "continue",
-        "allow",
-        "terminal",
-        "command",
-        "pwsh",
-        "powershell",
-        "bash",
-        "cmd",
-        "承認",
-        "確認",
-        "続行",
-        "許可",
-        "コマンド",
-        "ターミナル"
     ];
 
     public AiStatusSnapshot? TryRead(WindowSlot slot)
@@ -160,32 +128,20 @@ public sealed class VscodeChatUiStatusReader
         var inspected = 0;
         AiStatusSnapshot? runningResult = null;
         AiStatusSnapshot? confirmationResult = null;
-        AiStatusSnapshot? errorResult = null;
-        AiStatusSnapshot? completedResult = null;
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
         {
             var element = queue.Dequeue();
             inspected++;
 
-            if (runningResult is null && TryReadRunningSignal(element, out var runningDetail))
+            if (runningResult is null && TryReadRunningSignal(element, out var detail))
             {
-                runningResult = new AiStatusSnapshot(AiStatus.Running, runningDetail, DateTimeOffset.Now);
+                runningResult = new AiStatusSnapshot(AiStatus.Running, detail, DateTimeOffset.Now);
             }
 
-            if (confirmationResult is null && TryReadConfirmationSignal(element, out var confirmationDetail))
+            if (confirmationResult is null && TryReadConfirmationSignal(element, out var confirmDetail))
             {
-                confirmationResult = new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmationDetail, DateTimeOffset.Now);
-            }
-
-            if (errorResult is null && TryReadErrorSignal(element, out var errorDetail))
-            {
-                errorResult = new AiStatusSnapshot(AiStatus.Error, errorDetail, DateTimeOffset.Now);
-            }
-
-            if (completedResult is null && TryReadCompletedSignal(element, out var completedDetail))
-            {
-                completedResult = new AiStatusSnapshot(AiStatus.Completed, completedDetail, DateTimeOffset.Now);
+                confirmationResult = new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmDetail, DateTimeOffset.Now);
             }
 
             if (runningResult is not null && confirmationResult is not null)
@@ -196,7 +152,8 @@ public sealed class VscodeChatUiStatusReader
             EnqueueChildren(walker, element, queue);
         }
 
-        return confirmationResult ?? runningResult ?? errorResult ?? completedResult;
+        // Confirmation takes priority: if AI is waiting for user approval, that is the true state
+        return confirmationResult ?? runningResult;
     }
 
     private static void EnqueueChildren(
@@ -230,51 +187,25 @@ public sealed class VscodeChatUiStatusReader
         var name = GetStringProperty(element, AutomationElement.NameProperty);
         var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
         var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{name} {automationId} {className}";
+        var combinedContext = $"{automationId} {className}";
         var isVisible = IsVisible(element);
-        var hasChatContext = HasChatContext(element, combinedContext);
 
-        if (isVisible && hasChatContext && IsCurrentStatusText(name))
+        if (isVisible && IsCurrentStatusText(name))
         {
             detail = $"VS Code UI: {name} を検出しました。";
             return true;
         }
 
-        detail = string.Empty;
-        return false;
-    }
-
-    private static bool TryReadErrorSignal(AutomationElement element, out string detail)
-    {
-        var name = GetStringProperty(element, AutomationElement.NameProperty);
-        var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
-        var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{name} {automationId} {className}";
-
-        if (IsVisible(element)
-            && HasChatContext(element, combinedContext)
-            && ContainsAny(name, ErrorStatusFragments))
+        if (isVisible
+            && IsEnabled(element)
+            && ContainsAny(combinedContext, ChatContextFragments)
+            && (ContainsAny(className, StopClassFragments)
+                || ContainsAny(combinedContext, StopClassFragments)
+                || ContainsStopAction(name)))
         {
-            detail = $"VS Code UI: {TrimForDetail(name)} をエラー表示として検出しました。";
-            return true;
-        }
-
-        detail = string.Empty;
-        return false;
-    }
-
-    private static bool TryReadCompletedSignal(AutomationElement element, out string detail)
-    {
-        var name = GetStringProperty(element, AutomationElement.NameProperty);
-        var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
-        var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{name} {automationId} {className}";
-
-        if (IsVisible(element)
-            && HasChatContext(element, combinedContext)
-            && IsCompletedStatusText(name))
-        {
-            detail = $"VS Code UI: {TrimForDetail(name)} を完了表示として検出しました。";
+            detail = string.IsNullOrWhiteSpace(name)
+                ? "VS Code UI: チャット中断ボタンを検出しました。"
+                : $"VS Code UI: {TrimForDetail(name)} を検出しました。";
             return true;
         }
 
@@ -333,69 +264,19 @@ public sealed class VscodeChatUiStatusReader
     private static bool IsCurrentStatusText(string value)
     {
         var text = value.Trim();
-        if (text.Length == 0)
+        if (text.Length == 0 || text.Length > MaxTextLengthForStatus)
         {
             return false;
         }
 
         var normalized = text.TrimEnd('.', '…').Trim();
-        if (RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase))
-            || normalized.Contains("生成しています")
-            || normalized.Contains("進行中"))
-        {
-            return true;
-        }
-
-        if (normalized.Length > MaxTextLengthForStatus)
-        {
-            return false;
-        }
-
-        return RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase));
+        return RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase))
+            || RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool IsCompletedStatusText(string value)
+    private static bool ContainsStopAction(string value)
     {
-        var text = value.Trim();
-        if (text.Length == 0 || text.Length > MaxTextLengthForConfirmation)
-        {
-            return false;
-        }
-
-        var normalized = text.TrimEnd('.', '…').Trim();
-        return CompletedStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase))
-            || normalized.Contains("個のファイルを編集しました")
-            || (normalized.Contains("コマンド") && normalized.Contains("ran ", StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool IsActionLikeElement(AutomationElement element, string className)
-    {
-        try
-        {
-            var controlType = element.GetCurrentPropertyValue(AutomationElement.ControlTypeProperty, true);
-            if (controlType == ControlType.Button
-                || controlType == ControlType.MenuItem
-                || controlType == ControlType.Hyperlink)
-            {
-                return true;
-            }
-        }
-        catch (ElementNotAvailableException)
-        {
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-        catch (COMException)
-        {
-            return false;
-        }
-
-        return className.Contains("button", StringComparison.OrdinalIgnoreCase)
-            || className.Contains("monaco-button", StringComparison.OrdinalIgnoreCase)
-            || className.Contains("action-item", StringComparison.OrdinalIgnoreCase);
+        return StopActionTexts.Any(signal => value.Contains(signal, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool TryReadConfirmationSignal(AutomationElement element, out string detail)
@@ -403,15 +284,12 @@ public sealed class VscodeChatUiStatusReader
         var name = GetStringProperty(element, AutomationElement.NameProperty);
         var automationId = GetStringProperty(element, AutomationElement.AutomationIdProperty);
         var className = GetStringProperty(element, AutomationElement.ClassNameProperty);
-        var combinedContext = $"{automationId} {className}";
-        var hasChatContext = HasChatContext(element, combinedContext);
+        var combinedContext = $"{automationId} {className} {name}";
 
         if (IsVisible(element)
             && IsEnabled(element)
-            && hasChatContext
-            && IsActionLikeElement(element, className)
             && IsConfirmationActionName(name, out var requiresContext)
-            && (!requiresContext || HasConfirmationPromptContext(element)))
+            && (!requiresContext || ContainsAny(combinedContext, ChatContextFragments)))
         {
             detail = string.IsNullOrWhiteSpace(name)
                 ? "VS Code UI: チャット確認ボタンを検出しました。"
@@ -420,101 +298,6 @@ public sealed class VscodeChatUiStatusReader
         }
 
         detail = string.Empty;
-        return false;
-    }
-
-    private static bool HasChatContext(AutomationElement element, string selfContext)
-    {
-        if (ContainsAny(selfContext, ChatContextFragments))
-        {
-            return true;
-        }
-
-        var walker = TreeWalker.RawViewWalker;
-        var current = element;
-        for (var depth = 0; depth < 10; depth++)
-        {
-            AutomationElement? parent;
-            try
-            {
-                parent = walker.GetParent(current);
-            }
-            catch (ElementNotAvailableException)
-            {
-                return false;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
-            catch (COMException)
-            {
-                return false;
-            }
-
-            if (parent is null)
-            {
-                return false;
-            }
-
-            var parentContext =
-                $"{GetStringProperty(parent, AutomationElement.NameProperty)} {GetStringProperty(parent, AutomationElement.AutomationIdProperty)} {GetStringProperty(parent, AutomationElement.ClassNameProperty)}";
-            if (ContainsAny(parentContext, ChatContextFragments))
-            {
-                return true;
-            }
-
-            current = parent;
-        }
-
-        return false;
-    }
-
-    private static bool HasConfirmationPromptContext(AutomationElement element)
-    {
-        var walker = TreeWalker.RawViewWalker;
-        var current = element;
-
-        for (var depth = 0; depth < 6; depth++)
-        {
-            var context = string.Join(
-                " ",
-                GetStringProperty(current, AutomationElement.NameProperty),
-                GetStringProperty(current, AutomationElement.AutomationIdProperty),
-                GetStringProperty(current, AutomationElement.ClassNameProperty),
-                GetStringProperty(current, AutomationElement.HelpTextProperty));
-
-            if (ContainsAny(context, ConfirmationContextFragments))
-            {
-                return true;
-            }
-
-            AutomationElement? parent;
-            try
-            {
-                parent = walker.GetParent(current);
-            }
-            catch (ElementNotAvailableException)
-            {
-                return false;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
-            catch (COMException)
-            {
-                return false;
-            }
-
-            if (parent is null)
-            {
-                return false;
-            }
-
-            current = parent;
-        }
-
         return false;
     }
 
@@ -527,6 +310,7 @@ public sealed class VscodeChatUiStatusReader
             return false;
         }
 
+        // Exclude debug keybinding patterns like "Continue (F5)", "続行 (F5)"
         if (trimmed.Contains("(F", StringComparison.Ordinal))
         {
             return false;
