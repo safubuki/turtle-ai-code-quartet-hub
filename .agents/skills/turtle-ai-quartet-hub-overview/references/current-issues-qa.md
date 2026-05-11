@@ -113,6 +113,16 @@
   - `Invoke-AiStatusSmoke.ps1` は文字化けと `dotnet run` 混入出力で検証を誤らせていたため、temp-built DLL 直実行と ASCII 安全な script へ修正。
   - 実行中 panel プロセスが修正前ビルドのまま残っていると表示は更新されないため、最新 build への再起動が必要。
   - 追加調査で、Copilot の `| success |` / `request done:` / `message 0 returned` / `Stop hook result:` は UI の Running 表示終了前に出ることを確認したため、Copilot の Completed はこれらのログ行へ直結させず、UI Running の消失ベースへ寄せた。
+  - 2026-05-11: Copilot source の standalone completion を Idle 扱いへ変更し、Running 未観測のまま `AI 完了` へ飛ぶ経路を遮断した。
+  - 2026-05-11: Copilot 実行中の `chat-response-loading` / `chat-thinking-box` / `取り消す` / `codicon-stop-circle` は UIA で `IsOffscreen=true` を返すことがあった。`BoundingRectangle` が有効なら visible とみなし、alt output に build した smoke で D スロット Running を確認した。
+  - 2026-05-12: Copilot の agent 本体完了まで standalone completion から落ちていたため、`[panel/editAgent]` / retry `panel/editAgent` の success だけを Completed 根拠へ戻した。metadata completion は Idle 扱いのまま維持。
+  - 2026-05-12: `BoundingRectangle` が有効でも root window 外に残った過去 `chat-thinking-box` を Running と誤判定していたため、UIA visible 判定を root 矩形との交差必須へ変更した。
+  - 2026-05-12: `Thinking Effort: Medium` が `Thinking` prefix で Running になったため、短い一般語 prefix を削り、起動直後/待機中 smoke で A/B/C Idle を確認した。
+  - 2026-05-12 strict: 何も実行していない状態で Running / Completed が残るため、UI Running hold、Running 消失時 Completed、Codex quiet completion、Codex carry-forward を削除した。
+  - 2026-05-12 strict: Completed は同一スロットで UI Running を観測済み、かつその後に明示的な completion log が出た場合だけ返す。completion log 単独では Idle。
+  - 2026-05-12 strict: temp build smoke で A/B/C/D がすべて Idle になることを確認した。
+  - 2026-05-12 bridge: Running 表示が UIA 間引きで途切れるため、UI Running を観測した同一スロットだけ 10 秒 bridge するよう修正した。期限切れ時は Completed ではなく Idle。
+  - 2026-05-12 bridge: Completed が表示されない問題に対し、Running 開始時点の completion baseline より新しい明示完了ログだけで Completed を確定・保持するよう修正した。
   - `.build-tmp` と調査一時ファイルを `.gitignore` と削除で整理し、変更数の見た目ノイズを除去した。
 - **外部 change history メモ**:
   - VS Code 1.117 では chat rendering / agent UI / background terminal notifications が更新されている。

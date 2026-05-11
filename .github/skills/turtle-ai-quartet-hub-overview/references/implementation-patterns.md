@@ -217,6 +217,15 @@
   - Copilot は background markdown を running 根拠から外し、metadata completion も completed 根拠から除外する。
   - VS Code の新しい chat UI では live running 文言が `Optimizing tool selection...` のような独立要素として出ることがあり、親要素の文脈は英語 `chat` ではなく日本語 `チャット` や `interactive-session-status*` class になる場合がある。UI running 検出はこの文脈差分を吸収すること。
   - Copilot の `| success |` / `request done:` / `message 0 returned` / `Stop hook result:` はユーザー表示がまだ `Optimizing tool selection...` などの Running 中でも先に出る。Copilot ではこれらを即 Completed 根拠に使わず、Running は UI を主、Completed は Running 消失後の遷移で扱うこと。
+  - 2026-05-11: Copilot source では standalone completion を無効化し、実行中の観測なしに `| success |` / `request done:` / `message 0 returned` / `Stop hook result:` だけで `Completed` へ遷移させない。
+  - 2026-05-11: Copilot の実行中 UI は `chat-response-loading` / `chat-thinking-box` class と `取り消す` / `codicon-stop-circle` の stop button で出ることがある。これらは UIA 上 `IsOffscreen=true` を返しても有効な `BoundingRectangle` を持つため、visible 判定は rect を優先する。
+  - 2026-05-12: Copilot の `panel/editAgent` / retry `panel/editAgent` success は実際の agent 完了として standalone Completed に戻す。ただし `[title]` / `[progressMessages]` / `[copilotLanguageModelWrapper]` などの metadata completion は引き続き Idle 扱いにする。
+  - 2026-05-12: UIA の `BoundingRectangle` は対象 VS Code window の root 矩形と交差する場合だけ visible とみなす。過去レスポンスの `chat-thinking-box` が root 外に残ると false Running になるため、rect の有無だけでは判定しない。
+  - 2026-05-12: `Thinking Effort: Medium` は model picker の設定表示であり Running 文言ではない。`Thinking` / `Working` / `Generating` のような短い一般語を prefix 判定に使わず、単独表示または具体的な進行文言だけを Running 候補にする。
+  - 2026-05-12 strict: `panel/editAgent` success も、同一スロットでこの detector が UI Running を観測した後に出た場合だけ Completed として扱う。実行観測なしの completion ログ単独では Completed にしない。
+  - 2026-05-12 strict: UI Running の保持、Running 消失による Completed 遷移、Codex activity quiet window による Completed 推定、Codex current-session carry forward は使わない。ライブ UI 証跡または明示的な完了ログに限定する。
+  - 2026-05-12 bridge: UIA はラウンドロビンで間引かれるため、UI Running を観測した同一スロットだけ短時間 bridge して Running 表示を継続する。ただし bridge 期限切れで Completed にはせず Idle へ戻す。
+  - 2026-05-12 bridge: Completed は、UI Running 開始時点の latest completion を baseline とし、それより新しい明示 completion log が出た場合だけ確定する。これにより過去の `panel/editAgent` success を今回の完了として拾わない。
 - **注意**: 内部 source を統合 UI へそのまま潰すと、原因調査が難しくなる。将来の改善では per-engine evidence を残すこと。
 
 ### 5-3. Codex には quiet window による完了推定がある

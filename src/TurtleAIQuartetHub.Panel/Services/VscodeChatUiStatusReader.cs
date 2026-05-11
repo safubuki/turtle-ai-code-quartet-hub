@@ -11,7 +11,7 @@ public sealed class VscodeChatUiStatusReader
     private const int MaxElementsAfterRunningSignal = 240;
     private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
-    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(500);
 
     private static readonly string[] RunningStatusExactTexts =
     [
@@ -31,16 +31,20 @@ public sealed class VscodeChatUiStatusReader
     [
         "Optimizing tool selection",
         "Preparing",
-        "Planning",
-        "Thinking",
-        "Working",
-        "Generating"
+        "Planning"
+    ];
+
+    private static readonly string[] RunningClassFragments =
+    [
+        "chat-response-loading",
+        "chat-thinking-box"
     ];
 
     private static readonly string[] StopActionTexts =
     [
         "中断",
         "中止",
+        "取り消す",
         "キャンセル",
         "Stop",
         "Cancel"
@@ -60,6 +64,7 @@ public sealed class VscodeChatUiStatusReader
     private static readonly string[] StopClassFragments =
     [
         "codicon-stop",
+        "codicon-stop-circle",
         "codicon-debug-stop",
         "codicon-circle-slash"
     ];
@@ -125,6 +130,7 @@ public sealed class VscodeChatUiStatusReader
     private static AiStatusSnapshot? TryRead(AutomationElement root)
     {
         var stopwatch = Stopwatch.StartNew();
+        var rootBounds = TryGetBoundingRectangle(root);
         var walker = TreeWalker.RawViewWalker;
         var queue = new Queue<AutomationElement>();
         queue.Enqueue(root);
@@ -138,7 +144,7 @@ public sealed class VscodeChatUiStatusReader
             var element = queue.Dequeue();
             inspected++;
 
-            var snapshot = ReadElementSnapshot(element);
+            var snapshot = ReadElementSnapshot(element, rootBounds);
             if (TryReadConfirmationSignal(snapshot, out var confirmDetail))
             {
                 return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmDetail, DateTimeOffset.Now);
@@ -167,9 +173,9 @@ public sealed class VscodeChatUiStatusReader
         return runningResult;
     }
 
-    private static ElementSnapshot ReadElementSnapshot(AutomationElement element)
+    private static ElementSnapshot ReadElementSnapshot(AutomationElement element, System.Windows.Rect? rootBounds)
     {
-        var isVisible = IsVisible(element);
+        var isVisible = IsVisible(element, rootBounds);
         return new ElementSnapshot(
             GetStringProperty(element, AutomationElement.NameProperty),
             GetStringProperty(element, AutomationElement.AutomationIdProperty),
@@ -215,6 +221,14 @@ public sealed class VscodeChatUiStatusReader
         }
 
         if (element.IsVisible
+            && ContainsAny(element.ClassName, RunningClassFragments)
+            && ContainsAny(combinedContext, ChatContextFragments))
+        {
+            detail = "VS Code UI: チャットの実行中インジケーターを検出しました。";
+            return true;
+        }
+
+        if (element.IsVisible
             && element.IsEnabled
             && ContainsAny(combinedContext, ChatContextFragments)
             && (ContainsAny(element.ClassName, StopClassFragments)
@@ -231,18 +245,23 @@ public sealed class VscodeChatUiStatusReader
         return false;
     }
 
-    private static bool IsVisible(AutomationElement element)
+    private static bool IsVisible(AutomationElement element, System.Windows.Rect? rootBounds)
     {
         try
         {
+            var rect = TryGetBoundingRectangle(element);
+            if (rect.HasValue)
+            {
+                return !rootBounds.HasValue || Intersects(rootBounds.Value, rect.Value);
+            }
+
             var offscreen = element.GetCurrentPropertyValue(AutomationElement.IsOffscreenProperty, true);
             if (offscreen is bool isOffscreen && isOffscreen)
             {
                 return false;
             }
 
-            var rectangle = element.GetCurrentPropertyValue(AutomationElement.BoundingRectangleProperty, true);
-            return rectangle is not System.Windows.Rect rect || rect.Width > 0 && rect.Height > 0;
+            return true;
         }
         catch (ElementNotAvailableException)
         {
@@ -256,6 +275,43 @@ public sealed class VscodeChatUiStatusReader
         {
             return false;
         }
+    }
+
+    private static System.Windows.Rect? TryGetBoundingRectangle(AutomationElement element)
+    {
+        try
+        {
+            var value = element.GetCurrentPropertyValue(AutomationElement.BoundingRectangleProperty, true);
+            if (value is not System.Windows.Rect rect
+                || rect.IsEmpty
+                || rect.Width <= 0
+                || rect.Height <= 0)
+            {
+                return null;
+            }
+
+            return rect;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+    private static bool Intersects(System.Windows.Rect rootBounds, System.Windows.Rect elementBounds)
+    {
+        return elementBounds.Right > rootBounds.Left
+            && elementBounds.Left < rootBounds.Right
+            && elementBounds.Bottom > rootBounds.Top
+            && elementBounds.Top < rootBounds.Bottom;
     }
 
     private static bool IsEnabled(AutomationElement element)
