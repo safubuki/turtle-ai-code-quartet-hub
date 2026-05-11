@@ -6,6 +6,11 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class WindowEnumerator
 {
+    public static IntPtr GetForegroundWindowHandle()
+    {
+        return GetForegroundWindow();
+    }
+
     public IReadOnlyList<WindowInfo> GetVsCodeWindows()
     {
         var windows = new List<WindowInfo>();
@@ -111,6 +116,9 @@ public sealed class WindowEnumerator
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 }
 
 public sealed record WindowInfo(IntPtr Handle, string Title, uint ProcessId);

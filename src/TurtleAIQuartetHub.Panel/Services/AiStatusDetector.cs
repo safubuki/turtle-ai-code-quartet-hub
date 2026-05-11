@@ -7,15 +7,23 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class AiStatusDetector
 {
+    private const string CodexSourceName = "Codex";
+    private const string CopilotSourceName = "Copilot";
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan UiRunningBridgeWindow = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan UiAutomationCachedEvidenceWindow = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CompletionLogClockSkewTolerance = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CopilotLogRunningWindow = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan CodexLogActivityRunningWindow = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan CodexLogOwnerStickyWindow = TimeSpan.FromSeconds(18);
+    private static readonly TimeSpan CodexLogConfirmationWindow = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan FutureLogTolerance = TimeSpan.FromSeconds(5);
     private const int MaxRecentLogBytes = 96 * 1024;
     private const int MaxCandidateLogFilesPerSource = 6;
     private static readonly string[] ExtensionHostDirectoryNames = ["exthost", "remoteexthost", "remoteexhost"];
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly VscodeChatUiStatusReader _uiStatusReader = new();
+    private readonly object _codexBroadcastOwnerLock = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastRunningSeenBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _runningStartedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _completionBaselineAtBySlot = new(StringComparer.OrdinalIgnoreCase);
@@ -24,12 +32,14 @@ public sealed class AiStatusDetector
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dismissedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _slotStartedAtByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, AiStatusSnapshot> _lastUiEvidenceBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private string? _codexBroadcastOwnerSlotKey;
+    private DateTimeOffset? _codexBroadcastOwnerLastActivityAt;
     private static readonly ConcurrentDictionary<string, CachedLogEvidence> LogEvidenceCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly ExtensionLogSource[] LogSources =
     [
         new(
-            "Codex",
+            CodexSourceName,
             ["openai.chatgpt"],
             "Codex.log",
             "codex-explicit-running-start",
@@ -43,7 +53,7 @@ public sealed class AiStatusDetector
             ["thread-stream-state-changed"],
             ["commandExecution/requestApproval"]),
         new(
-            "Copilot",
+            CopilotSourceName,
             ["GitHub.copilot-chat", "github.copilot-chat"],
             "GitHub Copilot Chat.log",
             "ccreq:",
@@ -67,6 +77,8 @@ public sealed class AiStatusDetector
                 slot.WindowTitle,
                 slot.CurrentWorkspacePath,
                 null,
+                slot.IsFocused,
+                slot.WindowHandle != IntPtr.Zero && slot.WindowHandle == WindowEnumerator.GetForegroundWindowHandle(),
                 true),
             config);
     }
@@ -85,15 +97,22 @@ public sealed class AiStatusDetector
         var hadPreviousRunningState = _lastRunningSeenBySlot.TryGetValue(slotKey, out var lastRunningSeenAt);
         var userDataDirectory = SlotUserDataPaths.GetEffectiveUserDataDirectory(slot.Name, config);
         var canReadLogs = !string.IsNullOrWhiteSpace(userDataDirectory) && Directory.Exists(userDataDirectory);
-        var logEvidence = canReadLogs
-            ? TryDetectFromLogs(slotKey, slotStartedAt, userDataDirectory!)
-            : null;
+        var logEvidences = canReadLogs
+            ? DetectFromLogs(slot, slotKey, slotStartedAt, userDataDirectory!)
+            : [];
+        var bestLogEvidence = GetBestEvidenceOrDefault(logEvidences);
+        var latestCompletionEvidence = GetLatestEvidenceOrDefault(
+            logEvidences.Where(evidence => evidence.Status == AiStatus.Completed));
+        var codexLogEvidence = GetBestEvidenceOrDefault(
+            logEvidences.Where(evidence => string.Equals(evidence.SourceName, CodexSourceName, StringComparison.OrdinalIgnoreCase)));
+        var copilotLogEvidence = GetBestEvidenceOrDefault(
+            logEvidences.Where(evidence => string.Equals(evidence.SourceName, CopilotSourceName, StringComparison.OrdinalIgnoreCase)));
 
         var uiEvidence = TryReadUiEvidence(slotKey, slot);
         if (uiEvidence is { Status: AiStatus.Running })
         {
             if (_runningStartedAtBySlot.TryAdd(slotKey, uiEvidence.EventAt ?? now)
-                && logEvidence is { Status: AiStatus.Completed, EventAt: { } baselineCompletedAt })
+                && latestCompletionEvidence is { EventAt: { } baselineCompletedAt })
             {
                 _completionBaselineAtBySlot[slotKey] = baselineCompletedAt;
             }
@@ -111,9 +130,9 @@ public sealed class AiStatusDetector
             return uiEvidence;
         }
 
-        if (logEvidence is { Status: AiStatus.Completed }
+        if (latestCompletionEvidence is { Status: AiStatus.Completed }
             && hadPreviousRunningState
-            && logEvidence.EventAt is { } completedAt
+            && latestCompletionEvidence.EventAt is { } completedAt
             && IsCompletionForObservedRun(slotKey, completedAt, lastRunningSeenAt))
         {
             _lastRunningSeenBySlot.TryRemove(slotKey, out _);
@@ -121,13 +140,32 @@ public sealed class AiStatusDetector
             _completionBaselineAtBySlot.TryRemove(slotKey, out _);
             _completedAtBySlot[slotKey] = completedAt;
             _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
-            return logEvidence;
+            return latestCompletionEvidence;
         }
 
-        if (logEvidence is { Status: AiStatus.Error or AiStatus.NeedsAttention })
+        if (bestLogEvidence is { Status: AiStatus.Error or AiStatus.NeedsAttention })
         {
-            RememberDetectedState(slotKey, logEvidence, now);
-            return logEvidence;
+            RememberDetectedState(slotKey, bestLogEvidence, now);
+            return bestLogEvidence;
+        }
+
+        if (codexLogEvidence is { Status: AiStatus.WaitingForConfirmation })
+        {
+            RememberDetectedState(slotKey, codexLogEvidence, now);
+            return codexLogEvidence;
+        }
+
+        if (copilotLogEvidence is { Status: AiStatus.Running })
+        {
+            RememberDetectedState(slotKey, copilotLogEvidence, now);
+            return copilotLogEvidence;
+        }
+
+        if (codexLogEvidence is { Status: AiStatus.Running })
+        {
+            _completedAtBySlot.TryRemove(slotKey, out _);
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+            return codexLogEvidence;
         }
 
         if (hadPreviousRunningState)
@@ -183,6 +221,7 @@ public sealed class AiStatusDetector
         SwapPrefixedEntries(_confirmationRequestedAtBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_dismissedAtBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_lastUiEvidenceBySlot, sourceSlotName, targetSlotName);
+        SwapCodexBroadcastOwner(sourceSlotName, targetSlotName);
 
         var hasSource = _slotStartedAtByName.TryRemove(sourceSlotName, out var sourceStarted);
         var hasTarget = _slotStartedAtByName.TryRemove(targetSlotName, out var targetStarted);
@@ -205,6 +244,28 @@ public sealed class AiStatusDetector
         foreach (var entry in entriesB) dict[$"{slotNameA}:{entry.Key[prefixB.Length..]}"] = entry.Value;
     }
 
+    private void SwapCodexBroadcastOwner(string slotNameA, string slotNameB)
+    {
+        lock (_codexBroadcastOwnerLock)
+        {
+            if (_codexBroadcastOwnerSlotKey is null)
+            {
+                return;
+            }
+
+            var prefixA = $"{slotNameA}:";
+            var prefixB = $"{slotNameB}:";
+            if (_codexBroadcastOwnerSlotKey.StartsWith(prefixA, StringComparison.OrdinalIgnoreCase))
+            {
+                _codexBroadcastOwnerSlotKey = $"{slotNameB}:{_codexBroadcastOwnerSlotKey[prefixA.Length..]}";
+            }
+            else if (_codexBroadcastOwnerSlotKey.StartsWith(prefixB, StringComparison.OrdinalIgnoreCase))
+            {
+                _codexBroadcastOwnerSlotKey = $"{slotNameA}:{_codexBroadcastOwnerSlotKey[prefixB.Length..]}";
+            }
+        }
+    }
+
     private void RememberDetectedState(string slotKey, AiStatusSnapshot snapshot, DateTimeOffset fallbackAt)
     {
         var eventAt = snapshot.EventAt ?? fallbackAt;
@@ -212,7 +273,7 @@ public sealed class AiStatusDetector
         {
             case AiStatus.Running:
                 _runningStartedAtBySlot.TryAdd(slotKey, eventAt);
-                _lastRunningSeenBySlot[slotKey] = eventAt;
+                _lastRunningSeenBySlot[slotKey] = fallbackAt;
                 _completedAtBySlot.TryRemove(slotKey, out _);
                 _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
                 break;
@@ -285,20 +346,120 @@ public sealed class AiStatusDetector
         return null;
     }
 
-    private AiStatusSnapshot? TryDetectFromLogs(string slotKey, DateTimeOffset slotStartedAt, string userDataDirectory)
+    private IReadOnlyList<AiStatusSnapshot> DetectFromLogs(
+        WindowSlotStatusSnapshot slot,
+        string slotKey,
+        DateTimeOffset slotStartedAt,
+        string userDataDirectory)
     {
-        var evidences = LogSources
+        return LogSources
             .Select(source => ReadEvidence(userDataDirectory, source))
             .Select(evidence => KeepOnlyCurrentEvidence(slotKey, slotStartedAt, evidence))
+            .Select(evidence => KeepOnlySlotScopedLogEvidence(slot, slotKey, evidence))
             .Where(evidence => evidence.Status is AiStatus.Running or AiStatus.Completed or AiStatus.Error or AiStatus.NeedsAttention or AiStatus.WaitingForConfirmation)
             .ToList();
+    }
 
-        if (evidences.Count > 0)
+    private AiStatusSnapshot KeepOnlySlotScopedLogEvidence(
+        WindowSlotStatusSnapshot slot,
+        string slotKey,
+        AiStatusSnapshot evidence)
+    {
+        if (!string.Equals(evidence.SourceName, CodexSourceName, StringComparison.OrdinalIgnoreCase))
         {
-            return GetBestEvidence(evidences);
+            return evidence;
         }
 
-        return null;
+        if (evidence.Status is not (AiStatus.Running or AiStatus.WaitingForConfirmation)
+            || evidence.EventAt is not { } eventAt)
+        {
+            return evidence;
+        }
+
+        var window = evidence.Status == AiStatus.WaitingForConfirmation
+            ? CodexLogConfirmationWindow
+            : CodexLogActivityRunningWindow;
+
+        if (!IsRecentLogEvent(eventAt, window))
+        {
+            ExpireCodexBroadcastOwner(DateTimeOffset.Now);
+            return new AiStatusSnapshot(AiStatus.Idle, "Codex: stale log event ignored.", eventAt, CodexSourceName);
+        }
+
+        return IsCodexBroadcastOwner(slot, slotKey, eventAt, window)
+            ? evidence
+            : new AiStatusSnapshot(AiStatus.Idle, "Codex: broadcast log belongs to another slot or has no focused owner.", eventAt, CodexSourceName);
+    }
+
+    private bool IsCodexBroadcastOwner(
+        WindowSlotStatusSnapshot slot,
+        string slotKey,
+        DateTimeOffset activityAt,
+        TimeSpan assignmentWindow)
+    {
+        var now = DateTimeOffset.Now;
+        if (!IsRecentLogEvent(activityAt, assignmentWindow))
+        {
+            ExpireCodexBroadcastOwner(now);
+            return false;
+        }
+
+        lock (_codexBroadcastOwnerLock)
+        {
+            var ownerStickyWindow = assignmentWindow > CodexLogOwnerStickyWindow
+                ? assignmentWindow
+                : CodexLogOwnerStickyWindow;
+            var ownerIsActive = _codexBroadcastOwnerLastActivityAt is { } ownerLastActivityAt
+                && now - ownerLastActivityAt <= ownerStickyWindow;
+
+            if (!ownerIsActive)
+            {
+                _codexBroadcastOwnerSlotKey = null;
+                _codexBroadcastOwnerLastActivityAt = null;
+            }
+
+            if (ownerIsActive
+                && string.Equals(_codexBroadcastOwnerSlotKey, slotKey, StringComparison.OrdinalIgnoreCase))
+            {
+                _codexBroadcastOwnerLastActivityAt = Max(_codexBroadcastOwnerLastActivityAt, activityAt);
+                return true;
+            }
+
+            if (ownerIsActive)
+            {
+                return false;
+            }
+
+            if (!slot.IsForeground && !slot.IsFocused)
+            {
+                return false;
+            }
+
+            _codexBroadcastOwnerSlotKey = slotKey;
+            _codexBroadcastOwnerLastActivityAt = activityAt;
+            return true;
+        }
+    }
+
+    private void ExpireCodexBroadcastOwner(DateTimeOffset now)
+    {
+        lock (_codexBroadcastOwnerLock)
+        {
+            if (_codexBroadcastOwnerLastActivityAt is { } ownerLastActivityAt
+                && now - ownerLastActivityAt <= CodexLogOwnerStickyWindow)
+            {
+                return;
+            }
+
+            _codexBroadcastOwnerSlotKey = null;
+            _codexBroadcastOwnerLastActivityAt = null;
+        }
+    }
+
+    private static bool IsRecentLogEvent(DateTimeOffset eventAt, TimeSpan window)
+    {
+        var now = DateTimeOffset.Now;
+        return eventAt <= now + FutureLogTolerance && now - eventAt <= window;
     }
 
     private AiStatusSnapshot KeepOnlyCurrentEvidence(
@@ -337,6 +498,19 @@ public sealed class AiStatusDetector
             .OrderByDescending(GetStatusPriority)
             .ThenByDescending(evidence => evidence.EventAt ?? DateTimeOffset.MinValue)
             .First();
+    }
+
+    private static AiStatusSnapshot? GetBestEvidenceOrDefault(IEnumerable<AiStatusSnapshot> evidences)
+    {
+        var list = evidences.ToList();
+        return list.Count == 0 ? null : GetBestEvidence(list);
+    }
+
+    private static AiStatusSnapshot? GetLatestEvidenceOrDefault(IEnumerable<AiStatusSnapshot> evidences)
+    {
+        return evidences
+            .OrderByDescending(evidence => evidence.EventAt ?? DateTimeOffset.MinValue)
+            .FirstOrDefault();
     }
 
     private static string GetSlotKey(WindowSlot slot)
@@ -399,6 +573,15 @@ public sealed class AiStatusDetector
         foreach (var key in _lastUiEvidenceBySlot.Keys.Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
         {
             _lastUiEvidenceBySlot.TryRemove(key, out _);
+        }
+
+        lock (_codexBroadcastOwnerLock)
+        {
+            if (_codexBroadcastOwnerSlotKey?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                _codexBroadcastOwnerSlotKey = null;
+                _codexBroadcastOwnerLastActivityAt = null;
+            }
         }
     }
 
@@ -710,7 +893,17 @@ public sealed class AiStatusDetector
             && (!evidence.LastRunningSignalAt.HasValue || errorAt >= evidence.LastRunningSignalAt.Value)
             && (!evidence.LastCompletionSignalAt.HasValue || errorAt >= evidence.LastCompletionSignalAt.Value))
         {
-            return new AiStatusSnapshot(AiStatus.Error, $"{evidence.SourceName}: {errorAt:HH:mm:ss} にエラーイベントを検出しました。", errorAt);
+            return new AiStatusSnapshot(AiStatus.Error, $"{evidence.SourceName}: {errorAt:HH:mm:ss} にエラーイベントを検出しました。", errorAt, evidence.SourceName);
+        }
+
+        if (string.Equals(evidence.SourceName, CodexSourceName, StringComparison.OrdinalIgnoreCase))
+        {
+            return ToCodexSnapshot(evidence);
+        }
+
+        if (string.Equals(evidence.SourceName, CopilotSourceName, StringComparison.OrdinalIgnoreCase))
+        {
+            return ToCopilotSnapshot(evidence);
         }
 
         var hasPrimaryRunning = evidence.LastRunningSignalAt.HasValue;
@@ -734,30 +927,144 @@ public sealed class AiStatusDetector
 
             if (completionIsNewer && evidence.LastCompletionSignalAt is { } completedAt)
             {
-                return new AiStatusSnapshot(AiStatus.Completed, $"{evidence.SourceName}: {completedAt:HH:mm:ss} に完了イベントを検出しました。", completedAt);
+                return new AiStatusSnapshot(AiStatus.Completed, $"{evidence.SourceName}: {completedAt:HH:mm:ss} に完了イベントを検出しました。", completedAt, evidence.SourceName);
             }
 
             if (evidence.LastConfirmationSignalAt is { } confirmAt && confirmAt >= runningAt)
             {
-                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{evidence.SourceName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。", confirmAt);
+                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, $"{evidence.SourceName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。", confirmAt, evidence.SourceName);
             }
 
-            return new AiStatusSnapshot(AiStatus.Idle, $"{evidence.SourceName}: ログ実行開始単独のため待機中として扱います。", runningAt);
+            return new AiStatusSnapshot(AiStatus.Idle, $"{evidence.SourceName}: ログ実行開始単独のため待機中として扱います。", runningAt, evidence.SourceName);
         }
 
         var standaloneCompletionAt = evidence.LastStandaloneCompletionSignalAt
             ?? (evidence.AllowStandaloneCompletion ? evidence.LastCompletionSignalAt : null);
         if (standaloneCompletionAt is { } standaloneCompletedAt)
         {
-            return new AiStatusSnapshot(AiStatus.Completed, $"{evidence.SourceName}: {standaloneCompletedAt:HH:mm:ss} に完了イベントを検出しました。", standaloneCompletedAt);
+            return new AiStatusSnapshot(AiStatus.Completed, $"{evidence.SourceName}: {standaloneCompletedAt:HH:mm:ss} に完了イベントを検出しました。", standaloneCompletedAt, evidence.SourceName);
         }
 
         if (evidence.LastCompletionSignalAt is { } ignoredCompletedAt)
         {
-            return new AiStatusSnapshot(AiStatus.Idle, $"{evidence.SourceName}: 完了イベント単独のため待機中として扱います。", ignoredCompletedAt);
+            return new AiStatusSnapshot(AiStatus.Idle, $"{evidence.SourceName}: 完了イベント単独のため待機中として扱います。", ignoredCompletedAt, evidence.SourceName);
         }
 
-        return new AiStatusSnapshot(AiStatus.Idle, $"{evidence.SourceName}: AI は待機中です。", evidence.LastIdleSignalAt ?? evidence.LastEventAt);
+        return new AiStatusSnapshot(AiStatus.Idle, $"{evidence.SourceName}: AI は待機中です。", evidence.LastIdleSignalAt ?? evidence.LastEventAt, evidence.SourceName);
+    }
+
+    private static AiStatusSnapshot ToCopilotSnapshot(AiLogEvidence evidence)
+    {
+        DateTimeOffset? effectiveRunningAt = evidence.LastRunningSignalAt;
+        if (evidence.LastSecondaryRunningSignalAt is { } secondaryAt)
+        {
+            effectiveRunningAt = Max(effectiveRunningAt, secondaryAt);
+        }
+
+        if (effectiveRunningAt is { } runningAt)
+        {
+            var completionIsNewer = evidence.LastCompletionSignalAt.HasValue
+                && evidence.LastCompletionSignalAt.Value >= runningAt;
+
+            if (completionIsNewer && evidence.LastCompletionSignalAt is { } completedAt)
+            {
+                return new AiStatusSnapshot(
+                    AiStatus.Completed,
+                    $"{CopilotSourceName}: {completedAt:HH:mm:ss} に完了イベントを検出しました。",
+                    completedAt,
+                    CopilotSourceName);
+            }
+
+            if (evidence.LastConfirmationSignalAt is { } confirmAt && confirmAt >= runningAt)
+            {
+                return new AiStatusSnapshot(
+                    AiStatus.WaitingForConfirmation,
+                    $"{CopilotSourceName}: {confirmAt:HH:mm:ss} にユーザー確認待ちを検出しました。",
+                    confirmAt,
+                    CopilotSourceName);
+            }
+
+            if (IsRecentLogEvent(runningAt, CopilotLogRunningWindow))
+            {
+                return new AiStatusSnapshot(
+                    AiStatus.Running,
+                    $"{CopilotSourceName}: {runningAt:HH:mm:ss} に実行中イベントを検出しました。",
+                    runningAt,
+                    CopilotSourceName);
+            }
+
+            return new AiStatusSnapshot(
+                AiStatus.Idle,
+                $"{CopilotSourceName}: 実行開始ログが古いため待機中として扱います。",
+                runningAt,
+                CopilotSourceName);
+        }
+
+        var standaloneCompletionAt = evidence.LastStandaloneCompletionSignalAt
+            ?? (evidence.AllowStandaloneCompletion ? evidence.LastCompletionSignalAt : null);
+        if (standaloneCompletionAt is { } standaloneCompletedAt)
+        {
+            return new AiStatusSnapshot(
+                AiStatus.Completed,
+                $"{CopilotSourceName}: {standaloneCompletedAt:HH:mm:ss} に完了イベントを検出しました。",
+                standaloneCompletedAt,
+                CopilotSourceName);
+        }
+
+        if (evidence.LastCompletionSignalAt is { } ignoredCompletedAt)
+        {
+            return new AiStatusSnapshot(
+                AiStatus.Idle,
+                $"{CopilotSourceName}: 完了イベント単独のため待機中として扱います。",
+                ignoredCompletedAt,
+                CopilotSourceName);
+        }
+
+        return new AiStatusSnapshot(
+            AiStatus.Idle,
+            $"{CopilotSourceName}: AI は待機中です。",
+            evidence.LastIdleSignalAt ?? evidence.LastEventAt,
+            CopilotSourceName);
+    }
+
+    private static AiStatusSnapshot ToCodexSnapshot(AiLogEvidence evidence)
+    {
+        DateTimeOffset? activityAt = evidence.LastRunningSignalAt;
+        if (evidence.LastSecondaryRunningSignalAt is { } secondaryAt)
+        {
+            activityAt = Max(activityAt, secondaryAt);
+        }
+
+        if (evidence.LastActivitySignalAt is { } streamAt)
+        {
+            activityAt = Max(activityAt, streamAt);
+        }
+
+        if (evidence.LastConfirmationSignalAt is { } confirmAt
+            && IsRecentLogEvent(confirmAt, CodexLogConfirmationWindow)
+            && (!activityAt.HasValue || confirmAt >= activityAt.Value - FutureLogTolerance))
+        {
+            return new AiStatusSnapshot(
+                AiStatus.WaitingForConfirmation,
+                $"{CodexSourceName}: {confirmAt:HH:mm:ss} に確認要求イベントを検出しました。",
+                confirmAt,
+                CodexSourceName);
+        }
+
+        if (activityAt is { } runningAt && IsRecentLogEvent(runningAt, CodexLogActivityRunningWindow))
+        {
+            return new AiStatusSnapshot(
+                AiStatus.Running,
+                $"{CodexSourceName}: {runningAt:HH:mm:ss} にストリーム更新を検出しました。",
+                runningAt,
+                CodexSourceName);
+        }
+
+        return new AiStatusSnapshot(
+            AiStatus.Idle,
+            $"{CodexSourceName}: AI は待機中です。",
+            evidence.LastIdleSignalAt ?? activityAt ?? evidence.LastEventAt,
+            CodexSourceName);
     }
 
     private static DateTimeOffset? Max(DateTimeOffset? current, DateTimeOffset candidate)
@@ -811,4 +1118,5 @@ public sealed class AiStatusDetector
 public sealed record AiStatusSnapshot(
     AiStatus Status,
     string Detail,
-    DateTimeOffset? EventAt);
+    DateTimeOffset? EventAt,
+    string SourceName = "");

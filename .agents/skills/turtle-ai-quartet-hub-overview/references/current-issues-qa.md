@@ -123,6 +123,8 @@
   - 2026-05-12 strict: temp build smoke で A/B/C/D がすべて Idle になることを確認した。
   - 2026-05-12 bridge: Running 表示が UIA 間引きで途切れるため、UI Running を観測した同一スロットだけ 10 秒 bridge するよう修正した。期限切れ時は Completed ではなく Idle。
   - 2026-05-12 bridge: Completed が表示されない問題に対し、Running 開始時点の completion baseline より新しい明示完了ログだけで Completed を確定・保持するよう修正した。
+  - 2026-05-12 Codex restore: Codex の `thread-stream-state-changed` は A/B/C/D に同一時刻で broadcast されるため、全スロット Running には使わない。foreground または app focused の owner slot にだけ 12 秒 TTL で Running を割り当て、期限切れ後は Completed へ推定せず Idle に戻す。
+  - 2026-05-12 load: `panel.log` で UIA probe が 510-570ms に張り付いていたため、`VscodeChatUiStatusReader.MaxScanDuration` を 500ms から 220ms へ戻した。refresh interval 750ms と UIA probe interval 750ms は維持。
   - `.build-tmp` と調査一時ファイルを `.gitignore` と削除で整理し、変更数の見た目ノイズを除去した。
 - **外部 change history メモ**:
   - VS Code 1.117 では chat rendering / agent UI / background terminal notifications が更新されている。
@@ -140,6 +142,8 @@
   - Copilot 実行と Codex 実行を別々に試した結果の比較
   - Copilot が未実行の状態で background markdown / title 更新だけでは Completed に張り付かないこと
   - temp build smoke で stale な Completed / Running が残っていないこと
+  - Codex 実行中に Running が owner slot だけへ出て、他スロットが broadcast log だけで Running にならないこと
+  - `panel.log` の `status probe took` が UIA probe 時に 500ms 付近へ張り付かないこと
 
 ### 2-4. focused slot を前面復帰したいのに、背面化後に D スロットが最前面へ出る
 
@@ -244,6 +248,26 @@
 - **最低限の確認**:
   - A-D の各スロットで 4 面表示から focused に入り、背後の desktop / 別アプリが見えないこと。
   - A focused から B focused へ切り替えても、A の最大化が前に残らず B が最前面になること。
+
+### 2-10. Codex 対応後に Copilot の複数 Running と Completed が落ちる
+
+- **現象**:
+  - Codex の実行状態は取得できる一方、別パネルで Copilot を実行すると既存パネルの Running 表示が消える。
+  - Copilot 同士でも、最新実行パネルだけ Running になり、複数同時実行の表示が維持されない。
+  - Codex 対応後に Copilot の完了表示が出なくなった。
+- **原因**:
+  - `AiStatusDetector` が Codex / Copilot のログ evidence を `GetBestEvidence` で 1 件へ潰していたため、Codex Running が Copilot Completed を隠していた。
+  - Copilot Running が UI Automation のラウンドロビン走査に強く依存し、probe されないパネルの Running 維持が UIA cache / bridge 切れで落ちやすくなっていた。
+- **2026-05-12 実装反映**:
+  - `DetectFromLogs` が全 source evidence を返し、`latestCompletionEvidence`、`codexLogEvidence`、`copilotLogEvidence` を別々に評価するよう変更。
+  - Copilot は slot 別 user-data-dir の直近 `ccreq:` を Running 補助として扱い、複数パネル同時実行中も各パネルが独立して Running を維持できるよう変更。
+  - Copilot の `success` / `[panel/editAgent]` 完了は `latestCompletionEvidence` と observed running baseline で検証し、Codex Running に隠されないよう変更。
+  - Codex の broadcast log owner 判定は Codex source のみに限定し、Copilot 判定へ影響させない。
+- **最低限の確認**:
+  - 何も実行していない状態で A-D が Idle のままになること。
+  - Copilot を 2-3 パネルで同時実行し、実行中の全パネルが Running を維持すること。
+  - Copilot 完了後に、該当パネルだけ Completed が表示されること。
+  - Codex Running と Copilot Running / Completed が互いの表示を消さないこと。
 
 ## 3. 対応優先順
 

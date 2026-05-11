@@ -414,6 +414,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     {
         var refreshStartedAt = DateTimeOffset.UtcNow;
         var uiProbeSlotName = SelectUiAutomationProbeSlot(refreshStartedAt);
+        var foregroundWindowHandle = WindowEnumerator.GetForegroundWindowHandle();
         var requests = Slots
             .Select(slot => new WindowSlotStatusSnapshot(
                 slot.Name,
@@ -421,6 +422,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                 slot.WindowTitle,
                 slot.CurrentWorkspacePath,
                 _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null,
+                slot.IsFocused,
+                slot.WindowHandle != IntPtr.Zero && slot.WindowHandle == foregroundWindowHandle,
                 string.Equals(slot.Name, uiProbeSlotName, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 

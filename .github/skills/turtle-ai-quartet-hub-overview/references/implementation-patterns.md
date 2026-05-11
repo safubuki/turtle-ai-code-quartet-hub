@@ -226,20 +226,26 @@
   - 2026-05-12 strict: UI Running の保持、Running 消失による Completed 遷移、Codex activity quiet window による Completed 推定、Codex current-session carry forward は使わない。ライブ UI 証跡または明示的な完了ログに限定する。
   - 2026-05-12 bridge: UIA はラウンドロビンで間引かれるため、UI Running を観測した同一スロットだけ短時間 bridge して Running 表示を継続する。ただし bridge 期限切れで Completed にはせず Idle へ戻す。
   - 2026-05-12 bridge: Completed は、UI Running 開始時点の latest completion を baseline とし、それより新しい明示 completion log が出た場合だけ確定する。これにより過去の `panel/editAgent` success を今回の完了として拾わない。
+  - 2026-05-12 Codex restore: Codex の `thread-stream-state-changed` は A-D の `Codex.log` に同一時刻で broadcast されることがあるため、ログ単独で全スロット Running に戻してはいけない。`SourceName` を保持し、foreground または app focused と判定できる owner slot だけに短時間割り当てる。
 - **注意**: 内部 source を統合 UI へそのまま潰すと、原因調査が難しくなる。将来の改善では per-engine evidence を残すこと。
 
-### 5-3. Codex には quiet window による完了推定がある
+### 5-3. Codex の stream broadcast は owner slot と短時間 TTL で扱う
 
 - **ファイル**: `src/TurtleAIQuartetHub.Panel/Services/AiStatusDetector.cs`
-- **問題**: Codex は明確な完了イベントを常に出すとは限らず、UI が過去履歴に反応して running 誤判定する。
+- **問題**: Codex は明確な完了イベントを常に出すとは限らず、`thread-stream-state-changed` は全 user-data-dir に同時配信されることがある。これを単独で Running にすると、何も実行していないスロットも Running になる。
 - **対策**:
-  - 最後の activity signal から一定時間経過したら completed 扱いにする。
-  - UI が running を示していても、ログ側の stream 停止が長ければ completed を優先する。
+  - Codex log 由来の Running は foreground VS Code または app focused slot に owner を割り当てられた場合だけ返す。
+  - Running は最新 stream activity から 12 秒以内だけ扱い、期限切れ後は Completed へ推定遷移させず Idle へ戻す。
+  - `commandExecution/requestApproval` は 45 秒以内だけ confirmation 候補にする。
+  - Codex log 由来の Running は UIA bridge に入れず、activity 停止後の人工的な Running 延長を避ける。
 - **実装メモ 2026-04-28**:
   - quiet completion は 10 秒へ揃えた。
   - Completed は短時間観測としてのみ扱い、Codex の最終 activity から 45 秒を超えた completion は stale とみなして Idle へ落とす。
   - UI Automation が Running を示していても、根拠になる Codex activity が 45 秒より古い場合は履歴表示とみなして無視する。
-- **注意**: quiet window の秒数は拡張更新で再調整が必要になり得るため、調整時は smoke 結果で再確認すること。
+- **実装メモ 2026-05-12**:
+  - quiet completion 推定は削除済み。Codex は明示 completion がない限り Completed を作らない。
+  - owner が決められない broadcast stream は Idle として落とす。
+- **注意**: Codex の stream broadcast を全スロット Running に戻すと false positive が再発する。owner 条件や TTL を緩める場合は smoke と実行中スロットの比較で確認すること。
 
 ### 5-8. AI 状態の検証は temp build の smoke を基準にする
 
@@ -369,7 +375,19 @@
   - `StatusStore` で UI Automation probe 対象を 1 refresh につき最大 1 スロットへ絞り、A-D をラウンドロビンで回す。
   - `AiStatusDetector` は UIA の Running / WaitingForConfirmation を短時間キャッシュし、probe しないスロットでも表示が即座に途切れないようにする。
   - `VscodeChatUiStatusReader` は最大 1500 要素、約 220ms、Running 検出後 240 要素の上限を持つ。Confirmation は見つけた時点で即返す。
+  - 2026-05-12: Copilot 検出強化後に `MaxScanDuration=500ms` へ伸び、`panel.log` の `status probe took` が 510-570ms に張り付いた。Copilot の実行中検出は class/stop button/visible rect が主因なので、スキャン上限は 220ms に戻す。
 - **注意**: 全スロット同時 UIA 走査や無制限 RawView 走査に戻さない。検出語彙を増やす場合も、`panel.log` の `Status refresh took` が常時 1 秒を超えないことと、AI 実行中の標準/縮小切替で固まらないことを確認する。
+
+### 5-13. Codex と Copilot のログ evidence は source 別に保持する
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/Services/AiStatusDetector.cs`
+- **問題**: Codex と Copilot のログ候補を `GetBestEvidence` で 1 件に潰すと、Codex の Running が Copilot の Completed を隠す。また、Copilot Running を UIA のみへ寄せると、ラウンドロビン走査の外れたパネルが複数同時実行中でも Idle へ落ちやすい。
+- **対策**:
+  - `DetectFromLogs` は全 source の候補を配列で返し、`latestCompletionEvidence`、`codexLogEvidence`、`copilotLogEvidence` を別々に評価する。
+  - Copilot は slot 別 user-data-dir の `ccreq:` を直近 Running 補助として扱う。`success` / `cancelled` / `networkError` / `markdown` は Running から除外し、完了イベントが Running より新しければ Completed を優先する。
+  - Codex の `thread-stream-state-changed` は broadcast 的に全スロットへ出るため、foreground/focused owner と短時間 TTL を維持する。
+  - 完了表示は `latestCompletionEvidence` を `_lastRunningSeenBySlot` と baseline で検証してから出す。時間経過だけで Completed へ遷移させない。
+- **注意**: source 別 evidence を単一 priority に戻すと、Copilot 同士の複数 Running、Copilot 完了表示、Codex/Copilot の独立性が同時に壊れる。Copilot の Running TTL は「実行中補助の寿命」であり、完了推定に使ってはいけない。
 
 ## 横断的な注意点まとめ
 
@@ -384,7 +402,8 @@
 | overlay | overlay は別ウィンドウ。最小化・focused・hidden と必ず同期させる |
 | UI 表現 | focused 表現と AI 状態表現は別概念なので、優先順位を明示して実装する |
 | AI 検出 | Confirmation を Running より優先し、source priority を崩さない |
-| Codex quiet window | 既定は 15 秒。調整時は smoke で検証する |
+| Codex broadcast owner | `thread-stream-state-changed` は全スロットに出るため、foreground/focused owner と短時間 TTL なしで Running にしない |
+| Copilot source separation | `ccreq:` Running と `success` Completed は slot 別 user-data-dir 単位で扱い、Codex evidence と単一 best に潰さない |
 | スロット交換 | detector session と timestamp を一緒に swap しないと状態が混線する |
 | **AI 検出条件変更** | **Running/Confirmation/Completed の検出経路を削除・制限する場合は必ず smoke で検出可能性を確認する。誤検知防止と検出感度はトレードオフ** |
 | **AI UIA負荷** | `RawViewWalker` は全スロットで毎回走査しない。1 refresh 最大 1 スロット、要素数・時間・Running 後 lookahead の予算制限を維持する |
