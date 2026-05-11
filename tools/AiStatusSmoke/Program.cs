@@ -28,94 +28,172 @@ if (targets.Count == 0)
 }
 
 var windowEnumerator = new WindowEnumerator();
-var visibleWindows = windowEnumerator.GetVsCodeWindows();
-var matches = WindowMatchResolver.Resolve(targets, visibleWindows, config);
 var detector = new AiStatusDetector();
-var results = new List<ProbeResult>();
-
-foreach (var target in targets.OrderBy(slot => slot.Name, StringComparer.OrdinalIgnoreCase))
+var watchMode = options.Watch || string.Equals(options.Scenario, "manual", StringComparison.OrdinalIgnoreCase);
+if (watchMode)
 {
-    if (!matches.TryGetValue(target.Name, out var match))
+    var startedAt = DateTimeOffset.UtcNow;
+    var duration = TimeSpan.FromSeconds(Math.Max(1, options.DurationSeconds));
+    var firstPass = true;
+
+    while (firstPass || DateTimeOffset.UtcNow - startedAt < duration)
     {
-        results.Add(new ProbeResult(
-            slotName: target.Name,
-            hwnd: 0,
-            finalStatus: AiStatus.Unknown.ToString(),
-            detail: "VS Code ウィンドウを現在の表示から解決できませんでした。",
-            eventAt: null,
-            resolved: false,
-            path: target.AssignedPath,
-            windowTitle: string.Empty,
-            matchReason: string.Empty,
-            engines: new ProbeEngines(
-                new ProbeEngine("Idle", "Confirmed", null, string.Empty),
-                new ProbeEngine("Idle", "Confirmed", null, string.Empty)),
-            uiProbe: new ProbeUiProbe(false, false, 0, string.Empty)));
-        continue;
+        var results = ProbeSlots(targets, windowEnumerator, detector, config, DateTimeOffset.Now);
+        WriteResults(results, options, streamJsonLines: options.Json);
+        firstPass = false;
+
+        if (DateTimeOffset.UtcNow - startedAt >= duration)
+        {
+            break;
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(1));
     }
 
-    var slot = new WindowSlot(new SlotConfig
-    {
-        Name = target.Name,
-        Path = target.AssignedPath
-    })
-    {
-        PanelTitle = target.PanelTitle,
-        SavedWorkspacePath = target.SavedWorkspacePath,
-        SavedWorkspaceConfirmed = target.SavedWorkspaceConfirmed,
-        CurrentWorkspacePath = target.EffectiveWorkspacePath,
-        WindowHandle = match.Handle,
-        WindowTitle = match.Title
-    };
-
-    var snapshot = detector.Detect(slot, config);
-    var diagnostics = snapshot.Diagnostics;
-    results.Add(new ProbeResult(
-        slotName: target.Name,
-        hwnd: match.Handle.ToInt64(),
-        finalStatus: snapshot.Status.ToString(),
-        detail: snapshot.Detail,
-        eventAt: snapshot.EventAt,
-        resolved: true,
-        path: target.AssignedPath,
-        windowTitle: match.Title,
-        matchReason: match.Reason,
-        engines: new ProbeEngines(
-            new ProbeEngine(
-                diagnostics?.Copilot.State ?? snapshot.Status.ToString(),
-                diagnostics?.Copilot.Confidence ?? string.Empty,
-                diagnostics?.Copilot.LastEvidenceAt,
-                diagnostics?.Copilot.Reason ?? string.Empty),
-            new ProbeEngine(
-                diagnostics?.Codex.State ?? snapshot.Status.ToString(),
-                diagnostics?.Codex.Confidence ?? string.Empty,
-                diagnostics?.Codex.LastEvidenceAt,
-                diagnostics?.Codex.Reason ?? string.Empty)),
-        uiProbe: new ProbeUiProbe(
-            diagnostics?.UiProbe.TimedOut ?? false,
-            diagnostics?.UiProbe.ScanCompleted ?? false,
-            diagnostics?.UiProbe.InspectedElementCount ?? 0,
-            diagnostics?.UiProbe.Detail ?? string.Empty)));
-}
-
-if (options.Json)
-{
-    var payload = JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true });
-    Console.WriteLine(payload);
     return 0;
 }
 
-foreach (var result in results)
-{
-    var eventText = result.eventAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
-    var handleText = result.hwnd == 0 ? "-" : $"0x{result.hwnd:X}";
-    var resolvedText = result.resolved ? "resolved" : "unresolved";
-    Console.WriteLine($"{result.slotName}|{resolvedText}|{handleText}|{result.finalStatus}|{eventText}|{result.windowTitle}|{result.detail}");
-}
-
+WriteResults(ProbeSlots(targets, windowEnumerator, detector, config, DateTimeOffset.Now), options, streamJsonLines: false);
 return 0;
 
+static List<ProbeResult> ProbeSlots(
+    IReadOnlyList<StoredSlotState> targets,
+    WindowEnumerator windowEnumerator,
+    AiStatusDetector detector,
+    AppConfig config,
+    DateTimeOffset sampledAt)
+{
+    var visibleWindows = windowEnumerator.GetVsCodeWindows();
+    var matches = WindowMatchResolver.Resolve(targets, visibleWindows, config);
+    var results = new List<ProbeResult>();
+
+    foreach (var target in targets.OrderBy(slot => slot.Name, StringComparer.OrdinalIgnoreCase))
+    {
+        if (!matches.TryGetValue(target.Name, out var match))
+        {
+            results.Add(new ProbeResult(
+                time: sampledAt,
+                slotName: target.Name,
+                hwnd: 0,
+                finalStatus: AiStatus.Unknown.ToString(),
+                detail: "VS Code ウィンドウを現在の表示から解決できませんでした。",
+                eventAt: null,
+                resolved: false,
+                path: target.AssignedPath,
+                windowTitle: string.Empty,
+                matchReason: string.Empty,
+                engines: new ProbeEngines(
+                    new ProbeEngine("Idle", "Confirmed", null, string.Empty),
+                    new ProbeEngine("Idle", "Confirmed", null, string.Empty)),
+                uiProbe: new ProbeUiProbe(
+                    false,
+                    false,
+                    0,
+                    string.Empty,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty)));
+            continue;
+        }
+
+        var slot = new WindowSlot(new SlotConfig
+        {
+            Name = target.Name,
+            Path = target.AssignedPath
+        })
+        {
+            PanelTitle = target.PanelTitle,
+            SavedWorkspacePath = target.SavedWorkspacePath,
+            SavedWorkspaceConfirmed = target.SavedWorkspaceConfirmed,
+            CurrentWorkspacePath = target.EffectiveWorkspacePath,
+            WindowHandle = match.Handle,
+            WindowTitle = match.Title
+        };
+
+        var snapshot = detector.Detect(slot, config);
+        var diagnostics = snapshot.Diagnostics;
+        results.Add(new ProbeResult(
+            time: sampledAt,
+            slotName: target.Name,
+            hwnd: match.Handle.ToInt64(),
+            finalStatus: snapshot.Status.ToString(),
+            detail: snapshot.Detail,
+            eventAt: snapshot.EventAt,
+            resolved: true,
+            path: target.AssignedPath,
+            windowTitle: match.Title,
+            matchReason: match.Reason,
+            engines: new ProbeEngines(
+                new ProbeEngine(
+                    diagnostics?.Copilot.State ?? snapshot.Status.ToString(),
+                    diagnostics?.Copilot.Confidence ?? string.Empty,
+                    diagnostics?.Copilot.LastEvidenceAt,
+                    diagnostics?.Copilot.Reason ?? string.Empty),
+                new ProbeEngine(
+                    diagnostics?.Codex.State ?? snapshot.Status.ToString(),
+                    diagnostics?.Codex.Confidence ?? string.Empty,
+                    diagnostics?.Codex.LastEvidenceAt,
+                    diagnostics?.Codex.Reason ?? string.Empty)),
+            uiProbe: new ProbeUiProbe(
+                diagnostics?.UiProbe.TimedOut ?? false,
+                diagnostics?.UiProbe.ScanCompleted ?? false,
+                diagnostics?.UiProbe.InspectedElementCount ?? 0,
+                diagnostics?.UiProbe.Detail ?? string.Empty,
+                diagnostics?.UiProbe.FoundRunningText ?? false,
+                diagnostics?.UiProbe.FoundRunningClass ?? false,
+                diagnostics?.UiProbe.FoundStopButton ?? false,
+                diagnostics?.UiProbe.FoundConfirmationButton ?? false,
+                diagnostics?.UiProbe.FoundInputBox ?? false,
+                diagnostics?.UiProbe.FoundInputReady ?? false,
+                diagnostics?.UiProbe.FoundSendButton ?? false,
+                diagnostics?.UiProbe.FoundDisabledSendButton ?? false,
+                diagnostics?.UiProbe.EvidenceText ?? string.Empty,
+                diagnostics?.UiProbe.EvidenceAutomationId ?? string.Empty,
+                diagnostics?.UiProbe.EvidenceClassName ?? string.Empty)));
+    }
+
+    return results;
+}
+
+static void WriteResults(IReadOnlyList<ProbeResult> results, CliOptions options, bool streamJsonLines)
+{
+    if (options.Json)
+    {
+        if (streamJsonLines)
+        {
+            foreach (var result in results)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result));
+            }
+
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(payload);
+        return;
+    }
+
+    foreach (var result in results)
+    {
+        var sampleText = result.time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        var eventText = result.eventAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+        var handleText = result.hwnd == 0 ? "-" : $"0x{result.hwnd:X}";
+        var resolvedText = result.resolved ? "resolved" : "unresolved";
+        Console.WriteLine($"{sampleText}|{result.slotName}|{resolvedText}|{handleText}|{result.finalStatus}|{eventText}|{result.windowTitle}|{result.detail}");
+    }
+}
+
 file sealed record ProbeResult(
+    DateTimeOffset time,
     string slotName,
     long hwnd,
     string finalStatus,
@@ -142,7 +220,18 @@ file sealed record ProbeUiProbe(
     bool TimedOut,
     bool ScanCompleted,
     int InspectedElementCount,
-    string Detail);
+    string Detail,
+    bool FoundRunningText,
+    bool FoundRunningClass,
+    bool FoundStopButton,
+    bool FoundConfirmationButton,
+    bool FoundInputBox,
+    bool FoundInputReady,
+    bool FoundSendButton,
+    bool FoundDisabledSendButton,
+    string EvidenceText,
+    string EvidenceAutomationId,
+    string EvidenceClassName);
 
 file sealed record StoredSlotState(
     string Name,
@@ -330,11 +419,17 @@ file sealed class CliOptions
 {
     public string? SlotName { get; private init; }
     public bool Json { get; private init; }
+    public bool Watch { get; private init; }
+    public int DurationSeconds { get; private init; }
+    public string? Scenario { get; private init; }
 
     public static CliOptions Parse(string[] args)
     {
         string? slotName = null;
         var json = false;
+        var watch = false;
+        var durationSeconds = 60;
+        string? scenario = null;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -346,13 +441,31 @@ file sealed class CliOptions
                 case "--json":
                     json = true;
                     break;
+                case "--watch":
+                    watch = true;
+                    break;
+                case "--duration" when index + 1 < args.Length && int.TryParse(args[index + 1], out var parsedDuration):
+                    durationSeconds = Math.Max(1, parsedDuration);
+                    index++;
+                    break;
+                case "--scenario" when index + 1 < args.Length:
+                    scenario = args[++index];
+                    if (string.Equals(scenario, "manual", StringComparison.OrdinalIgnoreCase))
+                    {
+                        watch = true;
+                    }
+
+                    break;
             }
         }
 
         return new CliOptions
         {
             SlotName = slotName,
-            Json = json
+            Json = json,
+            Watch = watch,
+            DurationSeconds = durationSeconds,
+            Scenario = scenario
         };
     }
 }

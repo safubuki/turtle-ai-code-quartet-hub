@@ -21,6 +21,16 @@ public sealed class VscodeChatUiStatusReader
         "生成中",
         "思考中",
         "考え中",
+        "分析中",
+        "評価中",
+        "検索中",
+        "読み取り中",
+        "確認中",
+        "レビュー中",
+        "編集中",
+        "調査中",
+        "処理を実行中",
+        "ツール実行中",
         "Working",
         "Running",
         "Generating",
@@ -31,7 +41,17 @@ public sealed class VscodeChatUiStatusReader
     [
         "Optimizing tool selection",
         "Preparing",
-        "Planning"
+        "Planning",
+        "Analyzing",
+        "Evaluating",
+        "Searching",
+        "Reading",
+        "Checking",
+        "Reviewing",
+        "Editing",
+        "Running tools",
+        "Using tool",
+        "Calling tool"
     ];
 
     private static readonly string[] RunningClassFragments =
@@ -53,10 +73,19 @@ public sealed class VscodeChatUiStatusReader
     private static readonly string[] ChatContextFragments =
     [
         "chat",
+        "chat-widget",
+        "chat-view",
+        "チャット",
+        "会話",
         "copilot",
         "codex",
         "agent",
+        "エージェント",
+        "応答",
+        "プロンプト",
         "interactive",
+        "interactive-session",
+        "interactive-session-status",
         "action-label",
         "codicon"
     ];
@@ -86,6 +115,45 @@ public sealed class VscodeChatUiStatusReader
         "実行する",
         "Approve",
         "承認"
+    ];
+
+    private static readonly string[] InputContextFragments =
+    [
+        "input",
+        "prompt",
+        "composer",
+        "chat-input",
+        "chatinput",
+        "interactive-input",
+        "textbox",
+        "editor",
+        "monaco",
+        "message",
+        "メッセージ",
+        "入力",
+        "質問",
+        "指示"
+    ];
+
+    private static readonly string[] SendActionTexts =
+    [
+        "Send",
+        "送信",
+        "送る",
+        "Submit"
+    ];
+
+    private static readonly string[] SendAutomationIdFragments =
+    [
+        "send",
+        "submit"
+    ];
+
+    private static readonly string[] SendClassFragments =
+    [
+        "codicon-send",
+        "send",
+        "submit"
     ];
 
     public UiAutomationProbeResult TryRead(WindowSlot slot)
@@ -139,6 +207,34 @@ public sealed class VscodeChatUiStatusReader
         int? runningFoundAt = null;
         string? runningDetail = null;
         bool timedOut = false;
+        bool foundRunningText = false;
+        bool foundRunningClass = false;
+        bool foundStopButton = false;
+        bool foundConfirmationButton = false;
+        bool foundInputBox = false;
+        bool foundInputReady = false;
+        bool foundSendButton = false;
+        bool foundDisabledSendButton = false;
+        string evidenceText = string.Empty;
+        string evidenceAutomationId = string.Empty;
+        string evidenceClassName = string.Empty;
+        DateTimeOffset? evidenceAt = null;
+
+        void CaptureEvidence(ElementSnapshot snapshot, bool prefer)
+        {
+            var alreadyCaptured = !string.IsNullOrWhiteSpace(evidenceText)
+                || !string.IsNullOrWhiteSpace(evidenceAutomationId)
+                || !string.IsNullOrWhiteSpace(evidenceClassName);
+            if (alreadyCaptured && !prefer)
+            {
+                return;
+            }
+
+            evidenceText = TrimForDetail(snapshot.Name);
+            evidenceAutomationId = snapshot.AutomationId;
+            evidenceClassName = snapshot.ClassName;
+            evidenceAt = DateTimeOffset.Now;
+        }
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
         {
@@ -146,21 +242,86 @@ public sealed class VscodeChatUiStatusReader
             inspected++;
 
             var snapshot = ReadElementSnapshot(element, rootBounds);
-            if (TryReadConfirmationSignal(snapshot, out var confirmDetail))
+            var hasChatContext = HasChatContext(snapshot);
+
+            if (TryReadInputBox(snapshot, hasChatContext))
             {
-                return new UiAutomationProbeResult(
+                foundInputBox = true;
+                if (snapshot.IsEnabled)
+                {
+                    foundInputReady = true;
+                    CaptureEvidence(snapshot, prefer: false);
+                }
+            }
+
+            if (TryReadSendButton(snapshot, hasChatContext, out var sendButtonEnabled))
+            {
+                if (sendButtonEnabled)
+                {
+                    foundSendButton = true;
+                    CaptureEvidence(snapshot, prefer: false);
+                }
+                else
+                {
+                    foundDisabledSendButton = true;
+                }
+            }
+
+            if (TryReadConfirmationSignal(snapshot, hasChatContext, out var confirmDetail))
+            {
+                foundConfirmationButton = true;
+                CaptureEvidence(snapshot, prefer: true);
+                return CreateProbeResult(
                     AiStatus.WaitingForConfirmation,
                     DateTimeOffset.Now,
                     false,
                     false,
                     inspected,
-                    confirmDetail);
+                    confirmDetail,
+                    foundRunningText,
+                    foundRunningClass,
+                    foundStopButton,
+                    foundConfirmationButton,
+                    foundInputBox,
+                    foundInputReady,
+                    foundSendButton,
+                    foundDisabledSendButton,
+                    evidenceText,
+                    evidenceAutomationId,
+                    evidenceClassName);
             }
 
-            if (runningDetail is null && TryReadRunningSignal(snapshot, out var detail))
+            if (TryReadRunningTextSignal(snapshot, hasChatContext, out var runningTextDetail))
             {
-                runningDetail = detail;
-                runningFoundAt = inspected;
+                foundRunningText = true;
+                if (runningDetail is null)
+                {
+                    runningDetail = runningTextDetail;
+                    runningFoundAt = inspected;
+                    CaptureEvidence(snapshot, prefer: true);
+                }
+            }
+
+            if (TryReadRunningClassSignal(snapshot, hasChatContext, out var runningClassDetail))
+            {
+                foundRunningClass = true;
+                if (runningDetail is null)
+                {
+                    runningDetail = runningClassDetail;
+                    runningFoundAt = inspected;
+                    CaptureEvidence(snapshot, prefer: true);
+                }
+            }
+
+            if (TryReadStopSignal(snapshot, hasChatContext, out var stopDetail))
+            {
+                foundStopButton = true;
+                if (runningDetail is null)
+                {
+                    runningDetail = stopDetail;
+                    runningFoundAt = inspected;
+                    CaptureEvidence(snapshot, prefer: true);
+                }
             }
 
             if (runningFoundAt.HasValue
@@ -180,29 +341,94 @@ public sealed class VscodeChatUiStatusReader
 
         if (runningDetail is not null)
         {
-            return new UiAutomationProbeResult(
+            return CreateProbeResult(
                 AiStatus.Running,
-                DateTimeOffset.Now,
+                evidenceAt ?? DateTimeOffset.Now,
                 timedOut,
                 false,
                 inspected,
-                runningDetail);
+                runningDetail,
+                foundRunningText,
+                foundRunningClass,
+                foundStopButton,
+                foundConfirmationButton,
+                foundInputBox,
+                foundInputReady,
+                foundSendButton,
+                foundDisabledSendButton,
+                evidenceText,
+                evidenceAutomationId,
+                evidenceClassName);
         }
 
         var scanCompleted = !timedOut && queue.Count == 0;
         var probeDetail = scanCompleted
-            ? "VS Code UI Automation の走査を最後まで完了しましたが、実行中シグナルは見つかりませんでした。"
+            ? foundInputReady || foundSendButton
+                ? "VS Code UI Automation の走査を完了し、チャット入力が可能な状態に戻っていることを確認しました。"
+                : foundInputBox
+                    ? "VS Code UI Automation の走査を完了し、入力欄は見つかりましたが実行中シグナルは見つかりませんでした。"
+                    : "VS Code UI Automation の走査を最後まで完了しましたが、実行中シグナルは見つかりませんでした。"
             : timedOut
                 ? "VS Code UI Automation の走査がタイムアウトしたため、状態は未確定です。"
                 : "VS Code UI Automation の走査を打ち切ったため、状態は未確定です。";
 
-        return new UiAutomationProbeResult(
+        return CreateProbeResult(
             null,
             null,
             timedOut,
             scanCompleted,
             inspected,
-            probeDetail);
+            probeDetail,
+            foundRunningText,
+            foundRunningClass,
+            foundStopButton,
+            foundConfirmationButton,
+            foundInputBox,
+            foundInputReady,
+            foundSendButton,
+            foundDisabledSendButton,
+            evidenceText,
+            evidenceAutomationId,
+            evidenceClassName);
+    }
+
+    private static UiAutomationProbeResult CreateProbeResult(
+        AiStatus? status,
+        DateTimeOffset? evidenceAt,
+        bool timedOut,
+        bool scanCompleted,
+        int inspectedElementCount,
+        string detail,
+        bool foundRunningText,
+        bool foundRunningClass,
+        bool foundStopButton,
+        bool foundConfirmationButton,
+        bool foundInputBox,
+        bool foundInputReady,
+        bool foundSendButton,
+        bool foundDisabledSendButton,
+        string evidenceText,
+        string evidenceAutomationId,
+        string evidenceClassName)
+    {
+        return new UiAutomationProbeResult(
+            status,
+            evidenceAt,
+            timedOut,
+            scanCompleted,
+            inspectedElementCount,
+            detail,
+            foundRunningText,
+            foundRunningClass,
+            foundStopButton,
+            foundConfirmationButton,
+            foundInputBox,
+            foundInputReady,
+            foundSendButton,
+            foundDisabledSendButton,
+            evidenceText,
+            evidenceAutomationId,
+            evidenceClassName);
     }
 
     private static ElementSnapshot ReadElementSnapshot(AutomationElement element, System.Windows.Rect? rootBounds)
@@ -212,6 +438,7 @@ public sealed class VscodeChatUiStatusReader
             GetStringProperty(element, AutomationElement.NameProperty),
             GetStringProperty(element, AutomationElement.AutomationIdProperty),
             GetStringProperty(element, AutomationElement.ClassNameProperty),
+            GetControlTypeName(element),
             isVisible,
             isVisible && IsEnabled(element));
     }
@@ -242,27 +469,39 @@ public sealed class VscodeChatUiStatusReader
         }
     }
 
-    private static bool TryReadRunningSignal(ElementSnapshot element, out string detail)
+    private static bool TryReadRunningTextSignal(ElementSnapshot element, bool hasChatContext, out string detail)
     {
-        var combinedContext = $"{element.AutomationId} {element.ClassName}";
-
-        if (element.IsVisible && IsCurrentStatusText(element.Name))
+        if (element.IsVisible && IsCurrentStatusText(element.Name, GetCombinedContext(element)))
         {
             detail = $"VS Code UI: {element.Name} を検出しました。";
             return true;
         }
 
+        detail = string.Empty;
+        return false;
+    }
+
+    private static bool TryReadRunningClassSignal(ElementSnapshot element, bool hasChatContext, out string detail)
+    {
         if (element.IsVisible
             && ContainsAny(element.ClassName, RunningClassFragments)
-            && ContainsAny(combinedContext, ChatContextFragments))
+            && hasChatContext)
         {
             detail = "VS Code UI: チャットの実行中インジケーターを検出しました。";
             return true;
         }
 
+        detail = string.Empty;
+        return false;
+    }
+
+    private static bool TryReadStopSignal(ElementSnapshot element, bool hasChatContext, out string detail)
+    {
+        var combinedContext = GetCombinedContext(element);
+
         if (element.IsVisible
             && element.IsEnabled
-            && ContainsAny(combinedContext, ChatContextFragments)
+            && hasChatContext
             && (ContainsAny(element.ClassName, StopClassFragments)
                 || ContainsAny(combinedContext, StopClassFragments)
                 || ContainsStopAction(element.Name)))
@@ -275,6 +514,51 @@ public sealed class VscodeChatUiStatusReader
 
         detail = string.Empty;
         return false;
+    }
+
+    private static bool TryReadInputBox(ElementSnapshot element, bool hasChatContext)
+    {
+        if (!element.IsVisible || !hasChatContext)
+        {
+            return false;
+        }
+
+        if (string.Equals(element.ControlType, "ControlType.Edit", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.Equals(element.ControlType, "ControlType.Document", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var combinedContext = GetCombinedContext(element);
+        return ContainsAny(combinedContext, InputContextFragments);
+    }
+
+    private static bool TryReadSendButton(ElementSnapshot element, bool hasChatContext, out bool isEnabled)
+    {
+        isEnabled = false;
+        if (!element.IsVisible
+            || !hasChatContext
+            || !string.Equals(element.ControlType, "ControlType.Button", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var combinedContext = GetCombinedContext(element);
+        var matchesSend = ContainsAny(element.Name, SendActionTexts)
+            || ContainsAny(element.AutomationId, SendAutomationIdFragments)
+            || ContainsAny(element.ClassName, SendClassFragments)
+            || ContainsAny(combinedContext, SendClassFragments);
+        if (!matchesSend)
+        {
+            return false;
+        }
+
+        isEnabled = element.IsEnabled;
+        return true;
     }
 
     private static bool IsVisible(AutomationElement element, System.Windows.Rect? rootBounds)
@@ -367,7 +651,7 @@ public sealed class VscodeChatUiStatusReader
         }
     }
 
-    private static bool IsCurrentStatusText(string value)
+    private static bool IsCurrentStatusText(string value, string combinedContext)
     {
         var text = value.Trim();
         if (text.Length == 0 || text.Length > MaxTextLengthForStatus)
@@ -376,8 +660,31 @@ public sealed class VscodeChatUiStatusReader
         }
 
         var normalized = text.TrimEnd('.', '…').Trim();
-        return RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase))
-            || RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
+        if (normalized.StartsWith("Thinking Effort", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var hasChatContext = ContainsAny(combinedContext, ChatContextFragments);
+        var exactMatch = RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch)
+        {
+            if (hasChatContext)
+            {
+                return true;
+            }
+
+            // Longer phrases like "処理を実行中" are specific enough to accept without extra context.
+            return normalized.Length >= 6 || normalized.Contains("実行", StringComparison.Ordinal);
+        }
+
+        var prefixMatch = RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
+        if (!prefixMatch)
+        {
+            return false;
+        }
+
+        return hasChatContext || normalized.Length >= 12 || normalized.Contains("tool", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ContainsStopAction(string value)
@@ -385,14 +692,14 @@ public sealed class VscodeChatUiStatusReader
         return StopActionTexts.Any(signal => value.Contains(signal, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool TryReadConfirmationSignal(ElementSnapshot element, out string detail)
+    private static bool TryReadConfirmationSignal(ElementSnapshot element, bool hasChatContext, out string detail)
     {
-        var combinedContext = $"{element.AutomationId} {element.ClassName} {element.Name}";
+        var combinedContext = GetCombinedContext(element);
 
         if (element.IsVisible
             && element.IsEnabled
             && IsConfirmationActionName(element.Name, out var requiresContext)
-            && (!requiresContext || ContainsAny(combinedContext, ChatContextFragments)))
+            && (!requiresContext || hasChatContext))
         {
             detail = string.IsNullOrWhiteSpace(element.Name)
                 ? "VS Code UI: チャット確認ボタンを検出しました。"
@@ -463,6 +770,16 @@ public sealed class VscodeChatUiStatusReader
         return fragments.Any(fragment => value.Contains(fragment, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static bool HasChatContext(ElementSnapshot element)
+    {
+        return ContainsAny(GetCombinedContext(element), ChatContextFragments);
+    }
+
+    private static string GetCombinedContext(ElementSnapshot element)
+    {
+        return $"{element.Name} {element.AutomationId} {element.ClassName} {element.ControlType}";
+    }
+
     private static string GetStringProperty(AutomationElement element, AutomationProperty property)
     {
         try
@@ -471,6 +788,29 @@ public sealed class VscodeChatUiStatusReader
             return value == AutomationElement.NotSupported || value is null
                 ? string.Empty
                 : value.ToString() ?? string.Empty;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return string.Empty;
+        }
+        catch (InvalidOperationException)
+        {
+            return string.Empty;
+        }
+        catch (COMException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string GetControlTypeName(AutomationElement element)
+    {
+        try
+        {
+            var value = element.GetCurrentPropertyValue(AutomationElement.ControlTypeProperty, true);
+            return value is ControlType controlType
+                ? controlType.ProgrammaticName ?? string.Empty
+                : string.Empty;
         }
         catch (ElementNotAvailableException)
         {
@@ -496,6 +836,7 @@ public sealed class VscodeChatUiStatusReader
         string Name,
         string AutomationId,
         string ClassName,
+        string ControlType,
         bool IsVisible,
         bool IsEnabled);
 }
@@ -506,8 +847,23 @@ public sealed record UiAutomationProbeResult(
     bool TimedOut,
     bool ScanCompleted,
     int InspectedElementCount,
-    string Detail)
+    string Detail,
+    bool FoundRunningText,
+    bool FoundRunningClass,
+    bool FoundStopButton,
+    bool FoundConfirmationButton,
+    bool FoundInputBox,
+    bool FoundInputReady,
+    bool FoundSendButton,
+    bool FoundDisabledSendButton,
+    string EvidenceText,
+    string EvidenceAutomationId,
+    string EvidenceClassName)
 {
+    public bool HasRunningEvidence => FoundRunningText || FoundRunningClass || FoundStopButton;
+
+    public bool HasReadyInputEvidence => FoundInputReady || FoundSendButton;
+
     public static UiAutomationProbeResult Unknown(string detail)
     {
         return new UiAutomationProbeResult(
@@ -516,7 +872,18 @@ public sealed record UiAutomationProbeResult(
             false,
             false,
             0,
-            detail);
+            detail,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty);
     }
 
     public AiStatusSnapshot? ToSnapshot(string sourceName = "UI Automation")

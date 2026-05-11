@@ -232,6 +232,11 @@
   - 2026-05-12 concurrent-state: Copilot は slot 別 `ccreq:` lease を 75 秒で保持し、`[panel/editAgent]` / retry `panel/editAgent` success は同一 slot の observed running がある場合だけ Completed にする。`markdown` / metadata completion / networkError は Running / Completed 根拠に使わない。
   - 2026-05-12 concurrent-state: Codex の broadcast activity は `SuspectRunning` に留め、UI 表示の Running には出さない。Confirmed / Probable Running へ到達した run だけ、scan-complete negative または複数回 negative probe を伴う quiet completion で Completed へ戻す。
   - 2026-05-12 concurrent-state: `StatusStore` の UIA probe は通常 1 slot、active / waiting / suspect がいるときだけ最大 2 slot まで広げ、detector priority / foreground / focused / round-robin の順で選ぶ。全 slot 毎回走査には戻さない。
+  - 2026-05-12 ui-ready: Running 語彙へ `分析中` / `評価中` / `検索中` / `読み取り中` / `確認中` / `レビュー中` / `編集中` / `調査中` / `処理を実行中` / `ツール実行中` と `Analyzing` / `Evaluating` / `Searching` / `Reading` / `Checking` / `Reviewing` / `Editing` / `Running tools` / `Using tool` / `Calling tool` を追加した。短い曖昧語は `chat` / `チャット` / `interactive-session-status` / `copilot` / `codex` / `agent` 文脈を優先する。
+  - 2026-05-12 ui-ready: `UiAutomationProbeResult` は `FoundRunningText` / `FoundRunningClass` / `FoundStopButton` / `FoundConfirmationButton` / `FoundInputBox` / `FoundInputReady` / `FoundSendButton` / `FoundDisabledSendButton` / `EvidenceText` / `EvidenceAutomationId` / `EvidenceClassName` まで持つ。Completed は `ScanCompleted && Status == null` だけでは作らず、`FoundRunning* == false`、`FoundStopButton == false`、`FoundInputReady || FoundSendButton` を必要条件にする。
+  - 2026-05-12 ui-ready: Copilot / Codex とも、同一 engine の Confirmed/Probable Running を見た後に、timeout なし UIA probe が input-ready へ戻った場合だけ `Completed` へ遷移させる。`WaitingForConfirmation` や broadcast only `SuspectRunning` からは `Completed` を作らない。
+  - 2026-05-12 ui-ready: Codex の `SuspectRunning` は UIA probe 優先度を上げるだけに使い、UIA が running text / class / stop button を拾ったときだけ Confirmed Running に昇格する。逆に `FoundInputReady=true` かつ running evidence なしなら Idle へ戻す。
+  - 2026-05-12 ui-ready: `StatusStore` の UIA probe は通常 1、active/suspect が 1 slot なら 2、2 slot 以上なら 4 まで広げる。ただし直近 refresh が 1 秒超なら最大 2 へ縮退し、`MaxDegreeOfParallelism=2` は維持する。
 - **注意**: 内部 source を統合 UI へそのまま潰すと、原因調査が難しくなる。将来の改善では per-engine evidence を残すこと。
 
 ### 5-3. Codex の stream broadcast は owner slot と短時間 TTL で扱う
@@ -287,6 +292,16 @@
   - `--json` 出力に `slotName`, `hwnd`, `finalStatus`, `engines.Copilot.*`, `engines.Codex.*`, `uiProbe.*` を含める。
   - panel 側の detector diagnostics をそのまま CLI から引けるようにする。
 - **注意**: false positive / false negative の切り分けでは `finalStatus` だけを見ず、`engines.*.Reason` と `uiProbe.TimedOut` / `uiProbe.ScanCompleted` を必ず併読すること。
+
+### 5-12. smoke の遷移確認は persistent detector の watch/manual を使う
+
+- **ファイル**: `tools/AiStatusSmoke/Program.cs`
+- **問題**: 単発実行だけでは、slot x engine state machine の `Running -> Completed` 遷移理由を再現しにくい。
+- **対策**:
+  - `--watch --duration N --json` で同じ `AiStatusDetector` を 1 秒間隔で回し、JSONL で時系列出力する。
+  - `--scenario manual` は watch と同じ persistent detector を使い、手動操作しながら状態変化を追う。
+  - 各行に `time`, `finalStatus`, `engines.*`, `uiProbe.*` を出し、UIA evidence と engine reason を同時に見られるようにする。
+- **注意**: Running/Completed の受け入れ確認は単発 `--json` では不十分。live 操作の検証では watch/manual を使って `reason` と `uiProbe` を追うこと。
 
 ## 7. ビルドと検証
 

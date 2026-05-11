@@ -18,6 +18,7 @@ public sealed class AiStatusDetector
     private static readonly TimeSpan CodexQuietCompletionWindow = TimeSpan.FromSeconds(18);
     private static readonly TimeSpan CodexConfirmationWindow = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan CodexBroadcastOwnerStickyWindow = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan UiReadyCompletionDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan FutureLogTolerance = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DecisionLogInterval = TimeSpan.FromSeconds(10);
     private const int MaxRecentLogBytes = 96 * 1024;
@@ -336,6 +337,46 @@ public sealed class AiStatusDetector
         return hint;
     }
 
+    private static bool IsFreshNegativeUiProbe(UiAutomationProbeResult uiProbe, bool hasFreshUiProbe)
+    {
+        return hasFreshUiProbe
+            && !uiProbe.TimedOut
+            && uiProbe.ScanCompleted
+            && uiProbe.Status is null
+            && !uiProbe.HasRunningEvidence;
+    }
+
+    private static bool IsUiReadyAfterRunning(
+        EngineRuntimeState previous,
+        UiAutomationProbeResult uiProbe,
+        bool hasFreshUiProbe,
+        DateTimeOffset now)
+    {
+        if (!hasFreshUiProbe
+            || uiProbe.TimedOut
+            || uiProbe.Status is not null
+            || uiProbe.FoundConfirmationButton
+            || uiProbe.HasRunningEvidence
+            || !uiProbe.HasReadyInputEvidence)
+        {
+            return false;
+        }
+
+        if (previous.State != InternalEngineState.Running
+            || previous.Confidence is not (EvidenceConfidence.Confirmed or EvidenceConfidence.Probable)
+            || previous.LastRunningEvidenceAt is not { } lastRunningEvidenceAt)
+        {
+            return false;
+        }
+
+        return now - lastRunningEvidenceAt >= UiReadyCompletionDelay;
+    }
+
+    private static string GetUiReadyCompletionReason()
+    {
+        return "実行表示と停止ボタンが消え、入力可能状態に戻ったため完了と判定しました。";
+    }
+
     private static EngineRuntimeState AdvanceCopilotState(
         EngineRuntimeState previous,
         AiLogEvidence log,
@@ -347,6 +388,7 @@ public sealed class AiStatusDetector
         var completedAt = IgnoreIfNotNewerThan(log.LastStandaloneCompletionSignalAt, previous.CompletedAt);
         var runningAt = IgnoreIfNotNewerThan(log.LastRunningSignalAt, previous.CompletedAt);
         var errorAt = IgnoreIfNotNewerThan(log.LastErrorSignalAt, previous.CompletedAt);
+        var freshNegative = IsFreshNegativeUiProbe(uiProbe, hasFreshUiProbe);
         var hasUiRunning = uiOwner == UiAutomationOwner.Copilot && uiProbe.Status is AiStatus.Running or AiStatus.WaitingForConfirmation;
 
         if (hasUiRunning)
@@ -367,9 +409,28 @@ public sealed class AiStatusDetector
                 uiProbe.Detail,
                 evidenceAt,
                 evidenceAt,
-                hasFreshUiProbe && uiProbe.Status is null && uiProbe.ScanCompleted ? now : previous.LastUiNegativeAt,
+                previous.LastUiNegativeAt,
                 0);
         }
+
+            if (IsUiReadyAfterRunning(previous, uiProbe, hasFreshUiProbe, now))
+            {
+                return new EngineRuntimeState(
+                AiEngine.Copilot,
+                InternalEngineState.Completed,
+                previous.Confidence,
+                previous.FirstSeenAt ?? previous.RunningStartedAt ?? now,
+                now,
+                previous.RunningStartedAt,
+                previous.CompletionBaselineAt,
+                now,
+                EvidenceSource.UiAutomation,
+                GetUiReadyCompletionReason(),
+                previous.LastRunningEvidenceAt,
+                previous.LastUiEvidenceAt,
+                now,
+                0);
+            }
 
         if (completedAt is { } completionSignalAt)
         {
@@ -411,7 +472,7 @@ public sealed class AiStatusDetector
                 "recent ccreq lease",
                 runningSignalAt,
                 previous.LastUiEvidenceAt,
-                hasFreshUiProbe && uiProbe.Status is null && uiProbe.ScanCompleted ? now : previous.LastUiNegativeAt,
+                freshNegative ? now : previous.LastUiNegativeAt,
                 0);
         }
 
@@ -420,7 +481,7 @@ public sealed class AiStatusDetector
         {
             return previous with
             {
-                LastUiNegativeAt = hasFreshUiProbe && uiProbe.Status is null && uiProbe.ScanCompleted ? now : previous.LastUiNegativeAt,
+                LastUiNegativeAt = freshNegative ? now : previous.LastUiNegativeAt,
                 ConsecutiveNegativeUiProbes = 0
             };
         }
@@ -464,7 +525,7 @@ public sealed class AiStatusDetector
                 : "no Copilot evidence",
             null,
             previous.LastUiEvidenceAt,
-            hasFreshUiProbe && uiProbe.Status is null && uiProbe.ScanCompleted ? now : previous.LastUiNegativeAt,
+            freshNegative ? now : previous.LastUiNegativeAt,
             0);
     }
 
@@ -484,7 +545,7 @@ public sealed class AiStatusDetector
         var errorAt = IgnoreIfNotNewerThan(log.LastErrorSignalAt, completedFloor);
         var hasUiRunning = uiOwner == UiAutomationOwner.Codex && uiProbe.Status == AiStatus.Running;
         var hasUiConfirmation = uiOwner == UiAutomationOwner.Codex && uiProbe.Status == AiStatus.WaitingForConfirmation;
-        var freshNegative = hasFreshUiProbe && uiProbe.Status is null && uiProbe.ScanCompleted;
+        var freshNegative = IsFreshNegativeUiProbe(uiProbe, hasFreshUiProbe);
         var negativeCount = freshNegative ? previous.ConsecutiveNegativeUiProbes + 1 : previous.ConsecutiveNegativeUiProbes;
 
         if (hasUiConfirmation)
@@ -528,6 +589,49 @@ public sealed class AiStatusDetector
                 evidenceAt,
                 evidenceAt,
                 null,
+                0);
+        }
+
+        if (previous.State == InternalEngineState.SuspectRunning
+            && hasFreshUiProbe
+            && !uiProbe.TimedOut
+            && uiProbe.Status is null
+            && !uiProbe.HasRunningEvidence
+            && uiProbe.HasReadyInputEvidence)
+        {
+            return new EngineRuntimeState(
+                AiEngine.Codex,
+                InternalEngineState.Idle,
+                EvidenceConfidence.Confirmed,
+                null,
+                previous.LastEvidenceAt,
+                null,
+                null,
+                null,
+                EvidenceSource.None,
+                "UIA input-ready without confirmed Codex running",
+                null,
+                previous.LastUiEvidenceAt,
+                now,
+                0);
+        }
+
+        if (IsUiReadyAfterRunning(previous, uiProbe, hasFreshUiProbe, now))
+        {
+            return new EngineRuntimeState(
+                AiEngine.Codex,
+                InternalEngineState.Completed,
+                previous.Confidence,
+                previous.FirstSeenAt ?? previous.RunningStartedAt ?? now,
+                now,
+                previous.RunningStartedAt,
+                previous.CompletionBaselineAt,
+                now,
+                EvidenceSource.UiAutomation,
+                GetUiReadyCompletionReason(),
+                previous.LastRunningEvidenceAt,
+                previous.LastUiEvidenceAt,
+                now,
                 0);
         }
 
@@ -681,30 +785,21 @@ public sealed class AiStatusDetector
             var quietFor = now - lastRunningEvidenceAt;
             if (quietFor >= CodexQuietCompletionWindow)
             {
-                if (freshNegative || negativeCount >= 2)
+                if (freshNegative)
                 {
-                    return new EngineRuntimeState(
-                        AiEngine.Codex,
-                        InternalEngineState.Completed,
-                        previous.Confidence,
-                        previous.FirstSeenAt ?? previous.RunningStartedAt ?? now,
-                        now,
-                        previous.RunningStartedAt,
-                        previous.CompletionBaselineAt,
-                        now,
-                        previous.LastEvidenceSource,
-                        previous.Confidence == EvidenceConfidence.Confirmed
-                            ? "confirmed running quiet completion"
-                            : "probable running quiet completion",
-                        previous.LastRunningEvidenceAt,
-                        previous.LastUiEvidenceAt,
-                        freshNegative ? now : previous.LastUiNegativeAt,
-                        0);
+                    return previous with
+                    {
+                        LastReason = uiProbe.HasReadyInputEvidence
+                            ? "input ready observed; waiting minimum completion delay"
+                            : "awaiting input-ready completion proof",
+                        LastUiNegativeAt = now,
+                        ConsecutiveNegativeUiProbes = negativeCount
+                    };
                 }
 
                 return previous with
                 {
-                    LastReason = "awaiting quiet completion confirmation",
+                    LastReason = "awaiting input-ready completion proof",
                     LastUiNegativeAt = freshNegative ? now : previous.LastUiNegativeAt,
                     ConsecutiveNegativeUiProbes = freshNegative ? negativeCount : previous.ConsecutiveNegativeUiProbes
                 };
@@ -878,8 +973,12 @@ public sealed class AiStatusDetector
         var reason = string.IsNullOrWhiteSpace(diagnostics.FinalReason)
             ? "n/a"
             : diagnostics.FinalReason.Replace("\r", " ").Replace("\n", " ");
+        var evidenceTextPart = string.IsNullOrWhiteSpace(diagnostics.UiProbe.EvidenceText)
+            ? string.Empty
+            : $" evidenceText={diagnostics.UiProbe.EvidenceText.Replace("\r", " ").Replace("\n", " ")}";
 
-        DiagnosticLog.Write($"AI status {slotName}: final={status}{enginePart}{confidencePart} reason={reason}");
+        DiagnosticLog.Write(
+            $"AI {slotName} final={status}{enginePart}{confidencePart} reason={reason}{evidenceTextPart} stopButton={diagnostics.UiProbe.FoundStopButton} inputReady={diagnostics.UiProbe.FoundInputReady} timedOut={diagnostics.UiProbe.TimedOut} scanCompleted={diagnostics.UiProbe.ScanCompleted}");
     }
 
     private bool IsCodexBroadcastOwner(
