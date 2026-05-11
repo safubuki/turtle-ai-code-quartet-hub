@@ -303,6 +303,19 @@
   - 各行に `time`, `finalStatus`, `engines.*`, `uiProbe.*` を出し、UIA evidence と engine reason を同時に見られるようにする。
 - **注意**: Running/Completed の受け入れ確認は単発 `--json` では不十分。live 操作の検証では watch/manual を使って `reason` と `uiProbe` を追うこと。
 
+### 5-13. slot-level runtime state は UIA 直証拠を owner 解決より優先する
+
+- **ファイル**: `src/TurtleAIQuartetHub.Panel/Services/AiStatusDetector.cs`, `src/TurtleAIQuartetHub.Panel/Services/VscodeChatUiStatusReader.cs`, `src/TurtleAIQuartetHub.Panel/Services/StatusStore.cs`, `tools/AiStatusSmoke/Program.cs`
+- **問題**: engine aggregate だけで final status を決めると、owner 不明の UIA Running が `AI 待機中` へ落ちる。一方で `ccreq:` や Codex stream log を強く使うと、起動直後の stale state で false Running が出る。
+- **対策**:
+  - `AiStatusDetector` に slot-level runtime state を持たせ、`UiAutomationDirect` / `EngineAggregate` / `LogAssist` / `None` を明示する。
+  - `uiProbe.Status == Running`、`FoundRunningText`、`FoundRunningClass`、`FoundStopButton` のいずれかがあれば、owner 不明でも slot-level `Running` を立てる。
+  - owner が決められない UIA evidence は `UnknownAi` のまま保持し、Copilot / Codex engine へ自動 fallback しない。
+  - Copilot `ccreq:`、Codex `thread-stream-state-changed`、`commandExecution/requestApproval` は log-only では `SuspectRunning` / probe 優先度補助に留める。`Conversation created` と `thread-read-state-changed` は Running 根拠に使わない。
+  - final display は `slot Waiting > slot Running > engine Waiting > engine Running > slot Completed > engine Completed > Idle` を基本順にし、Completed は過去の slot-level UIA Running と timeout なし input-ready proof を必須にする。
+  - UIA direct Running を見た slot は約 12 秒 hold し、UIA timeout / unknown / 1 回の negative probe だけでは Idle に落とさない。
+- **注意**: false positive を避けるため、log-only evidence は panel 表示では弱く扱う。owner が曖昧なままでも slot-level Running を捨てないこと。
+
 ## 7. ビルドと検証
 
 ### 7-1. 実行中のパネルは既定の `bin\Debug` 出力をロックする

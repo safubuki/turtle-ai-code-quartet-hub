@@ -137,6 +137,10 @@
   - 2026-05-12 ui-ready: `StatusStore` の probe 数は 1/2/4 へ変更し、直近 refresh が 1 秒超なら 2 へ自動縮退するようにした。並列数 2 は維持。
   - 2026-05-12 ui-ready: `AiStatusSmoke` へ `--watch --duration N --json` と `--scenario manual` を追加し、同じ detector で JSONL を出せるようにした。3 秒 watch 実行で `time` 付き JSONL 出力を確認した。
   - 2026-05-12 ui-ready: `panel.log` の AI 状態変化ログへ `evidenceText`, `stopButton`, `inputReady`, `timedOut`, `scanCompleted` を追加した。
+  - 2026-05-12 fixed-slot-runtime: final display を engine aggregate だけで決めず、slot-level runtime state を追加した。owner 不明でも UIA direct Running が見えた slot は `Running` を維持し、diagnostics では `slotLevelOwner=UnknownAi` として追跡する。
+  - 2026-05-12 fixed-log-weak: Copilot `ccreq:`、Codex `thread-stream-state-changed` / `commandExecution/requestApproval` は log-only では final Running に直結させず、probe 優先度と direct UIA Running hold の補助に限定した。`Conversation created` と `thread-read-state-changed` は Running 根拠から外した。
+  - 2026-05-12 fixed-completed: Completed は過去の slot-level UIA Running を観測済みで、timeout なし probe で running evidence 消失 + input-ready/send button を確認し、最終 UI Running から 2 秒以上経過した場合だけ作るよう固定した。owner 不明の Completed は slot-level のみで保持する。
+  - 2026-05-12 fixed-probe-order: `StatusStore` の probe 優先順位は `slot active > slot suspect > engine active > engine suspect > foreground > focused > round-robin` に合わせ、`AiStatusSmoke --watch --json` と `panel.log` で `slotLevelState`, `slotLevelOwner`, `source`, `reason`, `evidence*` を追えるようにした。
 - **外部 change history メモ**:
   - VS Code 1.117 では chat rendering / agent UI / background terminal notifications が更新されている。
   - Copilot Chat は VS Code と lockstep で更新される。
