@@ -227,6 +227,11 @@
   - 2026-05-12 bridge: UIA はラウンドロビンで間引かれるため、UI Running を観測した同一スロットだけ短時間 bridge して Running 表示を継続する。ただし bridge 期限切れで Completed にはせず Idle へ戻す。
   - 2026-05-12 bridge: Completed は、UI Running 開始時点の latest completion を baseline とし、それより新しい明示 completion log が出た場合だけ確定する。これにより過去の `panel/editAgent` success を今回の完了として拾わない。
   - 2026-05-12 Codex restore: Codex の `thread-stream-state-changed` は A-D の `Codex.log` に同一時刻で broadcast されることがあるため、ログ単独で全スロット Running に戻してはいけない。`SourceName` を保持し、foreground または app focused と判定できる owner slot だけに短時間割り当てる。
+  - 2026-05-12 concurrent-state: strict / bridge ベースの単一 snapshot 運用は廃止し、`AiStatusDetector` は slot x engine の内部 state machine を持つ。Copilot と Codex の evidence は最後まで分離し、UI 表示への集約は最終段階だけで行う。
+  - 2026-05-12 concurrent-state: `VscodeChatUiStatusReader` は `Status` だけでなく `TimedOut` / `ScanCompleted` / `InspectedElementCount` / `Detail` を返す。`TimedOut=true` かつ `Status=null` は unknown 扱いで、既存 Running を落とさない。`ScanCompleted=true` かつ `Status=null` のときだけ negative evidence として扱う。
+  - 2026-05-12 concurrent-state: Copilot は slot 別 `ccreq:` lease を 75 秒で保持し、`[panel/editAgent]` / retry `panel/editAgent` success は同一 slot の observed running がある場合だけ Completed にする。`markdown` / metadata completion / networkError は Running / Completed 根拠に使わない。
+  - 2026-05-12 concurrent-state: Codex の broadcast activity は `SuspectRunning` に留め、UI 表示の Running には出さない。Confirmed / Probable Running へ到達した run だけ、scan-complete negative または複数回 negative probe を伴う quiet completion で Completed へ戻す。
+  - 2026-05-12 concurrent-state: `StatusStore` の UIA probe は通常 1 slot、active / waiting / suspect がいるときだけ最大 2 slot まで広げ、detector priority / foreground / focused / round-robin の順で選ぶ。全 slot 毎回走査には戻さない。
 - **注意**: 内部 source を統合 UI へそのまま潰すと、原因調査が難しくなる。将来の改善では per-engine evidence を残すこと。
 
 ### 5-3. Codex の stream broadcast は owner slot と短時間 TTL で扱う
@@ -273,6 +278,15 @@
   - helper script の監視キーワードとエラーメッセージは ASCII 安全に寄せる。
   - `dotnet run` ではなく temp-built `AiStatusSmoke.dll` を直接呼ぶ。
 - **注意**: PowerShell 側で JSON を扱うときは stdout に build メッセージが混ざっていないことを必ず確認すること。
+
+### 5-11. smoke JSON は final snapshot だけでなく engine / ui probe 診断も持たせる
+
+- **ファイル**: `tools/AiStatusSmoke/Program.cs`
+- **問題**: 最終ステータスだけでは、Copilot / Codex のどちらが Running / Completed を作ったか、UIA timeout が絡んだかを切り分けにくい。
+- **対策**:
+  - `--json` 出力に `slotName`, `hwnd`, `finalStatus`, `engines.Copilot.*`, `engines.Codex.*`, `uiProbe.*` を含める。
+  - panel 側の detector diagnostics をそのまま CLI から引けるようにする。
+- **注意**: false positive / false negative の切り分けでは `finalStatus` だけを見ず、`engines.*.Reason` と `uiProbe.TimedOut` / `uiProbe.ScanCompleted` を必ず併読すること。
 
 ## 7. ビルドと検証
 

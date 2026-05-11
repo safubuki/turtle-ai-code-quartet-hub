@@ -88,24 +88,24 @@ public sealed class VscodeChatUiStatusReader
         "承認"
     ];
 
-    public AiStatusSnapshot? TryRead(WindowSlot slot)
+    public UiAutomationProbeResult TryRead(WindowSlot slot)
     {
         return TryRead(slot.WindowHandle);
     }
 
-    internal AiStatusSnapshot? TryRead(WindowSlotStatusSnapshot slot)
+    internal UiAutomationProbeResult TryRead(WindowSlotStatusSnapshot slot)
     {
         return TryRead(slot.WindowHandle);
     }
 
-    private AiStatusSnapshot? TryRead(IntPtr windowHandle)
+    private UiAutomationProbeResult TryRead(IntPtr windowHandle)
     {
         try
         {
             var root = AutomationElement.FromHandle(windowHandle);
             if (root is null)
             {
-                return null;
+                return UiAutomationProbeResult.Unknown("VS Code UI Automation のルート取得に失敗しました。");
             }
 
             return TryRead(root);
@@ -113,21 +113,21 @@ public sealed class VscodeChatUiStatusReader
         catch (ElementNotAvailableException ex)
         {
             DiagnosticLog.Write(ex);
-            return null;
+            return UiAutomationProbeResult.Unknown($"VS Code UI Automation の要素参照に失敗しました: {ex.GetType().Name}");
         }
         catch (InvalidOperationException ex)
         {
             DiagnosticLog.Write(ex);
-            return null;
+            return UiAutomationProbeResult.Unknown($"VS Code UI Automation の走査に失敗しました: {ex.GetType().Name}");
         }
         catch (COMException ex)
         {
             DiagnosticLog.Write(ex);
-            return null;
+            return UiAutomationProbeResult.Unknown($"VS Code UI Automation の COM 呼び出しに失敗しました: 0x{ex.HResult:X8}");
         }
     }
 
-    private static AiStatusSnapshot? TryRead(AutomationElement root)
+    private static UiAutomationProbeResult TryRead(AutomationElement root)
     {
         var stopwatch = Stopwatch.StartNew();
         var rootBounds = TryGetBoundingRectangle(root);
@@ -137,7 +137,8 @@ public sealed class VscodeChatUiStatusReader
 
         var inspected = 0;
         int? runningFoundAt = null;
-        AiStatusSnapshot? runningResult = null;
+        string? runningDetail = null;
+        bool timedOut = false;
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
         {
@@ -147,12 +148,18 @@ public sealed class VscodeChatUiStatusReader
             var snapshot = ReadElementSnapshot(element, rootBounds);
             if (TryReadConfirmationSignal(snapshot, out var confirmDetail))
             {
-                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, confirmDetail, DateTimeOffset.Now);
+                return new UiAutomationProbeResult(
+                    AiStatus.WaitingForConfirmation,
+                    DateTimeOffset.Now,
+                    false,
+                    false,
+                    inspected,
+                    confirmDetail);
             }
 
-            if (runningResult is null && TryReadRunningSignal(snapshot, out var detail))
+            if (runningDetail is null && TryReadRunningSignal(snapshot, out var detail))
             {
-                runningResult = new AiStatusSnapshot(AiStatus.Running, detail, DateTimeOffset.Now);
+                runningDetail = detail;
                 runningFoundAt = inspected;
             }
 
@@ -166,11 +173,36 @@ public sealed class VscodeChatUiStatusReader
 
             if (stopwatch.Elapsed >= MaxScanDuration)
             {
+                timedOut = true;
                 break;
             }
         }
 
-        return runningResult;
+        if (runningDetail is not null)
+        {
+            return new UiAutomationProbeResult(
+                AiStatus.Running,
+                DateTimeOffset.Now,
+                timedOut,
+                false,
+                inspected,
+                runningDetail);
+        }
+
+        var scanCompleted = !timedOut && queue.Count == 0;
+        var probeDetail = scanCompleted
+            ? "VS Code UI Automation の走査を最後まで完了しましたが、実行中シグナルは見つかりませんでした。"
+            : timedOut
+                ? "VS Code UI Automation の走査がタイムアウトしたため、状態は未確定です。"
+                : "VS Code UI Automation の走査を打ち切ったため、状態は未確定です。";
+
+        return new UiAutomationProbeResult(
+            null,
+            null,
+            timedOut,
+            scanCompleted,
+            inspected,
+            probeDetail);
     }
 
     private static ElementSnapshot ReadElementSnapshot(AutomationElement element, System.Windows.Rect? rootBounds)
@@ -466,4 +498,31 @@ public sealed class VscodeChatUiStatusReader
         string ClassName,
         bool IsVisible,
         bool IsEnabled);
+}
+
+public sealed record UiAutomationProbeResult(
+    AiStatus? Status,
+    DateTimeOffset? EvidenceAt,
+    bool TimedOut,
+    bool ScanCompleted,
+    int InspectedElementCount,
+    string Detail)
+{
+    public static UiAutomationProbeResult Unknown(string detail)
+    {
+        return new UiAutomationProbeResult(
+            null,
+            null,
+            false,
+            false,
+            0,
+            detail);
+    }
+
+    public AiStatusSnapshot? ToSnapshot(string sourceName = "UI Automation")
+    {
+        return Status.HasValue
+            ? new AiStatusSnapshot(Status.Value, Detail, EvidenceAt, sourceName)
+            : null;
+    }
 }

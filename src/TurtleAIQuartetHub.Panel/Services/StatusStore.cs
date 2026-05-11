@@ -413,8 +413,8 @@ public sealed class StatusStore : INotifyPropertyChanged
         CancellationToken cancellationToken)
     {
         var refreshStartedAt = DateTimeOffset.UtcNow;
-        var uiProbeSlotName = SelectUiAutomationProbeSlot(refreshStartedAt);
         var foregroundWindowHandle = WindowEnumerator.GetForegroundWindowHandle();
+        var uiProbeSlotNames = SelectUiAutomationProbeSlots(refreshStartedAt, foregroundWindowHandle);
         var requests = Slots
             .Select(slot => new WindowSlotStatusSnapshot(
                 slot.Name,
@@ -424,7 +424,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                 _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null,
                 slot.IsFocused,
                 slot.WindowHandle != IntPtr.Zero && slot.WindowHandle == foregroundWindowHandle,
-                string.Equals(slot.Name, uiProbeSlotName, StringComparison.OrdinalIgnoreCase)))
+                uiProbeSlotNames.Contains(slot.Name)))
             .ToList();
 
         var stopwatch = Stopwatch.StartNew();
@@ -440,36 +440,61 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
     }
 
-    private string? SelectUiAutomationProbeSlot(DateTimeOffset refreshStartedAt)
+    private IReadOnlySet<string> SelectUiAutomationProbeSlots(DateTimeOffset refreshStartedAt, IntPtr foregroundWindowHandle)
     {
         if (refreshStartedAt - _lastUiAutomationProbeAt < UiAutomationProbeInterval)
         {
-            return null;
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var slots = Slots.Take(4).ToList();
-        if (slots.Count == 0)
+        var eligibleSlots = Slots
+            .Take(4)
+            .Where(slot => slot.WindowHandle != IntPtr.Zero
+                && slot.WindowStatus != SlotWindowStatus.Missing
+                && !slot.IsHidden)
+            .Select((slot, index) => new { Slot = slot, EligibleIndex = index })
+            .ToList();
+
+        if (eligibleSlots.Count == 0)
         {
-            return null;
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        for (var offset = 0; offset < slots.Count; offset++)
-        {
-            var index = (_nextUiAutomationProbeSlotIndex + offset) % slots.Count;
-            var slot = slots[index];
-            if (slot.WindowHandle == IntPtr.Zero
-                || slot.WindowStatus == SlotWindowStatus.Missing
-                || slot.IsHidden)
+        var hasActiveWork = eligibleSlots.Any(candidate =>
+            candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation
+            || _aiStatusDetector.ShouldPrioritizeUiAutomationProbe(candidate.Slot));
+        var maxProbeCount = hasActiveWork ? 2 : 1;
+
+        var orderedCandidates = Enumerable.Range(0, eligibleSlots.Count)
+            .Select(offset => eligibleSlots[(_nextUiAutomationProbeSlotIndex + offset) % eligibleSlots.Count])
+            .Select((candidate, roundRobinIndex) => new
             {
-                continue;
-            }
+                candidate.Slot,
+                candidate.EligibleIndex,
+                RoundRobinIndex = roundRobinIndex,
+                HasDetectorPriority = _aiStatusDetector.ShouldPrioritizeUiAutomationProbe(candidate.Slot),
+                HasVisibleActiveStatus = candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation,
+                IsForeground = candidate.Slot.WindowHandle == foregroundWindowHandle,
+                candidate.Slot.IsFocused
+            })
+            .OrderByDescending(candidate => candidate.HasDetectorPriority)
+            .ThenByDescending(candidate => candidate.HasVisibleActiveStatus)
+            .ThenByDescending(candidate => candidate.IsForeground)
+            .ThenByDescending(candidate => candidate.IsFocused)
+            .ThenBy(candidate => candidate.RoundRobinIndex)
+            .Take(maxProbeCount)
+            .ToList();
 
-            _nextUiAutomationProbeSlotIndex = (index + 1) % slots.Count;
-            _lastUiAutomationProbeAt = refreshStartedAt;
-            return slot.Name;
+        if (orderedCandidates.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        return null;
+        _nextUiAutomationProbeSlotIndex = (orderedCandidates[^1].EligibleIndex + 1) % eligibleSlots.Count;
+        _lastUiAutomationProbeAt = refreshStartedAt;
+        return orderedCandidates
+            .Select(candidate => candidate.Slot.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private IReadOnlyList<WindowSlotStatusRefreshResult> RefreshWindowStatusesInBackground(

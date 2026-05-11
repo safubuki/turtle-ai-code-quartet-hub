@@ -38,15 +38,19 @@ foreach (var target in targets.OrderBy(slot => slot.Name, StringComparer.Ordinal
     if (!matches.TryGetValue(target.Name, out var match))
     {
         results.Add(new ProbeResult(
-            target.Name,
-            target.AssignedPath,
-            AiStatus.Unknown.ToString(),
-            "VS Code ウィンドウを現在の表示から解決できませんでした。",
-            null,
-            false,
-            0,
-            string.Empty,
-            string.Empty));
+            slotName: target.Name,
+            hwnd: 0,
+            finalStatus: AiStatus.Unknown.ToString(),
+            detail: "VS Code ウィンドウを現在の表示から解決できませんでした。",
+            eventAt: null,
+            resolved: false,
+            path: target.AssignedPath,
+            windowTitle: string.Empty,
+            matchReason: string.Empty,
+            engines: new ProbeEngines(
+                new ProbeEngine("Idle", "Confirmed", null, string.Empty),
+                new ProbeEngine("Idle", "Confirmed", null, string.Empty)),
+            uiProbe: new ProbeUiProbe(false, false, 0, string.Empty)));
         continue;
     }
 
@@ -65,16 +69,33 @@ foreach (var target in targets.OrderBy(slot => slot.Name, StringComparer.Ordinal
     };
 
     var snapshot = detector.Detect(slot, config);
+    var diagnostics = snapshot.Diagnostics;
     results.Add(new ProbeResult(
-        target.Name,
-        target.AssignedPath,
-        snapshot.Status.ToString(),
-        snapshot.Detail,
-        snapshot.EventAt,
-        true,
-        match.Handle.ToInt64(),
-        match.Title,
-        match.Reason));
+        slotName: target.Name,
+        hwnd: match.Handle.ToInt64(),
+        finalStatus: snapshot.Status.ToString(),
+        detail: snapshot.Detail,
+        eventAt: snapshot.EventAt,
+        resolved: true,
+        path: target.AssignedPath,
+        windowTitle: match.Title,
+        matchReason: match.Reason,
+        engines: new ProbeEngines(
+            new ProbeEngine(
+                diagnostics?.Copilot.State ?? snapshot.Status.ToString(),
+                diagnostics?.Copilot.Confidence ?? string.Empty,
+                diagnostics?.Copilot.LastEvidenceAt,
+                diagnostics?.Copilot.Reason ?? string.Empty),
+            new ProbeEngine(
+                diagnostics?.Codex.State ?? snapshot.Status.ToString(),
+                diagnostics?.Codex.Confidence ?? string.Empty,
+                diagnostics?.Codex.LastEvidenceAt,
+                diagnostics?.Codex.Reason ?? string.Empty)),
+        uiProbe: new ProbeUiProbe(
+            diagnostics?.UiProbe.TimedOut ?? false,
+            diagnostics?.UiProbe.ScanCompleted ?? false,
+            diagnostics?.UiProbe.InspectedElementCount ?? 0,
+            diagnostics?.UiProbe.Detail ?? string.Empty)));
 }
 
 if (options.Json)
@@ -86,24 +107,42 @@ if (options.Json)
 
 foreach (var result in results)
 {
-    var eventText = result.EventAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
-    var handleText = result.WindowHandle == 0 ? "-" : $"0x{result.WindowHandle:X}";
-    var resolvedText = result.Resolved ? "resolved" : "unresolved";
-    Console.WriteLine($"{result.Slot}|{resolvedText}|{handleText}|{result.Status}|{eventText}|{result.WindowTitle}|{result.Detail}");
+    var eventText = result.eventAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+    var handleText = result.hwnd == 0 ? "-" : $"0x{result.hwnd:X}";
+    var resolvedText = result.resolved ? "resolved" : "unresolved";
+    Console.WriteLine($"{result.slotName}|{resolvedText}|{handleText}|{result.finalStatus}|{eventText}|{result.windowTitle}|{result.detail}");
 }
 
 return 0;
 
 file sealed record ProbeResult(
-    string Slot,
-    string Path,
-    string Status,
-    string Detail,
-    DateTimeOffset? EventAt,
-    bool Resolved,
-    long WindowHandle,
-    string WindowTitle,
-    string MatchReason);
+    string slotName,
+    long hwnd,
+    string finalStatus,
+    string detail,
+    DateTimeOffset? eventAt,
+    bool resolved,
+    string path,
+    string windowTitle,
+    string matchReason,
+    ProbeEngines engines,
+    ProbeUiProbe uiProbe);
+
+file sealed record ProbeEngines(
+    ProbeEngine Copilot,
+    ProbeEngine Codex);
+
+file sealed record ProbeEngine(
+    string State,
+    string Confidence,
+    DateTimeOffset? LastEvidenceAt,
+    string Reason);
+
+file sealed record ProbeUiProbe(
+    bool TimedOut,
+    bool ScanCompleted,
+    int InspectedElementCount,
+    string Detail);
 
 file sealed record StoredSlotState(
     string Name,

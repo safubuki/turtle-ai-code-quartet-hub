@@ -126,6 +126,11 @@
   - 2026-05-12 Codex restore: Codex の `thread-stream-state-changed` は A/B/C/D に同一時刻で broadcast されるため、全スロット Running には使わない。foreground または app focused の owner slot にだけ 12 秒 TTL で Running を割り当て、期限切れ後は Completed へ推定せず Idle に戻す。
   - 2026-05-12 load: `panel.log` で UIA probe が 510-570ms に張り付いていたため、`VscodeChatUiStatusReader.MaxScanDuration` を 500ms から 220ms へ戻した。refresh interval 750ms と UIA probe interval 750ms は維持。
   - `.build-tmp` と調査一時ファイルを `.gitignore` と削除で整理し、変更数の見た目ノイズを除去した。
+  - 2026-05-12 concurrent-state: detector を slot x engine state machine へ差し替え、Copilot / Codex を最後まで分離してから WaitingForConfirmation > Running > Error > Completed > Idle の順で集約するよう変更した。`SuspectRunning` は内部状態としてのみ保持し、UI の Running には出さない。
+  - 2026-05-12 concurrent-state: UIA timeout は `TimedOut=true, Status=null` の unknown として返し、Running を Idle へ落とす根拠に使わないよう変更した。negative evidence は `ScanCompleted=true, Status=null` のときだけ扱う。
+  - 2026-05-12 concurrent-state: Copilot は slot 別 `ccreq:` lease と observed-run completion へ寄せ、Codex は broadcast activity を `SuspectRunning` に留めたうえで、confirmed / probable run にだけ quiet completion を限定復活した。
+  - 2026-05-12 concurrent-state: `StatusStore` は active / waiting / suspect がいるとき UIA probe を最大 2 slot まで広げ、foreground / focused / detector priority を優先するよう変更した。全 slot probe へ戻さず、`Status refresh took` の予算は維持する。
+  - 2026-05-12 concurrent-state: `AiStatusSmoke --json` は `slotName`, `hwnd`, `finalStatus`, `engines.*`, `uiProbe.*` を返すよう拡張した。2026-05-12 時点の smoke 実行では A/B/C/D が all Idle のまま、UIA timeout が出ても Running へ昇格しないことを確認した。
 - **外部 change history メモ**:
   - VS Code 1.117 では chat rendering / agent UI / background terminal notifications が更新されている。
   - Copilot Chat は VS Code と lockstep で更新される。
