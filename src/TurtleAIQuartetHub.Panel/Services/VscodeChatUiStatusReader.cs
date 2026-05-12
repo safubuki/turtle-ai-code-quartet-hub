@@ -11,7 +11,7 @@ public sealed class VscodeChatUiStatusReader
     private const int MaxElementsAfterRunningSignal = 240;
     private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
-    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(350);
 
     private static readonly string[] RunningStatusExactTexts =
     [
@@ -200,8 +200,8 @@ public sealed class VscodeChatUiStatusReader
         var stopwatch = Stopwatch.StartNew();
         var rootBounds = TryGetBoundingRectangle(root);
         var walker = TreeWalker.RawViewWalker;
-        var queue = new Queue<AutomationElement>();
-        queue.Enqueue(root);
+        var queue = new Queue<(AutomationElement Element, bool InheritedChatContext)>();
+        queue.Enqueue((root, false));
 
         var inspected = 0;
         int? runningFoundAt = null;
@@ -238,11 +238,11 @@ public sealed class VscodeChatUiStatusReader
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
         {
-            var element = queue.Dequeue();
+            var (element, inheritedChatContext) = queue.Dequeue();
             inspected++;
 
             var snapshot = ReadElementSnapshot(element, rootBounds);
-            var hasChatContext = HasChatContext(snapshot);
+            var hasChatContext = inheritedChatContext || HasChatContext(snapshot);
 
             if (TryReadInputBox(snapshot, hasChatContext))
             {
@@ -330,7 +330,7 @@ public sealed class VscodeChatUiStatusReader
                 break;
             }
 
-            EnqueueChildren(walker, element, queue);
+            EnqueueChildren(walker, element, queue, hasChatContext);
 
             if (stopwatch.Elapsed >= MaxScanDuration)
             {
@@ -446,7 +446,8 @@ public sealed class VscodeChatUiStatusReader
     private static void EnqueueChildren(
         TreeWalker walker,
         AutomationElement parent,
-        Queue<AutomationElement> queue)
+        Queue<(AutomationElement Element, bool InheritedChatContext)> queue,
+        bool parentHasChatContext)
     {
         AutomationElement? child = null;
         try
@@ -454,7 +455,7 @@ public sealed class VscodeChatUiStatusReader
             child = walker.GetFirstChild(parent);
             while (child is not null)
             {
-                queue.Enqueue(child);
+                queue.Enqueue((child, parentHasChatContext));
                 child = walker.GetNextSibling(child);
             }
         }
@@ -471,7 +472,7 @@ public sealed class VscodeChatUiStatusReader
 
     private static bool TryReadRunningTextSignal(ElementSnapshot element, bool hasChatContext, out string detail)
     {
-        if (element.IsVisible && IsCurrentStatusText(element.Name, GetCombinedContext(element)))
+        if (element.IsVisible && IsCurrentStatusText(element.Name, GetCombinedContext(element), hasChatContext))
         {
             detail = $"VS Code UI: {element.Name} を検出しました。";
             return true;
@@ -651,7 +652,7 @@ public sealed class VscodeChatUiStatusReader
         }
     }
 
-    private static bool IsCurrentStatusText(string value, string combinedContext)
+    private static bool IsCurrentStatusText(string value, string combinedContext, bool hasChatContext = false)
     {
         var text = value.Trim();
         if (text.Length == 0 || text.Length > MaxTextLengthForStatus)
@@ -665,17 +666,19 @@ public sealed class VscodeChatUiStatusReader
             return false;
         }
 
-        var hasChatContext = ContainsAny(combinedContext, ChatContextFragments);
+        var hasChatContextFinal = hasChatContext || ContainsAny(combinedContext, ChatContextFragments);
         var exactMatch = RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase));
         if (exactMatch)
         {
-            if (hasChatContext)
+            // "Thinking" (English exact) is prone to collision with model setting UI; require chat context.
+            if (string.Equals(normalized, "Thinking", StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return hasChatContextFinal;
             }
 
-            // Longer phrases like "処理を実行中" are specific enough to accept without extra context.
-            return normalized.Length >= 6 || normalized.Contains("実行", StringComparison.Ordinal);
+            // All other exact status texts (考え中, 作業中, 実行中, Working, Running, Generating, etc.)
+            // are treated as context-free: visible in the UI tree means Running.
+            return true;
         }
 
         var prefixMatch = RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
@@ -684,7 +687,7 @@ public sealed class VscodeChatUiStatusReader
             return false;
         }
 
-        return hasChatContext || normalized.Length >= 12 || normalized.Contains("tool", StringComparison.OrdinalIgnoreCase);
+        return hasChatContextFinal || normalized.Length >= 12 || normalized.Contains("tool", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ContainsStopAction(string value)
