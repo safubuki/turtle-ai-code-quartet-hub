@@ -225,12 +225,14 @@ public sealed class AiStatusDetector
             && (!copilotCompletedAt.HasValue || copilotRunningAt.Value > copilotCompletedAt.Value);
 
         // Codex: broadcast 対策付きで Running/WaitingForConfirmation 判定
-        // foreground/focused または このスロットで最近 Running を確認していれば owned とみなす
+        // foreground/focused または Codex ログシグナルが新鮮な場合のみ owned とみなす
+        // _lastRunningSeenBySlot による判定は循環依存を生むため使用しない
         var codexRunningAt = codexLog.LastRunningSignalAt;
         var codexConfirmAt = codexLog.LastConfirmationSignalAt;
         var codexOwned = slot.IsForeground
             || slot.IsFocused
-            || (hadPreviousRunning && now - lastRunningSeenAt <= CodexBroadcastOwnerStickyWindow);
+            || IsRecent(codexRunningAt, CodexBroadcastOwnerStickyWindow, now)
+            || IsRecent(codexConfirmAt, CodexConfirmationWindow, now);
         var codexHasRunning = codexOwned
             && codexRunningAt.HasValue
             && IsRecent(codexRunningAt, CodexBroadcastOwnerStickyWindow, now)  // Fix A: 時間窓を追加して古いログシグナルによる永続Running を防止
