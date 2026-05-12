@@ -131,6 +131,16 @@
   - 2026-05-12 concurrent-state: Copilot は slot 別 `ccreq:` lease と observed-run completion へ寄せ、Codex は broadcast activity を `SuspectRunning` に留めたうえで、confirmed / probable run にだけ quiet completion を限定復活した。
   - 2026-05-12 concurrent-state: `StatusStore` は active / waiting / suspect がいるとき UIA probe を最大 2 slot まで広げ、foreground / focused / detector priority を優先するよう変更した。全 slot probe へ戻さず、`Status refresh took` の予算は維持する。
   - 2026-05-12 concurrent-state: `AiStatusSmoke --json` は `slotName`, `hwnd`, `finalStatus`, `engines.*`, `uiProbe.*` を返すよう拡張した。2026-05-12 時点の smoke 実行では A/B/C/D が all Idle のまま、UIA timeout が出ても Running へ昇格しないことを確認した。
+  - 2026-05-12 ui-ready: `VscodeChatUiStatusReader` の Running 語彙へ `分析中` / `評価中` を含む日本語 status text と `Analyzing` / `Evaluating` などの英語 prefix を追加し、chat / チャット / interactive-session-status / copilot / codex / agent 文脈を広げた。
+  - 2026-05-12 ui-ready: `UiAutomationProbeResult` は running / confirmation / stop / input-ready / send button / evidence text を構造化して返すよう変更した。Completed は `FoundInputReady || FoundSendButton` を含む ready proof がある場合だけ出し、`ScanCompleted && Status == null` 単独では出さない。
+  - 2026-05-12 ui-ready: Copilot / Codex の Completed は、同一 engine の Confirmed/Probable Running 後に、`TimedOut=false` かつ running text/class/stop button なし、input-ready あり、最終 running evidence から 2 秒以上経過した場合だけ UIA から確定するよう変更した。
+  - 2026-05-12 ui-ready: `StatusStore` の probe 数は 1/2/4 へ変更し、直近 refresh が 1 秒超なら 2 へ自動縮退するようにした。並列数 2 は維持。
+  - 2026-05-12 ui-ready: `AiStatusSmoke` へ `--watch --duration N --json` と `--scenario manual` を追加し、同じ detector で JSONL を出せるようにした。3 秒 watch 実行で `time` 付き JSONL 出力を確認した。
+  - 2026-05-12 ui-ready: `panel.log` の AI 状態変化ログへ `evidenceText`, `stopButton`, `inputReady`, `timedOut`, `scanCompleted` を追加した。
+  - 2026-05-12 fixed-slot-runtime: final display を engine aggregate だけで決めず、slot-level runtime state を追加した。owner 不明でも UIA direct Running が見えた slot は `Running` を維持し、diagnostics では `slotLevelOwner=UnknownAi` として追跡する。
+  - 2026-05-12 fixed-log-weak: Copilot `ccreq:`、Codex `thread-stream-state-changed` / `commandExecution/requestApproval` は log-only では final Running に直結させず、probe 優先度と direct UIA Running hold の補助に限定した。`Conversation created` と `thread-read-state-changed` は Running 根拠から外した。
+  - 2026-05-12 fixed-completed: Completed は過去の slot-level UIA Running を観測済みで、timeout なし probe で running evidence 消失 + input-ready/send button を確認し、最終 UI Running から 2 秒以上経過した場合だけ作るよう固定した。owner 不明の Completed は slot-level のみで保持する。
+  - 2026-05-12 fixed-probe-order: `StatusStore` の probe 優先順位は `slot active > slot suspect > engine active > engine suspect > foreground > focused > round-robin` に合わせ、`AiStatusSmoke --watch --json` と `panel.log` で `slotLevelState`, `slotLevelOwner`, `source`, `reason`, `evidence*` を追えるようにした。
 - **外部 change history メモ**:
   - VS Code 1.117 では chat rendering / agent UI / background terminal notifications が更新されている。
   - Copilot Chat は VS Code と lockstep で更新される。
@@ -149,6 +159,9 @@
   - temp build smoke で stale な Completed / Running が残っていないこと
   - Codex 実行中に Running が owner slot だけへ出て、他スロットが broadcast log だけで Running にならないこと
   - `panel.log` の `status probe took` が UIA probe 時に 500ms 付近へ張り付かないこと
+  - `分析中` / `評価中` が見えている slot で `FoundRunningText=true` を伴って Running になること
+  - `FoundInputReady=true` と `FoundStopButton=false` を伴う Completed が watch JSONL で追えること
+  - 2 slot / 4 slot 同時実行時に probe 数拡張で取りこぼしが減ること
 
 ### 2-4. focused slot を前面復帰したいのに、背面化後に D スロットが最前面へ出る
 

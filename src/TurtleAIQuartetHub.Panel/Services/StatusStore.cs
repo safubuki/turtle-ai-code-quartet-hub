@@ -37,6 +37,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     private int _nextUiAutomationProbeSlotIndex;
     private DateTimeOffset _lastUiAutomationProbeAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastSlowRefreshLogAt = DateTimeOffset.MinValue;
+    private TimeSpan _lastRefreshDuration = TimeSpan.Zero;
 
     public StatusStore(AppConfig config)
     {
@@ -432,6 +433,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             () => RefreshWindowStatusesInBackground(windowEnumerator, requests, refreshStartedAt, cancellationToken),
             cancellationToken);
         stopwatch.Stop();
+        _lastRefreshDuration = stopwatch.Elapsed;
 
         ApplyWindowStatusRefreshResults(results);
         if (stopwatch.ElapsedMilliseconds >= 250 && ShouldLogSlowRefresh(refreshStartedAt))
@@ -460,10 +462,14 @@ public sealed class StatusStore : INotifyPropertyChanged
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var hasActiveWork = eligibleSlots.Any(candidate =>
+        var activeCount = eligibleSlots.Count(candidate =>
             candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation
-            || _aiStatusDetector.ShouldPrioritizeUiAutomationProbe(candidate.Slot));
-        var maxProbeCount = hasActiveWork ? 2 : 1;
+            || _aiStatusDetector.GetUiAutomationProbePriority(candidate.Slot) > 0);
+        var maxProbeCount = activeCount >= 2 ? 4 : activeCount == 1 ? 2 : 1;
+        if (_lastRefreshDuration > TimeSpan.FromSeconds(1) && maxProbeCount > 2)
+        {
+            maxProbeCount = 2;
+        }
 
         var orderedCandidates = Enumerable.Range(0, eligibleSlots.Count)
             .Select(offset => eligibleSlots[(_nextUiAutomationProbeSlotIndex + offset) % eligibleSlots.Count])
@@ -472,12 +478,12 @@ public sealed class StatusStore : INotifyPropertyChanged
                 candidate.Slot,
                 candidate.EligibleIndex,
                 RoundRobinIndex = roundRobinIndex,
-                HasDetectorPriority = _aiStatusDetector.ShouldPrioritizeUiAutomationProbe(candidate.Slot),
+                ProbePriority = _aiStatusDetector.GetUiAutomationProbePriority(candidate.Slot),
                 HasVisibleActiveStatus = candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation,
                 IsForeground = candidate.Slot.WindowHandle == foregroundWindowHandle,
                 candidate.Slot.IsFocused
             })
-            .OrderByDescending(candidate => candidate.HasDetectorPriority)
+            .OrderByDescending(candidate => candidate.ProbePriority)
             .ThenByDescending(candidate => candidate.HasVisibleActiveStatus)
             .ThenByDescending(candidate => candidate.IsForeground)
             .ThenByDescending(candidate => candidate.IsFocused)
