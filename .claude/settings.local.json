@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(ls \"C:\\\\Users\\\\kamep\\\\AppData\\\\Local\\\\TurtleAIQuartetHub\\\\config\\\\\" 2>/dev/null || echo \"not found\")",
-      "Read(//c/Users/kamep/AppData/Local/TurtleAIQuartetHub/config\" 2>/dev/**)"
+      "Read(//c/Users/kamep/AppData/Local/TurtleAIQuartetHub/config\" 2>/dev/**)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)"
     ]
   }
 }
