@@ -76,7 +76,7 @@ public static class TaskbarJumpListService
             jumpList.JumpItems.Add(new JumpTask
             {
                 Title = "アプリを探す",
-                Description = "縮小表示のパネル位置を点滅で知らせます。",
+                Description = "縮小表示のパネル位置を強調して知らせます。",
                 Arguments = "--locate",
                 ApplicationPath = appPath,
                 IconResourcePath = appPath,
@@ -163,7 +163,7 @@ public static class TaskbarJumpListService
     {
         var slotSignature = string.Join(
             "|",
-            slots.Select(slot => $"{slot.Name}:{slot.WindowStatus}:{slot.AiStatus}:{slot.DisplayTitle}"));
+            slots.Select(slot => $"{slot.Name}:{slot.WindowStatus}:{slot.DisplayTitle}"));
         return $"{isActiveMenu}:{compactMode}:{slotSignature}";
     }
 
@@ -180,15 +180,7 @@ public static class TaskbarJumpListService
             title = $"{title[..17]}…";
         }
 
-        var status = slot.AiStatus switch
-        {
-            AiStatus.Running => "実行中",
-            AiStatus.Completed => "完了",
-            AiStatus.WaitingForConfirmation => "確認中",
-            AiStatus.Error => "エラー",
-            AiStatus.NeedsAttention => "要対応",
-            _ => slot.WindowStatus == SlotWindowStatus.Launching ? "起動中" : "待機"
-        };
+        var status = slot.WindowStatus == SlotWindowStatus.Launching ? "起動中" : "待機";
 
         return $"{slot.Name} {title} [{status}]";
     }

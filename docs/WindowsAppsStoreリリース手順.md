@@ -147,7 +147,7 @@ Thank you.
 | 済 | MSIXパッケージング手順 | `docs/msix-packaging-guide.md` |
 | 済 | Store掲載文案草案 | `docs/store-listing-draft.md` |
 | 済 | リリースノート草案 | `docs/release-notes-draft.md` |
-| 済 | テレメトリ/ローカル情報の扱い | `docs/telemetry-notes.md` |
+| 済 | プライバシー/ローカル情報の扱い | `PRIVACY.md` |
 | 済 | プライバシーポリシー草案 | `PRIVACY.md` |
 | 済 | サポート案内草案 | `SUPPORT.md` |
 | 済 | Packaging Project | `src/TurtleAIQuartetHub.Package/TurtleAIQuartetHub.Package.wapproj` |
@@ -196,7 +196,7 @@ Thank you.
 - Visual Studio Code は別途インストールが必要。
 - このアプリは Microsoft、Visual Studio Code、GitHub、OpenAI、Anthropic の公式アプリ、提携アプリ、承認済みアプリではない。
 - VS Code ウィンドウ配置のために Win32 API を使う。
-- AI状態表示のために、ローカルの VS Code ウィンドウタイトル、UI Automation 状態、一部の VS Code 拡張ログを参照する。
+- VS Code ウィンドウ配置と復元のために、ローカルの VS Code ウィンドウタイトルと保存済み設定を参照する。
 - アプリ独自のテレメトリ、プロンプト、ソースコード、ワークスペース情報、ログを公開者へ送信しない。
 - VS Code内で使用する remote workspace、AIサービス、拡張機能は、それぞれのツール/サービスの仕様とプライバシーポリシーに従う。
 
@@ -353,7 +353,7 @@ The app does not upload source code, prompts, workspace paths, telemetry, or VS 
 
 ```text
 このアプリは WPF のデスクトップユーティリティであり、ローカルの VS Code ウィンドウを起動・配置するために Full Trust が必要です。
-Win32 ウィンドウ API、UI Automation、ローカル設定ファイルを使用します。
+Win32 ウィンドウ API とローカル設定ファイルを使用します。
 アプリ独自にソースコード、プロンプト、ワークスペース情報、ログを公開者へ送信しません。
 ```
 
@@ -364,7 +364,7 @@ Win32 ウィンドウ API、UI Automation、ローカル設定ファイルを使
 - Visual Studio Code が必要であること。
 - VS Code が未インストールの場合の挙動。
 - `codeCommand` に `Code.exe` のパスを設定できること。
-- AI状態はローカルの VS Code UI と一部ログから推定すること。
+- VS Code ウィンドウの起動、配置、復元が期待どおり動くこと。
 - ネットワーク送信をしないこと。
 - 確認用の最小手順。
 

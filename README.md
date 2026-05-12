@@ -1,13 +1,12 @@
 ﻿# Turtle AI Code Quartet Hub
 
 4つの VS Code ウィンドウを A-D のスロットとして起動し、2x2 に並べる Windows 向け WPF パネルです。
-AI コーディング作業中でも、どの VS Code が実行中・完了・確認待ちなのかを枠の色で見分けやすくします。
+スロット単位の起動、配置、集中表示、非表示、控え保存を軽量に扱えます。
 
 ## できること
 
 - `Launch Quartet` で4つの VS Code を起動し、画面に2x2で配置
 - 縮小モードで小さな操作バーとして常時表示
-- VS Code 外周のネオン風フレームで AI 状態を表示
 - スロット A-D のタイトル、ワークスペース、控え Quartet を保存
 - `ディスプレイ移動` で4面表示を別ディスプレイへまとめて移動
 - タスクバー右クリックからスロット切替、表示モード切替、前面/背面操作を実行
@@ -78,17 +77,10 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `codeCommand`: VS Code の起動コマンドまたは `Code.exe` のパス
 - `launchTimeoutSeconds`: VS Code 起動待ち時間
 - `remoteReconnectTimeoutSeconds`: SSH / Remote 接続の再接続待ち時間
-- `statusRefreshIntervalMilliseconds`: AI 状態の更新間隔
+- `statusRefreshIntervalMilliseconds`: VS Code ウィンドウ状態とワークスペース表示の更新間隔
 - `inheritMainUserState`: 通常 VS Code の設定やスニペットをスロットへ引き継ぐか
 
 実行時データは `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。
-
-## AI 状態表示
-
-AI 状態は、VS Code の見えている UI とスロット別の拡張ログからローカルで推定します。
-外部送信は行いません。
-
-詳しくは [docs/telemetry-notes.md](docs/telemetry-notes.md) を参照してください。
 
 ## 確認用コマンド
 
@@ -102,25 +94,6 @@ Store公開準備の確認:
 
 ```powershell
 .\scripts\New-LocalMsixPackage.ps1
-```
-
-AI 状態の簡易確認:
-
-```powershell
-dotnet run --project .\tools\AiStatusSmoke\AiStatusSmoke.csproj -- --json
-```
-
-本体を起動したまま正確に検証したい場合は、AiStatusSmoke も temp build を使ってください。
-
-```powershell
-dotnet build .\tools\AiStatusSmoke\AiStatusSmoke.csproj --artifacts-path .\.build-tmp\smoke
-dotnet .\.build-tmp\smoke\bin\AiStatusSmoke\debug\AiStatusSmoke.dll --json
-```
-
-対象スロットへ入力して状態遷移を見る:
-
-```powershell
-.\scripts\Invoke-AiStatusSmoke.ps1 -Slot A -Prompt "status smoke test"
 ```
 
 ## 配布ビルド
@@ -142,7 +115,6 @@ dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c
 - [docs/release-notes-draft.md](docs/release-notes-draft.md): リリースノート草案
 - [SUPPORT.md](SUPPORT.md): サポート案内草案
 - [assets/store/README.md](assets/store/README.md): Store 画像素材チェック
-- [docs/telemetry-notes.md](docs/telemetry-notes.md): AI 状態検出とローカル情報の扱い
 
 ## ライセンス
 

@@ -23,7 +23,6 @@ public partial class MainWindow : Window
     private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
-    private readonly WindowFrameOverlayManager _overlayManager;
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly StatusStore _statusStore;
     private readonly DispatcherTimer _refreshTimer;
@@ -56,7 +55,6 @@ public partial class MainWindow : Window
 
         var config = AppConfig.Load();
         _statusStore = new StatusStore(config);
-        _overlayManager = new WindowFrameOverlayManager(_windowArranger);
         _vscodeLauncher = new VscodeLauncher(_windowEnumerator);
         DataContext = _statusStore;
 
@@ -270,7 +268,6 @@ public partial class MainWindow : Window
 
     private void HandleCompactSlotToggle(WindowSlot slot)
     {
-        _statusStore.AcknowledgeAiStatus(slot);
         ActivatePanelWindow();
 
         if (slot.IsFocused)
@@ -379,7 +376,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        _statusStore.AcknowledgeAiStatus(slot);
         ToggleSlotFocus(slot);
     }
 
@@ -657,7 +653,6 @@ public partial class MainWindow : Window
     private void ToggleSlotFocus(WindowSlot slot)
     {
         var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
-        _overlayManager.HideAll();
 
         if (slot.IsFocused)
         {
@@ -895,7 +890,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        _statusStore.AcknowledgeAiStatus(slot);
         if (_windowArranger.Close(slot.WindowHandle))
         {
             _statusStore.CaptureWorkspacePath(slot);
@@ -994,8 +988,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        _statusStore.AcknowledgeAiStatus(slot);
-
         if (slot.WindowHandle != IntPtr.Zero && !_windowArranger.Close(slot.WindowHandle))
         {
             _statusStore.Message = $"スロット{slot.Name}を控えに移す前に VS Code を閉じられませんでした。";
@@ -1050,7 +1042,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        _statusStore.AcknowledgeAiStatus(targetSlot);
         await RunBusyAsync(async () =>
         {
             if (targetSlot.WindowHandle != IntPtr.Zero && !_windowArranger.Close(targetSlot.WindowHandle))
@@ -1201,15 +1192,15 @@ public partial class MainWindow : Window
     private int ArrangeSlotsOnActiveMonitor(bool bringPanelAfterArrange = true)
     {
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
-        ApplyManagedWindowLayers(bringPanelAfterArrange, refreshOverlayAfterChange: false);
+        ApplyManagedWindowLayers(bringPanelAfterArrange);
         RefreshAuxiliaryUi();
         return arranged;
     }
 
-    private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshOverlayAfterArrange = true)
+    private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshAuxiliaryUiAfterArrange = true)
     {
         var arranged = _windowArranger.ArrangeExcept(_statusStore.Slots, excludedSlot, _statusStore.Config.Gap, GetActiveMonitorIndex());
-        if (refreshOverlayAfterArrange)
+        if (refreshAuxiliaryUiAfterArrange)
         {
             RefreshAuxiliaryUi();
         }
@@ -1217,9 +1208,9 @@ public partial class MainWindow : Window
         return arranged;
     }
 
-    private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true, bool refreshOverlayAfterChange = true)
+    private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true)
     {
-        SetManagedWindowLayer(_managedWindowLayerMode, bringPanelAfterChange, refreshOverlayAfterChange);
+        SetManagedWindowLayer(_managedWindowLayerMode, bringPanelAfterChange);
     }
 
     private void SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode layerMode)
@@ -1233,8 +1224,7 @@ public partial class MainWindow : Window
 
     private bool SetManagedWindowLayer(
         WindowSlot.SlotWindowLayerMode layerMode,
-        bool bringPanelAfterChange = true,
-        bool refreshOverlayAfterChange = true)
+        bool bringPanelAfterChange = true)
     {
         SetManagedWindowLayerState(layerMode);
         var appliedAny = false;
@@ -1247,11 +1237,6 @@ public partial class MainWindow : Window
         if (bringPanelAfterChange)
         {
             SchedulePanelToFront();
-        }
-
-        if (refreshOverlayAfterChange)
-        {
-            RefreshOverlayUi();
         }
 
         return appliedAny;
@@ -1330,7 +1315,7 @@ public partial class MainWindow : Window
 
         if (!compact)
         {
-            StopPanelLocateBlink();
+            StopPanelLocateEmphasis();
             ClearCompactPanelFrame();
             try
             {
@@ -1503,21 +1488,15 @@ public partial class MainWindow : Window
         }
 
         ActivatePanelWindow();
-        StopPanelLocateBlink();
+        StopPanelLocateEmphasis();
 
         var cancellation = new CancellationTokenSource();
         _panelLocateCancellation = cancellation;
 
         try
         {
-            var endAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-            var emphasis = true;
-            while (DateTimeOffset.UtcNow < endAt && !cancellation.IsCancellationRequested)
-            {
-                UpdateCompactPanelFrame(emphasis ? PanelFrameVisual.Emphasis : PanelFrameVisual.Dimmed);
-                emphasis = !emphasis;
-                await Task.Delay(260, cancellation.Token);
-            }
+            UpdateCompactPanelFrame(PanelFrameVisual.Emphasis);
+            await Task.Delay(1400, cancellation.Token);
         }
         catch (OperationCanceledException)
         {
@@ -1534,7 +1513,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void StopPanelLocateBlink()
+    private void StopPanelLocateEmphasis()
     {
         _panelLocateCancellation?.Cancel();
         _panelLocateCancellation?.Dispose();
@@ -1552,14 +1531,12 @@ public partial class MainWindow : Window
         var color = visual switch
         {
             PanelFrameVisual.Emphasis => (Color)ColorConverter.ConvertFromString("#8AFCB7"),
-            PanelFrameVisual.Dimmed => (Color)ColorConverter.ConvertFromString("#1F8E54"),
             _ => (Color)ColorConverter.ConvertFromString("#45D483")
         };
 
         var borderOpacity = visual switch
         {
             PanelFrameVisual.Emphasis => 1.0,
-            PanelFrameVisual.Dimmed => 0.56,
             _ => 0.82
         };
 
@@ -1645,7 +1622,6 @@ public partial class MainWindow : Window
         }
 
         ScheduleFocusedSlotReassert();
-        RefreshOverlayUi();
     }
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -1666,12 +1642,6 @@ public partial class MainWindow : Window
     private void RefreshAuxiliaryUi()
     {
         TaskbarJumpListService.Update(_statusStore.Slots, _isCompactMode);
-        RefreshOverlayUi();
-    }
-
-    private void RefreshOverlayUi()
-    {
-        _overlayManager.Update(_statusStore.Slots, !_areWindowsHidden);
     }
 
     private void EnsurePreferredLayout(WindowSlot slot)
@@ -1892,7 +1862,6 @@ public partial class MainWindow : Window
             return false;
         }
 
-        _overlayManager.HideAll();
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
         _windowArranger.Maximize(focusedSlot.WindowHandle);
         SendOtherSlotsToBack(focusedSlot);
@@ -2159,8 +2128,7 @@ public partial class MainWindow : Window
         _panelFrontRestoreCancellation?.Dispose();
         _focusedSlotReassertCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Dispose();
-        StopPanelLocateBlink();
-        _overlayManager.Dispose();
+        StopPanelLocateEmphasis();
         base.OnClosed(e);
     }
 
@@ -2203,7 +2171,6 @@ public partial class MainWindow : Window
     private enum PanelFrameVisual
     {
         Normal,
-        Dimmed,
         Emphasis
     }
 
