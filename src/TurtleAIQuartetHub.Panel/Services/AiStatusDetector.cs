@@ -182,7 +182,8 @@ public sealed class AiStatusDetector
         lock (_stateLock)
         {
             var slotState = GetSlotState(slotKey);
-            if (slotState.State is SlotRuntimeStatus.WaitingForConfirmation or SlotRuntimeStatus.Running)
+            if (slotState.State is SlotRuntimeStatus.WaitingForConfirmation or SlotRuntimeStatus.Running
+                || slotState.HasObservedUiRunning)
             {
                 return 4;
             }
@@ -1146,6 +1147,32 @@ public sealed class AiStatusDetector
                     ConsecutiveNegativeUiProbes = negativeCount
                 };
             }
+
+            // Active run latch: once UIA direct Running was observed, never fall to Idle/SuspectRunning
+            // without explicit input-ready proof (handled by the Completed path above).
+            if (previous.HasObservedUiRunning)
+            {
+                var latchSource = engineAggregate is not null
+                    ? SlotRuntimeSource.EngineAggregate
+                    : HasFreshAssistLog(copilotLog, codexLog, now)
+                        ? SlotRuntimeSource.LogAssist
+                        : previous.Source;
+                var latchReason = !hasFreshUiProbe
+                    ? "active run latch; no UIA probe this refresh; keep active run"
+                    : uiProbe.TimedOut
+                        ? "active run latch; UIA timeout; keep previous state"
+                        : negativeCount <= NegativeUiProbeGraceCount
+                            ? $"active run latch; {negativeCount} negative probe(s); no ready proof yet"
+                            : $"active run latch; {negativeCount} consecutive negatives; no ready proof yet";
+                return previous with
+                {
+                    Source = latchSource,
+                    LastUiReadyAt = hasUiReady ? evidenceAt : previous.LastUiReadyAt,
+                    LastEvidenceAt = Max(previous.LastEvidenceAt, Max(engineAggregate?.EventAt, uiProbe.EvidenceAt)),
+                    Reason = latchReason,
+                    ConsecutiveNegativeUiProbes = negativeCount
+                };
+            }
         }
 
         if (engineAggregate is not null)
@@ -1563,8 +1590,12 @@ public sealed class AiStatusDetector
             ? string.Empty
             : $" evidenceAutomationId={diagnostics.UiProbe.EvidenceAutomationId.Replace("\r", " ").Replace("\n", " ")}";
 
+        var slotLatchPart = diagnostics.SlotLevel.HasObservedUiRunning
+            ? $" hasObservedUiRunning=true consecutiveNeg={diagnostics.SlotLevel.ConsecutiveNegativeUiProbes}"
+            : string.Empty;
+
         DiagnosticLog.Write(
-            $"AI {slotName} final={status}{sourcePart}{enginePart}{confidencePart}{slotStatePart}{slotOwnerPart} reason={reason}{evidenceTextPart}{evidenceClassPart}{evidenceAutomationIdPart} runningText={diagnostics.UiProbe.FoundRunningText} runningClass={diagnostics.UiProbe.FoundRunningClass} stopButton={diagnostics.UiProbe.FoundStopButton} inputReady={diagnostics.UiProbe.FoundInputReady} sendButton={diagnostics.UiProbe.FoundSendButton} timedOut={diagnostics.UiProbe.TimedOut} scanCompleted={diagnostics.UiProbe.ScanCompleted}");
+            $"AI {slotName} final={status}{sourcePart}{enginePart}{confidencePart}{slotStatePart}{slotOwnerPart}{slotLatchPart} reason={reason}{evidenceTextPart}{evidenceClassPart}{evidenceAutomationIdPart} runningText={diagnostics.UiProbe.FoundRunningText} runningClass={diagnostics.UiProbe.FoundRunningClass} stopButton={diagnostics.UiProbe.FoundStopButton} inputReady={diagnostics.UiProbe.FoundInputReady} sendButton={diagnostics.UiProbe.FoundSendButton} timedOut={diagnostics.UiProbe.TimedOut} scanCompleted={diagnostics.UiProbe.ScanCompleted}");
     }
 
     private bool IsCodexBroadcastOwner(
@@ -1866,7 +1897,9 @@ public sealed class AiStatusDetector
             state.LastUiReadyAt,
             state.LastEvidenceAt,
             state.EvidenceText,
-            state.Reason);
+            state.Reason,
+            state.HasObservedUiRunning,
+            state.ConsecutiveNegativeUiProbes);
     }
 
     private static AiLogEvidence ReadLatestEvidence(string userDataDirectory, ExtensionLogSource source, int maxRecentLogBytes = MaxRecentLogBytes)
@@ -2392,7 +2425,9 @@ public sealed record SlotAiStatusSnapshot(
     DateTimeOffset? LastUiReadyAt,
     DateTimeOffset? LastEvidenceAt,
     string EvidenceText,
-    string Reason);
+    string Reason,
+    bool HasObservedUiRunning,
+    int ConsecutiveNegativeUiProbes);
 
 public sealed record AiEngineStatusSnapshot(
     string State,
