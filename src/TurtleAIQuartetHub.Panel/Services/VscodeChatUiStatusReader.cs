@@ -108,13 +108,15 @@ public sealed class VscodeChatUiStatusReader
 
     private static readonly string[] ContextualConfirmationActionTexts =
     [
-        "はい",
-        "Yes",
-        "Run",
-        "実行",
-        "実行する",
         "Approve",
         "承認"
+    ];
+
+    private static readonly string[] ConfirmationExclusionFragments =
+    [
+        "スクリーン リーダー",
+        "screen reader",
+        "editor.accessibilitySupport"
     ];
 
     private static readonly string[] InputContextFragments =
@@ -219,6 +221,10 @@ public sealed class VscodeChatUiStatusReader
         string evidenceAutomationId = string.Empty;
         string evidenceClassName = string.Empty;
         DateTimeOffset? evidenceAt = null;
+        string confirmationEvidenceText = string.Empty;
+        string confirmationEvidenceAutomationId = string.Empty;
+        string confirmationEvidenceClassName = string.Empty;
+        string? confirmationDetail = null;
 
         void CaptureEvidence(ElementSnapshot snapshot, bool prefer)
         {
@@ -269,26 +275,14 @@ public sealed class VscodeChatUiStatusReader
 
             if (TryReadConfirmationSignal(snapshot, hasChatContext, out var confirmDetail))
             {
-                foundConfirmationButton = true;
-                CaptureEvidence(snapshot, prefer: true);
-                return CreateProbeResult(
-                    AiStatus.WaitingForConfirmation,
-                    DateTimeOffset.Now,
-                    false,
-                    false,
-                    inspected,
-                    confirmDetail,
-                    foundRunningText,
-                    foundRunningClass,
-                    foundStopButton,
-                    foundConfirmationButton,
-                    foundInputBox,
-                    foundInputReady,
-                    foundSendButton,
-                    foundDisabledSendButton,
-                    evidenceText,
-                    evidenceAutomationId,
-                    evidenceClassName);
+                if (!foundConfirmationButton)
+                {
+                    foundConfirmationButton = true;
+                    confirmationDetail = confirmDetail;
+                    confirmationEvidenceText = TrimForDetail(snapshot.Name);
+                    confirmationEvidenceAutomationId = snapshot.AutomationId;
+                    confirmationEvidenceClassName = snapshot.ClassName;
+                }
             }
 
             if (TryReadRunningTextSignal(snapshot, hasChatContext, out var runningTextDetail))
@@ -341,6 +335,9 @@ public sealed class VscodeChatUiStatusReader
 
         if (runningDetail is not null)
         {
+            var rejectedReason = foundConfirmationButton
+                ? $"running evidence exists; confirmation candidate: [{confirmationEvidenceText}]"
+                : string.Empty;
             return CreateProbeResult(
                 AiStatus.Running,
                 evidenceAt ?? DateTimeOffset.Now,
@@ -358,7 +355,39 @@ public sealed class VscodeChatUiStatusReader
                 foundDisabledSendButton,
                 evidenceText,
                 evidenceAutomationId,
-                evidenceClassName);
+                evidenceClassName,
+                confirmationEvidenceText,
+                confirmationEvidenceAutomationId,
+                confirmationEvidenceClassName,
+                confirmationAccepted: false,
+                confirmationRejectedReason: rejectedReason);
+        }
+
+        if (foundConfirmationButton && confirmationDetail is not null)
+        {
+            return CreateProbeResult(
+                AiStatus.WaitingForConfirmation,
+                DateTimeOffset.Now,
+                timedOut,
+                false,
+                inspected,
+                confirmationDetail,
+                foundRunningText,
+                foundRunningClass,
+                foundStopButton,
+                foundConfirmationButton,
+                foundInputBox,
+                foundInputReady,
+                foundSendButton,
+                foundDisabledSendButton,
+                confirmationEvidenceText,
+                confirmationEvidenceAutomationId,
+                confirmationEvidenceClassName,
+                confirmationEvidenceText,
+                confirmationEvidenceAutomationId,
+                confirmationEvidenceClassName,
+                confirmationAccepted: true,
+                confirmationRejectedReason: string.Empty);
         }
 
         var scanCompleted = !timedOut && queue.Count == 0;
@@ -409,7 +438,12 @@ public sealed class VscodeChatUiStatusReader
         bool foundDisabledSendButton,
         string evidenceText,
         string evidenceAutomationId,
-        string evidenceClassName)
+        string evidenceClassName,
+        string confirmationEvidenceText = "",
+        string confirmationEvidenceAutomationId = "",
+        string confirmationEvidenceClassName = "",
+        bool confirmationAccepted = false,
+        string confirmationRejectedReason = "")
     {
         return new UiAutomationProbeResult(
             status,
@@ -428,7 +462,12 @@ public sealed class VscodeChatUiStatusReader
             foundDisabledSendButton,
             evidenceText,
             evidenceAutomationId,
-            evidenceClassName);
+            evidenceClassName,
+            confirmationEvidenceText,
+            confirmationEvidenceAutomationId,
+            confirmationEvidenceClassName,
+            confirmationAccepted,
+            confirmationRejectedReason);
     }
 
     private static ElementSnapshot ReadElementSnapshot(AutomationElement element, System.Windows.Rect? rootBounds)
@@ -697,26 +736,43 @@ public sealed class VscodeChatUiStatusReader
 
     private static bool TryReadConfirmationSignal(ElementSnapshot element, bool hasChatContext, out string detail)
     {
-        var combinedContext = GetCombinedContext(element);
-
-        if (element.IsVisible
-            && element.IsEnabled
-            && IsConfirmationActionName(element.Name, out var requiresContext)
-            && (!requiresContext || hasChatContext))
+        if (!element.IsVisible || !element.IsEnabled)
         {
-            detail = string.IsNullOrWhiteSpace(element.Name)
-                ? "VS Code UI: チャット確認ボタンを検出しました。"
-                : $"VS Code UI: {TrimForDetail(element.Name)} を検出しました。";
-            return true;
+            detail = string.Empty;
+            return false;
         }
 
-        detail = string.Empty;
-        return false;
+        // Exclude VS Code general UI (screen reader notifications, accessibility prompts, etc.)
+        var combinedContext = GetCombinedContext(element);
+        if (ContainsAny(element.Name, ConfirmationExclusionFragments)
+            || ContainsAny(combinedContext, ConfirmationExclusionFragments))
+        {
+            detail = string.Empty;
+            return false;
+        }
+
+        // All confirmation signals require chat context (inherited from parent or element itself)
+        if (!hasChatContext)
+        {
+            detail = string.Empty;
+            return false;
+        }
+
+        if (!IsConfirmationActionName(element.Name, out _))
+        {
+            detail = string.Empty;
+            return false;
+        }
+
+        detail = string.IsNullOrWhiteSpace(element.Name)
+            ? "VS Code UI: チャット確認ボタンを検出しました。"
+            : $"VS Code UI: {TrimForDetail(element.Name)} を検出しました。";
+        return true;
     }
 
     private static bool IsConfirmationActionName(string value, out bool requiresContext)
     {
-        requiresContext = false;
+        requiresContext = true; // All confirmation texts require chat context
         var trimmed = NormalizeActionName(value);
         if (trimmed.Length == 0 || trimmed.Length > MaxTextLengthForConfirmation)
         {
@@ -729,16 +785,7 @@ public sealed class VscodeChatUiStatusReader
             return false;
         }
 
-        if (ConfirmationActionTexts.Any(signal =>
-            string.Equals(trimmed, signal, StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith($"{signal} ", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith($"{signal}(", StringComparison.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-
-        requiresContext = true;
-        return ContextualConfirmationActionTexts.Any(signal =>
+        return ConfirmationActionTexts.Concat(ContextualConfirmationActionTexts).Any(signal =>
             string.Equals(trimmed, signal, StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith($"{signal} ", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith($"{signal}(", StringComparison.OrdinalIgnoreCase)
@@ -861,7 +908,12 @@ public sealed record UiAutomationProbeResult(
     bool FoundDisabledSendButton,
     string EvidenceText,
     string EvidenceAutomationId,
-    string EvidenceClassName)
+    string EvidenceClassName,
+    string ConfirmationEvidenceText,
+    string ConfirmationEvidenceAutomationId,
+    string ConfirmationEvidenceClassName,
+    bool ConfirmationAccepted,
+    string ConfirmationRejectedReason)
 {
     public bool HasRunningEvidence => FoundRunningText || FoundRunningClass || FoundStopButton;
 
@@ -886,6 +938,11 @@ public sealed record UiAutomationProbeResult(
             false,
             string.Empty,
             string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            false,
             string.Empty);
     }
 

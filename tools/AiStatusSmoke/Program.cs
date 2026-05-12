@@ -114,6 +114,11 @@ static List<ProbeResult> ProbeSlots(
                     false,
                     string.Empty,
                     string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    false,
                     string.Empty)));
             continue;
         }
@@ -185,7 +190,12 @@ static List<ProbeResult> ProbeSlots(
                 diagnostics?.UiProbe.FoundDisabledSendButton ?? false,
                 diagnostics?.UiProbe.EvidenceText ?? string.Empty,
                 diagnostics?.UiProbe.EvidenceAutomationId ?? string.Empty,
-                diagnostics?.UiProbe.EvidenceClassName ?? string.Empty)));
+                diagnostics?.UiProbe.EvidenceClassName ?? string.Empty,
+                diagnostics?.UiProbe.ConfirmationEvidenceText ?? string.Empty,
+                diagnostics?.UiProbe.ConfirmationEvidenceAutomationId ?? string.Empty,
+                diagnostics?.UiProbe.ConfirmationEvidenceClassName ?? string.Empty,
+                diagnostics?.UiProbe.ConfirmationAccepted ?? false,
+                diagnostics?.UiProbe.ConfirmationRejectedReason ?? string.Empty)));
     }
 
     return results;
@@ -273,7 +283,12 @@ file sealed record ProbeUiProbe(
     bool FoundDisabledSendButton,
     string EvidenceText,
     string EvidenceAutomationId,
-    string EvidenceClassName);
+    string EvidenceClassName,
+    string ConfirmationEvidenceText,
+    string ConfirmationEvidenceAutomationId,
+    string ConfirmationEvidenceClassName,
+    bool ConfirmationAccepted,
+    string ConfirmationRejectedReason);
 
 file sealed record StoredSlotState(
     string Name,
