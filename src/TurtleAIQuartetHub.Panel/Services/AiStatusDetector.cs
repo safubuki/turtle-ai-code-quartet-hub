@@ -9,10 +9,12 @@ public sealed class AiStatusDetector
 {
     private const string CodexSourceName = "Codex";
     private const string CopilotSourceName = "Copilot";
+    private const string ClaudeSourceName = "Claude";
     private static readonly TimeSpan ErrorSignalWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan UiAutomationCachedEvidenceWindow = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CompletionLogClockSkewTolerance = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CopilotRunningLeaseWindow = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan ClaudeRunningLeaseWindow = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan SlotRunningHoldWindow = TimeSpan.FromSeconds(12);
     private static readonly TimeSpan CodexProbableRunningWindow = TimeSpan.FromSeconds(18);
     private static readonly TimeSpan CodexSuspectWindow = TimeSpan.FromSeconds(18);
@@ -54,6 +56,21 @@ public sealed class AiStatusDetector
         [" | networkError |"],
         false,
         [],
+        [],
+        []);
+
+    private static readonly ExtensionLogSource ClaudeLogSource = new(
+        ClaudeSourceName,
+        ["Anthropic.claude-code", "anthropic.claude-code"],
+        "Claude VSCode.log",
+        "\"state\":\"busy\"",
+        [],
+        [],
+        ["\"state\":\"idle\"", "update_session_state"],
+        ["get_claude_state", "get_session_request", "list_sessions_request", "time_to_interactive", "settings"],
+        [],
+        false,
+        ["launch_claude", "Spawning Claude with SDK query function"],
         [],
         []);
 
@@ -105,6 +122,7 @@ public sealed class AiStatusDetector
                     ToDiagnostic(SlotRuntimeState.Idle()),
                     ToDiagnostic(EngineRuntimeState.Idle(AiEngine.Copilot)),
                     ToDiagnostic(EngineRuntimeState.Idle(AiEngine.Codex)),
+                    ToDiagnostic(EngineRuntimeState.Idle(AiEngine.Claude)),
                     UiAutomationProbeResult.Unknown("VS Code ウィンドウがないため UI Automation は実行していません。"),
                     string.Empty,
                     string.Empty,
@@ -124,6 +142,9 @@ public sealed class AiStatusDetector
         var codexLog = canReadLogs
             ? FilterEvidence(slotKey, slotStartedAt, ReadLatestEvidence(userDataDirectory!, CodexLogSource))
             : AiLogEvidence.Empty(CodexLogSource);
+        var claudeLog = canReadLogs
+            ? FilterEvidence(slotKey, slotStartedAt, ReadLatestEvidence(userDataDirectory!, ClaudeLogSource))
+            : AiLogEvidence.Empty(ClaudeLogSource);
 
         var uiProbe = slot.AllowUiAutomationProbe
             ? _uiStatusReader.TryRead(slot)
@@ -143,17 +164,20 @@ public sealed class AiStatusDetector
             var previousSlotState = GetSlotState(slotKey);
             var previousCopilot = GetEngineState(slotKey, AiEngine.Copilot);
             var previousCodex = GetEngineState(slotKey, AiEngine.Codex);
-            var uiOwner = ResolveUiAutomationOwner(slot, uiProbe, previousCopilot, previousCodex, copilotLog, codexLog, now);
+            var previousClaude = GetEngineState(slotKey, AiEngine.Claude);
+            var uiOwner = ResolveUiAutomationOwner(slot, uiProbe, previousCopilot, previousCodex, previousClaude, copilotLog, codexLog, claudeLog, now);
 
             var nextCopilot = AdvanceCopilotState(previousCopilot, copilotLog, uiProbe, slot.AllowUiAutomationProbe, uiOwner, now);
             var nextCodex = AdvanceCodexState(slot, slotKey, previousCodex, codexLog, uiProbe, slot.AllowUiAutomationProbe, uiOwner, now);
-            var nextSlotState = AdvanceSlotState(previousSlotState, uiProbe, slot.AllowUiAutomationProbe, uiOwner, nextCopilot, nextCodex, copilotLog, codexLog, now);
+            var nextClaude = AdvanceClaudeState(previousClaude, claudeLog, uiProbe, slot.AllowUiAutomationProbe, uiOwner, now);
+            var nextSlotState = AdvanceSlotState(previousSlotState, uiProbe, slot.AllowUiAutomationProbe, uiOwner, nextCopilot, nextCodex, nextClaude, copilotLog, codexLog, claudeLog, now);
 
             StoreEngineState(slotKey, nextCopilot);
             StoreEngineState(slotKey, nextCodex);
+            StoreEngineState(slotKey, nextClaude);
             StoreSlotState(slotKey, nextSlotState);
 
-            var complexDecision = AggregateDecision(canReadLogs, nextSlotState, nextCopilot, nextCodex);
+            var complexDecision = AggregateDecision(canReadLogs, nextSlotState, nextCopilot, nextCodex, nextClaude);
 
             // baseline が Running/WaitingForConfirmation/Completed → baseline を採用
             // それ以外 (Idle/null) は複雑 state machine の結果を使用
@@ -186,6 +210,7 @@ public sealed class AiStatusDetector
                 ToDiagnostic(nextSlotState),
                 ToDiagnostic(nextCopilot),
                 ToDiagnostic(nextCodex),
+                ToDiagnostic(nextClaude),
                 uiProbe,
                 finalSourceName,
                 complexDecision.EngineName,
@@ -221,6 +246,8 @@ public sealed class AiStatusDetector
         // Copilot: ccreq: が最新完了シグナルより新しければ Running
         var copilotRunningAt = copilotLog.LastRunningSignalAt;
         var copilotCompletedAt = copilotLog.LastCompletionSignalAt;
+        // チャット完了のみ (インラインコード補完 XtabProvider/NES 等は StandaloneCompletionSignalAt に含まれない)
+        var copilotStandaloneCompletedAt = copilotLog.LastStandaloneCompletionSignalAt;
         var copilotHasRunning = copilotRunningAt.HasValue
             && (!copilotCompletedAt.HasValue || copilotRunningAt.Value > copilotCompletedAt.Value);
 
@@ -229,16 +256,19 @@ public sealed class AiStatusDetector
         // _lastRunningSeenBySlot による判定は循環依存を生むため使用しない
         var codexRunningAt = codexLog.LastRunningSignalAt;
         var codexConfirmAt = codexLog.LastConfirmationSignalAt;
+        var previousCodex = GetEngineState(slotKey, AiEngine.Codex);
         var codexOwned = slot.IsForeground
             || slot.IsFocused
-            || IsRecent(codexRunningAt, CodexBroadcastOwnerStickyWindow, now)
-            || IsRecent(codexConfirmAt, CodexConfirmationWindow, now);
+            || HasRecentUiAnchor(previousCodex, CodexBroadcastOwnerStickyWindow, now);
         var codexHasRunning = codexOwned
             && codexRunningAt.HasValue
             && IsRecent(codexRunningAt, CodexBroadcastOwnerStickyWindow, now)  // Fix A: 時間窓を追加して古いログシグナルによる永続Running を防止
+            && IsCodexBroadcastOwner(slot, slotKey, codexRunningAt.Value, previousCodex, now)
             && (!codexConfirmAt.HasValue || codexRunningAt.Value >= codexConfirmAt.Value);
         var codexHasWaiting = codexOwned
             && codexConfirmAt.HasValue
+            && IsRecent(codexConfirmAt, CodexConfirmationWindow, now)
+            && IsCodexBroadcastOwner(slot, slotKey, codexConfirmAt.Value, previousCodex, now)
             && (!codexRunningAt.HasValue || codexConfirmAt.Value > codexRunningAt.Value);
 
         if (copilotHasRunning || codexHasRunning)
@@ -296,8 +326,9 @@ public sealed class AiStatusDetector
         }
 
         // --- Step 5: 直前 Running を短時間保持 (12秒 Running bridge) ---
-        // Copilot の単独完了ログがある場合は bridge をスキップして Step 6 へ
-        var hasCopilotStandaloneCompletion = copilotCompletedAt.HasValue && !copilotHasRunning;
+        // Copilot チャット完了ログがある場合は bridge をスキップして Step 6 へ
+        // (インラインコード補完はチャット完了ではないため bridge をスキップしない)
+        var hasCopilotStandaloneCompletion = copilotStandaloneCompletedAt.HasValue && !copilotHasRunning;
         if (hadPreviousRunning
             && now - lastRunningSeenAt <= SlotRunningHoldWindow
             && !hasCopilotStandaloneCompletion)
@@ -316,10 +347,10 @@ public sealed class AiStatusDetector
 
         if (hasCopilotStandaloneCompletion)
         {
-            _completedAtBySlot[slotKey] = copilotCompletedAt!.Value;
+            _completedAtBySlot[slotKey] = copilotStandaloneCompletedAt!.Value;
             _lastRunningSeenBySlot.TryRemove(slotKey, out _);
             _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
-            return new AiStatusSnapshot(AiStatus.Completed, "Copilot: AI実行は完了しました。", copilotCompletedAt, CopilotSourceName);
+            return new AiStatusSnapshot(AiStatus.Completed, "Copilot: AI実行は完了しました。", copilotStandaloneCompletedAt, CopilotSourceName);
         }
 
         // --- Step 7: 直前の WaitingForConfirmation を保持 (Fix C-2a: TTL付きで固着を防止) ---
@@ -507,8 +538,10 @@ public sealed class AiStatusDetector
         UiAutomationProbeResult uiProbe,
         EngineRuntimeState previousCopilot,
         EngineRuntimeState previousCodex,
+        EngineRuntimeState previousClaude,
         AiLogEvidence copilotLog,
         AiLogEvidence codexLog,
+        AiLogEvidence claudeLog,
         DateTimeOffset now)
     {
         if (!HasDirectUiActivity(uiProbe))
@@ -518,11 +551,20 @@ public sealed class AiStatusDetector
 
         var copilotHintAt = GetCopilotUiHintAt(previousCopilot, copilotLog, now);
         var codexHintAt = GetCodexUiHintAt(previousCodex, codexLog, now);
+        var claudeHintAt = GetClaudeUiHintAt(previousClaude, claudeLog, now);
         var hasCopilotContext = HasCopilotUiContext(uiProbe);
         var hasCodexContext = HasCodexUiContext(uiProbe);
+        var hasClaudeContext = HasClaudeUiContext(uiProbe);
 
         if (HasDirectUiWaiting(uiProbe))
         {
+            if (hasClaudeContext
+                || IsRecent(claudeLog.LastSecondaryRunningSignalAt, ClaudeRunningLeaseWindow, now)
+                || previousClaude.State == InternalEngineState.WaitingForConfirmation)
+            {
+                return UiAutomationOwner.Claude;
+            }
+
             if (IsRecent(codexLog.LastConfirmationSignalAt, CodexConfirmationWindow, now)
                 || previousCodex.State == InternalEngineState.WaitingForConfirmation)
             {
@@ -530,49 +572,77 @@ public sealed class AiStatusDetector
             }
         }
 
-        if (hasCopilotContext && !hasCodexContext)
+        var contextOwners = new List<UiAutomationOwner>(3);
+        if (hasCopilotContext)
         {
-            return UiAutomationOwner.Copilot;
+            contextOwners.Add(UiAutomationOwner.Copilot);
         }
 
-        if (hasCodexContext && !hasCopilotContext)
+        if (hasCodexContext)
         {
-            return UiAutomationOwner.Codex;
+            contextOwners.Add(UiAutomationOwner.Codex);
         }
 
-        if (copilotHintAt.HasValue && !codexHintAt.HasValue)
+        if (hasClaudeContext)
         {
-            return UiAutomationOwner.Copilot;
+            contextOwners.Add(UiAutomationOwner.Claude);
         }
 
-        if (codexHintAt.HasValue && !copilotHintAt.HasValue)
+        if (contextOwners.Count == 1)
         {
-            return UiAutomationOwner.Codex;
+            return contextOwners[0];
         }
 
-        if (copilotHintAt.HasValue && codexHintAt.HasValue)
+        if (contextOwners.Count > 1)
         {
-            var delta = codexHintAt.Value - copilotHintAt.Value;
+            return UiAutomationOwner.UnknownAi;
+        }
+
+        var hintOwners = new[]
+        {
+            new UiOwnerHint(UiAutomationOwner.Copilot, copilotHintAt),
+            new UiOwnerHint(UiAutomationOwner.Codex, codexHintAt),
+            new UiOwnerHint(UiAutomationOwner.Claude, claudeHintAt)
+        }
+        .Where(hint => hint.At.HasValue)
+        .OrderByDescending(hint => hint.At!.Value)
+        .ToList();
+
+        if (hintOwners.Count == 1)
+        {
+            return hintOwners[0].Owner;
+        }
+
+        if (hintOwners.Count > 1)
+        {
+            var delta = hintOwners[0].At!.Value - hintOwners[1].At!.Value;
             if (delta.Duration() <= TimeSpan.FromSeconds(2))
             {
                 return UiAutomationOwner.UnknownAi;
             }
 
-            return delta > TimeSpan.Zero
-                ? UiAutomationOwner.Codex
-                : UiAutomationOwner.Copilot;
+            return hintOwners[0].Owner;
         }
 
         if (previousCopilot.State is InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
-            && previousCodex.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation))
+            && previousCodex.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation)
+            && previousClaude.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation))
         {
             return UiAutomationOwner.Copilot;
         }
 
         if (previousCodex.State is InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
-            && previousCopilot.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation))
+            && previousCopilot.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation)
+            && previousClaude.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation))
         {
             return UiAutomationOwner.Codex;
+        }
+
+        if (previousClaude.State is InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
+            && previousCopilot.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation)
+            && previousCodex.State is not (InternalEngineState.Running or InternalEngineState.WaitingForConfirmation))
+        {
+            return UiAutomationOwner.Claude;
         }
 
         return UiAutomationOwner.UnknownAi;
@@ -616,6 +686,15 @@ public sealed class AiStatusDetector
             "openai.chatgpt",
             "requestapproval",
             "thread-stream-state-changed");
+    }
+
+    private static bool HasClaudeUiContext(UiAutomationProbeResult uiProbe)
+    {
+        return ContainsUiContext(uiProbe,
+            "claude",
+            "claude-code",
+            "anthropic",
+            "Anthropic.claude-code");
     }
 
     private static bool ContainsUiContext(UiAutomationProbeResult uiProbe, params string[] hints)
@@ -662,6 +741,25 @@ public sealed class AiStatusDetector
 
         if (previous.State is InternalEngineState.SuspectRunning or InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
             && IsRecent(previous.LastRunningEvidenceAt, CodexProbableRunningWindow, now))
+        {
+            hint = Max(hint, previous.LastRunningEvidenceAt);
+        }
+
+        return hint;
+    }
+
+    private static DateTimeOffset? GetClaudeUiHintAt(EngineRuntimeState previous, AiLogEvidence log, DateTimeOffset now)
+    {
+        var hint = IsRecent(log.LastRunningSignalAt, ClaudeRunningLeaseWindow, now)
+            ? log.LastRunningSignalAt
+            : null;
+
+        hint = Max(hint, IsRecent(log.LastSecondaryRunningSignalAt, ClaudeRunningLeaseWindow, now)
+            ? log.LastSecondaryRunningSignalAt
+            : null);
+
+        if (previous.State is InternalEngineState.SuspectRunning or InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
+            && IsRecent(previous.LastRunningEvidenceAt, ClaudeRunningLeaseWindow, now))
         {
             hint = Max(hint, previous.LastRunningEvidenceAt);
         }
@@ -1226,6 +1324,169 @@ public sealed class AiStatusDetector
             0);
     }
 
+    private static EngineRuntimeState AdvanceClaudeState(
+        EngineRuntimeState previous,
+        AiLogEvidence log,
+        UiAutomationProbeResult uiProbe,
+        bool hasFreshUiProbe,
+        UiAutomationOwner uiOwner,
+        DateTimeOffset now)
+    {
+        var completedFloor = previous.CompletedAt;
+        var runningAt = IgnoreIfNotNewerThan(Max(log.LastRunningSignalAt, log.LastSecondaryRunningSignalAt), completedFloor);
+        var idleAt = IgnoreIfNotNewerThan(log.LastIdleSignalAt, completedFloor);
+        var hasUiRunning = uiOwner == UiAutomationOwner.Claude
+            && uiProbe.Status is AiStatus.Running or AiStatus.WaitingForConfirmation;
+        var freshNegative = IsFreshNegativeUiProbe(uiProbe, hasFreshUiProbe);
+        var negativeCount = freshNegative ? previous.ConsecutiveNegativeUiProbes + 1 : previous.ConsecutiveNegativeUiProbes;
+
+        if (hasUiRunning)
+        {
+            var evidenceAt = uiProbe.EvidenceAt ?? now;
+            var runningStartedAt = previous.RunningStartedAt ?? runningAt ?? evidenceAt;
+            var baselineAt = previous.CompletionBaselineAt ?? previous.CompletedAt;
+            return new EngineRuntimeState(
+                AiEngine.Claude,
+                uiProbe.Status == AiStatus.WaitingForConfirmation ? InternalEngineState.WaitingForConfirmation : InternalEngineState.Running,
+                EvidenceConfidence.Confirmed,
+                previous.FirstSeenAt ?? runningStartedAt,
+                evidenceAt,
+                runningStartedAt,
+                baselineAt,
+                null,
+                EvidenceSource.UiAutomation,
+                uiProbe.Detail,
+                evidenceAt,
+                evidenceAt,
+                previous.LastUiNegativeAt,
+                0);
+        }
+
+        if (IsUiReadyAfterRunning(previous, uiProbe, hasFreshUiProbe, now))
+        {
+            return new EngineRuntimeState(
+                AiEngine.Claude,
+                InternalEngineState.Completed,
+                previous.Confidence,
+                previous.FirstSeenAt ?? previous.RunningStartedAt ?? now,
+                now,
+                previous.RunningStartedAt,
+                previous.CompletionBaselineAt,
+                now,
+                EvidenceSource.UiAutomation,
+                GetUiReadyCompletionReason(),
+                previous.LastRunningEvidenceAt,
+                previous.LastUiEvidenceAt,
+                now,
+                0);
+        }
+
+        if (idleAt is { } idleSignalAt
+            && previous.State is InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
+            && previous.RunningStartedAt.HasValue
+            && idleSignalAt >= previous.RunningStartedAt.Value - CompletionLogClockSkewTolerance)
+        {
+            return new EngineRuntimeState(
+                AiEngine.Claude,
+                InternalEngineState.Completed,
+                previous.Confidence,
+                previous.FirstSeenAt ?? previous.RunningStartedAt,
+                idleSignalAt,
+                previous.RunningStartedAt,
+                previous.CompletionBaselineAt,
+                idleSignalAt,
+                EvidenceSource.Log,
+                "Claude session state returned to idle after observed run",
+                previous.LastRunningEvidenceAt,
+                previous.LastUiEvidenceAt,
+                freshNegative ? now : previous.LastUiNegativeAt,
+                0);
+        }
+
+        if (runningAt is { } runningSignalAt && IsRecent(runningSignalAt, ClaudeRunningLeaseWindow, now))
+        {
+            if (HasRecentUiAnchor(previous, ClaudeRunningLeaseWindow, now))
+            {
+                var runningStartedAt = previous.RunningStartedAt ?? previous.LastUiEvidenceAt ?? runningSignalAt;
+                return new EngineRuntimeState(
+                    AiEngine.Claude,
+                    InternalEngineState.Running,
+                    EvidenceConfidence.Probable,
+                    previous.FirstSeenAt ?? runningStartedAt,
+                    runningSignalAt,
+                    runningStartedAt,
+                    previous.CompletionBaselineAt ?? previous.CompletedAt,
+                    null,
+                    EvidenceSource.Log,
+                    "recent Claude Code activity after UI-confirmed run",
+                    runningSignalAt,
+                    previous.LastUiEvidenceAt,
+                    freshNegative ? now : previous.LastUiNegativeAt,
+                    0);
+            }
+
+            return new EngineRuntimeState(
+                AiEngine.Claude,
+                InternalEngineState.SuspectRunning,
+                EvidenceConfidence.Suspect,
+                previous.FirstSeenAt ?? runningSignalAt,
+                runningSignalAt,
+                previous.RunningStartedAt,
+                previous.CompletionBaselineAt,
+                null,
+                EvidenceSource.Log,
+                "Claude Code activity awaiting UI confirmation",
+                runningSignalAt,
+                previous.LastUiEvidenceAt,
+                freshNegative ? now : previous.LastUiNegativeAt,
+                negativeCount);
+        }
+
+        if (previous.State is InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
+            && HasRecentUiAnchor(previous, ClaudeRunningLeaseWindow, now)
+            && IsRecent(previous.LastRunningEvidenceAt, ClaudeRunningLeaseWindow, now))
+        {
+            return previous with
+            {
+                LastUiNegativeAt = freshNegative ? now : previous.LastUiNegativeAt,
+                ConsecutiveNegativeUiProbes = 0
+            };
+        }
+
+        if (previous.State == InternalEngineState.SuspectRunning
+            && IsRecent(previous.LastEvidenceAt, ClaudeRunningLeaseWindow, now))
+        {
+            return previous with
+            {
+                LastUiNegativeAt = freshNegative ? now : previous.LastUiNegativeAt,
+                ConsecutiveNegativeUiProbes = freshNegative ? negativeCount : previous.ConsecutiveNegativeUiProbes
+            };
+        }
+
+        if (previous.State == InternalEngineState.Completed)
+        {
+            return previous;
+        }
+
+        return new EngineRuntimeState(
+            AiEngine.Claude,
+            InternalEngineState.Idle,
+            EvidenceConfidence.Confirmed,
+            null,
+            Max(previous.LastEvidenceAt, Max(runningAt, idleAt)),
+            null,
+            null,
+            null,
+            EvidenceSource.None,
+            previous.State is InternalEngineState.Running or InternalEngineState.WaitingForConfirmation
+                ? "claude running lease expired"
+                : "no Claude evidence",
+            null,
+            previous.LastUiEvidenceAt,
+            freshNegative ? now : previous.LastUiNegativeAt,
+            0);
+    }
+
     private static SlotRuntimeState AdvanceSlotState(
         SlotRuntimeState previous,
         UiAutomationProbeResult uiProbe,
@@ -1233,8 +1494,10 @@ public sealed class AiStatusDetector
         UiAutomationOwner uiOwner,
         EngineRuntimeState copilot,
         EngineRuntimeState codex,
+        EngineRuntimeState claude,
         AiLogEvidence copilotLog,
         AiLogEvidence codexLog,
+        AiLogEvidence claudeLog,
         DateTimeOffset now)
     {
         var evidenceAt = uiProbe.EvidenceAt ?? now;
@@ -1287,7 +1550,7 @@ public sealed class AiStatusDetector
             && hasUiReady
             && now - lastUiRunningAt >= UiReadyCompletionDelay)
         {
-            var owner = previous.Owner is SlotRuntimeOwner.Copilot or SlotRuntimeOwner.Codex
+            var owner = previous.Owner is SlotRuntimeOwner.Copilot or SlotRuntimeOwner.Codex or SlotRuntimeOwner.Claude
                 ? previous.Owner
                 : SlotRuntimeOwner.UnknownAi;
             return previous with
@@ -1315,7 +1578,7 @@ public sealed class AiStatusDetector
                 : previous;
         }
 
-        var engineAggregate = GetSlotEngineAggregateCandidate(copilot, codex);
+        var engineAggregate = GetSlotEngineAggregateCandidate(copilot, codex, claude);
         if (previous.State is SlotRuntimeStatus.Running or SlotRuntimeStatus.WaitingForConfirmation)
         {
             if (hasUiReady
@@ -1339,7 +1602,7 @@ public sealed class AiStatusDetector
             {
                 var source = engineAggregate is not null
                     ? SlotRuntimeSource.EngineAggregate
-                    : HasFreshAssistLog(copilotLog, codexLog, now)
+                    : HasFreshAssistLog(copilotLog, codexLog, claudeLog, now)
                         ? SlotRuntimeSource.LogAssist
                         : previous.Source;
                 var reason = uiProbe.TimedOut
@@ -1366,7 +1629,7 @@ public sealed class AiStatusDetector
             {
                 var latchSource = engineAggregate is not null
                     ? SlotRuntimeSource.EngineAggregate
-                    : HasFreshAssistLog(copilotLog, codexLog, now)
+                    : HasFreshAssistLog(copilotLog, codexLog, claudeLog, now)
                         ? SlotRuntimeSource.LogAssist
                         : previous.Source;
                 var latchReason = !hasFreshUiProbe
@@ -1403,16 +1666,16 @@ public sealed class AiStatusDetector
                 negativeCount);
         }
 
-        if (HasFreshAssistLog(copilotLog, codexLog, now))
+        if (HasFreshAssistLog(copilotLog, codexLog, claudeLog, now))
         {
             return new SlotRuntimeState(
                 SlotRuntimeStatus.SuspectRunning,
                 SlotRuntimeSource.LogAssist,
-                ResolveSlotLogOwner(previous, copilotLog, codexLog, now),
-                previous.FirstSeenAt ?? Max(copilotLog.LastRunningSignalAt, Max(codexLog.LastRunningSignalAt, codexLog.LastConfirmationSignalAt)) ?? now,
+                ResolveSlotLogOwner(previous, copilotLog, codexLog, claudeLog, now),
+                previous.FirstSeenAt ?? Max(copilotLog.LastRunningSignalAt, Max(Max(codexLog.LastRunningSignalAt, codexLog.LastConfirmationSignalAt), Max(claudeLog.LastRunningSignalAt, claudeLog.LastSecondaryRunningSignalAt))) ?? now,
                 previous.LastUiRunningAt,
                 previous.LastUiReadyAt,
-                Max(copilotLog.LastRunningSignalAt, Max(codexLog.LastRunningSignalAt, codexLog.LastConfirmationSignalAt)) ?? previous.LastEvidenceAt,
+                Max(copilotLog.LastRunningSignalAt, Max(Max(codexLog.LastRunningSignalAt, codexLog.LastConfirmationSignalAt), Max(claudeLog.LastRunningSignalAt, claudeLog.LastSecondaryRunningSignalAt))) ?? previous.LastEvidenceAt,
                 previous.EvidenceText,
                 "log activity awaiting UI confirmation",
                 previous.HasObservedUiRunning,
@@ -1448,7 +1711,7 @@ public sealed class AiStatusDetector
             null,
             previous.LastUiRunningAt,
             previous.LastUiReadyAt,
-            Max(previous.LastEvidenceAt, Max(copilotLog.LastRunningSignalAt, Max(codexLog.LastRunningSignalAt, codexLog.LastConfirmationSignalAt))),
+            Max(previous.LastEvidenceAt, Max(copilotLog.LastRunningSignalAt, Max(Max(codexLog.LastRunningSignalAt, codexLog.LastConfirmationSignalAt), Max(claudeLog.LastRunningSignalAt, claudeLog.LastSecondaryRunningSignalAt)))),
             previous.EvidenceText,
             previous.HasObservedUiRunning
                 ? "running hold expired without fresh UI evidence"
@@ -1457,9 +1720,9 @@ public sealed class AiStatusDetector
             0);
     }
 
-    private static DisplayDecision AggregateDecision(bool canReadLogs, SlotRuntimeState slotState, EngineRuntimeState copilot, EngineRuntimeState codex)
+    private static DisplayDecision AggregateDecision(bool canReadLogs, SlotRuntimeState slotState, EngineRuntimeState copilot, EngineRuntimeState codex, EngineRuntimeState claude)
     {
-        var candidates = new[] { CreateSlotDisplayCandidate(slotState), CreateDisplayCandidate(copilot), CreateDisplayCandidate(codex) }
+        var candidates = new[] { CreateSlotDisplayCandidate(slotState), CreateDisplayCandidate(copilot), CreateDisplayCandidate(codex), CreateDisplayCandidate(claude) }
             .Where(candidate => candidate is not null)
             .Cast<DisplayCandidate>()
             .OrderByDescending(candidate => candidate.Priority)
@@ -1484,7 +1747,8 @@ public sealed class AiStatusDetector
             {
                 new IdleCauseCandidate(slotState.LastEvidenceAt, slotState.Owner == SlotRuntimeOwner.None ? string.Empty : slotState.Owner.ToString(), GetSlotConfidence(slotState), slotState.Reason),
                 new IdleCauseCandidate(copilot.LastEvidenceAt, copilot.Engine.ToString(), copilot.Confidence.ToString(), copilot.LastReason),
-                new IdleCauseCandidate(codex.LastEvidenceAt, codex.Engine.ToString(), codex.Confidence.ToString(), codex.LastReason)
+                new IdleCauseCandidate(codex.LastEvidenceAt, codex.Engine.ToString(), codex.Confidence.ToString(), codex.LastReason),
+                new IdleCauseCandidate(claude.LastEvidenceAt, claude.Engine.ToString(), claude.Confidence.ToString(), claude.LastReason)
             }
             .OrderByDescending(state => state.EventAt ?? DateTimeOffset.MinValue)
             .First();
@@ -1610,6 +1874,7 @@ public sealed class AiStatusDetector
                 state.LastEvidenceSource == EvidenceSource.UiAutomation || state.LastUiEvidenceAt.HasValue,
             InternalEngineState.Completed =>
                 state.LastEvidenceSource == EvidenceSource.UiAutomation
+                || state.LastUiEvidenceAt.HasValue
                 || string.Equals(state.LastReason, GetUiReadyCompletionReason(), StringComparison.Ordinal),
             _ => true
         };
@@ -1620,12 +1885,13 @@ public sealed class AiStatusDetector
         return state.LastUiEvidenceAt is { } lastUiEvidenceAt && IsRecent(lastUiEvidenceAt, window, now);
     }
 
-    private static SlotEngineAggregateCandidate? GetSlotEngineAggregateCandidate(EngineRuntimeState copilot, EngineRuntimeState codex)
+    private static SlotEngineAggregateCandidate? GetSlotEngineAggregateCandidate(EngineRuntimeState copilot, EngineRuntimeState codex, EngineRuntimeState claude)
     {
         var candidates = new[]
             {
                 CreateSlotEngineAggregateCandidate(copilot),
-                CreateSlotEngineAggregateCandidate(codex)
+                CreateSlotEngineAggregateCandidate(codex),
+                CreateSlotEngineAggregateCandidate(claude)
             }
             .Where(candidate => candidate is not null)
             .Cast<SlotEngineAggregateCandidate>()
@@ -1645,15 +1911,15 @@ public sealed class AiStatusDetector
 
         return state.State switch
         {
-            InternalEngineState.WaitingForConfirmation => new SlotEngineAggregateCandidate(SlotRuntimeStatus.WaitingForConfirmation, state.Engine == AiEngine.Copilot ? SlotRuntimeOwner.Copilot : SlotRuntimeOwner.Codex, state.LastEvidenceAt, state.LastReason, 2),
-            InternalEngineState.Running => new SlotEngineAggregateCandidate(SlotRuntimeStatus.Running, state.Engine == AiEngine.Copilot ? SlotRuntimeOwner.Copilot : SlotRuntimeOwner.Codex, state.LastEvidenceAt, state.LastReason, 1),
+            InternalEngineState.WaitingForConfirmation => new SlotEngineAggregateCandidate(SlotRuntimeStatus.WaitingForConfirmation, MapEngineOwner(state.Engine), state.LastEvidenceAt, state.LastReason, 2),
+            InternalEngineState.Running => new SlotEngineAggregateCandidate(SlotRuntimeStatus.Running, MapEngineOwner(state.Engine), state.LastEvidenceAt, state.LastReason, 1),
             _ => null
         };
     }
 
-    private static SlotRuntimeOwner ResolveSlotLogOwner(SlotRuntimeState previous, AiLogEvidence copilotLog, AiLogEvidence codexLog, DateTimeOffset now)
+    private static SlotRuntimeOwner ResolveSlotLogOwner(SlotRuntimeState previous, AiLogEvidence copilotLog, AiLogEvidence codexLog, AiLogEvidence claudeLog, DateTimeOffset now)
     {
-        if (previous.Owner is SlotRuntimeOwner.Copilot or SlotRuntimeOwner.Codex)
+        if (previous.Owner is SlotRuntimeOwner.Copilot or SlotRuntimeOwner.Codex or SlotRuntimeOwner.Claude)
         {
             return previous.Owner;
         }
@@ -1661,25 +1927,45 @@ public sealed class AiStatusDetector
         var hasCopilot = IsRecent(copilotLog.LastRunningSignalAt, CopilotRunningLeaseWindow, now);
         var hasCodex = IsRecent(codexLog.LastRunningSignalAt, CodexProbableRunningWindow, now)
             || IsRecent(codexLog.LastConfirmationSignalAt, CodexConfirmationWindow, now);
+        var hasClaude = IsRecent(claudeLog.LastRunningSignalAt, ClaudeRunningLeaseWindow, now)
+            || IsRecent(claudeLog.LastSecondaryRunningSignalAt, ClaudeRunningLeaseWindow, now);
 
-        if (hasCopilot && !hasCodex)
+        if (hasCopilot && !hasCodex && !hasClaude)
         {
             return SlotRuntimeOwner.Copilot;
         }
 
-        if (hasCodex && !hasCopilot)
+        if (hasCodex && !hasCopilot && !hasClaude)
         {
             return SlotRuntimeOwner.Codex;
+        }
+
+        if (hasClaude && !hasCopilot && !hasCodex)
+        {
+            return SlotRuntimeOwner.Claude;
         }
 
         return SlotRuntimeOwner.UnknownAi;
     }
 
-    private static bool HasFreshAssistLog(AiLogEvidence copilotLog, AiLogEvidence codexLog, DateTimeOffset now)
+    private static bool HasFreshAssistLog(AiLogEvidence copilotLog, AiLogEvidence codexLog, AiLogEvidence claudeLog, DateTimeOffset now)
     {
         return IsRecent(copilotLog.LastRunningSignalAt, CopilotRunningLeaseWindow, now)
             || IsRecent(codexLog.LastRunningSignalAt, CodexProbableRunningWindow, now)
-            || IsRecent(codexLog.LastConfirmationSignalAt, CodexConfirmationWindow, now);
+            || IsRecent(codexLog.LastConfirmationSignalAt, CodexConfirmationWindow, now)
+            || IsRecent(claudeLog.LastRunningSignalAt, ClaudeRunningLeaseWindow, now)
+            || IsRecent(claudeLog.LastSecondaryRunningSignalAt, ClaudeRunningLeaseWindow, now);
+    }
+
+    private static SlotRuntimeOwner MapEngineOwner(AiEngine engine)
+    {
+        return engine switch
+        {
+            AiEngine.Copilot => SlotRuntimeOwner.Copilot,
+            AiEngine.Codex => SlotRuntimeOwner.Codex,
+            AiEngine.Claude => SlotRuntimeOwner.Claude,
+            _ => SlotRuntimeOwner.UnknownAi
+        };
     }
 
     private static SlotRuntimeOwner MapSlotOwner(UiAutomationOwner owner, SlotRuntimeOwner fallback)
@@ -1688,6 +1974,7 @@ public sealed class AiStatusDetector
         {
             UiAutomationOwner.Copilot => SlotRuntimeOwner.Copilot,
             UiAutomationOwner.Codex => SlotRuntimeOwner.Codex,
+            UiAutomationOwner.Claude => SlotRuntimeOwner.Claude,
             UiAutomationOwner.UnknownAi => SlotRuntimeOwner.UnknownAi,
             _ => fallback
         };
@@ -1699,6 +1986,7 @@ public sealed class AiStatusDetector
         {
             SlotRuntimeOwner.Copilot => "owner=Copilot",
             SlotRuntimeOwner.Codex => "owner=Codex",
+            SlotRuntimeOwner.Claude => "owner=Claude",
             _ => "owner=UnknownAi"
         };
         var evidence = GetSlotEvidenceText(uiProbe);
@@ -1720,6 +2008,7 @@ public sealed class AiStatusDetector
         {
             SlotRuntimeOwner.Copilot => "Copilot",
             SlotRuntimeOwner.Codex => "Codex",
+            SlotRuntimeOwner.Claude => "Claude",
             _ => "AI"
         };
         var ownerText = state.Owner == SlotRuntimeOwner.UnknownAi ? " owner=UnknownAi" : string.Empty;
@@ -2547,10 +2836,15 @@ public sealed class AiStatusDetector
         string Confidence,
         string Reason);
 
+    private sealed record UiOwnerHint(
+        UiAutomationOwner Owner,
+        DateTimeOffset? At);
+
     private enum AiEngine
     {
         Copilot,
-        Codex
+        Codex,
+        Claude
     }
 
     private enum SlotRuntimeStatus
@@ -2575,6 +2869,7 @@ public sealed class AiStatusDetector
         None,
         Copilot,
         Codex,
+        Claude,
         UnknownAi
     }
 
@@ -2608,6 +2903,7 @@ public sealed class AiStatusDetector
         None,
         Copilot,
         Codex,
+        Claude,
         UnknownAi
     }
 }
@@ -2627,6 +2923,7 @@ public sealed record AiStatusDiagnostics(
     SlotAiStatusSnapshot SlotLevel,
     AiEngineStatusSnapshot Copilot,
     AiEngineStatusSnapshot Codex,
+    AiEngineStatusSnapshot Claude,
     UiAutomationProbeResult UiProbe,
     string FinalSource,
     string FinalEngine,
