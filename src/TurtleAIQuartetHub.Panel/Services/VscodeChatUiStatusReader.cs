@@ -7,12 +7,18 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class VscodeChatUiStatusReader
 {
-    private const int MaxElementsToInspect = 1200;
+    private const int MaxElementsToInspect = 2400;
     private const int MaxElementsAfterRunningSignal = 180;
     private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
-    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(220);
+    // 走査予算: 4 スロット × 700ms × 750ms 間隔 ≒ 3 秒で 1 周。
+    // chat-response-loading は UI tree の深い位置にあり、500ms では届かないスロットがある。
+    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(700);
+    private static readonly char[] StatusPrefixTrimChars = { '•', '·', '・', '●', '○', '◯', '◦', '→', '*', '-', ' ', '\t', '　' };
 
+    // 「○○中」末尾の日本語のみを残す。英語の汎用語 (Working/Running/Loading/Generating 等) は
+    // VS Code ステータスバーや拡張機能のロード表示等に頻出するため除外。
+    // どのテキストも IsCurrentStatusText 内で必ずチャットコンテキスト要求 (誤検出の最終ガード)。
     private static readonly string[] RunningStatusExactTexts =
     [
         "作業中",
@@ -25,16 +31,21 @@ public sealed class VscodeChatUiStatusReader
         "評価中",
         "検索中",
         "読み取り中",
+        "読み込み中",
+        "読込中",
+        "読込み中",
         "確認中",
         "レビュー中",
         "編集中",
         "調査中",
+        "計算中",
+        "解析中",
+        "応答中",
+        "回答中",
+        "出力中",
+        "ストリーミング中",
         "処理を実行中",
-        "ツール実行中",
-        "Working",
-        "Running",
-        "Generating",
-        "Thinking"
+        "ツール実行中"
     ];
 
     private static readonly string[] RunningStatusPrefixes =
@@ -54,10 +65,23 @@ public sealed class VscodeChatUiStatusReader
         "Calling tool"
     ];
 
+    // Running 中に UI Tree に出現する class フラグメント。
+    // 「ローディング表示」「思考中ボックス」「スピン中アイコン」など、
+    // AI 応答中のみ表示される要素に付くクラスのみを列挙する。
+    // chat-progress-reservable / chat-most-recent-response は応答完了後も残るため含めない。
     private static readonly string[] RunningClassFragments =
     [
+        // VS Code Chat API 標準 (Copilot Chat 等)
         "chat-response-loading",
-        "chat-thinking-box"
+        "chat-thinking-box",
+        "chat-progress-message",
+        "interactive-progress",
+        // codicon のスピン中修飾子 (回転中のスピナーアイコン = ロード中の汎用シグナル)
+        "codicon-modifier-spin",
+        // 他の AI 拡張で見られる可能性のあるパターン
+        "loading-indicator",
+        "thinking-indicator",
+        "streaming-response"
     ];
 
     private static readonly string[] StopActionTexts =
@@ -70,35 +94,64 @@ public sealed class VscodeChatUiStatusReader
         "Cancel"
     ];
 
+    // チャット系 UI と判定するための context フラグメント (中間レベル)。
+    // 拡張機能の UI Automation 上の class/automationId はマチマチなので、
+    // 大きなブランド名 (chat/copilot/codex/claude/anthropic/chatgpt) も入れる。
+    // ただし汎用語 (agent / codicon / action-label / interactive 単独) は誤検出多発のため除外。
     private static readonly string[] ChatContextFragments =
     [
         "chat",
         "chat-widget",
         "chat-view",
-        "チャット",
-        "会話",
         "copilot",
+        "copilot-chat",
         "codex",
         "claude",
         "claude-code",
+        "chatgpt",
+        "openai.chatgpt",
         "anthropic",
-        "agent",
-        "エージェント",
-        "応答",
-        "プロンプト",
-        "interactive",
-        "interactive-session",
-        "interactive-session-status",
-        "action-label",
-        "codicon"
+        "interactive-session"
     ];
 
+    // 単独 2〜3 文字動詞 (「処理」「実行」等) は誤検出に弱いため、より確実なチャット拡張固有の
+    // フラグメントを含む要素のみで Running 認定する。
+    private static readonly string[] StrictChatContextFragments =
+    [
+        "chat-widget",
+        "chat-view",
+        "copilot-chat",
+        "claude-code",
+        "chatgpt",
+        "openai.chatgpt",
+        "anthropic",
+        "interactive-session"
+    ];
+
+    // 単独 2〜3 文字の動詞テキスト。短いため誤検出多発でき、strict context 要求。
+    private static readonly string[] RunningStatusShortVerbTexts =
+    [
+        "処理",
+        "実行",
+        "思考",
+        "分析",
+        "解析",
+        "応答",
+        "回答",
+        "出力",
+        "生成",
+        "検索",
+        "読込",
+        "読み込み"
+    ];
+
+    // Stop ボタンの判定クラス。AI チャット拡張で「中断」を表す codicon に限定する。
+    // `codicon-debug-stop` は VS Code 本体のデバッグツールバーに常時存在するため除外。
+    // `codicon-circle-slash` は「無効化」表示で AI 実行と無関係なため除外。
     private static readonly string[] StopClassFragments =
     [
         "codicon-stop",
-        "codicon-stop-circle",
-        "codicon-debug-stop",
-        "codicon-circle-slash"
+        "codicon-stop-circle"
     ];
 
     private static readonly string[] ConfirmationActionTexts =
@@ -518,6 +571,14 @@ public sealed class VscodeChatUiStatusReader
 
     private static bool TryReadRunningTextSignal(ElementSnapshot element, bool hasChatContext, out string detail)
     {
+        // コード本文・テキストエディタ・リンク等の中身は Running 判定から除外。
+        // これらは Welcome ページのタスク一覧やコードコメントを誤検出する温床。
+        if (IsExcludedControlTypeForRunningText(element.ControlType))
+        {
+            detail = string.Empty;
+            return false;
+        }
+
         if (element.IsVisible && IsCurrentStatusText(element.Name, GetCombinedContext(element), hasChatContext))
         {
             detail = $"VS Code UI: {element.Name} を検出しました。";
@@ -526,6 +587,15 @@ public sealed class VscodeChatUiStatusReader
 
         detail = string.Empty;
         return false;
+    }
+
+    private static bool IsExcludedControlTypeForRunningText(string controlType)
+    {
+        // Document/Edit はテキストエディタの中身、Hyperlink は埋め込みリンクで、
+        // Running 状態表示には使われない。これらの中の「○○中」テキストは無視する。
+        return string.Equals(controlType, "ControlType.Document", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(controlType, "ControlType.Edit", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(controlType, "ControlType.Hyperlink", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryReadRunningClassSignal(ElementSnapshot element, bool hasChatContext, out string detail)
@@ -544,14 +614,12 @@ public sealed class VscodeChatUiStatusReader
 
     private static bool TryReadStopSignal(ElementSnapshot element, bool hasChatContext, out string detail)
     {
-        var combinedContext = GetCombinedContext(element);
-
+        // テキスト名 (「キャンセル」「Stop」等) ベースの判定は VS Code のダイアログ/ポップアップ
+        // 共通ボタンと衝突するため廃止。codicon クラスのみで判定する。
         if (element.IsVisible
             && element.IsEnabled
             && hasChatContext
-            && (ContainsAny(element.ClassName, StopClassFragments)
-                || ContainsAny(combinedContext, StopClassFragments)
-                || ContainsStopAction(element.Name)))
+            && ContainsAny(element.ClassName, StopClassFragments))
         {
             detail = string.IsNullOrWhiteSpace(element.Name)
                 ? "VS Code UI: チャット中断ボタンを検出しました。"
@@ -706,34 +774,94 @@ public sealed class VscodeChatUiStatusReader
             return false;
         }
 
-        var normalized = text.TrimEnd('.', '…').Trim();
+        // プレフィックス装飾記号 (• ・ ● → 等) を除いてから判定する。
+        // 末尾の記号 (. …) も除く。
+        var normalized = text.TrimStart(StatusPrefixTrimChars).TrimEnd('.', '…', ' ', '\t', '　').Trim();
+        if (normalized.Length == 0)
+        {
+            return false;
+        }
+
         if (normalized.StartsWith("Thinking Effort", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
         var hasChatContextFinal = hasChatContext || ContainsAny(combinedContext, ChatContextFragments);
-        var exactMatch = RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase));
-        if (exactMatch)
-        {
-            // "Thinking" (English exact) is prone to collision with model setting UI; require chat context.
-            if (string.Equals(normalized, "Thinking", StringComparison.OrdinalIgnoreCase))
-            {
-                return hasChatContextFinal;
-            }
-
-            // All other exact status texts (考え中, 作業中, 実行中, Working, Running, Generating, etc.)
-            // are treated as context-free: visible in the UI tree means Running.
-            return true;
-        }
-
-        var prefixMatch = RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
-        if (!prefixMatch)
+        if (!hasChatContextFinal)
         {
             return false;
         }
 
-        return hasChatContextFinal || normalized.Length >= 12 || normalized.Contains("tool", StringComparison.OrdinalIgnoreCase);
+        // 「○○中」exact (作業中, 実行中, 読み込み中 等) - 中間 chat context で OK
+        var exactMatch = RunningStatusExactTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch)
+        {
+            return true;
+        }
+
+        // 単独 2〜3 文字動詞 (処理, 実行, 思考, 分析 等)。
+        // チャット拡張内に常時表示される単語ではないため、中間 chat context で許可する。
+        var shortVerbMatch = RunningStatusShortVerbTexts.Any(signal => string.Equals(normalized, signal, StringComparison.OrdinalIgnoreCase));
+        if (shortVerbMatch)
+        {
+            return true;
+        }
+
+        // 「○○中」suffix マッチ (任意の動詞 + 中)。状態表示用の簡潔なテキストのみを通す。
+        //   - 長さ 3〜8 文字 (情報文や説明テキストに含まれる「○○中」を弾く)
+        //   - すべてが日本語文字 (ひらがな/カタカナ/漢字) であること。数字や句読点を含む文は弾く。
+        //     例: 「最近のタスク。0件が進行中」のような説明文が誤検出されないようにする。
+        //   - 「中央」「中止」「待機中」「停止中」「使用中」など状態表示でない単語は除外。
+        if (normalized.EndsWith('中')
+            && normalized.Length is >= 3 and <= 8
+            && IsAllJapaneseChars(normalized)
+            && !IsExcludedSuffixForChu(normalized))
+        {
+            return true;
+        }
+
+        var prefixMatch = RunningStatusPrefixes.Any(signal => normalized.StartsWith(signal, StringComparison.OrdinalIgnoreCase));
+        return prefixMatch;
+    }
+
+    private static bool IsExcludedSuffixForChu(string text)
+    {
+        // 末尾「中」だが状態表示ではない単語を除外する。
+        return text.Equals("中", StringComparison.Ordinal)
+            || text.Equals("待機中", StringComparison.Ordinal)
+            || text.Equals("停止中", StringComparison.Ordinal)
+            || text.Equals("休止中", StringComparison.Ordinal)
+            || text.Equals("非実行中", StringComparison.Ordinal)
+            || text.Equals("使用中", StringComparison.Ordinal)
+            || text.Equals("選択中", StringComparison.Ordinal)
+            || text.Equals("展開中", StringComparison.Ordinal);
+    }
+
+    private static bool IsAllJapaneseChars(string text)
+    {
+        foreach (var ch in text)
+        {
+            if (!IsJapaneseChar(ch))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsJapaneseChar(char ch)
+    {
+        // ひらがな (U+3040 - U+309F)
+        if (ch is >= '぀' and <= 'ゟ') return true;
+        // カタカナ + 半濁点/濁点 (U+30A0 - U+30FF)
+        if (ch is >= '゠' and <= 'ヿ') return true;
+        // CJK 統合漢字 (U+4E00 - U+9FFF)
+        if (ch is >= '一' and <= '鿿') return true;
+        // CJK 統合漢字 拡張A (U+3400 - U+4DBF)
+        if (ch is >= '㐀' and <= '䶿') return true;
+        return false;
     }
 
     private static bool ContainsStopAction(string value)
