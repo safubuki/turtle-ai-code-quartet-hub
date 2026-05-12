@@ -72,6 +72,11 @@ public sealed class AiStatusDetector
     private DateTimeOffset? _codexBroadcastOwnerLastActivityAt;
     private static readonly ConcurrentDictionary<string, CachedLogEvidence> LogEvidenceCache = new(StringComparer.OrdinalIgnoreCase);
 
+    // 86a305a 成功ベースライン: シンプルな表示優先フロー用の状態
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastRunningSeenBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _completedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _confirmationRequestedAtBySlot = new(StringComparer.OrdinalIgnoreCase);
+
     public AiStatusSnapshot Detect(WindowSlot slot, AppConfig config)
     {
         return Detect(
@@ -131,6 +136,10 @@ public sealed class AiStatusDetector
 
         lock (_stateLock)
         {
+            // 主判定: 86a305a 成功ベースラインの表示優先フロー
+            var baselineDecision = TryDecideByLegacyFlow(slot, slotKey, copilotLog, codexLog, uiProbe, now);
+
+            // 診断用: engine/slot state machine を常時進める
             var previousSlotState = GetSlotState(slotKey);
             var previousCopilot = GetEngineState(slotKey, AiEngine.Copilot);
             var previousCodex = GetEngineState(slotKey, AiEngine.Codex);
@@ -144,7 +153,33 @@ public sealed class AiStatusDetector
             StoreEngineState(slotKey, nextCodex);
             StoreSlotState(slotKey, nextSlotState);
 
-            var decision = AggregateDecision(canReadLogs, nextSlotState, nextCopilot, nextCodex);
+            var complexDecision = AggregateDecision(canReadLogs, nextSlotState, nextCopilot, nextCodex);
+
+            // baseline が Running/WaitingForConfirmation/Completed → baseline を採用
+            // それ以外 (Idle/null) は複雑 state machine の結果を使用
+            AiStatus finalStatus;
+            string finalDetail;
+            DateTimeOffset? finalEventAt;
+            string finalSourceName;
+            string finalReason;
+
+            if (baselineDecision?.Status is AiStatus.Running or AiStatus.WaitingForConfirmation or AiStatus.Completed)
+            {
+                finalStatus = baselineDecision.Status;
+                finalDetail = baselineDecision.Detail;
+                finalEventAt = baselineDecision.EventAt;
+                finalSourceName = baselineDecision.SourceName;
+                finalReason = $"simpleFlow={baselineDecision.SourceName}";
+            }
+            else
+            {
+                finalStatus = complexDecision.Status;
+                finalDetail = complexDecision.Detail;
+                finalEventAt = complexDecision.EventAt;
+                finalSourceName = complexDecision.SourceName;
+                finalReason = complexDecision.Reason;
+            }
+
             var diagnostics = new AiStatusDiagnostics(
                 slot.Name,
                 slot.WindowHandle.ToInt64(),
@@ -152,18 +187,161 @@ public sealed class AiStatusDetector
                 ToDiagnostic(nextCopilot),
                 ToDiagnostic(nextCodex),
                 uiProbe,
-                decision.SourceName,
-                decision.EngineName,
-                decision.Confidence,
-                decision.Reason);
+                finalSourceName,
+                complexDecision.EngineName,
+                complexDecision.Confidence,
+                finalReason);
 
-            MaybeLogDecision(slotKey, slot.Name, decision.Status, diagnostics);
+            MaybeLogDecision(slotKey, slot.Name, finalStatus, diagnostics);
 
-            return new AiStatusSnapshot(decision.Status, decision.Detail, decision.EventAt, decision.SourceName)
+            return new AiStatusSnapshot(finalStatus, finalDetail, finalEventAt, finalSourceName)
             {
                 Diagnostics = diagnostics
             };
         }
+    }
+
+    // 86a305a 成功ベースライン: シンプルな表示優先フロー。
+    // Running/WaitingForConfirmation/Completed を返した場合、その結果を主判定として採用する。
+    // null を返した場合は複雑な state machine の結果にフォールスルーする。
+    // 注意: _stateLock 内で呼ぶこと。
+    private AiStatusSnapshot? TryDecideByLegacyFlow(
+        WindowSlotStatusSnapshot slot,
+        string slotKey,
+        AiLogEvidence copilotLog,
+        AiLogEvidence codexLog,
+        UiAutomationProbeResult uiProbe,
+        DateTimeOffset now)
+    {
+        var hadPreviousRunning = _lastRunningSeenBySlot.TryGetValue(slotKey, out var lastRunningSeenAt);
+        var hasDirectUiRunning = HasDirectUiRunning(uiProbe);
+        var hasDirectUiWaiting = HasDirectUiWaiting(uiProbe);
+
+        // --- Step 2: ログの Running/WaitingForConfirmation を採用 (FilterEvidence 済みでスタールガード適用済み) ---
+        // Copilot: ccreq: が最新完了シグナルより新しければ Running
+        var copilotRunningAt = copilotLog.LastRunningSignalAt;
+        var copilotCompletedAt = copilotLog.LastCompletionSignalAt;
+        var copilotHasRunning = copilotRunningAt.HasValue
+            && (!copilotCompletedAt.HasValue || copilotRunningAt.Value > copilotCompletedAt.Value);
+
+        // Codex: broadcast 対策付きで Running/WaitingForConfirmation 判定
+        // foreground/focused または このスロットで最近 Running を確認していれば owned とみなす
+        var codexRunningAt = codexLog.LastRunningSignalAt;
+        var codexConfirmAt = codexLog.LastConfirmationSignalAt;
+        var codexOwned = slot.IsForeground
+            || slot.IsFocused
+            || (hadPreviousRunning && now - lastRunningSeenAt <= CodexBroadcastOwnerStickyWindow);
+        var codexHasRunning = codexOwned
+            && codexRunningAt.HasValue
+            && (!codexConfirmAt.HasValue || codexRunningAt.Value >= codexConfirmAt.Value);
+        var codexHasWaiting = codexOwned
+            && codexConfirmAt.HasValue
+            && (!codexRunningAt.HasValue || codexConfirmAt.Value > codexRunningAt.Value);
+
+        if (copilotHasRunning || codexHasRunning)
+        {
+            string sourceName;
+            DateTimeOffset? eventAt;
+            if (copilotHasRunning && codexHasRunning)
+            {
+                var cp = copilotRunningAt!.Value;
+                var cx = codexRunningAt!.Value;
+                sourceName = cp >= cx ? CopilotSourceName : CodexSourceName;
+                eventAt = cp >= cx ? cp : cx;
+            }
+            else if (copilotHasRunning)
+            {
+                sourceName = CopilotSourceName;
+                eventAt = copilotRunningAt;
+            }
+            else
+            {
+                sourceName = CodexSourceName;
+                eventAt = codexRunningAt;
+            }
+
+            _lastRunningSeenBySlot[slotKey] = eventAt ?? now;
+            _completedAtBySlot.TryRemove(slotKey, out _);
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.Running, $"{sourceName}: ログからAI実行中を検出しました。", eventAt, sourceName);
+        }
+
+        if (codexHasWaiting)
+        {
+            _confirmationRequestedAtBySlot[slotKey] = codexConfirmAt!.Value;
+            _completedAtBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, "Codex: ログからユーザー確認待ちを検出しました。", codexConfirmAt, CodexSourceName);
+        }
+
+        // --- Step 3: UIA Running → 採用し lastRunningSeen を更新 ---
+        if (hasDirectUiRunning)
+        {
+            var evidenceAt = uiProbe.EvidenceAt ?? now;
+            _lastRunningSeenBySlot[slotKey] = evidenceAt;
+            _completedAtBySlot.TryRemove(slotKey, out _);
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.Running, uiProbe.Detail, evidenceAt, "UiAutomation");
+        }
+
+        // --- Step 4: UIA WaitingForConfirmation → 採用し confirmationRequested を更新 ---
+        if (hasDirectUiWaiting)
+        {
+            var evidenceAt = uiProbe.EvidenceAt ?? now;
+            _confirmationRequestedAtBySlot[slotKey] = evidenceAt;
+            _completedAtBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, uiProbe.Detail, evidenceAt, "UiAutomation");
+        }
+
+        // --- Step 5: 直前 Running を短時間保持 (12秒 Running bridge) ---
+        // Copilot の単独完了ログがある場合は bridge をスキップして Step 6 へ
+        var hasCopilotStandaloneCompletion = copilotCompletedAt.HasValue && !copilotHasRunning;
+        if (hadPreviousRunning
+            && now - lastRunningSeenAt <= SlotRunningHoldWindow
+            && !hasCopilotStandaloneCompletion)
+        {
+            return new AiStatusSnapshot(AiStatus.Running, "VS Code UI: 直前の実行表示を保持しています。", lastRunningSeenAt, "bridge");
+        }
+
+        // --- Step 6: ログの Completed/Error を採用 ---
+        var copilotErrorAt = copilotLog.LastErrorSignalAt;
+        if (copilotErrorAt.HasValue
+            && (!copilotCompletedAt.HasValue || copilotErrorAt.Value >= copilotCompletedAt.Value)
+            && (!copilotRunningAt.HasValue || copilotErrorAt.Value >= copilotRunningAt.Value))
+        {
+            return new AiStatusSnapshot(AiStatus.Error, "Copilot: エラーを検出しました。", copilotErrorAt, CopilotSourceName);
+        }
+
+        if (hasCopilotStandaloneCompletion)
+        {
+            _completedAtBySlot[slotKey] = copilotCompletedAt!.Value;
+            _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.Completed, "Copilot: AI実行は完了しました。", copilotCompletedAt, CopilotSourceName);
+        }
+
+        // --- Step 7: 直前の WaitingForConfirmation を保持 ---
+        if (_confirmationRequestedAtBySlot.TryGetValue(slotKey, out var confirmationRequestedAt))
+        {
+            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, "VS Code UI: 直前のユーザー確認待ちを保持しています。", confirmationRequestedAt, "bridge");
+        }
+
+        // --- Step 8: 直前の Completed を保持 ---
+        if (_completedAtBySlot.TryGetValue(slotKey, out var legacyCompletedAt))
+        {
+            return new AiStatusSnapshot(AiStatus.Completed, "VS Code UI: 直前のAI実行完了を保持しています。", legacyCompletedAt, "hold");
+        }
+
+        // --- Step 9: Running が消えた → Idle ではなく Completed へ ---
+        if (hadPreviousRunning)
+        {
+            _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+            _completedAtBySlot[slotKey] = now;
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.Completed, $"VS Code UI: {lastRunningSeenAt:HH:mm:ss} の実行表示が消えました。", now, "runningExpired");
+        }
+
+        // --- Step 10: 証拠なし → null (複雑 state machine にフォールスルー) ---
+        return null;
     }
 
     public bool ShouldPrioritizeUiAutomationProbe(WindowSlot slot)
@@ -181,6 +359,20 @@ public sealed class AiStatusDetector
         var slotKey = GetSlotKey(slot);
         lock (_stateLock)
         {
+            var now = DateTimeOffset.Now;
+
+            // legacy flow が Running/WaitingForConfirmation を保持している場合は最高優先度
+            if (_lastRunningSeenBySlot.TryGetValue(slotKey, out var lastRunning)
+                && now - lastRunning <= SlotRunningHoldWindow)
+            {
+                return 4;
+            }
+
+            if (_confirmationRequestedAtBySlot.ContainsKey(slotKey))
+            {
+                return 4;
+            }
+
             var slotState = GetSlotState(slotKey);
             if (slotState.State is SlotRuntimeStatus.WaitingForConfirmation or SlotRuntimeStatus.Running
                 || slotState.HasObservedUiRunning)
@@ -216,6 +408,10 @@ public sealed class AiStatusDetector
             StoreEngineState(slotKey, EngineRuntimeState.Idle(AiEngine.Codex));
             _lastUiProbeBySlot.TryRemove(slotKey, out _);
             _dismissedAtBySlot[slotKey] = DateTimeOffset.Now;
+            // legacy flow state もリセット
+            _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+            _completedAtBySlot.TryRemove(slotKey, out _);
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
         }
     }
 
@@ -233,6 +429,10 @@ public sealed class AiStatusDetector
         SwapPrefixedEntries(_lastUiProbeBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_lastDecisionSignatureBySlot, sourceSlotName, targetSlotName);
         SwapPrefixedEntries(_lastDecisionLoggedAtBySlot, sourceSlotName, targetSlotName);
+        // legacy flow state もスワップ
+        SwapPrefixedEntries(_lastRunningSeenBySlot, sourceSlotName, targetSlotName);
+        SwapPrefixedEntries(_completedAtBySlot, sourceSlotName, targetSlotName);
+        SwapPrefixedEntries(_confirmationRequestedAtBySlot, sourceSlotName, targetSlotName);
         SwapCodexBroadcastOwner(sourceSlotName, targetSlotName);
 
         var hasSource = _slotStartedAtByName.TryRemove(sourceSlotName, out var sourceStarted);
@@ -1802,6 +2002,10 @@ public sealed class AiStatusDetector
         RemovePrefixedEntries(_lastUiProbeBySlot, slotName);
         RemovePrefixedEntries(_lastDecisionSignatureBySlot, slotName);
         RemovePrefixedEntries(_lastDecisionLoggedAtBySlot, slotName);
+        // legacy flow state もクリア
+        RemovePrefixedEntries(_lastRunningSeenBySlot, slotName);
+        RemovePrefixedEntries(_completedAtBySlot, slotName);
+        RemovePrefixedEntries(_confirmationRequestedAtBySlot, slotName);
 
         lock (_codexBroadcastOwnerLock)
         {

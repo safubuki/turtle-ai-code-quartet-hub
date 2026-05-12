@@ -11,7 +11,7 @@ public sealed class VscodeChatUiStatusReader
     private const int MaxElementsAfterRunningSignal = 240;
     private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
-    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(500);
 
     private static readonly string[] RunningStatusExactTexts =
     [
