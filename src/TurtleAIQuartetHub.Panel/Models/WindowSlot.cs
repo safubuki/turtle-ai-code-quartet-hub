@@ -19,9 +19,6 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private string _currentWorkspacePath = string.Empty;
     private string _windowTitle = string.Empty;
     private SlotWindowStatus _windowStatus = SlotWindowStatus.Missing;
-    private AiStatus _aiStatus = AiStatus.Idle;
-    private string _aiStatusDetail = "AI は待機中です。";
-    private DateTimeOffset? _lastEventAt;
     private bool _isFocused;
     private SlotWindowLayerMode _windowLayerMode = SlotWindowLayerMode.Topmost;
     private bool _isHidden;
@@ -207,18 +204,6 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
     }
 
-    public string AiStatusText => AiStatus switch
-    {
-        AiStatus.Unknown => "AI 待機中",
-        AiStatus.Idle => "AI 待機中",
-        AiStatus.Running => "AI 実行中",
-        AiStatus.Completed => "AI 完了",
-        AiStatus.Error => "AI エラー",
-        AiStatus.NeedsAttention => "AI 要確認",
-        AiStatus.WaitingForConfirmation => "AI 確認中",
-        _ => $"AI {AiStatus}"
-    };
-
     public bool HasPanelContent => WindowHandle != IntPtr.Zero
         || !string.IsNullOrWhiteSpace(PanelTitle)
         || !string.IsNullOrWhiteSpace(CurrentWorkspacePath)
@@ -264,46 +249,12 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
     }
 
-    public AiStatus AiStatus
-    {
-        get => _aiStatus;
-        set
-        {
-            if (SetField(ref _aiStatus, value))
-            {
-                OnPropertyChanged(nameof(AiStatusText));
-            }
-        }
-    }
-
-    public string AiStatusDetail
-    {
-        get => _aiStatusDetail;
-        set => SetField(ref _aiStatusDetail, value ?? string.Empty);
-    }
-
-    public DateTimeOffset? LastEventAt
-    {
-        get => _lastEventAt;
-        set
-        {
-            if (SetField(ref _lastEventAt, value))
-            {
-                OnPropertyChanged(nameof(LastEventText));
-            }
-        }
-    }
-
-    public string LastEventText => LastEventAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-";
-
     public void ClearWindow()
     {
         WindowHandle = IntPtr.Zero;
         CurrentWorkspacePath = string.Empty;
         WindowTitle = string.Empty;
         WindowStatus = SlotWindowStatus.Missing;
-        AiStatus = AiStatus.Idle;
-        AiStatusDetail = "VS Code は起動していません。";
         IsFocused = false;
         WindowLayerMode = SlotWindowLayerMode.Topmost;
     }

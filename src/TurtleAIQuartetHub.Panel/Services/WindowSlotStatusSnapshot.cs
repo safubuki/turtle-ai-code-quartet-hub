@@ -12,17 +12,13 @@ internal sealed record WindowSlotStatusSnapshot(
     IntPtr WindowHandle,
     string WindowTitle,
     string CurrentWorkspacePath,
-    DateTimeOffset? WorkspaceRefreshedAt,
-    bool IsFocused,
-    bool IsForeground,
-    bool AllowUiAutomationProbe);
+    DateTimeOffset? WorkspaceRefreshedAt);
 
 internal sealed record WindowSlotStatusRefreshResult(
     string SlotName,
     IntPtr WindowHandle,
     WindowSlotRefreshState State,
     WindowInfo? Window,
-    AiStatusSnapshot? AiStatus,
     string? CurrentWorkspacePath,
     DateTimeOffset? WorkspaceRefreshedAt,
     long ElapsedMilliseconds);

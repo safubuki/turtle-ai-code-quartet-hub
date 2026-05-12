@@ -31,7 +31,7 @@ public sealed class AppConfig
 
     public int RemoteReconnectTimeoutSeconds { get; set; } = 15;
 
-    public int StatusRefreshIntervalMilliseconds { get; set; } = 750;
+    public int StatusRefreshIntervalMilliseconds { get; set; } = 1000;
 
     public List<SlotConfig> Slots { get; set; } = DefaultSlots();
 

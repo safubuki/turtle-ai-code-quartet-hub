@@ -12,7 +12,6 @@ namespace TurtleAIQuartetHub.Panel.Services;
 public sealed class StatusStore : INotifyPropertyChanged
 {
     private static readonly TimeSpan WorkspaceRefreshInterval = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan UiAutomationProbeInterval = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan SlowRefreshLogInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SlowSlotProbeLogInterval = TimeSpan.FromSeconds(5);
     private const int StoredPanelsPerPage = 4;
@@ -33,11 +32,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     private bool _suppressPersistence;
     private readonly Dictionary<string, DateTimeOffset> _workspaceRefreshTimestamps = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastSlowSlotProbeLogAtBySlot = new(StringComparer.OrdinalIgnoreCase);
-    private readonly AiStatusDetector _aiStatusDetector = new();
-    private int _nextUiAutomationProbeSlotIndex;
-    private DateTimeOffset _lastUiAutomationProbeAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastSlowRefreshLogAt = DateTimeOffset.MinValue;
-    private TimeSpan _lastRefreshDuration = TimeSpan.Zero;
 
     public StatusStore(AppConfig config)
     {
@@ -127,10 +122,6 @@ public sealed class StatusStore : INotifyPropertyChanged
         slot.WindowTitle = window.Title;
         slot.CurrentWorkspacePath = string.Empty;
         slot.WindowStatus = SlotWindowStatus.Ready;
-        slot.AiStatus = AiStatus.Idle;
-        slot.AiStatusDetail = "AI は待機中です。";
-        _aiStatusDetector.ResetSlotSession(slot);
-        slot.LastEventAt = DateTimeOffset.Now;
         slot.WindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
 
         if (ShouldAutoAssignWorkspaceTitle(slot))
@@ -147,21 +138,8 @@ public sealed class StatusStore : INotifyPropertyChanged
     public void ClearWindow(WindowSlot slot)
     {
         _workspaceRefreshTimestamps.Remove(slot.Name);
-        _aiStatusDetector.ResetSlotSession(slot);
         slot.ClearWindow();
         SavePanelStates();
-    }
-
-    public void AcknowledgeAiStatus(WindowSlot slot)
-    {
-        if (slot.AiStatus != AiStatus.Completed)
-        {
-            return;
-        }
-
-        _aiStatusDetector.Acknowledge(slot);
-        slot.AiStatus = AiStatus.Idle;
-        slot.AiStatusDetail = "AI は待機中です。";
     }
 
     public void SetFocusedSlot(WindowSlot focusedSlot)
@@ -391,9 +369,6 @@ public sealed class StatusStore : INotifyPropertyChanged
             (source.WindowHandle, target.WindowHandle) = (target.WindowHandle, source.WindowHandle);
             (source.WindowTitle, target.WindowTitle) = (target.WindowTitle, source.WindowTitle);
             (source.WindowStatus, target.WindowStatus) = (target.WindowStatus, source.WindowStatus);
-            (source.AiStatus, target.AiStatus) = (target.AiStatus, source.AiStatus);
-            (source.AiStatusDetail, target.AiStatusDetail) = (target.AiStatusDetail, source.AiStatusDetail);
-            (source.LastEventAt, target.LastEventAt) = (target.LastEventAt, source.LastEventAt);
             (source.IsFocused, target.IsFocused) = (target.IsFocused, source.IsFocused);
             (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
             (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
@@ -405,7 +380,6 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
 
         SwapDictEntry(_workspaceRefreshTimestamps, source.Name, target.Name);
-        _aiStatusDetector.SwapSlotSessions(source.Name, target.Name);
         SavePanelStates();
     }
 
@@ -414,18 +388,13 @@ public sealed class StatusStore : INotifyPropertyChanged
         CancellationToken cancellationToken)
     {
         var refreshStartedAt = DateTimeOffset.UtcNow;
-        var foregroundWindowHandle = WindowEnumerator.GetForegroundWindowHandle();
-        var uiProbeSlotNames = SelectUiAutomationProbeSlots(refreshStartedAt, foregroundWindowHandle);
         var requests = Slots
             .Select(slot => new WindowSlotStatusSnapshot(
                 slot.Name,
                 slot.WindowHandle,
                 slot.WindowTitle,
                 slot.CurrentWorkspacePath,
-                _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null,
-                slot.IsFocused,
-                slot.WindowHandle != IntPtr.Zero && slot.WindowHandle == foregroundWindowHandle,
-                uiProbeSlotNames.Contains(slot.Name)))
+                _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null))
             .ToList();
 
         var stopwatch = Stopwatch.StartNew();
@@ -433,79 +402,12 @@ public sealed class StatusStore : INotifyPropertyChanged
             () => RefreshWindowStatusesInBackground(windowEnumerator, requests, refreshStartedAt, cancellationToken),
             cancellationToken);
         stopwatch.Stop();
-        _lastRefreshDuration = stopwatch.Elapsed;
 
         ApplyWindowStatusRefreshResults(results);
         if (stopwatch.ElapsedMilliseconds >= 250 && ShouldLogSlowRefresh(refreshStartedAt))
         {
             DiagnosticLog.Write($"Status refresh took {stopwatch.ElapsedMilliseconds}ms for {results.Count} slots.");
         }
-    }
-
-    private IReadOnlySet<string> SelectUiAutomationProbeSlots(DateTimeOffset refreshStartedAt, IntPtr foregroundWindowHandle)
-    {
-        if (refreshStartedAt - _lastUiAutomationProbeAt < UiAutomationProbeInterval)
-        {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        var eligibleSlots = Slots
-            .Take(4)
-            .Where(slot => slot.WindowHandle != IntPtr.Zero
-                && slot.WindowStatus != SlotWindowStatus.Missing
-                && !slot.IsHidden)
-            .Select((slot, index) => new { Slot = slot, EligibleIndex = index })
-            .ToList();
-
-        if (eligibleSlots.Count == 0)
-        {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        var activeCount = eligibleSlots.Count(candidate =>
-            candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation
-            || _aiStatusDetector.GetUiAutomationProbePriority(candidate.Slot) > 0);
-        var maxProbeCount = activeCount >= 1 ? 2 : 1;
-        // Fix F: 前回リフレッシュが遅かった場合はプローブ数を段階的に削減して負荷スパイラルを防止
-        if (_lastRefreshDuration > TimeSpan.FromMilliseconds(400))
-        {
-            maxProbeCount = Math.Min(maxProbeCount, 1);
-        }
-        if (_lastRefreshDuration > TimeSpan.FromSeconds(1))
-        {
-            maxProbeCount = Math.Min(maxProbeCount, 1);
-        }
-
-        var orderedCandidates = Enumerable.Range(0, eligibleSlots.Count)
-            .Select(offset => eligibleSlots[(_nextUiAutomationProbeSlotIndex + offset) % eligibleSlots.Count])
-            .Select((candidate, roundRobinIndex) => new
-            {
-                candidate.Slot,
-                candidate.EligibleIndex,
-                RoundRobinIndex = roundRobinIndex,
-                ProbePriority = _aiStatusDetector.GetUiAutomationProbePriority(candidate.Slot),
-                HasVisibleActiveStatus = candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation,
-                IsForeground = candidate.Slot.WindowHandle == foregroundWindowHandle,
-                candidate.Slot.IsFocused
-            })
-            .OrderByDescending(candidate => candidate.ProbePriority)
-            .ThenByDescending(candidate => candidate.HasVisibleActiveStatus)
-            .ThenByDescending(candidate => candidate.IsForeground)
-            .ThenByDescending(candidate => candidate.IsFocused)
-            .ThenBy(candidate => candidate.RoundRobinIndex)
-            .Take(maxProbeCount)
-            .ToList();
-
-        if (orderedCandidates.Count == 0)
-        {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        _nextUiAutomationProbeSlotIndex = (orderedCandidates[^1].EligibleIndex + 1) % eligibleSlots.Count;
-        _lastUiAutomationProbeAt = refreshStartedAt;
-        return orderedCandidates
-            .Select(candidate => candidate.Slot.Name)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private IReadOnlyList<WindowSlotStatusRefreshResult> RefreshWindowStatusesInBackground(
@@ -552,7 +454,6 @@ public sealed class StatusStore : INotifyPropertyChanged
                     null,
                     null,
                     null,
-                    null,
                     stopwatch.ElapsedMilliseconds);
             }
 
@@ -566,12 +467,10 @@ public sealed class StatusStore : INotifyPropertyChanged
                     null,
                     null,
                     null,
-                    null,
                     stopwatch.ElapsedMilliseconds);
             }
 
             var snapshot = request with { WindowTitle = window.Title };
-            var aiStatus = _aiStatusDetector.Detect(snapshot, Config);
             string? workspacePath = null;
             DateTimeOffset? workspaceRefreshedAt = null;
             if (ShouldRefreshWorkspacePath(snapshot, !string.Equals(request.WindowTitle, window.Title, StringComparison.Ordinal)))
@@ -586,7 +485,6 @@ public sealed class StatusStore : INotifyPropertyChanged
                 request.WindowHandle,
                 WindowSlotRefreshState.Ready,
                 window,
-                aiStatus,
                 workspacePath,
                 workspaceRefreshedAt,
                 stopwatch.ElapsedMilliseconds);
@@ -636,11 +534,8 @@ public sealed class StatusStore : INotifyPropertyChanged
             {
                 case WindowSlotRefreshState.NoWindow:
                     _workspaceRefreshTimestamps.Remove(slot.Name);
-                    _aiStatusDetector.ResetSlotSession(slot);
                     slot.CurrentWorkspacePath = string.Empty;
                     slot.WindowStatus = SlotWindowStatus.Missing;
-                    slot.AiStatus = AiStatus.Idle;
-                    slot.AiStatusDetail = "VS Code は起動していません。";
                     break;
 
                 case WindowSlotRefreshState.Missing:
@@ -654,10 +549,6 @@ public sealed class StatusStore : INotifyPropertyChanged
                     }
 
                     slot.WindowStatus = SlotWindowStatus.Ready;
-                    if (result.AiStatus is not null)
-                    {
-                        ApplyAiStatus(slot, result.AiStatus);
-                    }
 
                     if (result.WorkspaceRefreshedAt.HasValue)
                     {
@@ -667,16 +558,6 @@ public sealed class StatusStore : INotifyPropertyChanged
 
                     break;
             }
-        }
-    }
-
-    private static void ApplyAiStatus(WindowSlot slot, AiStatusSnapshot status)
-    {
-        slot.AiStatus = status.Status;
-        slot.AiStatusDetail = status.Detail;
-        if (status.EventAt.HasValue)
-        {
-            slot.LastEventAt = status.EventAt;
         }
     }
 
