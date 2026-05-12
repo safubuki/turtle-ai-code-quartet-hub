@@ -244,6 +244,13 @@ public sealed class VscodeChatUiStatusReader
 
         while (queue.Count > 0 && inspected < MaxElementsToInspect)
         {
+            // Fix E: タイムアウトチェックをCOM呼び出しの前に移動して予算超過を防止
+            if (stopwatch.Elapsed >= MaxScanDuration)
+            {
+                timedOut = true;
+                break;
+            }
+
             var (element, inheritedChatContext) = queue.Dequeue();
             inspected++;
 
@@ -325,12 +332,6 @@ public sealed class VscodeChatUiStatusReader
             }
 
             EnqueueChildren(walker, element, queue, hasChatContext);
-
-            if (stopwatch.Elapsed >= MaxScanDuration)
-            {
-                timedOut = true;
-                break;
-            }
         }
 
         if (runningDetail is not null)
