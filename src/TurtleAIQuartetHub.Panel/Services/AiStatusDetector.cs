@@ -233,6 +233,7 @@ public sealed class AiStatusDetector
             || (hadPreviousRunning && now - lastRunningSeenAt <= CodexBroadcastOwnerStickyWindow);
         var codexHasRunning = codexOwned
             && codexRunningAt.HasValue
+            && IsRecent(codexRunningAt, CodexBroadcastOwnerStickyWindow, now)  // Fix A: 時間窓を追加して古いログシグナルによる永続Running を防止
             && (!codexConfirmAt.HasValue || codexRunningAt.Value >= codexConfirmAt.Value);
         var codexHasWaiting = codexOwned
             && codexConfirmAt.HasValue
@@ -260,7 +261,7 @@ public sealed class AiStatusDetector
                 eventAt = codexRunningAt;
             }
 
-            _lastRunningSeenBySlot[slotKey] = eventAt ?? now;
+            _lastRunningSeenBySlot[slotKey] = Max(eventAt, now) ?? now;  // Fix B: アンカーを now 下限にすることでログタイムスタンプへの逆戻りを防止
             _completedAtBySlot.TryRemove(slotKey, out _);
             _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
             return new AiStatusSnapshot(AiStatus.Running, $"{sourceName}: ログからAI実行中を検出しました。", eventAt, sourceName);
@@ -268,7 +269,7 @@ public sealed class AiStatusDetector
 
         if (codexHasWaiting)
         {
-            _confirmationRequestedAtBySlot[slotKey] = codexConfirmAt!.Value;
+            _confirmationRequestedAtBySlot[slotKey] = now;  // Fix C-2b: 検出時刻を格納してTTLを検出ベースにする
             _completedAtBySlot.TryRemove(slotKey, out _);
             return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, "Codex: ログからユーザー確認待ちを検出しました。", codexConfirmAt, CodexSourceName);
         }
@@ -287,7 +288,7 @@ public sealed class AiStatusDetector
         if (hasDirectUiWaiting)
         {
             var evidenceAt = uiProbe.EvidenceAt ?? now;
-            _confirmationRequestedAtBySlot[slotKey] = evidenceAt;
+            _confirmationRequestedAtBySlot[slotKey] = now;  // Fix C-2b: 検出時刻を格納してTTLを検出ベースにする
             _completedAtBySlot.TryRemove(slotKey, out _);
             return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, uiProbe.Detail, evidenceAt, "UiAutomation");
         }
@@ -319,10 +320,19 @@ public sealed class AiStatusDetector
             return new AiStatusSnapshot(AiStatus.Completed, "Copilot: AI実行は完了しました。", copilotCompletedAt, CopilotSourceName);
         }
 
-        // --- Step 7: 直前の WaitingForConfirmation を保持 ---
-        if (_confirmationRequestedAtBySlot.TryGetValue(slotKey, out var confirmationRequestedAt))
+        // --- Step 7: 直前の WaitingForConfirmation を保持 (Fix C-2a: TTL付きで固着を防止) ---
+        if (_confirmationRequestedAtBySlot.TryGetValue(slotKey, out var lastConfirmationSeenAt))
         {
-            return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, "VS Code UI: 直前のユーザー確認待ちを保持しています。", confirmationRequestedAt, "bridge");
+            if (IsRecent(lastConfirmationSeenAt, CodexConfirmationWindow, now))
+            {
+                return new AiStatusSnapshot(AiStatus.WaitingForConfirmation, "VS Code UI: 直前のユーザー確認待ちを保持しています。", lastConfirmationSeenAt, "bridge");
+            }
+
+            // TTL 切れ: 確認が解消されたと判断して Completed へ遷移
+            _confirmationRequestedAtBySlot.TryRemove(slotKey, out _);
+            _completedAtBySlot[slotKey] = now;
+            _lastRunningSeenBySlot.TryRemove(slotKey, out _);
+            return new AiStatusSnapshot(AiStatus.Completed, "VS Code UI: 確認待ちが解消されました。", now, "confirmationExpired");
         }
 
         // --- Step 8: 直前の Completed を保持 ---
