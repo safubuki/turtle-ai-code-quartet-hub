@@ -465,11 +465,11 @@ public sealed class StatusStore : INotifyPropertyChanged
         var activeCount = eligibleSlots.Count(candidate =>
             candidate.Slot.AiStatus is AiStatus.Running or AiStatus.WaitingForConfirmation
             || _aiStatusDetector.GetUiAutomationProbePriority(candidate.Slot) > 0);
-        var maxProbeCount = activeCount >= 2 ? 4 : activeCount == 1 ? 2 : 1;
+        var maxProbeCount = activeCount >= 1 ? 2 : 1;
         // Fix F: 前回リフレッシュが遅かった場合はプローブ数を段階的に削減して負荷スパイラルを防止
-        if (_lastRefreshDuration > TimeSpan.FromMilliseconds(600))
+        if (_lastRefreshDuration > TimeSpan.FromMilliseconds(400))
         {
-            maxProbeCount = Math.Min(maxProbeCount, 2);
+            maxProbeCount = Math.Min(maxProbeCount, 1);
         }
         if (_lastRefreshDuration > TimeSpan.FromSeconds(1))
         {

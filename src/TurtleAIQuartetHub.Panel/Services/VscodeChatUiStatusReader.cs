@@ -7,11 +7,11 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class VscodeChatUiStatusReader
 {
-    private const int MaxElementsToInspect = 1500;
-    private const int MaxElementsAfterRunningSignal = 240;
+    private const int MaxElementsToInspect = 1200;
+    private const int MaxElementsAfterRunningSignal = 180;
     private const int MaxTextLengthForStatus = 48;
     private const int MaxTextLengthForConfirmation = 140;
-    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan MaxScanDuration = TimeSpan.FromMilliseconds(220);
 
     private static readonly string[] RunningStatusExactTexts =
     [
@@ -79,6 +79,9 @@ public sealed class VscodeChatUiStatusReader
         "会話",
         "copilot",
         "codex",
+        "claude",
+        "claude-code",
+        "anthropic",
         "agent",
         "エージェント",
         "応答",
@@ -103,12 +106,15 @@ public sealed class VscodeChatUiStatusReader
         "Continue",
         "続行",
         "Allow",
+        "Accept",
         "許可"
     ];
 
     private static readonly string[] ContextualConfirmationActionTexts =
     [
         "Approve",
+        "Deny",
+        "Reject",
         "承認"
     ];
 

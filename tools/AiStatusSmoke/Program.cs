@@ -100,6 +100,7 @@ static List<ProbeResult> ProbeSlots(
                 matchReason: string.Empty,
                 engines: new ProbeEngines(
                     new ProbeEngine("Idle", "Confirmed", null, string.Empty),
+                    new ProbeEngine("Idle", "Confirmed", null, string.Empty),
                     new ProbeEngine("Idle", "Confirmed", null, string.Empty)),
                 uiProbe: new ProbeUiProbe(
                     false,
@@ -178,7 +179,12 @@ static List<ProbeResult> ProbeSlots(
                     diagnostics?.Codex.State ?? snapshot.Status.ToString(),
                     diagnostics?.Codex.Confidence ?? string.Empty,
                     diagnostics?.Codex.LastEvidenceAt,
-                    diagnostics?.Codex.Reason ?? string.Empty)),
+                    diagnostics?.Codex.Reason ?? string.Empty),
+                new ProbeEngine(
+                    diagnostics?.Claude.State ?? snapshot.Status.ToString(),
+                    diagnostics?.Claude.Confidence ?? string.Empty,
+                    diagnostics?.Claude.LastEvidenceAt,
+                    diagnostics?.Claude.Reason ?? string.Empty)),
             uiProbe: new ProbeUiProbe(
                 diagnostics?.UiProbe.TimedOut ?? false,
                 diagnostics?.UiProbe.ScanCompleted ?? false,
@@ -266,7 +272,8 @@ file sealed record ProbeResult(
 
 file sealed record ProbeEngines(
     ProbeEngine Copilot,
-    ProbeEngine Codex);
+    ProbeEngine Codex,
+    ProbeEngine Claude);
 
 file sealed record ProbeEngine(
     string State,
