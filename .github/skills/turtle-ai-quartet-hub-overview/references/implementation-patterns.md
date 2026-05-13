@@ -13,12 +13,12 @@
 
 - `slots.json` は visible slot と stored panel を同じドキュメントで保持する。
 - legacy 読み込み互換は壊さない。
-- `WindowSlot` は VS Code ウィンドウ、タイトル、ワークスペース、フォーカス、表示/非表示、レイヤー状態だけを持つ。
+- `WindowSlot` は管理対象ウィンドウ、タイトル、ワークスペース、フォーカス、表示/非表示、レイヤー状態だけを持つ。
 - AI状態、最終AIイベント時刻、AI状態詳細は持たない。
 
 ## 3. 定期更新
 
-- 更新対象は VS Code ウィンドウの存在、タイトル、ワークスペース表示のみ。
+- 更新対象は管理対象ウィンドウの存在、タイトル、ワークスペース表示のみ。ワークスペース読み取りは VS Code スロットに限定する。
 - ワークスペース取得は `WorkspaceRefreshInterval` を使い、毎 tick で重い読み取りをしない。
 - 操作中のレイアウト変更では `_suppressPeriodicRefreshUntil` で短時間抑止し、UI操作を優先する。
 
@@ -39,3 +39,15 @@
 
 - 実行中の本体が既定の `bin\Debug` 出力をロックする場合がある。
 - 反復確認では `scripts/Build-Panel.ps1` または `--artifacts-path` を使う。
+
+## 7. 複数アプリ起動
+
+- 各スロットの既定アプリは VS Code (`vscode`) とし、一括起動はスロットごとの `ApplicationId` に従う。
+- VS Code は `VscodeLauncher` に残し、専用 user-data-dir、リモート URI、workspaceStorage 読み取りの既存挙動を壊さない。
+- Antigravity など VS Code 以外の workspace IDE は `ApplicationLauncher` の汎用起動で扱う。
+- Codex / Claude は `SingleWindowAgent` として、既存ウィンドウ探索やウィンドウ検出待ちをせず起動コマンドを送信する。閉じる/切り替えるトグル動作にしない。
+- Claude / Codex の Windows Store 版は通常の PATH やスタートメニュー `.lnk` で検出できない場合があるため、AppModel Repository から AppUserModelID を解決し、`shell:AppsFolder` 経由で起動する。起動済みプロセスと `PackageRootFolder` も補助的に見る。
+- `WindowEnumerator` はスロットの `ApplicationId` に対応する process names で確認する。VS Code 以外に `VscodeWorkspaceState` を適用しない。
+- 未検出アプリはボタンを無効化し、`ToolTip` とメッセージで設定パス/コマンド確認へ誘導する。
+- UI は VS Code / Antigravity を各スロット内の等幅ボタン、Codex / Claude を控え Quartet 行の右端補助ボタンとして配置する。Launch 直上にグローバル IDE 選択ボタンは置かない。AI状態の色変えや点滅は追加しない。
+- 各スロットにも VS Code / Antigravity 切替を置く。未起動スロットでは選択状態だけ保存し、起動中スロットで別アプリを選んだ場合は現在のウィンドウを閉じて同じスロット内容を選択アプリで開き直す。

@@ -8,22 +8,89 @@
   "launchTimeoutSeconds": 40,
   "remoteReconnectTimeoutSeconds": 15,
   "statusRefreshIntervalMilliseconds": 1000,
+  "defaultWorkspaceApplicationId": "vscode",
+  "applications": [
+    {
+      "id": "vscode",
+      "displayName": "VS Code",
+      "shortName": "VS Code",
+      "kind": "WorkspaceIde",
+      "command": "code",
+      "arguments": ["--new-window", "{workspacePath}"],
+      "supportsMultipleWindows": true,
+      "detection": {
+        "commands": ["code", "code-insiders"],
+        "processNames": ["Code", "Code - Insiders", "VSCodium", "Codium"],
+        "startMenuNames": ["Visual Studio Code", "Visual Studio Code - Insiders", "VSCodium"],
+        "appPathNames": ["Code.exe", "Code - Insiders.exe", "VSCodium.exe", "Codium.exe"]
+      }
+    },
+    {
+      "id": "antigravity",
+      "displayName": "Antigravity",
+      "shortName": "Antigravity",
+      "kind": "WorkspaceIde",
+      "command": "antigravity",
+      "arguments": ["--new-window", "{workspacePath}"],
+      "supportsMultipleWindows": true,
+      "detection": {
+        "commands": ["antigravity"],
+        "processNames": ["Antigravity"],
+        "startMenuNames": ["Antigravity", "Google Antigravity"],
+        "appPathNames": ["Antigravity.exe"]
+      }
+    },
+    {
+      "id": "codex",
+      "displayName": "Codex",
+      "shortName": "Codex",
+      "kind": "SingleWindowAgent",
+      "command": "",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": [],
+        "processNames": ["Codex"],
+        "startMenuNames": ["Codex", "OpenAI Codex"],
+        "appPathNames": ["Codex.exe"]
+      }
+    },
+    {
+      "id": "claude",
+      "displayName": "Claude",
+      "shortName": "Claude",
+      "kind": "SingleWindowAgent",
+      "command": "",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": [],
+        "processNames": ["Claude"],
+        "startMenuNames": ["Claude"],
+        "appPathNames": ["Claude.exe"]
+      }
+    }
+  ],
   "slots": [
     {
       "name": "A",
-      "path": ""
+      "path": "",
+      "applicationId": "vscode"
     },
     {
       "name": "B",
-      "path": ""
+      "path": "",
+      "applicationId": "vscode"
     },
     {
       "name": "C",
-      "path": ""
+      "path": "",
+      "applicationId": "vscode"
     },
     {
       "name": "D",
-      "path": ""
+      "path": "",
+      "applicationId": "vscode"
     }
   ]
 }

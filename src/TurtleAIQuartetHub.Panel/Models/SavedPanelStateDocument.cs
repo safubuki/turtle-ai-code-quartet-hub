@@ -14,4 +14,6 @@ public sealed class SavedStoredPanelState
     public string PanelTitle { get; set; } = string.Empty;
 
     public string WorkspacePath { get; set; } = string.Empty;
+
+    public string ApplicationId { get; set; } = string.Empty;
 }

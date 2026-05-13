@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
     private readonly VscodeLauncher _vscodeLauncher;
+    private readonly ApplicationLauncher _applicationLauncher;
     private readonly StatusStore _statusStore;
     private readonly DispatcherTimer _refreshTimer;
     private readonly CancellationTokenSource _refreshCancellation = new();
@@ -56,6 +57,7 @@ public partial class MainWindow : Window
         var config = AppConfig.Load();
         _statusStore = new StatusStore(config);
         _vscodeLauncher = new VscodeLauncher(_windowEnumerator);
+        _applicationLauncher = new ApplicationLauncher(_windowEnumerator, _vscodeLauncher);
         DataContext = _statusStore;
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -81,6 +83,7 @@ public partial class MainWindow : Window
             UpdateWindowHeightForStoredPanels(StoredPanelsExpander.IsExpanded, true);
             UpdateCompactPanelFrame();
             RefreshAuxiliaryUi();
+            RefreshLaunchButtonAvailability();
         };
     }
 
@@ -94,14 +97,38 @@ public partial class MainWindow : Window
         await LaunchAllMissingAsync();
     }
 
-    private async Task LaunchAllMissingAsync()
+    private async void AuxiliaryApplicationButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isBusy)
+        if (_isBusy || sender is not FrameworkElement { Tag: LauncherApplication application })
         {
             return;
         }
 
-        if (!EnsureCodeCommandAvailable())
+        await OpenAuxiliaryApplicationAsync(application);
+    }
+
+    private async Task OpenAuxiliaryApplicationAsync(LauncherApplication application)
+    {
+        if (!application.IsAvailable)
+        {
+            _statusStore.Message = application.ToolTip;
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            _statusStore.Message = $"{application.DisplayName} を起動しています...";
+            var result = await _applicationLauncher.LaunchSingleWindowApplicationAsync(
+                application,
+                _statusStore.Config,
+                CancellationToken.None);
+            _statusStore.Message = result.Message;
+        });
+    }
+
+    private async Task LaunchAllMissingAsync()
+    {
+        if (_isBusy)
         {
             return;
         }
@@ -123,52 +150,113 @@ public partial class MainWindow : Window
             _statusStore.LoadSavedSettings();
             await RefreshSlotsAsync(allowDuringBusy: true);
 
-            _statusStore.Message = "未起動のVS Codeを起動しています...";
-            var assignments = await _vscodeLauncher.LaunchMissingAsync(
-                _statusStore.Slots,
-                _statusStore.Config,
-                CancellationToken.None);
+            var missingSlots = _statusStore.Slots
+                .Where(slot => slot.WindowStatus == SlotWindowStatus.Missing)
+                .ToList();
+            if (missingSlots.Count == 0)
+            {
+                var arrangedOnly = ArrangeSlotsOnActiveMonitor();
+                _statusStore.ClearFocusedSlot();
+                _statusStore.Message = arrangedOnly > 0
+                    ? $"{arrangedOnly}個の管理中ウィンドウを2x2に配置しました。"
+                    : "一括起動の対象スロットがありません。";
+                return;
+            }
 
-            foreach (var assignment in assignments)
+            var launchTargets = new List<(WindowSlot Slot, LauncherApplication Application)>();
+            var unavailableSlots = new List<string>();
+            foreach (var slot in missingSlots)
+            {
+                var application = _statusStore.FindApplication(slot.ApplicationId);
+                if (application is null
+                    || !application.IsWorkspaceIde
+                    || !_applicationLauncher.CanLaunchWorkspaceApplication(application, _statusStore.Config))
+                {
+                    unavailableSlots.Add($"{slot.Name}:{application?.DisplayName ?? slot.ApplicationId}");
+                    continue;
+                }
+
+                if (!slot.HasPanelContent)
+                {
+                    slot.PanelTitle = _statusStore.MakeUniqueTitle($"スロット{slot.Name}", slot);
+                }
+
+                launchTargets.Add((slot, application));
+            }
+
+            if (launchTargets.Count == 0)
+            {
+                _statusStore.Message = unavailableSlots.Count > 0
+                    ? $"選択アプリが未検出のため起動できません: {string.Join(", ", unavailableSlots)}"
+                    : "一括起動できるスロットがありません。";
+                return;
+            }
+
+            _statusStore.Message = $"未起動スロットを選択アプリで起動しています... {BuildLaunchPlanSummary(launchTargets)}";
+            var allAssignments = new List<WindowAssignment>();
+            foreach (var group in launchTargets.GroupBy(item => item.Application.Id))
+            {
+                var application = group.First().Application;
+                var slots = group.Select(item => item.Slot).ToList();
+                var assignments = await _applicationLauncher.LaunchMissingAsync(
+                    slots,
+                    _statusStore.Config,
+                    application,
+                    CancellationToken.None);
+                allAssignments.AddRange(assignments);
+            }
+
+            foreach (var assignment in allAssignments)
             {
                 _statusStore.AssignWindow(assignment.Slot, assignment.Window);
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
 
-            if (assignments.Count > 0)
+            var skippedMessage = unavailableSlots.Count > 0
+                ? $" 未検出でスキップ: {string.Join(", ", unavailableSlots)}"
+                : string.Empty;
+            if (allAssignments.Count > 0)
             {
                 ArrangeSlotsOnActiveMonitor();
                 _statusStore.ClearFocusedSlot();
-                _statusStore.Message = $"{assignments.Count}個のVS Codeを起動して2x2に配置しました。";
+                _statusStore.Message = $"{allAssignments.Count}個のスロットを選択アプリで起動して2x2に配置しました。{skippedMessage}";
             }
             else
             {
                 var arranged = ArrangeSlotsOnActiveMonitor();
                 _statusStore.ClearFocusedSlot();
                 _statusStore.Message = arranged > 0
-                    ? $"{arranged}個のVS Codeを2x2に配置しました。"
-                    : "新しいVS Codeウィンドウは見つかりませんでした。";
+                    ? $"{arranged}個の管理中ウィンドウを2x2に配置しました。{skippedMessage}"
+                    : $"新しい管理中ウィンドウは見つかりませんでした。{skippedMessage}";
             }
         });
     }
 
-    private bool EnsureCodeCommandAvailable()
+    private static string BuildLaunchPlanSummary(IEnumerable<(WindowSlot Slot, LauncherApplication Application)> launchTargets)
     {
-        if (_vscodeLauncher.IsCodeCommandAvailable(_statusStore.Config.CodeCommand))
+        return string.Join(
+            " / ",
+            launchTargets
+                .GroupBy(item => item.Application.DisplayName)
+                .Select(group => $"{group.Key} {group.Count()}個"));
+    }
+
+    private bool EnsureWorkspaceApplicationAvailable(LauncherApplication? application)
+    {
+        if (application is not null && _applicationLauncher.CanLaunchWorkspaceApplication(application, _statusStore.Config))
         {
             return true;
         }
 
-        var command = string.IsNullOrWhiteSpace(_statusStore.Config.CodeCommand)
-            ? "code"
-            : _statusStore.Config.CodeCommand;
-        var message = $"VS Code がインストールされていないか、`{command}` コマンドが見つかりません。VS Code をインストールするか、設定の codeCommand を確認してください。";
+        var appName = application?.DisplayName ?? "アプリケーション";
+        var message = application?.ToolTip
+            ?? $"{appName} が見つかりません。設定で実行ファイルまたはコマンドを指定してください。";
         _statusStore.Message = message;
         MessageBox.Show(
             this,
             message,
-            "VS Code が見つかりません",
+            $"{appName} が見つかりません",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
         return false;
@@ -237,6 +325,17 @@ public partial class MainWindow : Window
                 await LaunchAllMissingAsync();
                 break;
 
+            case "--launch-app" when args.Length >= 2:
+            {
+                var application = _statusStore.FindApplication(args[1]);
+                if (application is not null)
+                {
+                    await OpenAuxiliaryApplicationAsync(application);
+                }
+
+                break;
+            }
+
             case "--layer" when args.Length >= 2 && string.Equals(args[1], "top", StringComparison.OrdinalIgnoreCase):
                 PinAllTopButton_Click(this, new RoutedEventArgs());
                 break;
@@ -304,12 +403,12 @@ public partial class MainWindow : Window
         var closeTargets = _statusStore.Slots.Count(slot => slot.WindowHandle != IntPtr.Zero);
         if (closeTargets == 0)
         {
-            _statusStore.Message = "閉じるVS Codeウィンドウがありません。";
+            _statusStore.Message = "閉じる管理中ウィンドウがありません。";
             RefreshAuxiliaryUi();
             return;
         }
 
-        CloseAllConfirmCountText.Text = $"{closeTargets}個の VS Code ウィンドウを閉じます。";
+        CloseAllConfirmCountText.Text = $"{closeTargets}個の管理中ウィンドウを閉じます。";
         CloseAllConfirmOverlay.Visibility = Visibility.Visible;
         CancelCloseAllButton.Focus();
     }
@@ -359,8 +458,8 @@ public partial class MainWindow : Window
         UpdateVisibilityButtonVisual();
 
         _statusStore.Message = closed == 0
-            ? "閉じるVS Codeウィンドウがありません。"
-            : $"{closed}個のVS Codeを閉じて設定を保存しました。";
+            ? "閉じる管理中ウィンドウがありません。"
+            : $"{closed}個の管理中ウィンドウを閉じて設定を保存しました。";
         RefreshAuxiliaryUi();
     }
 
@@ -663,8 +762,8 @@ public partial class MainWindow : Window
                 _statusStore.ClearFocusedSlot();
                 SchedulePanelToFront();
                 _statusStore.Message = arranged == 0
-                    ? "4分割表示に戻せるVS Codeウィンドウがありません。"
-                    : $"{arranged}個のVS Codeを4分割表示に戻しました。";
+                    ? "4分割表示に戻せる管理中ウィンドウがありません。"
+                    : $"{arranged}個の管理中ウィンドウを4分割表示に戻しました。";
             }
             else
             {
@@ -708,7 +807,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+        _statusStore.Message = $"スロット{slot.Name}の{slot.ApplicationDisplayName}ウィンドウが見つかりません。";
         RefreshAuxiliaryUi();
     }
 
@@ -723,10 +822,10 @@ public partial class MainWindow : Window
         }
 
         // フォーカスモード中: フォーカスを維持したまま全スロットのレイヤーだけ変更。
-        // FocusMaximized (SetForegroundWindow) は呼ばない。呼ぶとパネルとVS Codeの
+        // FocusMaximized (SetForegroundWindow) は呼ばない。呼ぶとパネルと管理中ウィンドウの
         // アクティベーション争奪で無限ループしてハングする。
         ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Topmost);
-        _statusStore.Message = "管理中のVS Codeを最前面にしました。";
+        _statusStore.Message = "管理中ウィンドウを最前面にしました。";
     }
 
     private void SendAllBackButton_Click(object sender, RoutedEventArgs e)
@@ -741,7 +840,7 @@ public partial class MainWindow : Window
 
         // フォーカスモード中: フォーカスを維持したまま全スロットのレイヤーだけ変更。
         ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Backmost);
-        _statusStore.Message = "管理中のVS Codeを最背面にしました。";
+        _statusStore.Message = "管理中ウィンドウを最背面にしました。";
     }
 
     private void ExitFocusedModeForGlobalLayerChange()
@@ -759,7 +858,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// フォーカスモード中でも安全にレイヤーを変更する。
     /// フォーカス中は対象スロットを最後に前面化し、非フォーカススロットを背面に保つ。
-    /// FocusMaximized (SetForegroundWindow) を呼ばないため、パネルとVS Code間の
+    /// FocusMaximized (SetForegroundWindow) を呼ばないため、パネルと管理中ウィンドウ間の
     /// アクティベーション争奪による無限ループが発生しない。
     /// 4面表示・1面フォーカス表示のどちらでも動作する。
     /// </summary>
@@ -815,8 +914,8 @@ public partial class MainWindow : Window
 
             var arranged = ArrangeSlotsOnActiveMonitor();
             _statusStore.Message = arranged > 0
-                ? $"{arranged}個のVS Codeを表示しました。"
-                : "表示できるVS Codeウィンドウがありません。";
+                ? $"{arranged}個の管理中ウィンドウを表示しました。"
+                : "表示できる管理中ウィンドウがありません。";
         }
         else
         {
@@ -841,12 +940,12 @@ public partial class MainWindow : Window
             {
                 _areWindowsHidden = true;
                 UpdateVisibilityButtonVisual();
-                _statusStore.Message = $"{minimized}個のVS Codeを非表示にしました。";
+                _statusStore.Message = $"{minimized}個の管理中ウィンドウを非表示にしました。";
             }
             else
             {
                 _hiddenFocusedSlot = null;
-                _statusStore.Message = "非表示にできるVS Codeウィンドウがありません。";
+                _statusStore.Message = "非表示にできる管理中ウィンドウがありません。";
             }
         }
 
@@ -879,7 +978,7 @@ public partial class MainWindow : Window
         _statusStore.ClearFocusedSlot();
         var arranged = ArrangeSlotsOnActiveMonitor();
         _statusStore.Message = arranged > 0
-            ? $"{arranged}個のVS Codeを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に移動しました。"
+            ? $"{arranged}個の管理中ウィンドウを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に移動しました。"
             : $"次回の配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました。";
     }
 
@@ -899,7 +998,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _statusStore.Message = $"スロット{slot.Name}のVS Codeウィンドウが見つかりません。";
+        _statusStore.Message = $"スロット{slot.Name}の{slot.ApplicationDisplayName}ウィンドウが見つかりません。";
         RefreshAuxiliaryUi();
     }
 
@@ -927,7 +1026,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!EnsureCodeCommandAvailable())
+        var application = _statusStore.FindApplication(slot.ApplicationId);
+        if (application is null || !application.IsWorkspaceIde || !EnsureWorkspaceApplicationAvailable(application))
         {
             return;
         }
@@ -939,7 +1039,12 @@ public partial class MainWindow : Window
             slot.PanelTitle = _statusStore.MakeUniqueTitle(defaultTitle, slot);
         }
 
-        // 起動 / 新規: 個別に VS Code を起動
+        if (application is not null)
+        {
+            _statusStore.SetSlotApplication(slot, application);
+        }
+
+        // 起動 / 新規: 個別にワークスペースアプリを起動
         await RunBusyAsync(async () =>
         {
             if (_areWindowsHidden)
@@ -953,10 +1058,11 @@ public partial class MainWindow : Window
                 }
             }
 
-            _statusStore.Message = $"スロット{slot.Name}のVS Codeを起動しています...";
-            var assignments = await _vscodeLauncher.LaunchMissingAsync(
+            _statusStore.Message = $"スロット{slot.Name}の{application!.DisplayName}を起動しています...";
+            var assignments = await _applicationLauncher.LaunchMissingAsync(
                 new[] { slot },
                 _statusStore.Config,
+                application,
                 CancellationToken.None);
 
             foreach (var assignment in assignments)
@@ -971,8 +1077,100 @@ public partial class MainWindow : Window
             ArrangeSlotsOnActiveMonitor();
 
             _statusStore.Message = assignments.Count > 0
-                ? $"スロット{slot.Name}のVS Codeを起動しました。"
-                : $"スロット{slot.Name}のVS Codeウィンドウの起動を確認できませんでした。";
+                ? $"スロット{slot.Name}の{application.DisplayName}を起動しました。"
+                : $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。";
+        });
+    }
+
+    private async void SlotApplicationSwitchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (sender is not Button { Tag: WindowSlot slot, CommandParameter: string applicationId })
+        {
+            return;
+        }
+
+        var application = _statusStore.FindApplication(applicationId);
+        if (application is null || !application.IsWorkspaceIde)
+        {
+            return;
+        }
+
+        if (!EnsureWorkspaceApplicationAvailable(application))
+        {
+            return;
+        }
+
+        if (slot.WindowStatus == SlotWindowStatus.Missing && slot.WindowHandle == IntPtr.Zero)
+        {
+            _statusStore.SetSlotApplication(slot, application);
+            _statusStore.Message = $"スロット{slot.Name}の起動対象を {application.DisplayName} にしました。";
+            RefreshLaunchButtonAvailability();
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        await SwitchSlotWorkspaceApplicationAsync(slot, application);
+    }
+
+    private async Task SwitchSlotWorkspaceApplicationAsync(WindowSlot slot, LauncherApplication application)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var wasSameApplication = string.Equals(slot.ApplicationId, application.Id, StringComparison.OrdinalIgnoreCase);
+            if (slot.WindowStatus == SlotWindowStatus.Ready && wasSameApplication)
+            {
+                ToggleSlotFocus(slot);
+                return;
+            }
+
+            if (slot.WindowHandle != IntPtr.Zero)
+            {
+                if (_statusStore.IsVsCodeSlot(slot))
+                {
+                    _statusStore.CaptureWorkspacePath(slot);
+                }
+
+                if (!_windowArranger.Close(slot.WindowHandle))
+                {
+                    _statusStore.Message = $"スロット{slot.Name}の現在のアプリを閉じられませんでした。";
+                    return;
+                }
+
+                await Task.Delay(450);
+                _statusStore.ClearWindow(slot);
+            }
+
+            if (!slot.HasPanelContent)
+            {
+                slot.PanelTitle = _statusStore.MakeUniqueTitle($"スロット{slot.Name}", slot);
+            }
+
+            _statusStore.SetSlotApplication(slot, application);
+            _statusStore.Message = $"スロット{slot.Name}を{application.DisplayName}で開いています...";
+            var assignments = await _applicationLauncher.LaunchMissingAsync(
+                new[] { slot },
+                _statusStore.Config,
+                application,
+                CancellationToken.None);
+
+            foreach (var assignment in assignments)
+            {
+                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
+            }
+
+            await RefreshSlotsAsync(allowDuringBusy: true);
+            ArrangeSlotsOnActiveMonitor();
+            await Task.Delay(500);
+            ArrangeSlotsOnActiveMonitor();
+
+            _statusStore.Message = assignments.Count > 0
+                ? $"スロット{slot.Name}を{application.DisplayName}で開きました。"
+                : $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。";
         });
     }
 
@@ -990,7 +1188,7 @@ public partial class MainWindow : Window
 
         if (slot.WindowHandle != IntPtr.Zero && !_windowArranger.Close(slot.WindowHandle))
         {
-            _statusStore.Message = $"スロット{slot.Name}を控えに移す前に VS Code を閉じられませんでした。";
+            _statusStore.Message = $"スロット{slot.Name}を控えに移す前に {slot.ApplicationDisplayName} を閉じられませんでした。";
             return;
         }
 
@@ -1037,7 +1235,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!EnsureCodeCommandAvailable())
+        var application = _statusStore.FindApplication(storedPanel.ApplicationId);
+        if (application is null || !application.IsWorkspaceIde || !EnsureWorkspaceApplicationAvailable(application))
         {
             return;
         }
@@ -1046,7 +1245,7 @@ public partial class MainWindow : Window
         {
             if (targetSlot.WindowHandle != IntPtr.Zero && !_windowArranger.Close(targetSlot.WindowHandle))
             {
-                _statusStore.Message = $"スロット{targetSlot.Name}の現在の VS Code を閉じられないため入れ替えできません。";
+                _statusStore.Message = $"スロット{targetSlot.Name}の現在のアプリを閉じられないため入れ替えできません。";
                 return;
             }
 
@@ -1058,9 +1257,15 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var assignments = await _vscodeLauncher.LaunchMissingAsync(
+            if (application is not null)
+            {
+                _statusStore.SetSlotApplication(targetSlot, application);
+            }
+
+            var assignments = await _applicationLauncher.LaunchMissingAsync(
                 new[] { targetSlot },
                 _statusStore.Config,
+                application!,
                 CancellationToken.None);
 
             foreach (var assignment in assignments)
@@ -1083,7 +1288,7 @@ public partial class MainWindow : Window
             {
                 ArrangeSlotsOnActiveMonitor();
 
-                // VS Code が起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
+                // 起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
                 await Task.Delay(500);
                 ArrangeSlotsOnActiveMonitor();
             }
@@ -1092,7 +1297,7 @@ public partial class MainWindow : Window
                 ? swappedVisiblePanel
                     ? $"{storedPanel.Label}をスロット{targetSlot.Name}へ表示し、元の内容は控えに戻しました。"
                     : $"{storedPanel.Label}をスロット{targetSlot.Name}へ表示しました。"
-                : $"{storedPanel.Label}の設定をスロット{targetSlot.Name}へ移しましたが、VS Code ウィンドウの起動は確認できませんでした。";
+                : $"{storedPanel.Label}の設定をスロット{targetSlot.Name}へ移しましたが、{application!.DisplayName}ウィンドウの起動は確認できませんでした。";
         });
     }
 
@@ -1340,7 +1545,7 @@ public partial class MainWindow : Window
         CompactBarPanel.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         StoredPanelsExpander.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         FooterControlsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        LaunchButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ApplicationLauncherPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
         if (compact)
         {
@@ -1641,11 +1846,21 @@ public partial class MainWindow : Window
 
     private void RefreshAuxiliaryUi()
     {
-        TaskbarJumpListService.Update(_statusStore.Slots, _isCompactMode);
+        RefreshLaunchButtonAvailability();
+        TaskbarJumpListService.Update(
+            _statusStore.Slots,
+            _isCompactMode,
+            _statusStore.WorkspaceApplications,
+            _statusStore.AuxiliaryApplications);
     }
 
     private void EnsurePreferredLayout(WindowSlot slot)
     {
+        if (!_statusStore.IsVsCodeSlot(slot))
+        {
+            return;
+        }
+
         if (slot.PreferredLayout.HasAnyValue)
         {
             return;
@@ -1659,6 +1874,11 @@ public partial class MainWindow : Window
 
     private void CapturePreferredLayout(WindowSlot slot)
     {
+        if (!_statusStore.IsVsCodeSlot(slot))
+        {
+            return;
+        }
+
         if (VscodeLayoutState.TryCapturePreferredLayout(slot, _statusStore.Config, _windowArranger, out var preference))
         {
             _statusStore.UpdatePreferredLayout(slot, preference);
@@ -2103,7 +2323,7 @@ public partial class MainWindow : Window
     {
         CancelScheduledFocusedSlotReassert();
 
-        // 非表示中にアプリが終了される場合、VS Codeウィンドウを復元してから閉じる
+        // 非表示中にアプリが終了される場合、管理中ウィンドウを復元してから閉じる
         if (_areWindowsHidden)
         {
             foreach (var slot in _statusStore.Slots)
@@ -2155,7 +2375,8 @@ public partial class MainWindow : Window
 
     private void SetBusyState(bool busy)
     {
-        LaunchButton.IsEnabled = !busy;
+        LaunchButton.IsEnabled = !busy && HasLaunchableWorkspaceSlot();
+        ApplicationLauncherPanel.IsEnabled = !busy;
         TopmostAllButton.IsEnabled = !busy;
         BackmostAllButton.IsEnabled = !busy;
         ToggleMonitorButton.IsEnabled = !busy;
@@ -2166,6 +2387,24 @@ public partial class MainWindow : Window
         DisplayModeButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
+        AuxiliaryApplicationPanel.IsEnabled = !busy;
+    }
+
+    private void RefreshLaunchButtonAvailability()
+    {
+        LaunchButton.IsEnabled = !_isBusy && HasLaunchableWorkspaceSlot();
+        LaunchButton.ToolTip = _statusStore.LaunchButtonToolTip;
+    }
+
+    private bool HasLaunchableWorkspaceSlot()
+    {
+        return _statusStore.Slots.Any(slot =>
+        {
+            var application = _statusStore.FindApplication(slot.ApplicationId);
+            return application is not null
+                && application.IsWorkspaceIde
+                && _applicationLauncher.CanLaunchWorkspaceApplication(application, _statusStore.Config);
+        });
     }
 
     private enum PanelFrameVisual

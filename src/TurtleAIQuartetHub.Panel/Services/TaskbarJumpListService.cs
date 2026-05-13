@@ -10,7 +10,11 @@ public static class TaskbarJumpListService
     private static string? _lastSignature;
     private static string? _cachedAppPath;
 
-    public static void Update(IReadOnlyList<WindowSlot> slots, bool compactMode)
+    public static void Update(
+        IReadOnlyList<WindowSlot> slots,
+        bool compactMode,
+        IReadOnlyList<LauncherApplication> workspaceApplications,
+        IReadOnlyList<LauncherApplication> auxiliaryApplications)
     {
         var appPath = GetCurrentAppPath();
         if (string.IsNullOrWhiteSpace(appPath))
@@ -25,7 +29,12 @@ public static class TaskbarJumpListService
         var allSlotsStopped = managedSlots.Count > 0
             && managedSlots.All(slot => slot.WindowStatus == SlotWindowStatus.Missing);
 
-        var signature = BuildSignature(managedSlots, compactMode, isActiveMenu: true);
+        var signature = BuildSignature(
+            managedSlots,
+            compactMode,
+            isActiveMenu: true,
+            workspaceApplications,
+            auxiliaryApplications);
         if (string.Equals(signature, _lastSignature, StringComparison.Ordinal))
         {
             return;
@@ -40,7 +49,7 @@ public static class TaskbarJumpListService
                 jumpList.JumpItems.Add(new JumpTask
                 {
                     Title = BuildSlotTitle(slot),
-                    Description = $"スロット {slot.Name} の VS Code を切り替えます。",
+                    Description = $"スロット {slot.Name} の管理中ウィンドウを切り替えます。",
                     Arguments = $"--slot-toggle {slot.Name}",
                     ApplicationPath = appPath,
                     IconResourcePath = appPath,
@@ -52,12 +61,25 @@ public static class TaskbarJumpListService
         {
             jumpList.JumpItems.Add(new JumpTask
             {
-                Title = "VS Code を一括起動",
-                Description = "管理する 4 スロットの VS Code をまとめて起動します。",
+                Title = "Launch Quartet（一括起動）",
+                Description = "各スロットで選択されているアプリで一括起動します。",
                 Arguments = "--launch-all",
                 ApplicationPath = appPath,
                 IconResourcePath = appPath,
                 CustomCategory = "起動"
+            });
+        }
+
+        foreach (var application in auxiliaryApplications.Where(app => app.IsAvailable))
+        {
+            jumpList.JumpItems.Add(new JumpTask
+            {
+                Title = $"{application.DisplayName} を開く",
+                Description = $"{application.DisplayName} の起動コマンドを送信します。",
+                Arguments = $"--launch-app {application.Id}",
+                ApplicationPath = appPath,
+                IconResourcePath = appPath,
+                CustomCategory = "アプリ"
             });
         }
 
@@ -159,12 +181,21 @@ public static class TaskbarJumpListService
         }
     }
 
-    private static string BuildSignature(IEnumerable<WindowSlot> slots, bool compactMode, bool isActiveMenu)
+    private static string BuildSignature(
+        IEnumerable<WindowSlot> slots,
+        bool compactMode,
+        bool isActiveMenu,
+        IReadOnlyList<LauncherApplication>? workspaceApplications = null,
+        IReadOnlyList<LauncherApplication>? auxiliaryApplications = null)
     {
         var slotSignature = string.Join(
             "|",
-            slots.Select(slot => $"{slot.Name}:{slot.WindowStatus}:{slot.DisplayTitle}"));
-        return $"{isActiveMenu}:{compactMode}:{slotSignature}";
+            slots.Select(slot => $"{slot.Name}:{slot.WindowStatus}:{slot.ApplicationId}:{slot.DisplayTitle}"));
+        var appSignature = string.Join(
+            "|",
+            (workspaceApplications ?? []).Concat(auxiliaryApplications ?? [])
+            .Select(app => $"{app.Id}:{app.IsAvailable}:{app.IsSelected}"));
+        return $"{isActiveMenu}:{compactMode}:{slotSignature}:{appSignature}";
     }
 
     private static string BuildSlotTitle(WindowSlot slot)

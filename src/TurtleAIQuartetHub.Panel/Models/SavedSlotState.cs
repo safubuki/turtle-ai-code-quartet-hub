@@ -8,6 +8,8 @@ public sealed class SavedSlotState
 
     public string AssignedPath { get; set; } = string.Empty;
 
+    public string ApplicationId { get; set; } = string.Empty;
+
     public string SavedWorkspacePath { get; set; } = string.Empty;
 
     public bool SavedWorkspaceConfirmed { get; set; }

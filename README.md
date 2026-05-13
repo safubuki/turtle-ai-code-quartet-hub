@@ -1,11 +1,14 @@
 ﻿# Turtle AI Code Quartet Hub
 
-4つの VS Code ウィンドウを A-D のスロットとして起動し、2x2 に並べる Windows 向け WPF パネルです。
-スロット単位の起動、配置、集中表示、非表示、控え保存を軽量に扱えます。
+4つの開発用ウィンドウを A-D のスロットとして起動し、2x2 に並べる Windows 向け WPF パネルです。
+既定は各スロット VS Code の一括起動です。設定により Google Antigravity をワークスペース IDE として選択でき、Codex / Claude は補助アプリとして起動できます。
 
 ## できること
 
-- `Launch Quartet` で4つの VS Code を起動し、画面に2x2で配置
+- `Launch Quartet（一括起動）` で、各スロットに選択された VS Code / Antigravity を起動し、画面に2x2で配置
+- 各スロットで VS Code / Antigravity を切り替え、同じワークスペースを開き直し
+- Codex / Claude を補助アプリボタンまたはタスクバー Jump List から起動
+- 未検出のアプリケーションはグレーアウトし、設定で実行ファイルやコマンドを指定可能
 - 縮小モードで小さな操作バーとして常時表示
 - スロット A-D のタイトル、ワークスペース、控え Quartet を保存
 - `ディスプレイ移動` で4面表示を別ディスプレイへまとめて移動
@@ -77,8 +80,13 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `codeCommand`: VS Code の起動コマンドまたは `Code.exe` のパス
 - `launchTimeoutSeconds`: VS Code 起動待ち時間
 - `remoteReconnectTimeoutSeconds`: SSH / Remote 接続の再接続待ち時間
-- `statusRefreshIntervalMilliseconds`: VS Code ウィンドウ状態とワークスペース表示の更新間隔
+- `statusRefreshIntervalMilliseconds`: 管理中ウィンドウ状態とワークスペース表示の更新間隔
 - `inheritMainUserState`: 通常 VS Code の設定やスニペットをスロットへ引き継ぐか
+- `defaultWorkspaceApplicationId`: スロットの既定アプリ。未設定時は `vscode`
+- `applications`: VS Code、Antigravity、Codex、Claude などの起動定義と検出候補
+- `slots[].applicationId`: スロットごとの起動対象アプリ
+
+`applications[].command` に実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、一般的なインストール先から検出します。
 
 実行時データは `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。
 
@@ -113,6 +121,7 @@ dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c
 - [docs/store-listing-draft.md](docs/store-listing-draft.md): Store 掲載文案
 - [docs/msix-packaging-guide.md](docs/msix-packaging-guide.md): MSIX パッケージング手順
 - [docs/release-notes-draft.md](docs/release-notes-draft.md): リリースノート草案
+- [docs/multi-application-launcher-spec.md](docs/multi-application-launcher-spec.md): 複数アプリケーション起動対応 仕様書
 - [SUPPORT.md](SUPPORT.md): サポート案内草案
 - [assets/store/README.md](assets/store/README.md): Store 画像素材チェック
 
