@@ -461,12 +461,54 @@ public sealed class ApplicationDetectionService
             ? new[] { command }
             : new[] { command }.Concat(extensions.Select(extension => command + extension)).ToArray();
 
-        foreach (var directory in pathVariable.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var directories = pathVariable
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Concat(GetCommonCommandRoots())
+            .Where(directory => !string.IsNullOrWhiteSpace(directory))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var directory in directories)
         {
             foreach (var name in names)
             {
                 yield return Path.Combine(directory, name);
             }
+        }
+    }
+
+    private static IEnumerable<string> GetCommonCommandRoots()
+    {
+        var npmPrefix = Environment.GetEnvironmentVariable("NPM_CONFIG_PREFIX");
+        if (!string.IsNullOrWhiteSpace(npmPrefix))
+        {
+            yield return npmPrefix;
+        }
+
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (!string.IsNullOrWhiteSpace(appData))
+        {
+            yield return Path.Combine(appData, "npm");
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData))
+        {
+            yield return Path.Combine(localAppData, "npm");
+            yield return Path.Combine(localAppData, "pnpm");
+            yield return Path.Combine(localAppData, "Volta", "bin");
+        }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            // Claude Code's Windows installer can place the launcher here instead of npm's shim directory.
+            yield return Path.Combine(userProfile, ".local", "bin");
+        }
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (!string.IsNullOrWhiteSpace(programFiles))
+        {
+            yield return Path.Combine(programFiles, "nodejs");
         }
     }
 
