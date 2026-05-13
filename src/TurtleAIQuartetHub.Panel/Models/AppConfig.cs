@@ -30,9 +30,9 @@ public sealed class AppConfig
 
     public string StateDirectory { get; set; } = GetDefaultStateDirectory();
 
-    public int LaunchTimeoutSeconds { get; set; } = 40;
+    public int LaunchTimeoutSeconds { get; set; } = 12;
 
-    public int RemoteReconnectTimeoutSeconds { get; set; } = 15;
+    public int RemoteReconnectTimeoutSeconds { get; set; } = 5;
 
     public int StatusRefreshIntervalMilliseconds { get; set; } = 1000;
 
@@ -74,8 +74,8 @@ public sealed class AppConfig
         StateDirectory = string.IsNullOrWhiteSpace(StateDirectory)
             ? GetDefaultStateDirectory()
             : Environment.ExpandEnvironmentVariables(StateDirectory.Trim());
-        LaunchTimeoutSeconds = Math.Clamp(LaunchTimeoutSeconds, 5, 120);
-        RemoteReconnectTimeoutSeconds = Math.Clamp(RemoteReconnectTimeoutSeconds, 1, LaunchTimeoutSeconds);
+        LaunchTimeoutSeconds = Math.Clamp(LaunchTimeoutSeconds, 3, 30);
+        RemoteReconnectTimeoutSeconds = Math.Clamp(RemoteReconnectTimeoutSeconds, 1, Math.Min(LaunchTimeoutSeconds, 8));
         StatusRefreshIntervalMilliseconds = Math.Clamp(StatusRefreshIntervalMilliseconds, 250, 5000);
         DefaultWorkspaceApplicationId = NormalizeApplicationId(DefaultWorkspaceApplicationId, VsCodeApplicationId);
         Applications = NormalizeApplications(Applications, CodeCommand);
@@ -292,7 +292,11 @@ public sealed class AppConfig
             VsCodeApplicationId => 0,
             "antigravity" => 1,
             "codex" => 2,
-            "claude" => 3,
+            "github-copilot" => 3,
+            "gemini" => 4,
+            "claude" => 5,
+            "codex-app" => 6,
+            "claude-app" => 7,
             _ => 100
         };
     }
@@ -338,6 +342,74 @@ public sealed class AppConfig
             new()
             {
                 Id = "codex",
+                DisplayName = "Codex CLI",
+                ShortName = "Codex",
+                Kind = ApplicationKind.WorkspaceCli,
+                Command = "codex",
+                Arguments = [],
+                SupportsMultipleWindows = false,
+                Detection = new ApplicationDetectionConfig
+                {
+                    Commands = ["codex"],
+                    ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+                    StartMenuNames = [],
+                    AppPathNames = []
+                }
+            },
+            new()
+            {
+                Id = "github-copilot",
+                DisplayName = "GitHub Copilot CLI",
+                ShortName = "Copilot",
+                Kind = ApplicationKind.WorkspaceCli,
+                Command = "copilot",
+                Arguments = [],
+                SupportsMultipleWindows = false,
+                Detection = new ApplicationDetectionConfig
+                {
+                    Commands = ["copilot"],
+                    ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+                    StartMenuNames = [],
+                    AppPathNames = []
+                }
+            },
+            new()
+            {
+                Id = "gemini",
+                DisplayName = "Gemini CLI",
+                ShortName = "Gemini",
+                Kind = ApplicationKind.WorkspaceCli,
+                Command = "gemini",
+                Arguments = [],
+                SupportsMultipleWindows = false,
+                Detection = new ApplicationDetectionConfig
+                {
+                    Commands = ["gemini"],
+                    ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+                    StartMenuNames = [],
+                    AppPathNames = []
+                }
+            },
+            new()
+            {
+                Id = "claude",
+                DisplayName = "Claude CLI",
+                ShortName = "Claude",
+                Kind = ApplicationKind.WorkspaceCli,
+                Command = "claude",
+                Arguments = [],
+                SupportsMultipleWindows = false,
+                Detection = new ApplicationDetectionConfig
+                {
+                    Commands = ["claude"],
+                    ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+                    StartMenuNames = [],
+                    AppPathNames = []
+                }
+            },
+            new()
+            {
+                Id = "codex-app",
                 DisplayName = "Codex",
                 ShortName = "Codex",
                 Kind = ApplicationKind.SingleWindowAgent,
@@ -354,7 +426,7 @@ public sealed class AppConfig
             },
             new()
             {
-                Id = "claude",
+                Id = "claude-app",
                 DisplayName = "Claude",
                 ShortName = "Claude",
                 Kind = ApplicationKind.SingleWindowAgent,

@@ -3,6 +3,7 @@ namespace TurtleAIQuartetHub.Panel.Models;
 public enum ApplicationKind
 {
     WorkspaceIde,
+    WorkspaceCli,
     SingleWindowAgent
 }
 

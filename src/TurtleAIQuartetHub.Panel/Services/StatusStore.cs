@@ -40,7 +40,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         Config = config;
         var applicationDetectionService = new ApplicationDetectionService();
         Applications = new ObservableCollection<LauncherApplication>(applicationDetectionService.Detect(config));
-        WorkspaceApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsWorkspaceIde));
+        WorkspaceApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsWorkspaceApplication));
         AuxiliaryApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsSingleWindowAgent));
         Slots = new ObservableCollection<WindowSlot>(config.Slots.Select(slot => new WindowSlot(slot)));
         StoredPanels = new ObservableCollection<StoredPanelSlot>(
@@ -108,7 +108,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
     public string LaunchButtonText => "Launch Quartet（一括起動）";
 
-    public string LaunchButtonToolTip => "各パネルで選択されている VS Code / Antigravity で未起動のスロットを一括起動します。";
+    public string LaunchButtonToolTip => "各パネルで選択されている VS Code / Antigravity / CLI で未起動のスロットを一括起動します。";
 
     public bool CanLaunchSelectedWorkspaceApplication => SelectedWorkspaceApplication?.IsAvailable == true;
 
@@ -159,7 +159,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     public LauncherApplication? FindAvailableWorkspaceApplication(string? applicationId)
     {
         var application = FindApplication(applicationId);
-        if (application is { IsWorkspaceIde: true, IsAvailable: true })
+        if (application is { IsWorkspaceApplication: true, IsAvailable: true })
         {
             return application;
         }
@@ -171,7 +171,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     public bool SelectWorkspaceApplication(string? applicationId)
     {
         var application = FindApplication(applicationId);
-        if (application is null || !application.IsWorkspaceIde)
+        if (application is null || !application.IsWorkspaceApplication)
         {
             application = WorkspaceApplications.FirstOrDefault(app => string.Equals(app.Id, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase))
                 ?? WorkspaceApplications.FirstOrDefault();
@@ -229,6 +229,26 @@ public sealed class StatusStore : INotifyPropertyChanged
         slot.IsAntigravityAvailable = antigravity?.IsAvailable == true;
         slot.VsCodeApplicationToolTip = vsCode?.ToolTip ?? "VS Code が検出できません。";
         slot.AntigravityApplicationToolTip = antigravity?.ToolTip ?? "Antigravity が検出できません。";
+
+        slot.WorkspaceApplicationOptions.Clear();
+        slot.IdeApplicationOptions.Clear();
+        slot.CliApplicationOptions.Clear();
+        foreach (var workspaceApplication in WorkspaceApplications)
+        {
+            var option = new SlotApplicationOption(
+                slot,
+                workspaceApplication,
+                string.Equals(workspaceApplication.Id, slot.ApplicationId, StringComparison.OrdinalIgnoreCase));
+            slot.WorkspaceApplicationOptions.Add(option);
+            if (workspaceApplication.IsWorkspaceIde)
+            {
+                slot.IdeApplicationOptions.Add(option);
+            }
+            else if (workspaceApplication.IsWorkspaceCli)
+            {
+                slot.CliApplicationOptions.Add(option);
+            }
+        }
     }
 
     public void ApplyApplicationMetadata(StoredPanelSlot storedPanel)
@@ -261,10 +281,20 @@ public sealed class StatusStore : INotifyPropertyChanged
         slot.WindowStatus = SlotWindowStatus.Ready;
         slot.WindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
 
+        var workspacePath = !string.IsNullOrWhiteSpace(slot.SavedWorkspacePath)
+            ? slot.SavedWorkspacePath
+            : slot.Path;
+        if (!string.IsNullOrWhiteSpace(workspacePath))
+        {
+            slot.Path = workspacePath;
+            slot.SavedWorkspacePath = workspacePath;
+            slot.SavedWorkspaceConfirmed = true;
+        }
+
         if (ShouldAutoAssignWorkspaceTitle(slot))
         {
-            var preferredTitle = !string.IsNullOrWhiteSpace(slot.Path)
-                ? GetBaseTitleFromWorkspacePath(slot.Path)
+            var preferredTitle = !string.IsNullOrWhiteSpace(workspacePath)
+                ? GetBaseTitleFromWorkspacePath(workspacePath)
                 : $"スロット{slot.Name}";
             slot.PanelTitle = MakeUniquePanelTitle(preferredTitle, slot);
         }
@@ -276,6 +306,26 @@ public sealed class StatusStore : INotifyPropertyChanged
     {
         _workspaceRefreshTimestamps.Remove(slot.Name);
         slot.ClearWindow();
+        SavePanelStates();
+    }
+
+    public void ClearSlotPanelInfo(WindowSlot slot)
+    {
+        _workspaceRefreshTimestamps.Remove(slot.Name);
+        _suppressPersistence = true;
+
+        try
+        {
+            slot.ClearAssignedPanel();
+            slot.ClearWindow();
+            slot.ApplicationId = Config.DefaultWorkspaceApplicationId;
+            ApplyApplicationMetadata(slot);
+        }
+        finally
+        {
+            _suppressPersistence = false;
+        }
+
         SavePanelStates();
     }
 
@@ -348,8 +398,6 @@ public sealed class StatusStore : INotifyPropertyChanged
         if (IsVsCodeApplication(slot.ApplicationId))
         {
             slot.CurrentWorkspacePath = string.Empty;
-            slot.SavedWorkspaceConfirmed = false;
-            slot.SavedWorkspacePath = string.Empty;
         }
     }
 
@@ -712,8 +760,20 @@ public sealed class StatusStore : INotifyPropertyChanged
 
                     if (result.WorkspaceRefreshedAt.HasValue)
                     {
-                        slot.CurrentWorkspacePath = result.CurrentWorkspacePath ?? string.Empty;
+                        var workspacePath = result.CurrentWorkspacePath ?? string.Empty;
+                        slot.CurrentWorkspacePath = workspacePath;
                         _workspaceRefreshTimestamps[slot.Name] = result.WorkspaceRefreshedAt.Value;
+                        if (!string.IsNullOrWhiteSpace(workspacePath))
+                        {
+                            slot.Path = workspacePath;
+                            slot.SavedWorkspacePath = workspacePath;
+                            slot.SavedWorkspaceConfirmed = true;
+
+                            if (ShouldAutoAssignWorkspaceTitle(slot))
+                            {
+                                slot.PanelTitle = MakeUniquePanelTitle(GetBaseTitleFromWorkspacePath(workspacePath), slot);
+                            }
+                        }
                     }
 
                     break;
@@ -861,6 +921,14 @@ public sealed class StatusStore : INotifyPropertyChanged
 
             slot.SavedWorkspaceConfirmed = state.SavedWorkspaceConfirmed;
             slot.PreferredLayout = state.PreferredLayout ?? VscodeLayoutPreference.Empty;
+
+            var restoredWorkspacePath = !string.IsNullOrWhiteSpace(slot.SavedWorkspacePath)
+                ? slot.SavedWorkspacePath
+                : slot.Path;
+            if (!string.IsNullOrWhiteSpace(restoredWorkspacePath) && ShouldAutoAssignWorkspaceTitle(slot))
+            {
+                slot.PanelTitle = MakeUniquePanelTitle(GetBaseTitleFromWorkspacePath(restoredWorkspacePath), slot);
+            }
 
             if (state.WindowHandle != 0)
             {

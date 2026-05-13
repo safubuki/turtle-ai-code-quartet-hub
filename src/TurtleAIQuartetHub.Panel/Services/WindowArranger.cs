@@ -18,6 +18,7 @@ public sealed class WindowArranger
     private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
+    private const uint GW_HWNDPREV = 3;
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
@@ -160,6 +161,16 @@ public sealed class WindowArranger
         var demoted = SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
         var sentToBack = SetWindowPos(windowHandle, HWND_BOTTOM, 0, 0, 0, 0, LayerFlags);
         return demoted || sentToBack;
+    }
+
+    public bool ReleaseTopmost(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
     }
 
     public int GetMonitorCount()
@@ -341,12 +352,48 @@ public sealed class WindowArranger
             ArrangeFlags);
     }
 
+    public bool IsCoveredByOtherWindow(IntPtr targetHandle, IReadOnlySet<IntPtr> ignoredHandles)
+    {
+        if (targetHandle == IntPtr.Zero
+            || !IsWindow(targetHandle)
+            || !GetWindowRect(targetHandle, out var targetRect))
+        {
+            return false;
+        }
+
+        var current = GetWindow(targetHandle, GW_HWNDPREV);
+        while (current != IntPtr.Zero)
+        {
+            if (!ignoredHandles.Contains(current)
+                && IsWindowVisible(current)
+                && !IsIconic(current)
+                && GetWindowRect(current, out var rect)
+                && Intersects(targetRect, rect))
+            {
+                return true;
+            }
+
+            current = GetWindow(current, GW_HWNDPREV);
+        }
+
+        return false;
+    }
+
     private static void RestoreForResize(IntPtr windowHandle)
     {
         if (IsIconic(windowHandle) || IsZoomed(windowHandle))
         {
             ShowWindow(windowHandle, SW_RESTORE);
         }
+    }
+
+    private static bool Intersects(RECT a, RECT b)
+    {
+        var left = Math.Max(a.Left, b.Left);
+        var top = Math.Max(a.Top, b.Top);
+        var right = Math.Min(a.Right, b.Right);
+        var bottom = Math.Min(a.Bottom, b.Bottom);
+        return right - left >= 24 && bottom - top >= 24;
     }
 
     private static List<MonitorWorkArea> GetOrderedMonitors()
@@ -427,6 +474,9 @@ public sealed class WindowArranger
     private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -472,6 +522,9 @@ public sealed class WindowArranger
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
 

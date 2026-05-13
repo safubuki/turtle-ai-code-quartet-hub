@@ -5,8 +5,8 @@
   "useDedicatedUserDataDirs": true,
   "inheritMainUserState": true,
   "reopenLastWorkspace": true,
-  "launchTimeoutSeconds": 40,
-  "remoteReconnectTimeoutSeconds": 15,
+  "launchTimeoutSeconds": 12,
+  "remoteReconnectTimeoutSeconds": 5,
   "statusRefreshIntervalMilliseconds": 1000,
   "defaultWorkspaceApplicationId": "vscode",
   "applications": [
@@ -42,6 +42,66 @@
     },
     {
       "id": "codex",
+      "displayName": "Codex CLI",
+      "shortName": "Codex",
+      "kind": "WorkspaceCli",
+      "command": "codex",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": ["codex"],
+        "processNames": ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+        "startMenuNames": [],
+        "appPathNames": []
+      }
+    },
+    {
+      "id": "github-copilot",
+      "displayName": "GitHub Copilot CLI",
+      "shortName": "Copilot",
+      "kind": "WorkspaceCli",
+      "command": "copilot",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": ["copilot"],
+        "processNames": ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+        "startMenuNames": [],
+        "appPathNames": []
+      }
+    },
+    {
+      "id": "gemini",
+      "displayName": "Gemini CLI",
+      "shortName": "Gemini",
+      "kind": "WorkspaceCli",
+      "command": "gemini",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": ["gemini"],
+        "processNames": ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+        "startMenuNames": [],
+        "appPathNames": []
+      }
+    },
+    {
+      "id": "claude",
+      "displayName": "Claude CLI",
+      "shortName": "Claude",
+      "kind": "WorkspaceCli",
+      "command": "claude",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": ["claude"],
+        "processNames": ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+        "startMenuNames": [],
+        "appPathNames": []
+      }
+    },
+    {
+      "id": "codex-app",
       "displayName": "Codex",
       "shortName": "Codex",
       "kind": "SingleWindowAgent",
@@ -56,7 +116,7 @@
       }
     },
     {
-      "id": "claude",
+      "id": "claude-app",
       "displayName": "Claude",
       "shortName": "Claude",
       "kind": "SingleWindowAgent",
