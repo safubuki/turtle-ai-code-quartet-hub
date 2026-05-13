@@ -38,6 +38,11 @@ public sealed class ApplicationLauncher
             return await _vscodeLauncher.LaunchMissingAsync(slots, config, cancellationToken);
         }
 
+        if (application.IsWorkspaceCli)
+        {
+            return await LaunchWorkspaceCliApplicationAsync(slots, config, application, cancellationToken);
+        }
+
         return await LaunchGenericWorkspaceApplicationAsync(slots, config, application, cancellationToken);
     }
 
@@ -100,11 +105,64 @@ public sealed class ApplicationLauncher
             var launchPath = GetLaunchPath(slot, config);
             var arguments = BuildArguments(application, slot, launchPath);
             DiagnosticLog.Write($"Starting {application.DisplayName} for slot {slot.Name}: {application.ResolvedCommand} {string.Join(" ", arguments)}");
-            var processId = StartApplication(application, arguments);
-            var window = await WaitForNewApplicationWindowAsync(application, knownHandles, processId, timeout, cancellationToken);
+            _ = StartApplication(application, arguments);
+            var window = await WaitForNewApplicationWindowAsync(application, knownHandles, expectedProcessId: null, timeout, cancellationToken);
             if (window is null)
             {
                 DiagnosticLog.Write($"No new {application.DisplayName} window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
+                slot.WindowStatus = SlotWindowStatus.Missing;
+                continue;
+            }
+
+            knownHandles.Add(window.Handle);
+            assignments.Add(new WindowAssignment(slot, window));
+        }
+
+        return assignments;
+    }
+
+    private async Task<IReadOnlyList<WindowAssignment>> LaunchWorkspaceCliApplicationAsync(
+        IReadOnlyList<WindowSlot> slots,
+        AppConfig config,
+        LauncherApplication application,
+        CancellationToken cancellationToken)
+    {
+        if (!application.IsAvailable)
+        {
+            return [];
+        }
+
+        var launchTargets = slots
+            .Where(slot => slot.WindowHandle == IntPtr.Zero || !_windowEnumerator.IsLiveWindow(slot.WindowHandle))
+            .Take(4)
+            .ToList();
+        if (launchTargets.Count == 0)
+        {
+            return [];
+        }
+
+        foreach (var slot in launchTargets)
+        {
+            slot.WindowStatus = SlotWindowStatus.Launching;
+        }
+
+        var knownHandles = GetKnownHandles(application);
+        var assignments = new List<WindowAssignment>();
+        var timeout = TimeSpan.FromSeconds(config.LaunchTimeoutSeconds);
+
+        foreach (var slot in launchTargets)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            knownHandles.UnionWith(GetKnownHandles(application));
+
+            var launchPath = GetLaunchPath(slot, config);
+            var workingDirectory = GetWorkingDirectory(launchPath);
+            DiagnosticLog.Write($"Starting {application.DisplayName} for slot {slot.Name}: cwd={workingDirectory}");
+            _ = StartCliApplication(application, slot, workingDirectory, launchPath);
+            var window = await WaitForNewApplicationWindowAsync(application, knownHandles, expectedProcessId: null, timeout, cancellationToken);
+            if (window is null)
+            {
+                DiagnosticLog.Write($"No new {application.DisplayName} terminal window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
@@ -139,7 +197,10 @@ public sealed class ApplicationLauncher
             var window = _windowEnumerator
                 .GetApplicationWindows(application.ProcessNames)
                 .Where(candidate => !knownHandles.Contains(candidate.Handle))
-                .Where(candidate => !expectedProcessId.HasValue || candidate.ProcessId == expectedProcessId.Value || !application.SupportsMultipleWindows)
+                .Where(candidate => !expectedProcessId.HasValue
+                    || candidate.ProcessId == expectedProcessId.Value
+                    || !application.SupportsMultipleWindows
+                    || application.IsWorkspaceCli)
                 .OrderBy(candidate => candidate.ProcessId)
                 .FirstOrDefault();
             if (window is not null)
@@ -170,6 +231,32 @@ public sealed class ApplicationLauncher
         }
 
         var startInfo = CreateStartInfo(command, arguments);
+        using var process = Process.Start(startInfo);
+        return process is null ? null : (uint)process.Id;
+    }
+
+    private static uint? StartCliApplication(
+        LauncherApplication application,
+        WindowSlot slot,
+        string workingDirectory,
+        string? launchPath)
+    {
+        var commandLine = BuildCliCommandLine(application, slot, launchPath);
+        var title = EscapeCmdMeta($"Turtle {slot.Name} - {application.ShortName}");
+        var cdCommand = $"cd /d {QuoteForCmdArgument(workingDirectory)}";
+        var initialCommand = string.IsNullOrWhiteSpace(commandLine)
+            ? $"{cdCommand} && title {title}"
+            : $"{cdCommand} && title {title} && {commandLine}";
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+            Arguments = $"/d /s /k \"{initialCommand}\"",
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Normal
+        };
+
         using var process = Process.Start(startInfo);
         return process is null ? null : (uint)process.Id;
     }
@@ -266,6 +353,44 @@ public sealed class ApplicationLauncher
         return arguments;
     }
 
+    private static string BuildCliCommandLine(LauncherApplication application, WindowSlot slot, string? launchPath)
+    {
+        var configuredCommand = application.Command.Trim();
+        var command = !string.IsNullOrWhiteSpace(configuredCommand)
+            ? configuredCommand
+            : application.ResolvedCommand.Trim();
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return string.Empty;
+        }
+
+        var commandText = LooksLikeExplicitPath(command)
+            ? QuoteForCmdArgument(command)
+            : command;
+        var arguments = BuildConfiguredArguments(application, slot, launchPath)
+            .Select(QuoteForCmdArgument);
+        return string.Join(" ", new[] { commandText }.Concat(arguments));
+    }
+
+    private static List<string> BuildConfiguredArguments(LauncherApplication application, WindowSlot slot, string? launchPath)
+    {
+        var arguments = new List<string>();
+        foreach (var template in application.Arguments)
+        {
+            var value = template
+                .Replace("{workspacePath}", launchPath ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Replace("{slotName}", slot.Name, StringComparison.OrdinalIgnoreCase)
+                .Trim();
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                arguments.Add(value);
+            }
+        }
+
+        return arguments;
+    }
+
     private static string? GetLaunchPath(WindowSlot slot, AppConfig config)
     {
         if (config.ReopenLastWorkspace
@@ -278,6 +403,31 @@ public sealed class ApplicationLauncher
         return slot.Path;
     }
 
+    private static string GetWorkingDirectory(string? launchPath)
+    {
+        if (!string.IsNullOrWhiteSpace(launchPath))
+        {
+            var normalizedPath = launchPath.Trim();
+            if (Directory.Exists(normalizedPath))
+            {
+                return normalizedPath;
+            }
+
+            if (File.Exists(normalizedPath))
+            {
+                return Path.GetDirectoryName(normalizedPath) ?? GetDefaultWorkingDirectory();
+            }
+        }
+
+        return GetDefaultWorkingDirectory();
+    }
+
+    private static string GetDefaultWorkingDirectory()
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return string.IsNullOrWhiteSpace(userProfile) ? Environment.CurrentDirectory : userProfile;
+    }
+
     private static string Quote(string value)
     {
         return value.Contains(' ') ? $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\"" : value;
@@ -286,6 +436,31 @@ public sealed class ApplicationLauncher
     private static string QuoteForCommandShell(string value)
     {
         return $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
+    }
+
+    private static string QuoteForCmdArgument(string value)
+    {
+        return $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
+
+    private static string EscapeCmdMeta(string value)
+    {
+        return value
+            .Replace("^", "^^", StringComparison.Ordinal)
+            .Replace("&", "^&", StringComparison.Ordinal)
+            .Replace("|", "^|", StringComparison.Ordinal)
+            .Replace("<", "^<", StringComparison.Ordinal)
+            .Replace(">", "^>", StringComparison.Ordinal)
+            .Replace("(", "^(", StringComparison.Ordinal)
+            .Replace(")", "^)", StringComparison.Ordinal)
+            .Replace("\"", "'", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeExplicitPath(string command)
+    {
+        return Path.IsPathRooted(command)
+            || command.Contains(Path.DirectorySeparatorChar)
+            || command.Contains(Path.AltDirectorySeparatorChar);
     }
 
     private static bool IsWindowsAppsPath(string path)

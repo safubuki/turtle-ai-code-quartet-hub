@@ -44,6 +44,10 @@ public sealed class LauncherApplication : INotifyPropertyChanged
 
     public bool IsWorkspaceIde => Kind == ApplicationKind.WorkspaceIde;
 
+    public bool IsWorkspaceCli => Kind == ApplicationKind.WorkspaceCli;
+
+    public bool IsWorkspaceApplication => IsWorkspaceIde || IsWorkspaceCli;
+
     public bool IsSingleWindowAgent => Kind == ApplicationKind.SingleWindowAgent;
 
     public IReadOnlyList<string> ProcessNames => Detection.ProcessNames;

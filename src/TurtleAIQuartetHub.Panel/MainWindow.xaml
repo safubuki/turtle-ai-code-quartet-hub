@@ -4,10 +4,10 @@
         xmlns:models="clr-namespace:TurtleAIQuartetHub.Panel.Models"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle AI Code Quartet Hub"
-        Width="600"
-        Height="438"
-        MinWidth="524"
-        MinHeight="402"
+        Width="650"
+        Height="660"
+        MinWidth="560"
+        MinHeight="560"
         Background="#101211"
         Foreground="#EEF4EF"
         FontFamily="Segoe UI"
@@ -152,18 +152,41 @@
     </Style>
 
     <Style x:Key="ApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
-      <Setter Property="MinWidth" Value="72" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="5,2" />
       <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="ToolTip" Value="{Binding ToolTip}" />
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+      <Setter Property="Background" Value="#17201B" />
+      <Setter Property="BorderBrush" Value="#344A3E" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding IsSelected}" Value="True">
-          <Setter Property="Foreground" Value="#06120C" />
-          <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-          <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+          <Setter Property="Foreground" Value="#E9FFF2" />
+          <Setter Property="Background" Value="#263F31" />
+          <Setter Property="BorderBrush" Value="#59D58E" />
           <Setter Property="FontWeight" Value="SemiBold" />
         </DataTrigger>
       </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ApplicationGroupBorderStyle" TargetType="Border">
+      <Setter Property="Background" Value="#121816" />
+      <Setter Property="BorderBrush" Value="#2B3D34" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="6,9,6,5" />
+    </Style>
+
+    <Style x:Key="ApplicationGroupLabelStyle" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#A9B7B0" />
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="FontSize" Value="9" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="8,0,0,0" />
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -218,6 +241,30 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding HasContent}" Value="False">
           <Setter Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SlotClearInfoButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
+      <Setter Property="MinWidth" Value="24" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="#C9D6CE" />
+      <Setter Property="Background" Value="#17201B" />
+      <Setter Property="BorderBrush" Value="#344A3E" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="ToolTip" Value="このパネル情報をクリア" />
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="#FFE7E2" />
+          <Setter Property="Background" Value="#33201D" />
+          <Setter Property="BorderBrush" Value="#A65348" />
+        </Trigger>
+        <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
+          <Setter Property="IsEnabled" Value="False" />
+          <Setter Property="Opacity" Value="0.4" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -597,6 +644,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <Border Width="28"
                       Height="28"
@@ -621,58 +669,86 @@
                            Margin="0,2,0,0"
                            Foreground="{StaticResource MutedTextBrush}" />
               </StackPanel>
+              <Button Grid.Column="3"
+                      Content="&#xE74D;"
+                      Tag="{Binding}"
+                      Click="ClearSlotPanelInfoButton_Click"
+                      Style="{StaticResource SlotClearInfoButtonStyle}"
+                      VerticalAlignment="Top"
+                      Margin="8,0,0,0" />
             </Grid>
 
             <Grid Grid.Row="1"
-                  Margin="0,6,0,0">
+                  Margin="0,7,0,0">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="98" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
-              <Button Grid.Column="0"
-                      Content="VS Code"
-                      Tag="{Binding}"
-                      CommandParameter="vscode"
-                      Click="SlotApplicationSwitchButton_Click"
-                      ToolTip="{Binding VsCodeApplicationToolTip}"
-                      ToolTipService.ShowOnDisabled="True"
-                      Margin="0,0,3,0">
-                <Button.Style>
-                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                    <Setter Property="IsEnabled" Value="{Binding IsVsCodeAvailable}" />
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding IsVsCodeApplication}" Value="True">
-                        <Setter Property="Foreground" Value="#A8EDD0" />
-                        <Setter Property="Background" Value="#0E2018" />
-                        <Setter Property="BorderBrush" Value="#357A52" />
-                        <Setter Property="FontWeight" Value="SemiBold" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </Button.Style>
-              </Button>
-              <Button Grid.Column="1"
-                      Content="Antigravity"
-                      Tag="{Binding}"
-                      CommandParameter="antigravity"
-                      Click="SlotApplicationSwitchButton_Click"
-                      ToolTip="{Binding AntigravityApplicationToolTip}"
-                      ToolTipService.ShowOnDisabled="True"
-                      Margin="3,0,0,0">
-                <Button.Style>
-                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                    <Setter Property="IsEnabled" Value="{Binding IsAntigravityAvailable}" />
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding IsAntigravityApplication}" Value="True">
-                        <Setter Property="Foreground" Value="#A8EDD0" />
-                        <Setter Property="Background" Value="#0E2018" />
-                        <Setter Property="BorderBrush" Value="#357A52" />
-                        <Setter Property="FontWeight" Value="SemiBold" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </Button.Style>
-              </Button>
+
+              <Grid Grid.Column="0"
+                    Margin="0,0,6,0">
+                <Border Style="{StaticResource ApplicationGroupBorderStyle}">
+                  <ItemsControl ItemsSource="{Binding IdeApplicationOptions}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                      <Style TargetType="ContentPresenter">
+                        <Setter Property="Margin" Value="0,0,0,4" />
+                      </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="{x:Type models:SlotApplicationOption}">
+                        <Button Tag="{Binding}"
+                                Click="SlotApplicationSwitchButton_Click"
+                                ToolTip="{Binding ToolTip}"
+                                ToolTipService.ShowOnDisabled="True"
+                                Style="{StaticResource ApplicationSelectorButtonStyle}">
+                          <TextBlock Text="{Binding ShortName}"
+                                     TextTrimming="CharacterEllipsis"
+                                     TextAlignment="Center" />
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+                <TextBlock Text="IDE"
+                           Style="{StaticResource ApplicationGroupLabelStyle}" />
+              </Grid>
+
+              <Grid Grid.Column="1">
+                <Border Style="{StaticResource ApplicationGroupBorderStyle}">
+                  <ItemsControl ItemsSource="{Binding CliApplicationOptions}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <UniformGrid Columns="2" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                      <Style TargetType="ContentPresenter">
+                        <Setter Property="Margin" Value="2" />
+                      </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="{x:Type models:SlotApplicationOption}">
+                        <Button Tag="{Binding}"
+                                Click="SlotApplicationSwitchButton_Click"
+                                ToolTip="{Binding ToolTip}"
+                                ToolTipService.ShowOnDisabled="True"
+                                Style="{StaticResource ApplicationSelectorButtonStyle}">
+                          <TextBlock Text="{Binding ShortName}"
+                                     TextTrimming="CharacterEllipsis"
+                                     TextAlignment="Center" />
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+                <TextBlock Text="CLI"
+                           Style="{StaticResource ApplicationGroupLabelStyle}" />
+              </Grid>
             </Grid>
 
             <Grid Grid.Row="2"
@@ -687,7 +763,7 @@
                           VerticalAlignment="Center">
                 <Button Tag="{Binding}"
                         Click="StoreSlotButton_Click"
-                        Margin="8,0,6,0">
+                        Margin="0,0,6,0">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
                       <Setter Property="Content" Value="控えへ" />
@@ -916,7 +992,7 @@
   <Grid x:Name="RootLayoutGrid" Background="{StaticResource PanelBackgroundBrush}" Margin="8">
     <Grid.RowDefinitions>
       <RowDefinition Height="26" />
-      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
@@ -949,24 +1025,33 @@
       </StackPanel>
     </Grid>
 
-    <UniformGrid x:Name="StandardSlotsGrid" Grid.Row="1" Columns="2" Rows="2" VerticalAlignment="Top">
-      <ContentControl
-                      Content="{Binding Slots[0]}"
-                      ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="5" />
-      <ContentControl
-                      Content="{Binding Slots[1]}"
-                      ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="5" />
-      <ContentControl
-                      Content="{Binding Slots[2]}"
-                      ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="5" />
-      <ContentControl
-                      Content="{Binding Slots[3]}"
-                      ContentTemplate="{StaticResource SlotCardTemplate}"
-                      Margin="5" />
-    </UniformGrid>
+    <ScrollViewer x:Name="StandardSlotsGrid"
+                  Grid.Row="1"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  CanContentScroll="False"
+                  Padding="0,0,4,0">
+      <UniformGrid Columns="2"
+                   Rows="2"
+                   VerticalAlignment="Top">
+        <ContentControl
+                        Content="{Binding Slots[0]}"
+                        ContentTemplate="{StaticResource SlotCardTemplate}"
+                        Margin="5" />
+        <ContentControl
+                        Content="{Binding Slots[1]}"
+                        ContentTemplate="{StaticResource SlotCardTemplate}"
+                        Margin="5" />
+        <ContentControl
+                        Content="{Binding Slots[2]}"
+                        ContentTemplate="{StaticResource SlotCardTemplate}"
+                        Margin="5" />
+        <ContentControl
+                        Content="{Binding Slots[3]}"
+                        ContentTemplate="{StaticResource SlotCardTemplate}"
+                        Margin="5" />
+      </UniformGrid>
+    </ScrollViewer>
 
     <Border x:Name="CompactBarPanel"
             Grid.Row="1"
@@ -1072,30 +1157,37 @@
       </Border>
       </Expander>
 
-      <ItemsControl x:Name="AuxiliaryApplicationPanel"
-                    ItemsSource="{Binding AuxiliaryApplications}"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Panel.ZIndex="2">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <StackPanel Orientation="Horizontal" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemContainerStyle>
-          <Style TargetType="ContentPresenter">
-            <Setter Property="Margin" Value="4,0,0,0" />
-          </Style>
-        </ItemsControl.ItemContainerStyle>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="{x:Type models:LauncherApplication}">
-            <Button Content="{Binding ShortName}"
-                    Tag="{Binding}"
-                    Click="AuxiliaryApplicationButton_Click"
-                    Style="{StaticResource AuxiliaryApplicationButtonStyle}" />
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Top"
+                  Panel.ZIndex="2">
+        <TextBlock Text="Windows"
+                   Foreground="{StaticResource MutedTextBrush}"
+                   FontSize="10"
+                   FontWeight="SemiBold"
+                   Margin="0,0,4,0" />
+        <ItemsControl x:Name="AuxiliaryApplicationPanel"
+                      ItemsSource="{Binding AuxiliaryApplications}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemContainerStyle>
+            <Style TargetType="ContentPresenter">
+              <Setter Property="Margin" Value="4,0,0,0" />
+            </Style>
+          </ItemsControl.ItemContainerStyle>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="{x:Type models:LauncherApplication}">
+              <Button Content="{Binding ShortName}"
+                      Tag="{Binding}"
+                      Click="AuxiliaryApplicationButton_Click"
+                      Style="{StaticResource AuxiliaryApplicationButtonStyle}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
     </Grid>
 
     <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,2,5,3">
@@ -1256,7 +1348,7 @@
                     BorderThickness="1"
                     CornerRadius="8">
               <StackPanel>
-                <TextBlock Text="対象の VS Code ウィンドウを終了します。"
+                <TextBlock Text="対象の管理中ウィンドウを終了します。"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextBrush}" />
                 <TextBlock Text="現在のスロット設定は閉じる前に保存されます。"

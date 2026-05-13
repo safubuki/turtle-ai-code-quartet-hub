@@ -21,6 +21,12 @@ public partial class MainWindow : Window
     private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
     private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan[] PostLaunchArrangeRetryDelays =
+    [
+        TimeSpan.FromMilliseconds(1500),
+        TimeSpan.FromMilliseconds(3000),
+        TimeSpan.FromMilliseconds(5000)
+    ];
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
     private readonly VscodeLauncher _vscodeLauncher;
@@ -46,6 +52,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _panelFrontRestoreCancellation;
     private CancellationTokenSource? _focusedSlotReassertCancellation;
     private CancellationTokenSource? _panelLocateCancellation;
+    private CancellationTokenSource? _postLaunchArrangeCancellation;
     private bool _isReassertingFocusedSlot;
     private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
@@ -169,7 +176,7 @@ public partial class MainWindow : Window
             {
                 var application = _statusStore.FindApplication(slot.ApplicationId);
                 if (application is null
-                    || !application.IsWorkspaceIde
+                    || !application.IsWorkspaceApplication
                     || !_applicationLauncher.CanLaunchWorkspaceApplication(application, _statusStore.Config))
                 {
                     unavailableSlots.Add($"{slot.Name}:{application?.DisplayName ?? slot.ApplicationId}");
@@ -218,7 +225,7 @@ public partial class MainWindow : Window
                 : string.Empty;
             if (allAssignments.Count > 0)
             {
-                ArrangeSlotsOnActiveMonitor();
+                await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
                 _statusStore.ClearFocusedSlot();
                 _statusStore.Message = $"{allAssignments.Count}個のスロットを選択アプリで起動して2x2に配置しました。{skippedMessage}";
             }
@@ -266,6 +273,7 @@ public partial class MainWindow : Window
     {
         CancelScheduledPanelFrontRestore();
         CancelScheduledFocusedSlotReassert();
+        CancelScheduledPostLaunchArrange();
         WindowState = WindowState.Minimized;
     }
 
@@ -273,6 +281,7 @@ public partial class MainWindow : Window
     {
         CancelScheduledPanelFrontRestore();
         CancelScheduledFocusedSlotReassert();
+        CancelScheduledPostLaunchArrange();
         Close();
     }
 
@@ -755,6 +764,14 @@ public partial class MainWindow : Window
 
         if (slot.IsFocused)
         {
+            if (!_areWindowsHidden && ShouldReassertFocusedSlotInsteadOfToggle(slot))
+            {
+                ReassertFocusedSlotToFront(slot);
+                _statusStore.Message = $"スロット{slot.Name}のフォーカス表示を前面に戻しました。";
+                RefreshAuxiliaryUi();
+                return;
+            }
+
             if (!_areWindowsHidden)
             {
                 CapturePreferredLayout(slot);
@@ -809,6 +826,37 @@ public partial class MainWindow : Window
 
         _statusStore.Message = $"スロット{slot.Name}の{slot.ApplicationDisplayName}ウィンドウが見つかりません。";
         RefreshAuxiliaryUi();
+    }
+
+    private bool ShouldReassertFocusedSlotInsteadOfToggle(WindowSlot slot)
+    {
+        if (slot.WindowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var ignoredHandles = _statusStore.Slots
+            .Select(item => item.WindowHandle)
+            .Where(handle => handle != IntPtr.Zero)
+            .ToHashSet();
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        if (panelHandle != IntPtr.Zero)
+        {
+            ignoredHandles.Add(panelHandle);
+        }
+
+        return _windowArranger.IsCoveredByOtherWindow(slot.WindowHandle, ignoredHandles);
+    }
+
+    private void ReassertFocusedSlotToFront(WindowSlot slot)
+    {
+        EnsurePreferredLayout(slot);
+        VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
+        SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
+        _windowArranger.FocusMaximized(slot.WindowHandle);
+        SendOtherSlotsToBack(slot);
+        _windowArranger.BringToFrontOnce(slot.WindowHandle);
+        SchedulePanelToFront();
     }
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
@@ -1002,6 +1050,36 @@ public partial class MainWindow : Window
         RefreshAuxiliaryUi();
     }
 
+    private void ClearSlotPanelInfoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot } || !slot.HasPanelContent)
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        var hadWindow = slot.WindowHandle != IntPtr.Zero;
+        if (hadWindow)
+        {
+            _windowArranger.ReleaseTopmost(slot.WindowHandle);
+        }
+
+        var slotName = slot.Name;
+        _statusStore.ClearFocusedSlot();
+        _statusStore.ClearSlotPanelInfo(slot);
+        _areWindowsHidden = _statusStore.Slots.Any(item => item.WindowHandle != IntPtr.Zero && item.IsHidden);
+        if (!_areWindowsHidden)
+        {
+            _hiddenFocusedSlot = null;
+            ArrangeSlotsOnActiveMonitor();
+        }
+
+        _statusStore.Message = hadWindow
+            ? $"スロット{slotName}のパネル情報をクリアし、既存ウィンドウは管理対象から外しました。"
+            : $"スロット{slotName}のパネル情報をクリアしました。";
+        RefreshAuxiliaryUi();
+    }
+
     private async void SlotMainActionButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isBusy)
@@ -1027,7 +1105,7 @@ public partial class MainWindow : Window
         }
 
         var application = _statusStore.FindApplication(slot.ApplicationId);
-        if (application is null || !application.IsWorkspaceIde || !EnsureWorkspaceApplicationAvailable(application))
+        if (application is null || !application.IsWorkspaceApplication || !EnsureWorkspaceApplicationAvailable(application))
         {
             return;
         }
@@ -1045,6 +1123,11 @@ public partial class MainWindow : Window
         }
 
         // 起動 / 新規: 個別にワークスペースアプリを起動
+        await LaunchSlotApplicationAsync(slot, application!);
+    }
+
+    private async Task LaunchSlotApplicationAsync(WindowSlot slot, LauncherApplication application)
+    {
         await RunBusyAsync(async () =>
         {
             if (_areWindowsHidden)
@@ -1058,7 +1141,7 @@ public partial class MainWindow : Window
                 }
             }
 
-            _statusStore.Message = $"スロット{slot.Name}の{application!.DisplayName}を起動しています...";
+            _statusStore.Message = $"スロット{slot.Name}の{application.DisplayName}を起動しています...";
             var assignments = await _applicationLauncher.LaunchMissingAsync(
                 new[] { slot },
                 _statusStore.Config,
@@ -1071,10 +1154,7 @@ public partial class MainWindow : Window
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
-            ArrangeSlotsOnActiveMonitor();
-
-            await Task.Delay(500);
-            ArrangeSlotsOnActiveMonitor();
+            await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
 
             _statusStore.Message = assignments.Count > 0
                 ? $"スロット{slot.Name}の{application.DisplayName}を起動しました。"
@@ -1089,13 +1169,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (sender is not Button { Tag: WindowSlot slot, CommandParameter: string applicationId })
+        if (sender is not Button { Tag: SlotApplicationOption option })
         {
             return;
         }
 
-        var application = _statusStore.FindApplication(applicationId);
-        if (application is null || !application.IsWorkspaceIde)
+        var slot = option.Slot;
+        var application = _statusStore.FindApplication(option.ApplicationId);
+        if (application is null || !application.IsWorkspaceApplication)
         {
             return;
         }
@@ -1108,6 +1189,12 @@ public partial class MainWindow : Window
         if (slot.WindowStatus == SlotWindowStatus.Missing && slot.WindowHandle == IntPtr.Zero)
         {
             _statusStore.SetSlotApplication(slot, application);
+            if (slot.HasPanelContent)
+            {
+                await LaunchSlotApplicationAsync(slot, application);
+                return;
+            }
+
             _statusStore.Message = $"スロット{slot.Name}の起動対象を {application.DisplayName} にしました。";
             RefreshLaunchButtonAvailability();
             RefreshAuxiliaryUi();
@@ -1125,6 +1212,11 @@ public partial class MainWindow : Window
             if (slot.WindowStatus == SlotWindowStatus.Ready && wasSameApplication)
             {
                 ToggleSlotFocus(slot);
+                return;
+            }
+
+            if (!await CloseSlotWindowForReplacementAsync(slot))
+            {
                 return;
             }
 
@@ -1164,14 +1256,49 @@ public partial class MainWindow : Window
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
-            ArrangeSlotsOnActiveMonitor();
-            await Task.Delay(500);
-            ArrangeSlotsOnActiveMonitor();
+            await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
 
             _statusStore.Message = assignments.Count > 0
                 ? $"スロット{slot.Name}を{application.DisplayName}で開きました。"
                 : $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。";
         });
+    }
+
+    private async Task<bool> CloseSlotWindowForReplacementAsync(WindowSlot slot)
+    {
+        var currentHandle = slot.WindowHandle;
+        if (currentHandle == IntPtr.Zero)
+        {
+            return true;
+        }
+
+        if (_statusStore.IsVsCodeSlot(slot))
+        {
+            _statusStore.CaptureWorkspacePath(slot);
+        }
+
+        _statusStore.ClearFocusedSlot();
+        _windowArranger.ReleaseTopmost(currentHandle);
+
+        if (_windowEnumerator.IsLiveWindow(currentHandle) && !_windowArranger.Close(currentHandle))
+        {
+            _statusStore.Message = $"スロット{slot.Name}の現在のウィンドウを閉じられませんでした。";
+            return false;
+        }
+
+        for (var attempt = 0; attempt < 12 && _windowEnumerator.IsLiveWindow(currentHandle); attempt++)
+        {
+            await Task.Delay(100);
+        }
+
+        _statusStore.ClearWindow(slot);
+        _areWindowsHidden = _statusStore.Slots.Any(item => item.WindowHandle != IntPtr.Zero && item.IsHidden);
+        if (!_areWindowsHidden)
+        {
+            _hiddenFocusedSlot = null;
+        }
+
+        return true;
     }
 
     private void StoreSlotButton_Click(object sender, RoutedEventArgs e)
@@ -1236,7 +1363,7 @@ public partial class MainWindow : Window
         }
 
         var application = _statusStore.FindApplication(storedPanel.ApplicationId);
-        if (application is null || !application.IsWorkspaceIde || !EnsureWorkspaceApplicationAvailable(application))
+        if (application is null || !application.IsWorkspaceApplication || !EnsureWorkspaceApplicationAvailable(application))
         {
             return;
         }
@@ -1286,11 +1413,8 @@ public partial class MainWindow : Window
             }
             else
             {
-                ArrangeSlotsOnActiveMonitor();
-
                 // 起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
-                await Task.Delay(500);
-                ArrangeSlotsOnActiveMonitor();
+                await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
             }
 
             _statusStore.Message = assignments.Count > 0
@@ -1400,6 +1524,70 @@ public partial class MainWindow : Window
         ApplyManagedWindowLayers(bringPanelAfterArrange);
         RefreshAuxiliaryUi();
         return arranged;
+    }
+
+    private async Task<int> ArrangeSlotsOnActiveMonitorWithSettlingAsync(bool bringPanelAfterArrange = true)
+    {
+        var arranged = ArrangeSlotsOnActiveMonitor(bringPanelAfterArrange);
+        foreach (var delay in new[] { TimeSpan.FromMilliseconds(350), TimeSpan.FromMilliseconds(900) })
+        {
+            await Task.Delay(delay);
+            arranged = ArrangeSlotsOnActiveMonitor(bringPanelAfterArrange);
+        }
+
+        SchedulePostLaunchArrangeRetries(bringPanelAfterArrange);
+        return arranged;
+    }
+
+    private void SchedulePostLaunchArrangeRetries(bool bringPanelAfterArrange)
+    {
+        CancelScheduledPostLaunchArrange();
+        if (_areWindowsHidden || WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _postLaunchArrangeCancellation = cancellation;
+        _ = ReapplyArrangementAfterLaunchAsync(bringPanelAfterArrange, cancellation.Token);
+    }
+
+    private void CancelScheduledPostLaunchArrange()
+    {
+        _postLaunchArrangeCancellation?.Cancel();
+        _postLaunchArrangeCancellation?.Dispose();
+        _postLaunchArrangeCancellation = null;
+    }
+
+    private async Task ReapplyArrangementAfterLaunchAsync(bool bringPanelAfterArrange, CancellationToken cancellationToken)
+    {
+        try
+        {
+            foreach (var delay in PostLaunchArrangeRetryDelays)
+            {
+                await Task.Delay(delay, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (cancellationToken.IsCancellationRequested
+                        || _areWindowsHidden
+                        || WindowState == WindowState.Minimized
+                        || _statusStore.Slots.Any(slot => slot.IsFocused))
+                    {
+                        return;
+                    }
+
+                    ArrangeSlotsOnActiveMonitor(bringPanelAfterArrange);
+                }, DispatcherPriority.Background);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshAuxiliaryUiAfterArrange = true)
@@ -1810,6 +1998,7 @@ public partial class MainWindow : Window
         {
             CancelScheduledPanelFrontRestore();
             CancelScheduledFocusedSlotReassert();
+            CancelScheduledPostLaunchArrange();
             return;
         }
 
@@ -2322,6 +2511,7 @@ public partial class MainWindow : Window
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         CancelScheduledFocusedSlotReassert();
+        CancelScheduledPostLaunchArrange();
 
         // 非表示中にアプリが終了される場合、管理中ウィンドウを復元してから閉じる
         if (_areWindowsHidden)
@@ -2348,6 +2538,8 @@ public partial class MainWindow : Window
         _panelFrontRestoreCancellation?.Dispose();
         _focusedSlotReassertCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Dispose();
+        _postLaunchArrangeCancellation?.Cancel();
+        _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
         base.OnClosed(e);
     }
@@ -2402,7 +2594,7 @@ public partial class MainWindow : Window
         {
             var application = _statusStore.FindApplication(slot.ApplicationId);
             return application is not null
-                && application.IsWorkspaceIde
+                && application.IsWorkspaceApplication
                 && _applicationLauncher.CanLaunchWorkspaceApplication(application, _statusStore.Config);
         });
     }

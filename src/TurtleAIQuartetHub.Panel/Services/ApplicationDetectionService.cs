@@ -58,16 +58,22 @@ public sealed class ApplicationDetectionService
             }
         }
 
-        var appxPath = ResolveAppxPackage(application);
-        if (!string.IsNullOrWhiteSpace(appxPath))
+        if (!application.IsWorkspaceCli)
         {
-            return DetectionResult.Installed(appxPath, $"Windows アプリパッケージから検出しました: {appxPath}");
+            var appxPath = ResolveAppxPackage(application);
+            if (!string.IsNullOrWhiteSpace(appxPath))
+            {
+                return DetectionResult.Installed(appxPath, $"Windows アプリパッケージから検出しました: {appxPath}");
+            }
         }
 
-        var runningProcessPath = ResolveRunningProcessPath(application.Detection.ProcessNames);
-        if (!string.IsNullOrWhiteSpace(runningProcessPath))
+        if (!application.IsWorkspaceCli)
         {
-            return DetectionResult.Installed(runningProcessPath, $"起動済みプロセスから検出しました: {runningProcessPath}");
+            var runningProcessPath = ResolveRunningProcessPath(application.Detection.ProcessNames);
+            if (!string.IsNullOrWhiteSpace(runningProcessPath))
+            {
+                return DetectionResult.Installed(runningProcessPath, $"起動済みプロセスから検出しました: {runningProcessPath}");
+            }
         }
 
         foreach (var command in application.Detection.Commands)

@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 
 namespace TurtleAIQuartetHub.Panel.Models;
@@ -40,11 +41,20 @@ public sealed class WindowSlot : INotifyPropertyChanged
         _path = NormalizeWorkspacePath(config.Path);
         _applicationId = AppConfig.NormalizeApplicationId(config.ApplicationId);
         _panelTitle = GetDefaultPanelTitle();
+        WorkspaceApplicationOptions = [];
+        IdeApplicationOptions = [];
+        CliApplicationOptions = [];
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string Name { get; }
+
+    public ObservableCollection<SlotApplicationOption> WorkspaceApplicationOptions { get; }
+
+    public ObservableCollection<SlotApplicationOption> IdeApplicationOptions { get; }
+
+    public ObservableCollection<SlotApplicationOption> CliApplicationOptions { get; }
 
     public string Path
     {

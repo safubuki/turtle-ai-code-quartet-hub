@@ -1,13 +1,16 @@
 ﻿# Turtle AI Code Quartet Hub
 
 4つの開発用ウィンドウを A-D のスロットとして起動し、2x2 に並べる Windows 向け WPF パネルです。
-既定は各スロット VS Code の一括起動です。設定により Google Antigravity をワークスペース IDE として選択でき、Codex / Claude は補助アプリとして起動できます。
+既定は各スロット VS Code の一括起動です。設定により Google Antigravity をワークスペース IDE として選択でき、Codex / GitHub Copilot / Gemini / Claude は各スロットのワークスペース CLI として起動できます。Codex / Claude の Windows アプリ版は、CLI とは別に補助ボタン行から起動できます。
 
 ## できること
 
-- `Launch Quartet（一括起動）` で、各スロットに選択された VS Code / Antigravity を起動し、画面に2x2で配置
-- 各スロットで VS Code / Antigravity を切り替え、同じワークスペースを開き直し
-- Codex / Claude を補助アプリボタンまたはタスクバー Jump List から起動
+- `Launch Quartet（一括起動）` で、各スロットに選択された VS Code / Antigravity / CLI を起動し、画面に2x2で配置
+- 各スロットで IDE 枠の VS Code / Antigravity、CLI 枠の Codex / Claude / Gemini / Copilot を切り替え、同じワークスペースを開き直し
+- 起動中スロットでも別の IDE/CLI ボタンを押すだけで、現在のウィンドウを閉じて選択アプリへ切り替え
+- CLI は保存済みワークスペースをカレントディレクトリにした terminal ウィンドウとして起動。既定の GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行
+- Codex / Claude の Windows アプリ版は、`Windows` ラベル付きの補助ボタンから起動
+- メインパネルからスロットの保存情報をクリア
 - 未検出のアプリケーションはグレーアウトし、設定で実行ファイルやコマンドを指定可能
 - 縮小モードで小さな操作バーとして常時表示
 - スロット A-D のタイトル、ワークスペース、控え Quartet を保存
@@ -78,12 +81,12 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 主な設定項目:
 
 - `codeCommand`: VS Code の起動コマンドまたは `Code.exe` のパス
-- `launchTimeoutSeconds`: VS Code 起動待ち時間
+- `launchTimeoutSeconds`: VS Code / Antigravity / CLI 起動待ち時間
 - `remoteReconnectTimeoutSeconds`: SSH / Remote 接続の再接続待ち時間
 - `statusRefreshIntervalMilliseconds`: 管理中ウィンドウ状態とワークスペース表示の更新間隔
 - `inheritMainUserState`: 通常 VS Code の設定やスニペットをスロットへ引き継ぐか
 - `defaultWorkspaceApplicationId`: スロットの既定アプリ。未設定時は `vscode`
-- `applications`: VS Code、Antigravity、Codex、Claude などの起動定義と検出候補
+- `applications`: VS Code、Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / Claude Windows アプリなどの起動定義と検出候補
 - `slots[].applicationId`: スロットごとの起動対象アプリ
 
 `applications[].command` に実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、一般的なインストール先から検出します。
