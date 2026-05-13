@@ -13,6 +13,16 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     private IntPtr _windowHandle;
     private string _path = string.Empty;
+    private string _applicationId = AppConfig.VsCodeApplicationId;
+    private string _applicationDisplayName = "VS Code";
+    private string _applicationShortName = "VS Code";
+    private string _applicationAvailabilityText = "未確認";
+    private string _applicationToolTip = string.Empty;
+    private bool _isApplicationAvailable;
+    private bool _isVsCodeAvailable;
+    private bool _isAntigravityAvailable;
+    private string _vsCodeApplicationToolTip = string.Empty;
+    private string _antigravityApplicationToolTip = string.Empty;
     private string _panelTitle;
     private string _savedWorkspacePath = string.Empty;
     private bool _savedWorkspaceConfirmed;
@@ -28,6 +38,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         Name = config.Name;
         _path = NormalizeWorkspacePath(config.Path);
+        _applicationId = AppConfig.NormalizeApplicationId(config.ApplicationId);
         _panelTitle = GetDefaultPanelTitle();
     }
 
@@ -51,6 +62,93 @@ public sealed class WindowSlot : INotifyPropertyChanged
     }
 
     public string EffectivePath => SavedWorkspaceConfirmed && !string.IsNullOrWhiteSpace(SavedWorkspacePath) ? SavedWorkspacePath : Path;
+
+    public string ApplicationId
+    {
+        get => _applicationId;
+        set
+        {
+            if (SetField(ref _applicationId, AppConfig.NormalizeApplicationId(value)))
+            {
+                OnPropertyChanged(nameof(ApplicationBadgeText));
+                OnPropertyChanged(nameof(IsVsCodeApplication));
+                OnPropertyChanged(nameof(IsAntigravityApplication));
+                OnPropertyChanged(nameof(HasPanelContent));
+            }
+        }
+    }
+
+    public string ApplicationDisplayName
+    {
+        get => _applicationDisplayName;
+        set
+        {
+            if (SetField(ref _applicationDisplayName, string.IsNullOrWhiteSpace(value) ? ApplicationId : value.Trim()))
+            {
+                OnPropertyChanged(nameof(ApplicationBadgeText));
+            }
+        }
+    }
+
+    public string ApplicationShortName
+    {
+        get => _applicationShortName;
+        set
+        {
+            if (SetField(ref _applicationShortName, string.IsNullOrWhiteSpace(value) ? ApplicationDisplayName : value.Trim()))
+            {
+                OnPropertyChanged(nameof(ApplicationBadgeText));
+            }
+        }
+    }
+
+    public string ApplicationAvailabilityText
+    {
+        get => _applicationAvailabilityText;
+        set => SetField(ref _applicationAvailabilityText, value ?? string.Empty);
+    }
+
+    public string ApplicationToolTip
+    {
+        get => _applicationToolTip;
+        set => SetField(ref _applicationToolTip, value ?? string.Empty);
+    }
+
+    public bool IsApplicationAvailable
+    {
+        get => _isApplicationAvailable;
+        set => SetField(ref _isApplicationAvailable, value);
+    }
+
+    public string ApplicationBadgeText => string.IsNullOrWhiteSpace(ApplicationShortName) ? ApplicationId : ApplicationShortName;
+
+    public bool IsVsCodeApplication => string.Equals(ApplicationId, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsAntigravityApplication => string.Equals(ApplicationId, "antigravity", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsVsCodeAvailable
+    {
+        get => _isVsCodeAvailable;
+        set => SetField(ref _isVsCodeAvailable, value);
+    }
+
+    public bool IsAntigravityAvailable
+    {
+        get => _isAntigravityAvailable;
+        set => SetField(ref _isAntigravityAvailable, value);
+    }
+
+    public string VsCodeApplicationToolTip
+    {
+        get => _vsCodeApplicationToolTip;
+        set => SetField(ref _vsCodeApplicationToolTip, value ?? string.Empty);
+    }
+
+    public string AntigravityApplicationToolTip
+    {
+        get => _antigravityApplicationToolTip;
+        set => SetField(ref _antigravityApplicationToolTip, value ?? string.Empty);
+    }
 
     public string DisplayPath
     {
@@ -198,7 +296,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
             {
                 SlotWindowStatus.Ready => "起動",
                 SlotWindowStatus.Launching => "起動中",
-                SlotWindowStatus.Missing => "停止",
+                SlotWindowStatus.Missing => "停止中",
                 _ => WindowStatus.ToString()
             };
         }
@@ -261,9 +359,15 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public void ApplyAssignedPanel(string? panelTitle, string? workspacePath)
     {
+        ApplyAssignedPanel(panelTitle, workspacePath, ApplicationId);
+    }
+
+    public void ApplyAssignedPanel(string? panelTitle, string? workspacePath, string? applicationId)
+    {
         var normalizedPath = NormalizeWorkspacePath(workspacePath);
         PanelTitle = panelTitle ?? string.Empty;
         Path = normalizedPath;
+        ApplicationId = applicationId ?? AppConfig.VsCodeApplicationId;
         SavedWorkspacePath = normalizedPath;
         SavedWorkspaceConfirmed = !string.IsNullOrWhiteSpace(normalizedPath);
         CurrentWorkspacePath = string.Empty;

@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -13,7 +14,13 @@ public sealed class WindowEnumerator
 
     public IReadOnlyList<WindowInfo> GetVsCodeWindows()
     {
+        return GetApplicationWindows(["code", "code - insiders", "vscodium", "codium"]);
+    }
+
+    public IReadOnlyList<WindowInfo> GetApplicationWindows(IReadOnlyList<string> processNames)
+    {
         var windows = new List<WindowInfo>();
+        var normalizedProcessNames = NormalizeProcessNames(processNames);
 
         EnumWindows((hWnd, lParam) =>
         {
@@ -23,7 +30,7 @@ public sealed class WindowEnumerator
             }
 
             _ = GetWindowThreadProcessId(hWnd, out var processId);
-            if (!IsVsCodeProcess(processId))
+            if (!IsProcessMatch(processId, normalizedProcessNames))
             {
                 return true;
             }
@@ -37,13 +44,18 @@ public sealed class WindowEnumerator
 
     public WindowInfo? TryGetWindow(IntPtr hWnd)
     {
+        return TryGetWindow(hWnd, ["code", "code - insiders", "vscodium", "codium"]);
+    }
+
+    public WindowInfo? TryGetWindow(IntPtr hWnd, IReadOnlyList<string> processNames)
+    {
         if (!IsLiveWindow(hWnd) || !IsCandidateWindow(hWnd))
         {
             return null;
         }
 
         _ = GetWindowThreadProcessId(hWnd, out var processId);
-        return IsVsCodeProcess(processId)
+        return IsProcessMatch(processId, NormalizeProcessNames(processNames))
             ? new WindowInfo(hWnd, GetTitle(hWnd), processId)
             : null;
     }
@@ -58,17 +70,13 @@ public sealed class WindowEnumerator
         return IsWindowVisible(hWnd) && GetWindowTextLength(hWnd) > 0;
     }
 
-    private static bool IsVsCodeProcess(uint processId)
+    private static bool IsProcessMatch(uint processId, IReadOnlySet<string> normalizedProcessNames)
     {
         try
         {
             using var process = Process.GetProcessById((int)processId);
-            var processName = process.ProcessName.ToLowerInvariant();
-
-            return processName is "code"
-                or "code - insiders"
-                or "vscodium"
-                or "codium";
+            var processName = NormalizeProcessName(process.ProcessName);
+            return normalizedProcessNames.Count == 0 || normalizedProcessNames.Contains(processName);
         }
         catch (ArgumentException)
         {
@@ -82,6 +90,19 @@ public sealed class WindowEnumerator
         {
             return false;
         }
+    }
+
+    private static IReadOnlySet<string> NormalizeProcessNames(IEnumerable<string> processNames)
+    {
+        return processNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(NormalizeProcessName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProcessName(string processName)
+    {
+        return Path.GetFileNameWithoutExtension(processName.Trim()).ToLowerInvariant();
     }
 
     private static string GetTitle(IntPtr hWnd)

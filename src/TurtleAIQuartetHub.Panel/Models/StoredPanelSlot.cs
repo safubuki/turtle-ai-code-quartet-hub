@@ -7,6 +7,8 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
 {
     private string _panelTitle = string.Empty;
     private string _workspacePath = string.Empty;
+    private string _applicationId = AppConfig.VsCodeApplicationId;
+    private string _applicationShortName = "VS Code";
 
     public StoredPanelSlot(int index)
     {
@@ -74,16 +76,41 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
         }
     }
 
+    public string ApplicationId
+    {
+        get => _applicationId;
+        set
+        {
+            if (SetField(ref _applicationId, AppConfig.NormalizeApplicationId(value)))
+            {
+                OnPropertyChanged(nameof(ApplicationShortName));
+            }
+        }
+    }
+
+    public string ApplicationShortName
+    {
+        get => _applicationShortName;
+        set => SetField(ref _applicationShortName, string.IsNullOrWhiteSpace(value) ? ApplicationId : value.Trim());
+    }
+
     public void LoadFrom(string? panelTitle, string? workspacePath)
+    {
+        LoadFrom(panelTitle, workspacePath, ApplicationId);
+    }
+
+    public void LoadFrom(string? panelTitle, string? workspacePath, string? applicationId)
     {
         PanelTitle = panelTitle ?? string.Empty;
         WorkspacePath = workspacePath ?? string.Empty;
+        ApplicationId = applicationId ?? AppConfig.VsCodeApplicationId;
     }
 
     public void Clear()
     {
         PanelTitle = string.Empty;
         WorkspacePath = string.Empty;
+        ApplicationId = AppConfig.VsCodeApplicationId;
     }
 
     private static string NormalizeWorkspacePath(string? value)

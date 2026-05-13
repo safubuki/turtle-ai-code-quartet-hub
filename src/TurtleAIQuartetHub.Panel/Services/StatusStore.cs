@@ -22,12 +22,13 @@ public sealed class StatusStore : INotifyPropertyChanged
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly record struct PanelSnapshot(string PanelTitle, string WorkspacePath)
+    private readonly record struct PanelSnapshot(string PanelTitle, string WorkspacePath, string ApplicationId)
     {
         public bool HasContent => !string.IsNullOrWhiteSpace(PanelTitle) || !string.IsNullOrWhiteSpace(WorkspacePath);
     }
 
     private string _message;
+    private LauncherApplication? _selectedWorkspaceApplication;
     private StoredPanelPage? _selectedStoredPanelPage;
     private bool _suppressPersistence;
     private readonly Dictionary<string, DateTimeOffset> _workspaceRefreshTimestamps = new(StringComparer.OrdinalIgnoreCase);
@@ -37,6 +38,10 @@ public sealed class StatusStore : INotifyPropertyChanged
     public StatusStore(AppConfig config)
     {
         Config = config;
+        var applicationDetectionService = new ApplicationDetectionService();
+        Applications = new ObservableCollection<LauncherApplication>(applicationDetectionService.Detect(config));
+        WorkspaceApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsWorkspaceIde));
+        AuxiliaryApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsSingleWindowAgent));
         Slots = new ObservableCollection<WindowSlot>(config.Slots.Select(slot => new WindowSlot(slot)));
         StoredPanels = new ObservableCollection<StoredPanelSlot>(
             Enumerable.Range(1, StoredPanelsPerPage * StoredPanelPageCount).Select(index => new StoredPanelSlot(index)));
@@ -49,20 +54,63 @@ public sealed class StatusStore : INotifyPropertyChanged
         LoadSavedPanelStates();
         foreach (var slot in Slots)
         {
+            ApplyApplicationMetadata(slot);
             slot.PropertyChanged += Slot_PropertyChanged;
         }
 
         foreach (var storedPanel in StoredPanels)
         {
+            ApplyApplicationMetadata(storedPanel);
             storedPanel.PropertyChanged += StoredPanel_PropertyChanged;
         }
 
+        SelectWorkspaceApplication(config.DefaultWorkspaceApplicationId);
         _message = $"設定を読み込みました: {config.ConfigSource}";
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public AppConfig Config { get; }
+
+    public ObservableCollection<LauncherApplication> Applications { get; }
+
+    public ObservableCollection<LauncherApplication> WorkspaceApplications { get; }
+
+    public ObservableCollection<LauncherApplication> AuxiliaryApplications { get; }
+
+    public LauncherApplication? SelectedWorkspaceApplication
+    {
+        get => _selectedWorkspaceApplication;
+        private set
+        {
+            if (ReferenceEquals(_selectedWorkspaceApplication, value))
+            {
+                return;
+            }
+
+            if (_selectedWorkspaceApplication is not null)
+            {
+                _selectedWorkspaceApplication.IsSelected = false;
+            }
+
+            _selectedWorkspaceApplication = value;
+            if (_selectedWorkspaceApplication is not null)
+            {
+                _selectedWorkspaceApplication.IsSelected = true;
+            }
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LaunchButtonText));
+            OnPropertyChanged(nameof(LaunchButtonToolTip));
+            OnPropertyChanged(nameof(CanLaunchSelectedWorkspaceApplication));
+        }
+    }
+
+    public string LaunchButtonText => "Launch Quartet（一括起動）";
+
+    public string LaunchButtonToolTip => "各パネルで選択されている VS Code / Antigravity で未起動のスロットを一括起動します。";
+
+    public bool CanLaunchSelectedWorkspaceApplication => SelectedWorkspaceApplication?.IsAvailable == true;
 
     public ObservableCollection<WindowSlot> Slots { get; }
 
@@ -99,6 +147,95 @@ public sealed class StatusStore : INotifyPropertyChanged
             DiagnosticLog.Write(value);
             OnPropertyChanged();
         }
+    }
+
+    public LauncherApplication? FindApplication(string? applicationId)
+    {
+        var normalizedId = AppConfig.NormalizeApplicationId(applicationId, Config.DefaultWorkspaceApplicationId);
+        return Applications.FirstOrDefault(app => string.Equals(app.Id, normalizedId, StringComparison.OrdinalIgnoreCase))
+            ?? Applications.FirstOrDefault(app => string.Equals(app.Id, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public LauncherApplication? FindAvailableWorkspaceApplication(string? applicationId)
+    {
+        var application = FindApplication(applicationId);
+        if (application is { IsWorkspaceIde: true, IsAvailable: true })
+        {
+            return application;
+        }
+
+        return WorkspaceApplications.FirstOrDefault(app => app.IsAvailable)
+            ?? WorkspaceApplications.FirstOrDefault();
+    }
+
+    public bool SelectWorkspaceApplication(string? applicationId)
+    {
+        var application = FindApplication(applicationId);
+        if (application is null || !application.IsWorkspaceIde)
+        {
+            application = WorkspaceApplications.FirstOrDefault(app => string.Equals(app.Id, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase))
+                ?? WorkspaceApplications.FirstOrDefault();
+        }
+
+        if (application is null)
+        {
+            return false;
+        }
+
+        SelectedWorkspaceApplication = application;
+        return application.IsAvailable;
+    }
+
+    public bool SelectWorkspaceApplication(LauncherApplication application)
+    {
+        if (!WorkspaceApplications.Contains(application))
+        {
+            return false;
+        }
+
+        SelectedWorkspaceApplication = application;
+        return application.IsAvailable;
+    }
+
+    public void SetSlotApplication(WindowSlot slot, LauncherApplication application)
+    {
+        slot.ApplicationId = application.Id;
+        ApplyApplicationMetadata(slot);
+        SavePanelStates();
+    }
+
+    public bool IsVsCodeSlot(WindowSlot slot)
+    {
+        return IsVsCodeApplication(slot.ApplicationId);
+    }
+
+    public bool IsVsCodeApplication(string? applicationId)
+    {
+        return string.Equals(AppConfig.NormalizeApplicationId(applicationId), AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void ApplyApplicationMetadata(WindowSlot slot)
+    {
+        var application = FindApplication(slot.ApplicationId);
+        slot.ApplicationId = application?.Id ?? Config.DefaultWorkspaceApplicationId;
+        slot.ApplicationDisplayName = application?.DisplayName ?? slot.ApplicationId;
+        slot.ApplicationShortName = application?.ShortName ?? slot.ApplicationId;
+        slot.ApplicationAvailabilityText = application?.StatusText ?? "未検出";
+        slot.ApplicationToolTip = application?.ToolTip ?? "アプリケーション定義が見つかりません。";
+        slot.IsApplicationAvailable = application?.IsAvailable == true;
+        var vsCode = FindApplication(AppConfig.VsCodeApplicationId);
+        var antigravity = FindApplication("antigravity");
+        slot.IsVsCodeAvailable = vsCode?.IsAvailable == true;
+        slot.IsAntigravityAvailable = antigravity?.IsAvailable == true;
+        slot.VsCodeApplicationToolTip = vsCode?.ToolTip ?? "VS Code が検出できません。";
+        slot.AntigravityApplicationToolTip = antigravity?.ToolTip ?? "Antigravity が検出できません。";
+    }
+
+    public void ApplyApplicationMetadata(StoredPanelSlot storedPanel)
+    {
+        var application = FindApplication(storedPanel.ApplicationId);
+        storedPanel.ApplicationId = application?.Id ?? Config.DefaultWorkspaceApplicationId;
+        storedPanel.ApplicationShortName = application?.ShortName ?? storedPanel.ApplicationId;
     }
 
     public void SelectStoredPanelPage(StoredPanelPage? page)
@@ -189,11 +326,13 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         var workspacePath = !string.IsNullOrWhiteSpace(slot.CurrentWorkspacePath)
             ? slot.CurrentWorkspacePath
-            : VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config);
+            : IsVsCodeApplication(slot.ApplicationId)
+                ? VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config)
+                : null;
         _workspaceRefreshTimestamps[slot.Name] = DateTimeOffset.UtcNow;
-        slot.CurrentWorkspacePath = workspacePath ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(workspacePath))
         {
+            slot.CurrentWorkspacePath = workspacePath;
             slot.Path = workspacePath;
             slot.SavedWorkspacePath = workspacePath;
             slot.SavedWorkspaceConfirmed = true;
@@ -206,8 +345,12 @@ public sealed class StatusStore : INotifyPropertyChanged
             return;
         }
 
-        slot.SavedWorkspaceConfirmed = false;
-        slot.SavedWorkspacePath = string.Empty;
+        if (IsVsCodeApplication(slot.ApplicationId))
+        {
+            slot.CurrentWorkspacePath = string.Empty;
+            slot.SavedWorkspaceConfirmed = false;
+            slot.SavedWorkspacePath = string.Empty;
+        }
     }
 
     public void LoadSavedSettings()
@@ -240,7 +383,8 @@ public sealed class StatusStore : INotifyPropertyChanged
             return false;
         }
 
-        storedPanel.LoadFrom(snapshot.PanelTitle, snapshot.WorkspacePath);
+        storedPanel.LoadFrom(snapshot.PanelTitle, snapshot.WorkspacePath, snapshot.ApplicationId);
+        ApplyApplicationMetadata(storedPanel);
         slot.ClearAssignedPanel();
         slot.ClearWindow();
         SavePanelStates();
@@ -261,7 +405,8 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         if (visibleSnapshot.HasContent)
         {
-            storedPanel.LoadFrom(visibleSnapshot.PanelTitle, visibleSnapshot.WorkspacePath);
+            storedPanel.LoadFrom(visibleSnapshot.PanelTitle, visibleSnapshot.WorkspacePath, visibleSnapshot.ApplicationId);
+            ApplyApplicationMetadata(storedPanel);
             swappedVisiblePanel = true;
         }
         else
@@ -270,7 +415,8 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
 
         targetSlot.ClearWindow();
-        targetSlot.ApplyAssignedPanel(storedSnapshot.PanelTitle, storedSnapshot.WorkspacePath);
+        targetSlot.ApplyAssignedPanel(storedSnapshot.PanelTitle, storedSnapshot.WorkspacePath, storedSnapshot.ApplicationId);
+        ApplyApplicationMetadata(targetSlot);
         if (ShouldAutoAssignWorkspaceTitle(targetSlot))
         {
             var preferredTitle = !string.IsNullOrWhiteSpace(storedSnapshot.PanelTitle)
@@ -293,6 +439,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         try
         {
             storedPanel.Clear();
+            ApplyApplicationMetadata(storedPanel);
         }
         finally
         {
@@ -315,6 +462,9 @@ public sealed class StatusStore : INotifyPropertyChanged
         {
             (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
             (source.WorkspacePath, target.WorkspacePath) = (target.WorkspacePath, source.WorkspacePath);
+            (source.ApplicationId, target.ApplicationId) = (target.ApplicationId, source.ApplicationId);
+            ApplyApplicationMetadata(source);
+            ApplyApplicationMetadata(target);
         }
         finally
         {
@@ -363,6 +513,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         {
             (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
             (source.Path, target.Path) = (target.Path, source.Path);
+            (source.ApplicationId, target.ApplicationId) = (target.ApplicationId, source.ApplicationId);
             (source.SavedWorkspacePath, target.SavedWorkspacePath) = (target.SavedWorkspacePath, source.SavedWorkspacePath);
             (source.SavedWorkspaceConfirmed, target.SavedWorkspaceConfirmed) = (target.SavedWorkspaceConfirmed, source.SavedWorkspaceConfirmed);
             (source.CurrentWorkspacePath, target.CurrentWorkspacePath) = (target.CurrentWorkspacePath, source.CurrentWorkspacePath);
@@ -373,6 +524,8 @@ public sealed class StatusStore : INotifyPropertyChanged
             (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
             (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
             (source.PreferredLayout, target.PreferredLayout) = (target.PreferredLayout, source.PreferredLayout);
+            ApplyApplicationMetadata(source);
+            ApplyApplicationMetadata(target);
         }
         finally
         {
@@ -389,12 +542,18 @@ public sealed class StatusStore : INotifyPropertyChanged
     {
         var refreshStartedAt = DateTimeOffset.UtcNow;
         var requests = Slots
-            .Select(slot => new WindowSlotStatusSnapshot(
-                slot.Name,
-                slot.WindowHandle,
-                slot.WindowTitle,
-                slot.CurrentWorkspacePath,
-                _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null))
+            .Select(slot =>
+            {
+                var application = FindApplication(slot.ApplicationId);
+                return new WindowSlotStatusSnapshot(
+                    slot.Name,
+                    slot.ApplicationId,
+                    application?.ProcessNames ?? [],
+                    slot.WindowHandle,
+                    slot.WindowTitle,
+                    slot.CurrentWorkspacePath,
+                    _workspaceRefreshTimestamps.TryGetValue(slot.Name, out var refreshedAt) ? refreshedAt : null);
+            })
             .ToList();
 
         var stopwatch = Stopwatch.StartNew();
@@ -457,7 +616,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                     stopwatch.ElapsedMilliseconds);
             }
 
-            var window = windowEnumerator.TryGetWindow(request.WindowHandle);
+            var window = windowEnumerator.TryGetWindow(request.WindowHandle, request.ProcessNames);
             if (window is null)
             {
                 return new WindowSlotStatusRefreshResult(
@@ -473,7 +632,8 @@ public sealed class StatusStore : INotifyPropertyChanged
             var snapshot = request with { WindowTitle = window.Title };
             string? workspacePath = null;
             DateTimeOffset? workspaceRefreshedAt = null;
-            if (ShouldRefreshWorkspacePath(snapshot, !string.Equals(request.WindowTitle, window.Title, StringComparison.Ordinal)))
+            if (IsVsCodeApplication(request.ApplicationId)
+                && ShouldRefreshWorkspacePath(snapshot, !string.Equals(request.WindowTitle, window.Title, StringComparison.Ordinal)))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 workspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(snapshot.Name, window.Title, Config);
@@ -628,6 +788,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                         Name = slot.Name,
                         PanelTitle = slot.PanelTitle,
                         AssignedPath = slot.Path,
+                        ApplicationId = slot.ApplicationId,
                         SavedWorkspacePath = slot.SavedWorkspacePath,
                         SavedWorkspaceConfirmed = slot.SavedWorkspaceConfirmed,
                         WindowHandle = slot.WindowHandle.ToInt64(),
@@ -639,7 +800,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                     {
                         Index = slot.Index,
                         PanelTitle = slot.PanelTitle,
-                        WorkspacePath = slot.WorkspacePath
+                        WorkspacePath = slot.WorkspacePath,
+                        ApplicationId = slot.ApplicationId
                     })
                     .ToList()
             };
@@ -670,6 +832,8 @@ public sealed class StatusStore : INotifyPropertyChanged
             slot.WindowTitle = string.Empty;
             slot.WindowStatus = SlotWindowStatus.Missing;
             slot.PreferredLayout = VscodeLayoutPreference.Empty;
+            slot.ApplicationId = Config.DefaultWorkspaceApplicationId;
+            ApplyApplicationMetadata(slot);
         }
 
         foreach (var state in states)
@@ -686,6 +850,9 @@ public sealed class StatusStore : INotifyPropertyChanged
             {
                 slot.Path = state.AssignedPath;
             }
+
+            slot.ApplicationId = AppConfig.NormalizeApplicationId(state.ApplicationId, Config.DefaultWorkspaceApplicationId);
+            ApplyApplicationMetadata(slot);
 
             if (!string.IsNullOrWhiteSpace(state.SavedWorkspacePath))
             {
@@ -707,12 +874,17 @@ public sealed class StatusStore : INotifyPropertyChanged
         foreach (var storedPanel in StoredPanels)
         {
             storedPanel.Clear();
+            ApplyApplicationMetadata(storedPanel);
         }
 
         foreach (var state in states)
         {
             var storedPanel = StoredPanels.FirstOrDefault(item => item.Index == state.Index);
-            storedPanel?.LoadFrom(state.PanelTitle, state.WorkspacePath);
+            storedPanel?.LoadFrom(state.PanelTitle, state.WorkspacePath, state.ApplicationId);
+            if (storedPanel is not null)
+            {
+                ApplyApplicationMetadata(storedPanel);
+            }
         }
     }
 
@@ -730,12 +902,12 @@ public sealed class StatusStore : INotifyPropertyChanged
             || (slot.WindowHandle != IntPtr.Zero && !string.IsNullOrWhiteSpace(slot.PanelTitle))
                 ? slot.PanelTitle
                 : string.Empty;
-            return new PanelSnapshot(panelTitle, workspacePath);
+            return new PanelSnapshot(panelTitle, workspacePath, slot.ApplicationId);
     }
 
     private static PanelSnapshot CreateSnapshot(StoredPanelSlot slot)
     {
-        return new PanelSnapshot(slot.PanelTitle, slot.WorkspacePath);
+        return new PanelSnapshot(slot.PanelTitle, slot.WorkspacePath, slot.ApplicationId);
     }
 
     public string MakeUniqueTitle(string desiredTitle, params object?[] excludedItems)
@@ -842,8 +1014,14 @@ public sealed class StatusStore : INotifyPropertyChanged
         if (e.PropertyName is nameof(WindowSlot.PanelTitle)
             or nameof(WindowSlot.Path)
             or nameof(WindowSlot.SavedWorkspacePath)
-            or nameof(WindowSlot.SavedWorkspaceConfirmed))
+            or nameof(WindowSlot.SavedWorkspaceConfirmed)
+            or nameof(WindowSlot.ApplicationId))
         {
+            if (sender is WindowSlot slot && e.PropertyName == nameof(WindowSlot.ApplicationId))
+            {
+                ApplyApplicationMetadata(slot);
+            }
+
             SavePanelStates();
         }
     }
@@ -855,7 +1033,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             return;
         }
 
-        if (e.PropertyName is nameof(StoredPanelSlot.PanelTitle) or nameof(StoredPanelSlot.WorkspacePath))
+        if (e.PropertyName is nameof(StoredPanelSlot.PanelTitle) or nameof(StoredPanelSlot.WorkspacePath) or nameof(StoredPanelSlot.ApplicationId))
         {
             SavePanelStates();
         }

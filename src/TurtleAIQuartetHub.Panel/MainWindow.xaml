@@ -5,9 +5,9 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle AI Code Quartet Hub"
         Width="600"
-        Height="376"
+        Height="438"
         MinWidth="524"
-        MinHeight="336"
+        MinHeight="402"
         Background="#101211"
         Foreground="#EEF4EF"
         FontFamily="Segoe UI"
@@ -130,6 +130,8 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="MinHeight" Value="34" />
       <Setter Property="Padding" Value="10,5" />
+      <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+      <Setter Property="TextOptions.TextRenderingMode" Value="Auto" />
     </Style>
 
     <Style x:Key="MiniButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
@@ -147,6 +149,30 @@
       <Setter Property="Padding" Value="6,3" />
       <Setter Property="Background" Value="#1B221E" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
+    <Style x:Key="ApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="MinWidth" Value="72" />
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Setter Property="ToolTip" Value="{Binding ToolTip}" />
+      <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+          <Setter Property="Foreground" Value="#06120C" />
+          <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="MinWidth" Value="66" />
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Setter Property="ToolTip" Value="{Binding ToolTip}" />
+      <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+      <Setter Property="Background" Value="#0E2030" />
+      <Setter Property="BorderBrush" Value="#2C6888" />
     </Style>
 
     <Style x:Key="VisibilityRestoreButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -534,6 +560,10 @@
           <Setter Property="Fill" Value="#7AF7B2" />
           <Setter Property="Stroke" Value="#D7FFE8" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
+          <Setter Property="Fill" Value="#8C2929" />
+          <Setter Property="Stroke" Value="#D96A6A" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -557,6 +587,7 @@
                 Padding="0">
           <Grid Margin="8">
             <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -596,15 +627,60 @@
                   Margin="0,6,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Button Grid.Column="0"
+                      Content="VS Code"
+                      Tag="{Binding}"
+                      CommandParameter="vscode"
+                      Click="SlotApplicationSwitchButton_Click"
+                      ToolTip="{Binding VsCodeApplicationToolTip}"
+                      ToolTipService.ShowOnDisabled="True"
+                      Margin="0,0,3,0">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                    <Setter Property="IsEnabled" Value="{Binding IsVsCodeAvailable}" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsVsCodeApplication}" Value="True">
+                        <Setter Property="Foreground" Value="#A8EDD0" />
+                        <Setter Property="Background" Value="#0E2018" />
+                        <Setter Property="BorderBrush" Value="#357A52" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
+              <Button Grid.Column="1"
+                      Content="Antigravity"
+                      Tag="{Binding}"
+                      CommandParameter="antigravity"
+                      Click="SlotApplicationSwitchButton_Click"
+                      ToolTip="{Binding AntigravityApplicationToolTip}"
+                      ToolTipService.ShowOnDisabled="True"
+                      Margin="3,0,0,0">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                    <Setter Property="IsEnabled" Value="{Binding IsAntigravityAvailable}" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsAntigravityApplication}" Value="True">
+                        <Setter Property="Foreground" Value="#A8EDD0" />
+                        <Setter Property="Background" Value="#0E2018" />
+                        <Setter Property="BorderBrush" Value="#357A52" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
+            </Grid>
+
+            <Grid Grid.Row="2"
+                  Margin="0,6,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-
-              <WrapPanel Grid.Column="0"
-                         VerticalAlignment="Center">
-                <Border Style="{StaticResource WindowPill}" Margin="0,0,6,0">
-                  <TextBlock Text="{Binding WindowStatusText}" Style="{StaticResource WindowPillTextStyle}" />
-                </Border>
-              </WrapPanel>
 
               <StackPanel Grid.Column="1"
                           Orientation="Horizontal"
@@ -947,19 +1023,19 @@
       </Grid>
     </Border>
 
-    <Expander Grid.Row="2"
-          x:Name="StoredPanelsExpander"
-              Style="{StaticResource StoredPanelsExpanderStyle}"
-              IsExpanded="False"
-          Expanded="StoredPanelsExpander_Expanded"
-          Collapsed="StoredPanelsExpander_Collapsed"
-              Margin="5,2,5,3">
-      <Expander.Header>
-        <TextBlock Text="控え Quartet（クリックで開く）"
-                   Foreground="{StaticResource TextBrush}"
-                   FontSize="12"
-                   FontWeight="SemiBold" />
-      </Expander.Header>
+    <Grid Grid.Row="2" Margin="5,2,5,3">
+      <Expander x:Name="StoredPanelsExpander"
+                Style="{StaticResource StoredPanelsExpanderStyle}"
+                IsExpanded="False"
+                Expanded="StoredPanelsExpander_Expanded"
+                Collapsed="StoredPanelsExpander_Collapsed"
+                Margin="0">
+        <Expander.Header>
+          <TextBlock Text="控え Quartet（クリックで開く）"
+                     Foreground="{StaticResource TextBrush}"
+                     FontSize="12"
+                     FontWeight="SemiBold" />
+        </Expander.Header>
             <Border x:Name="StoredPanelsExpanderContent"
               Background="{StaticResource SurfaceBrush}"
               BorderBrush="{StaticResource BorderBrushSoft}"
@@ -994,7 +1070,33 @@
                           ContentTemplate="{StaticResource StoredPanelPageTemplate}" />
         </Grid>
       </Border>
-    </Expander>
+      </Expander>
+
+      <ItemsControl x:Name="AuxiliaryApplicationPanel"
+                    ItemsSource="{Binding AuxiliaryApplications}"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Panel.ZIndex="2">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemContainerStyle>
+          <Style TargetType="ContentPresenter">
+            <Setter Property="Margin" Value="4,0,0,0" />
+          </Style>
+        </ItemsControl.ItemContainerStyle>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="{x:Type models:LauncherApplication}">
+            <Button Content="{Binding ShortName}"
+                    Tag="{Binding}"
+                    Click="AuxiliaryApplicationButton_Click"
+                    Style="{StaticResource AuxiliaryApplicationButtonStyle}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Grid>
 
     <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,2,5,3">
       <Grid.ColumnDefinitions>
@@ -1078,16 +1180,17 @@
       </StackPanel>
     </Grid>
 
-        <Button Grid.Row="4"
-          x:Name="LaunchButton"
-            Click="LaunchButton_Click"
-            Style="{StaticResource LaunchButtonStyle}"
-            HorizontalAlignment="Stretch"
-            Margin="5,5,5,0">
-          <TextBlock>
-            <Run Text="Launch Quartet" /><Run Text=" （一括起動）" FontSize="11" BaselineAlignment="Center" />
-          </TextBlock>
-        </Button>
+    <Grid Grid.Row="4"
+          x:Name="ApplicationLauncherPanel"
+          Margin="5,5,5,0">
+      <Button x:Name="LaunchButton"
+              Click="LaunchButton_Click"
+              ToolTip="{Binding LaunchButtonToolTip}"
+              Style="{StaticResource LaunchButtonStyle}"
+              HorizontalAlignment="Stretch">
+        <TextBlock Text="{Binding LaunchButtonText}" />
+      </Button>
+    </Grid>
 
     <Border x:Name="CloseAllConfirmOverlay"
             Grid.RowSpan="5"
