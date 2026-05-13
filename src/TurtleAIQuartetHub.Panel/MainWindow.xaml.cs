@@ -12,7 +12,7 @@ namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow : Window
 {
-    private const double CompactWindowMinHeight = 72;
+    private const double CompactWindowMinHeight = 146;
     private const double CompactWindowMinWidth = 320;
     private const double CompactWindowWidthScale = 0.58;
     private const string CompactModeGlyph = "\uE73F";
@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     private double _standardWindowHeight;
     private double _standardWindowMinWidth;
     private double _standardWindowMinHeight;
+    private WindowSlot? _pendingSlotInfoClear;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private WindowSlot? _hiddenFocusedSlot;
     private Point _dragStartPoint;
@@ -201,15 +202,27 @@ public partial class MainWindow : Window
 
             _statusStore.Message = $"未起動スロットを選択アプリで起動しています... {BuildLaunchPlanSummary(launchTargets)}";
             var allAssignments = new List<WindowAssignment>();
-            foreach (var group in launchTargets.GroupBy(item => item.Application.Id))
+            var config = _statusStore.Config;
+            var launchGroups = launchTargets
+                .GroupBy(item => item.Application.Id)
+                .Select(group =>
+                {
+                    var application = group.First().Application;
+                    var slots = group.Select(item => item.Slot).ToList();
+                    return (Application: application, Slots: slots);
+                })
+                .ToList();
+            var nonCliTasks = launchGroups
+                .Where(group => !group.Application.IsWorkspaceCli)
+                .Select(group => _applicationLauncher.LaunchMissingAsync(group.Slots, config, group.Application, CancellationToken.None))
+                .ToList();
+            var cliTask = LaunchCliGroupsSequentiallyAsync(
+                launchGroups.Where(group => group.Application.IsWorkspaceCli).ToList(),
+                config);
+            var groupTasks = nonCliTasks.Append(cliTask);
+            var groupResults = await Task.WhenAll(groupTasks);
+            foreach (var assignments in groupResults)
             {
-                var application = group.First().Application;
-                var slots = group.Select(item => item.Slot).ToList();
-                var assignments = await _applicationLauncher.LaunchMissingAsync(
-                    slots,
-                    _statusStore.Config,
-                    application,
-                    CancellationToken.None);
                 allAssignments.AddRange(assignments);
             }
 
@@ -238,6 +251,24 @@ public partial class MainWindow : Window
                     : $"新しい管理中ウィンドウは見つかりませんでした。{skippedMessage}";
             }
         });
+    }
+
+    private async Task<IReadOnlyList<WindowAssignment>> LaunchCliGroupsSequentiallyAsync(
+        IReadOnlyList<(LauncherApplication Application, List<WindowSlot> Slots)> groups,
+        AppConfig config)
+    {
+        var assignments = new List<WindowAssignment>();
+        foreach (var group in groups)
+        {
+            var groupAssignments = await _applicationLauncher.LaunchMissingAsync(
+                group.Slots,
+                config,
+                group.Application,
+                CancellationToken.None);
+            assignments.AddRange(groupAssignments);
+        }
+
+        return assignments;
     }
 
     private static string BuildLaunchPlanSummary(IEnumerable<(WindowSlot Slot, LauncherApplication Application)> launchTargets)
@@ -362,6 +393,22 @@ public partial class MainWindow : Window
         SuppressFocusedSlotReassertForPanelInput();
         SetCompactMode(!_isCompactMode);
         ActivatePanelWindow();
+    }
+
+    private void HelpButton_Click(object sender, RoutedEventArgs e)
+    {
+        HelpOverlay.Visibility = Visibility.Visible;
+        CloseHelpDialogButton.Focus();
+    }
+
+    private void CloseHelpButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideHelpDialog();
+    }
+
+    private void HideHelpDialog()
+    {
+        HelpOverlay.Visibility = Visibility.Collapsed;
     }
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
@@ -764,14 +811,6 @@ public partial class MainWindow : Window
 
         if (slot.IsFocused)
         {
-            if (!_areWindowsHidden && ShouldReassertFocusedSlotInsteadOfToggle(slot))
-            {
-                ReassertFocusedSlotToFront(slot);
-                _statusStore.Message = $"スロット{slot.Name}のフォーカス表示を前面に戻しました。";
-                RefreshAuxiliaryUi();
-                return;
-            }
-
             if (!_areWindowsHidden)
             {
                 CapturePreferredLayout(slot);
@@ -826,37 +865,6 @@ public partial class MainWindow : Window
 
         _statusStore.Message = $"スロット{slot.Name}の{slot.ApplicationDisplayName}ウィンドウが見つかりません。";
         RefreshAuxiliaryUi();
-    }
-
-    private bool ShouldReassertFocusedSlotInsteadOfToggle(WindowSlot slot)
-    {
-        if (slot.WindowHandle == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        var ignoredHandles = _statusStore.Slots
-            .Select(item => item.WindowHandle)
-            .Where(handle => handle != IntPtr.Zero)
-            .ToHashSet();
-        var panelHandle = new WindowInteropHelper(this).Handle;
-        if (panelHandle != IntPtr.Zero)
-        {
-            ignoredHandles.Add(panelHandle);
-        }
-
-        return _windowArranger.IsCoveredByOtherWindow(slot.WindowHandle, ignoredHandles);
-    }
-
-    private void ReassertFocusedSlotToFront(WindowSlot slot)
-    {
-        EnsurePreferredLayout(slot);
-        VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
-        SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
-        _windowArranger.FocusMaximized(slot.WindowHandle);
-        SendOtherSlotsToBack(slot);
-        _windowArranger.BringToFrontOnce(slot.WindowHandle);
-        SchedulePanelToFront();
     }
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
@@ -1058,6 +1066,41 @@ public partial class MainWindow : Window
         }
 
         SuppressFocusedSlotReassertForPanelInput();
+        _pendingSlotInfoClear = slot;
+        ClearSlotInfoMessageText.Text = $"スロット{slot.Name}の保存情報を削除して空のパネルに戻します。";
+        var detail = string.IsNullOrWhiteSpace(slot.PanelTitle)
+            ? slot.ShortPath
+            : slot.PanelTitle;
+        ClearSlotInfoDetailText.Text = string.IsNullOrWhiteSpace(detail) || detail == "-"
+            ? "この操作は取り消せません。"
+            : detail;
+        ClearSlotInfoPathText.Text = string.IsNullOrWhiteSpace(slot.Path)
+            ? "保存済みパスはありません。"
+            : slot.Path;
+
+        ClearSlotInfoOverlay.Visibility = Visibility.Visible;
+        CancelClearSlotInfoButton.Focus();
+    }
+
+    private void ConfirmClearSlotInfoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingSlotInfoClear is null)
+        {
+            HideClearSlotInfoDialog();
+            return;
+        }
+
+        ClearSlotPanelInfo(_pendingSlotInfoClear);
+        HideClearSlotInfoDialog();
+    }
+
+    private void CancelClearSlotInfoButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideClearSlotInfoDialog();
+    }
+
+    private void ClearSlotPanelInfo(WindowSlot slot)
+    {
         var hadWindow = slot.WindowHandle != IntPtr.Zero;
         if (hadWindow)
         {
@@ -1186,15 +1229,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (slot.WindowStatus == SlotWindowStatus.Missing && slot.WindowHandle == IntPtr.Zero)
+        if (slot.WindowStatus == SlotWindowStatus.Missing)
         {
             _statusStore.SetSlotApplication(slot, application);
-            if (slot.HasPanelContent)
-            {
-                await LaunchSlotApplicationAsync(slot, application);
-                return;
-            }
-
             _statusStore.Message = $"スロット{slot.Name}の起動対象を {application.DisplayName} にしました。";
             RefreshLaunchButtonAvailability();
             RefreshAuxiliaryUi();
@@ -1810,7 +1847,23 @@ public partial class MainWindow : Window
 
         CompactBarPanel.Measure(new Size(compactContentWidth, double.PositiveInfinity));
         var compactPanelHeight = CompactBarPanel.DesiredSize.Height + CompactBarPanel.Margin.Top + CompactBarPanel.Margin.Bottom;
-        var desiredHeight = titleRowHeight + compactPanelHeight + RootLayoutGrid.Margin.Top + RootLayoutGrid.Margin.Bottom + edgePadding;
+        var auxiliaryContentWidth = Math.Max(
+            0,
+            targetWindowWidth
+            - RootLayoutGrid.Margin.Left
+            - RootLayoutGrid.Margin.Right
+            - StoredPanelsRowGrid.Margin.Left
+            - StoredPanelsRowGrid.Margin.Right);
+        StoredPanelsRowGrid.Measure(new Size(auxiliaryContentWidth, double.PositiveInfinity));
+        var auxiliaryRowHeight = StoredPanelsRowGrid.DesiredSize.Height
+            + StoredPanelsRowGrid.Margin.Top
+            + StoredPanelsRowGrid.Margin.Bottom;
+        var desiredHeight = titleRowHeight
+            + compactPanelHeight
+            + auxiliaryRowHeight
+            + RootLayoutGrid.Margin.Top
+            + RootLayoutGrid.Margin.Bottom
+            + edgePadding;
         return Math.Max(CompactWindowMinHeight, Math.Ceiling(desiredHeight));
     }
 
@@ -2231,6 +2284,12 @@ public partial class MainWindow : Window
         CloseAllConfirmOverlay.Visibility = Visibility.Collapsed;
     }
 
+    private void HideClearSlotInfoDialog()
+    {
+        _pendingSlotInfoClear = null;
+        ClearSlotInfoOverlay.Visibility = Visibility.Collapsed;
+    }
+
     private void HideDeleteStoredPanelDialog()
     {
         _pendingStoredPanelDeletion = null;
@@ -2498,9 +2557,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (ClearSlotInfoOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideClearSlotInfoDialog();
+            e.Handled = true;
+            return;
+        }
+
         if (DeleteStoredPanelOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideDeleteStoredPanelDialog();
+            e.Handled = true;
+            return;
+        }
+
+        if (HelpOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideHelpDialog();
             e.Handled = true;
             return;
         }

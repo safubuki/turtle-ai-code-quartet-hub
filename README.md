@@ -1,47 +1,54 @@
-﻿# Turtle AI Code Quartet Hub
+# Turtle AI Code Quartet Hub
 
-4つの開発用ウィンドウを A-D のスロットとして起動し、2x2 に並べる Windows 向け WPF パネルです。
-既定は各スロット VS Code の一括起動です。設定により Google Antigravity をワークスペース IDE として選択でき、Codex / GitHub Copilot / Gemini / Claude は各スロットのワークスペース CLI として起動できます。Codex / Claude の Windows アプリ版は、CLI とは別に補助ボタン行から起動できます。
+Turtle AI Code Quartet Hub は、4つの開発ワークスペースを A-D のスロットとしてまとめて起動し、画面上へ 2x2 に整列表示する Windows 向けランチャーアプリです。
 
-## できること
+VS Code だけを4面で開くためのツールではなく、スロットごとに VS Code / Google Antigravity / Codex CLI / GitHub Copilot CLI / Gemini CLI / Claude CLI を選び、同じワークスペースを IDE と CLI のどちらでもすばやく開き直せることを重視しています。複数案件、複数AIエージェント、複数ターミナルを行き来する作業を、ひとつの小さな操作パネルに寄せるためのアプリです。
 
-- `Launch Quartet（一括起動）` で、各スロットに選択された VS Code / Antigravity / CLI を起動し、画面に2x2で配置
-- 各スロットで IDE 枠の VS Code / Antigravity、CLI 枠の Codex / Claude / Gemini / Copilot を切り替え、同じワークスペースを開き直し
-- 起動中スロットでも別の IDE/CLI ボタンを押すだけで、現在のウィンドウを閉じて選択アプリへ切り替え
-- CLI は保存済みワークスペースをカレントディレクトリにした terminal ウィンドウとして起動。既定の GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行
-- Codex / Claude の Windows アプリ版は、`Windows` ラベル付きの補助ボタンから起動
-- メインパネルからスロットの保存情報をクリア
-- 未検出のアプリケーションはグレーアウトし、設定で実行ファイルやコマンドを指定可能
-- 縮小モードで小さな操作バーとして常時表示
-- スロット A-D のタイトル、ワークスペース、控え Quartet を保存
-- `ディスプレイ移動` で4面表示を別ディスプレイへまとめて移動
-- タスクバー右クリックからスロット切替、表示モード切替、前面/背面操作を実行
-- スロット別の VS Code user-data-dir で最近使ったワークスペースを分離
+## 特徴
+
+- **4面ワークスペース起動**: `Launch Quartet（一括起動）` で A-D の各スロットに選択済みアプリを起動し、2x2 に配置します。
+- **IDE / CLI の切り替え**: 各スロットで VS Code / Antigravity と、Codex / Copilot / Gemini / Claude CLI を選択できます。
+- **同じ位置でアプリを差し替え**: 起動中スロットで別の IDE / CLI を押すと、現在のウィンドウを閉じて同じ象限へ開き直します。
+- **ワークスペースを覚える**: スロットのタイトル、ワークスペースパス、選択アプリ、控え Quartet を保存します。
+- **CLI をワークスペース直下で起動**: CLI は対象フォルダをカレントディレクトリにした terminal として開きます。
+- **Codex / Claude Windows アプリも起動**: CLI とは別に、Windows アプリ版を補助ボタンから開けます。
+- **フォーカス表示と4面表示**: スロットボタンで1面フォーカス表示と4面表示を切り替えます。
+- **縮小モード**: 小さな操作バーとして常駐し、A-D スロット操作と Windows 補助アプリ起動をすぐ使えます。
+- **タスクバー連携**: Jump List からスロット切替、表示モード切替、前面/背面操作を実行できます。
 
 ## 必要環境
 
 - Windows
-- VS Code
 - .NET 10 SDK
+- VS Code
 - VS Code の `code` コマンド
+
+任意で使用するツール:
+
+- Google Antigravity
+- Codex CLI
+- GitHub Copilot CLI
+- Gemini CLI
+- Claude CLI / Claude Code
+- Codex / Claude の Windows アプリ版
 
 `code` コマンドが使えない場合は、設定ファイルの `codeCommand` に `Code.exe` のパスを指定してください。
 
 ## 起動方法
 
-開発ビルド: 実行中の本体が既定の `bin\Debug` をロックしていても通るよう、毎回別の artifacts path へ出力します。
+開発中は、実行中の本体が既定の `bin\Debug` をロックしていても通る `Build-Panel.ps1` を使うのがおすすめです。
 
 ```powershell
 .\scripts\Build-Panel.ps1
 ```
 
-ロックを避けたままビルドして、そのまま起動する場合:
+ビルドしてそのまま起動する場合:
 
 ```powershell
 .\scripts\Build-Panel.ps1 -Run
 ```
 
-通常ビルド: 実行中の `TurtleAIQuartetHub.exe` を停止しているときだけ使います。
+通常ビルド:
 
 ```powershell
 dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj
@@ -53,13 +60,39 @@ dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj
 dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj
 ```
 
-`dotnet build` と `dotnet run` は既定の `src\TurtleAIQuartetHub.Panel\bin\Debug\net10.0-windows` を使うため、その場所の exe が起動中だとロックで失敗します。検証や反復ビルドは `Build-Panel.ps1` か `--artifacts-path` を使ってください。
+`dotnet build` と `dotnet run` は既定の `src\TurtleAIQuartetHub.Panel\bin\Debug\net10.0-windows` を使うため、その場所の exe が起動中だとロックで失敗することがあります。反復確認では `Build-Panel.ps1` か `--artifacts-path` を使ってください。
 
-ビルド済み exe を直接起動:
+## 基本操作
+
+1. A-D の各スロットにワークスペースを登録します。
+2. スロット内の `IDE` または `CLI` から起動したいアプリを選びます。
+3. `Launch Quartet（一括起動）` を押すと、未起動スロットがまとめて開きます。
+4. 起動中スロットの別アプリボタンを押すと、同じ位置でアプリを切り替えます。
+5. スロットボタンを押すと、1面フォーカス表示と4面表示を切り替えます。
+6. 右上のゴミ箱アイコンで、保存済みのスロット情報を確認付きで削除できます。
+
+## CLI インストール例
+
+アプリ内の `?` ヘルプにも同じ内容を表示します。IDE と Windows アプリは各製品の公式サイトを参照してください。
 
 ```powershell
-.\src\TurtleAIQuartetHub.Panel\bin\Debug\net10.0-windows\TurtleAIQuartetHub.exe
+npm i -g @openai/codex
+npm install -g @github/copilot
+npm install -g @google/gemini-cli
+curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd
+npm install -g @anthropic-ai/claude-code
 ```
+
+自律実行向けの起動オプション例:
+
+```powershell
+codex --ask-for-approval never --sandbox workspace-write
+copilot --allow-all
+gemini --approval-mode=yolo
+claude --permission-mode bypassPermissions
+```
+
+これらは承認確認を減らす、または権限を広げるための例です。信頼できるワークスペースでのみ使ってください。
 
 ## 設定
 
@@ -89,13 +122,18 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `applications`: VS Code、Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / Claude Windows アプリなどの起動定義と検出候補
 - `slots[].applicationId`: スロットごとの起動対象アプリ
 
-`applications[].command` に実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、一般的なインストール先から検出します。
+`applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場と `~\.local\bin` も探索します。
 
 実行時データは `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。
 
+## データとプライバシー
+
+- スロット、控え Quartet、ワークスペース履歴、VS Code スロット別 user-data-dir はローカルに保存されます。
+- アプリ独自の利用状況送信は行いません。
+
 ## 確認用コマンド
 
-Store公開準備の確認:
+Store 公開準備の確認:
 
 ```powershell
 .\scripts\Test-StoreReadiness.ps1
@@ -120,12 +158,12 @@ dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c
 ## 関連ドキュメント
 
 - [PRIVACY.md](PRIVACY.md): プライバシーポリシー草案
+- [SUPPORT.md](SUPPORT.md): サポート案内草案
+- [docs/multi-application-launcher-spec.md](docs/multi-application-launcher-spec.md): 複数アプリケーション起動対応 仕様書
 - [docs/store-readiness.md](docs/store-readiness.md): Microsoft Store 公開前チェック
 - [docs/store-listing-draft.md](docs/store-listing-draft.md): Store 掲載文案
 - [docs/msix-packaging-guide.md](docs/msix-packaging-guide.md): MSIX パッケージング手順
 - [docs/release-notes-draft.md](docs/release-notes-draft.md): リリースノート草案
-- [docs/multi-application-launcher-spec.md](docs/multi-application-launcher-spec.md): 複数アプリケーション起動対応 仕様書
-- [SUPPORT.md](SUPPORT.md): サポート案内草案
 - [assets/store/README.md](assets/store/README.md): Store 画像素材チェック
 
 ## ライセンス

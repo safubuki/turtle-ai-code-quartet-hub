@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-05-13
+更新日: 2026-05-14
 
 ## 1. AI 状態監視を戻さない
 - AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
@@ -19,7 +19,10 @@
 - Antigravity など VS Code 以外の workspace IDE は `ApplicationLauncher` の汎用起動で扱う。起動プロセスと表示ウィンドウのプロセス ID がずれるため、新規ウィンドウハンドルで割り当てる。
 - Antigravity や terminal が起動完了後に中央へ戻ることがあるため、起動確認直後の配置に加えて短い遅延再配置を複数回行う。ユーザーが集中表示に入った後は再配置しない。
 - Codex / GitHub Copilot / Gemini / Claude は `WorkspaceCli`。対象スロットの保存済みワークスペースを working directory にした `cmd.exe /k` で CLI を起動し、terminal 系の新規ウィンドウをスロットに割り当てる。
-- Workspace CLI は PATH のコマンド検出のみで可用性を判断する。terminal プロセスが起動済みであることや Windows アプリ検出だけで CLI インストール済み扱いにしない。
+- 一括起動では CLI 種別同士を並列捕捉しない。VS Code / Antigravity などの非 CLI は並列のまま、CLI グループだけ順次起動して terminal 系プロセス名の競合を避ける。
+- Workspace CLI は同一 CLI 種別の複数スロットでも、まず各 `cmd.exe` を先に起動し、`Turtle {slot} - {shortName}` のタイトルで後から捕捉する。タイトルが Windows Terminal 側で反映されない場合は、新規 terminal ウィンドウを起動順で割り当てる。
+- Workspace CLI はコマンド検出で可用性を判断する。PATH に加えて npm / pnpm / Volta の一般的な shim 置き場、Claude Code 公式インストーラが使うユーザー単位の `~\.local\bin` も探索する。terminal プロセスが起動済みであることや Windows アプリ検出だけで CLI インストール済み扱いにしない。
+- Workspace CLI の実行コマンドは `ResolvedCommand` を優先し、短い `claude` などの設定コマンドだけに依存しない。起動した `cmd.exe` には検出済みコマンドのフォルダと一般的な shim 置き場を PATH 先頭へ一時追加する。
 - GitHub Copilot CLI の既定起動は、対象ワークスペースへ `cd /d` して `copilot` だけを実行する。`workspacePath` は暗黙の引数として渡さない。
 - Codex / Claude の Windows アプリ版は CLI とは別に `codex-app` / `claude-app` の `SingleWindowAgent` として補助ボタン行に残す。
 - スロット内で別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウへ close を送り、短く待ってからスロット状態をクリアし、押されたアプリを同じスロット位置へ起動する。
@@ -27,13 +30,28 @@
 ## 4. UI とフォーカス
 - UI は各スロット内に `IDE` 枠と `CLI` 枠を持つ。IDE 枠は VS Code / Antigravity を縦並び、CLI 枠は Codex / Claude / Gemini / Copilot をまとめて表示する。
 - 選択中アプリのボタンはベタ塗りではなく、暗めの半透明に近い緑で表示する。未検出アプリは既存の `IsAvailable` 判定でグレーアウトする。
-- 未起動スロットに保存済みワークスペースがあれば、アプリ選択ボタンでそのまま起動する。
-- メインパネルのクリアアイコンは右上のゴミ箱アイコンで表示し、対象スロットの保存済みタイトル、パス、ウィンドウ割り当てを削除する。起動中ウィンドウがあっても閉じずに管理対象から外す。
+- 未起動スロットの IDE / CLI 選択ボタンは起動対象を変更するだけで、アプリを自動起動しない。起動は個別スロットの起動ボタンか `Launch Quartet` のみで行う。
+- メインパネルのクリアアイコンは右上のゴミ箱アイコンで表示する。押下時は削除確認ダイアログを出し、確認後に対象スロットの保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中ウィンドウがあっても閉じずに管理対象から外す。
+- スロットの実行中アクションボタン文言は `閉じる` にする。未起動時は `起動` / `新規`。
+- タイトルバーの縮小表示ボタン左に `?` ヘルプを置く。ヘルプには枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を書く。本文とコマンドは選択コピーできるよう `TextBox IsReadOnly=True` で表示する。
 - Codex / Claude の Windows アプリ版は、補助ボタン行の左に `Windows` ラベルを置いて CLI と区別する。
-- 標準表示ではスロット領域をスクロール可能にし、下部の `Launch Quartet` ボタンが見切れないようにする。
+- 標準表示ではスロット領域をカード実寸の高さに詰め、控え Quartet までの黒い余白を作らない。下部の `Launch Quartet` ボタンも見切れないようにする。
 - 集中表示中に同じスロットボタンを押したとき、対象ウィンドウの上に他アプリの可視ウィンドウが重なっている場合は 4 面表示へ戻さず、集中表示を維持して前面復帰する。
-- 重なりがない場合は従来通り、同じボタンで集中表示と 4 面表示を切り替える。
+- 2026-05-14 時点では、CLI / Antigravity でも操作を予測しやすくするため、同じスロットボタンは常に 1 面フォーカス表示と 4 面表示のトグルとして扱う。上に他アプリが重なっているかどうかでは分岐しない。
 
 ## 5. ビルド
 - 実行中の本体が既定の `bin\Debug` 出力をロックする場合がある。
 - 反復確認では `scripts/Build-Panel.ps1` または `--artifacts-path` を使う。
+
+## 6. UI レイアウト細部（2026-05-14 修正済み）
+- `ApplicationGroupLabelStyle` の Margin は `"8,-5,0,0"` で境界線上に浮かせる（負のtopマージンで境界線に重ねる）。正にするとボタンと被る。
+- IDE / CLI ボタンはどちらも高さ 24、`ItemContainerStyle Margin="2,0,2,4"` で統一する。IDE StackPanel と CLI UniformGrid の上端・隙間をそろえる。
+- 控え Quartet Expander のコンテンツ上マージンは `"0,2,0,0"`（大きすぎるとヘッダとパネル間が開く）。
+- 縮小表示は C/D 行と `Windows` 補助アプリ行が初期状態で隠れない高さを最低値にする。
+- 標準表示の既定高さは、`Launch Quartet` ボタン下に空白が残らない値にする。下端余白が見える場合はウィンドウ既定高さを先に調整する。
+
+## 7. 一括起動の並列化（2026-05-14 修正済み）
+- `LaunchAllMissingAsync` では非 CLI の異なるアプリグループを `Task.WhenAll` で並列起動する。CLI グループは順次起動するが、非 CLI と同時に走らせるため CLI 待機中に VS Code が遅延しない。
+- CLI (cmd.exe) は `UseShellExecute = true` で起動する。`WindowStyle = Normal` が適用されウィンドウが即時表示される。`UseShellExecute = false` + `CreateNoWindow = false` の組み合わせより表示が速い。
+- VS Code など IDE の同一アプリタイプ内スロットは引き続きシーケンシャル起動。Workspace CLI はタイトルでスロットを識別できるため、同一 CLI 種別内でも先に複数 terminal を開いてから捕捉する。
+- VS Code は起動プロセス ID と実際のウィンドウプロセス ID がずれる場合があるため、新規 VS Code ウィンドウの HWND を優先して捕捉する。

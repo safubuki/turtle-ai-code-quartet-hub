@@ -109,7 +109,7 @@ public sealed class VscodeLauncher
         var window = await WaitForNewWindowAsync(
             knownHandles,
             timeout,
-            CanTrackLaunchedProcess(launchCodeCommand) ? launchedProcessId : null,
+            expectedProcessId: null,
             cancellationToken);
         return window is null ? null : new WindowAssignment(slot, window);
     }
@@ -128,10 +128,9 @@ public sealed class VscodeLauncher
 
         DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {codeCommand} {GetLaunchArguments(slot, config, launchPath)}");
         var launchedProcessId = await Task.Run(() => StartCode(codeCommand, slot, config, launchPath), cancellationToken);
-        var trackedProcessId = CanTrackLaunchedProcess(codeCommand) ? launchedProcessId : null;
 
         var reconnectStopwatch = Stopwatch.StartNew();
-        var remoteWindow = await WaitForNewWindowAsync(knownHandles, reconnectTimeout, trackedProcessId, cancellationToken);
+        var remoteWindow = await WaitForNewWindowAsync(knownHandles, reconnectTimeout, expectedProcessId: null, cancellationToken);
         if (remoteWindow is not null)
         {
             var remainingReconnectTime = GetRemainingTime(reconnectTimeout, reconnectStopwatch);
@@ -592,12 +591,6 @@ public sealed class VscodeLauncher
         }
 
         return ResolveVsCodeCliCommand(configuredCodeCommand, resolvedCodeCommand) ?? resolvedCodeCommand;
-    }
-
-    private static bool CanTrackLaunchedProcess(string codeCommand)
-    {
-        return string.Equals(Path.GetExtension(codeCommand), ".exe", StringComparison.OrdinalIgnoreCase)
-            && !IsVsCodeWrapperScript(codeCommand);
     }
 
     private static string? ResolveVsCodeCliCommand(string configuredCodeCommand, string resolvedCodeCommand)

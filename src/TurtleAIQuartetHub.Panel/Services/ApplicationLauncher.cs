@@ -7,7 +7,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class ApplicationLauncher
 {
-    private static readonly TimeSpan WindowPollInterval = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan WindowPollInterval = TimeSpan.FromMilliseconds(150);
     private readonly WindowEnumerator _windowEnumerator;
     private readonly VscodeLauncher _vscodeLauncher;
 
@@ -149,26 +149,77 @@ public sealed class ApplicationLauncher
         var knownHandles = GetKnownHandles(application);
         var assignments = new List<WindowAssignment>();
         var timeout = TimeSpan.FromSeconds(config.LaunchTimeoutSeconds);
+        var pendingLaunches = new List<(WindowSlot Slot, string ExpectedTitle)>();
 
         foreach (var slot in launchTargets)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            knownHandles.UnionWith(GetKnownHandles(application));
 
             var launchPath = GetLaunchPath(slot, config);
             var workingDirectory = GetWorkingDirectory(launchPath);
-            DiagnosticLog.Write($"Starting {application.DisplayName} for slot {slot.Name}: cwd={workingDirectory}");
-            _ = StartCliApplication(application, slot, workingDirectory, launchPath);
-            var window = await WaitForNewApplicationWindowAsync(application, knownHandles, expectedProcessId: null, timeout, cancellationToken);
-            if (window is null)
+            var expectedTitle = BuildCliWindowTitle(slot, application);
+            DiagnosticLog.Write($"Starting {application.DisplayName} for slot {slot.Name}: cwd={workingDirectory}, title={expectedTitle}");
+            _ = StartCliApplication(application, slot, workingDirectory, launchPath, expectedTitle);
+            pendingLaunches.Add((slot, expectedTitle));
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        while (pendingLaunches.Count > 0 && stopwatch.Elapsed < timeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var windows = _windowEnumerator
+                .GetApplicationWindows(application.ProcessNames)
+                .Where(candidate => !knownHandles.Contains(candidate.Handle))
+                .OrderBy(candidate => candidate.ProcessId)
+                .ToList();
+            foreach (var window in windows)
             {
-                DiagnosticLog.Write($"No new {application.DisplayName} terminal window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
-                slot.WindowStatus = SlotWindowStatus.Missing;
-                continue;
+                var pendingIndex = pendingLaunches.FindIndex(launch =>
+                    window.Title.Contains(launch.ExpectedTitle, StringComparison.OrdinalIgnoreCase));
+                if (pendingIndex < 0)
+                {
+                    continue;
+                }
+
+                var launch = pendingLaunches[pendingIndex];
+                knownHandles.Add(window.Handle);
+                assignments.Add(new WindowAssignment(launch.Slot, window));
+                pendingLaunches.RemoveAt(pendingIndex);
             }
 
-            knownHandles.Add(window.Handle);
-            assignments.Add(new WindowAssignment(slot, window));
+            foreach (var window in windows.Where(window => !knownHandles.Contains(window.Handle)).ToList())
+            {
+                if (pendingLaunches.Count == 0)
+                {
+                    break;
+                }
+
+                var launch = pendingLaunches[0];
+                DiagnosticLog.Write($"Assigning {application.DisplayName} terminal without title match for slot {launch.Slot.Name}: title={window.Title}");
+                knownHandles.Add(window.Handle);
+                assignments.Add(new WindowAssignment(launch.Slot, window));
+                pendingLaunches.RemoveAt(0);
+            }
+
+            if (pendingLaunches.Count == 0)
+            {
+                break;
+            }
+
+            var remaining = timeout - stopwatch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            await Task.Delay(remaining < WindowPollInterval ? remaining : WindowPollInterval, cancellationToken);
+        }
+
+        foreach (var launch in pendingLaunches)
+        {
+            DiagnosticLog.Write($"No new {application.DisplayName} terminal window detected for slot {launch.Slot.Name} within {timeout.TotalSeconds:0} seconds.");
+            launch.Slot.WindowStatus = SlotWindowStatus.Missing;
         }
 
         return assignments;
@@ -239,26 +290,32 @@ public sealed class ApplicationLauncher
         LauncherApplication application,
         WindowSlot slot,
         string workingDirectory,
-        string? launchPath)
+        string? launchPath,
+        string windowTitle)
     {
         var commandLine = BuildCliCommandLine(application, slot, launchPath);
-        var title = EscapeCmdMeta($"Turtle {slot.Name} - {application.ShortName}");
+        var pathCommand = BuildCliPathCommand(application);
+        var title = EscapeCmdMeta(windowTitle);
         var cdCommand = $"cd /d {QuoteForCmdArgument(workingDirectory)}";
-        var initialCommand = string.IsNullOrWhiteSpace(commandLine)
-            ? $"{cdCommand} && title {title}"
-            : $"{cdCommand} && title {title} && {commandLine}";
+        var initialCommands = new[] { pathCommand, cdCommand, $"title {title}", commandLine }
+            .Where(command => !string.IsNullOrWhiteSpace(command));
+        var initialCommand = string.Join(" && ", initialCommands);
         var startInfo = new ProcessStartInfo
         {
             FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
             Arguments = $"/d /s /k \"{initialCommand}\"",
             WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = false,
+            UseShellExecute = true,
             WindowStyle = ProcessWindowStyle.Normal
         };
 
         using var process = Process.Start(startInfo);
         return process is null ? null : (uint)process.Id;
+    }
+
+    private static string BuildCliWindowTitle(WindowSlot slot, LauncherApplication application)
+    {
+        return $"Turtle {slot.Name} - {application.ShortName}";
     }
 
     private static ProcessStartInfo CreateStartInfo(string command, IReadOnlyList<string> arguments)
@@ -355,10 +412,11 @@ public sealed class ApplicationLauncher
 
     private static string BuildCliCommandLine(LauncherApplication application, WindowSlot slot, string? launchPath)
     {
+        var resolvedCommand = application.ResolvedCommand.Trim();
         var configuredCommand = application.Command.Trim();
-        var command = !string.IsNullOrWhiteSpace(configuredCommand)
-            ? configuredCommand
-            : application.ResolvedCommand.Trim();
+        var command = !string.IsNullOrWhiteSpace(resolvedCommand)
+            ? resolvedCommand
+            : configuredCommand;
         if (string.IsNullOrWhiteSpace(command))
         {
             return string.Empty;
@@ -370,6 +428,75 @@ public sealed class ApplicationLauncher
         var arguments = BuildConfiguredArguments(application, slot, launchPath)
             .Select(QuoteForCmdArgument);
         return string.Join(" ", new[] { commandText }.Concat(arguments));
+    }
+
+    private static string BuildCliPathCommand(LauncherApplication application)
+    {
+        var roots = GetCliPathRoots(application)
+            .Where(directory => !string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (roots.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var pathPrefix = EscapeCmdMeta(string.Join(Path.PathSeparator, roots));
+        return $"path {pathPrefix};%PATH%";
+    }
+
+    private static IEnumerable<string> GetCliPathRoots(LauncherApplication application)
+    {
+        if (!string.IsNullOrWhiteSpace(application.ResolvedCommand)
+            && LooksLikeExplicitPath(application.ResolvedCommand)
+            && File.Exists(application.ResolvedCommand))
+        {
+            var resolvedDirectory = Path.GetDirectoryName(application.ResolvedCommand);
+            if (!string.IsNullOrWhiteSpace(resolvedDirectory))
+            {
+                yield return resolvedDirectory;
+            }
+        }
+
+        foreach (var root in GetCommonCliCommandRoots())
+        {
+            yield return root;
+        }
+    }
+
+    private static IEnumerable<string> GetCommonCliCommandRoots()
+    {
+        var npmPrefix = Environment.GetEnvironmentVariable("NPM_CONFIG_PREFIX");
+        if (!string.IsNullOrWhiteSpace(npmPrefix))
+        {
+            yield return npmPrefix;
+        }
+
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (!string.IsNullOrWhiteSpace(appData))
+        {
+            yield return Path.Combine(appData, "npm");
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData))
+        {
+            yield return Path.Combine(localAppData, "npm");
+            yield return Path.Combine(localAppData, "pnpm");
+            yield return Path.Combine(localAppData, "Volta", "bin");
+        }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            yield return Path.Combine(userProfile, ".local", "bin");
+        }
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (!string.IsNullOrWhiteSpace(programFiles))
+        {
+            yield return Path.Combine(programFiles, "nodejs");
+        }
     }
 
     private static List<string> BuildConfiguredArguments(LauncherApplication application, WindowSlot slot, string? launchPath)

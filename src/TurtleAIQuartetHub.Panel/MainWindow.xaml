@@ -5,9 +5,9 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle AI Code Quartet Hub"
         Width="650"
-        Height="660"
+        Height="535"
         MinWidth="560"
-        MinHeight="560"
+        MinHeight="520"
         Background="#101211"
         Foreground="#EEF4EF"
         FontFamily="Segoe UI"
@@ -153,8 +153,9 @@
 
     <Style x:Key="ApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
       <Setter Property="MinWidth" Value="0" />
-      <Setter Property="MinHeight" Value="22" />
-      <Setter Property="Padding" Value="5,2" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="5,1" />
       <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="ToolTip" Value="{Binding ToolTip}" />
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
@@ -175,7 +176,7 @@
       <Setter Property="BorderBrush" Value="#2B3D34" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="Padding" Value="6,9,6,5" />
+      <Setter Property="Padding" Value="6,8,6,4" />
     </Style>
 
     <Style x:Key="ApplicationGroupLabelStyle" TargetType="TextBlock">
@@ -186,7 +187,7 @@
       <Setter Property="Padding" Value="5,0" />
       <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
-      <Setter Property="Margin" Value="8,0,0,0" />
+      <Setter Property="Margin" Value="8,-5,0,0" />
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -217,7 +218,7 @@
       <Setter Property="MinHeight" Value="24" />
       <Setter Property="Padding" Value="8,3" />
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="MinWidth" Value="58" />
+      <Setter Property="MinWidth" Value="64" />
     </Style>
 
     <Style x:Key="StoredAssignButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
@@ -250,12 +251,12 @@
       <Setter Property="Width" Value="24" />
       <Setter Property="Height" Value="24" />
       <Setter Property="Padding" Value="0" />
-      <Setter Property="Foreground" Value="#C9D6CE" />
-      <Setter Property="Background" Value="#17201B" />
-      <Setter Property="BorderBrush" Value="#344A3E" />
+      <Setter Property="Foreground" Value="#F2B7AF" />
+      <Setter Property="Background" Value="#261816" />
+      <Setter Property="BorderBrush" Value="#6A3832" />
       <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
       <Setter Property="FontSize" Value="13" />
-      <Setter Property="ToolTip" Value="このパネル情報をクリア" />
+      <Setter Property="ToolTip" Value="このパネル情報を削除" />
       <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True">
           <Setter Property="Foreground" Value="#FFE7E2" />
@@ -696,7 +697,7 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemContainerStyle>
                       <Style TargetType="ContentPresenter">
-                        <Setter Property="Margin" Value="0,0,0,4" />
+                        <Setter Property="Margin" Value="2,0,2,4" />
                       </Style>
                     </ItemsControl.ItemContainerStyle>
                     <ItemsControl.ItemTemplate>
@@ -728,7 +729,7 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemContainerStyle>
                       <Style TargetType="ContentPresenter">
-                        <Setter Property="Margin" Value="2" />
+                        <Setter Property="Margin" Value="2,0,2,4" />
                       </Style>
                     </ItemsControl.ItemContainerStyle>
                     <ItemsControl.ItemTemplate>
@@ -766,7 +767,7 @@
                         Margin="0,0,6,0">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                      <Setter Property="Content" Value="控えへ" />
+                      <Setter Property="Content" Value="控え移動" />
                       <Style.Triggers>
                         <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
                           <Setter Property="IsEnabled" Value="False" />
@@ -778,10 +779,10 @@
                 </Button>
                 <Button Tag="{Binding}"
                         Click="SlotMainActionButton_Click"
-                        MinWidth="58">
+                        MinWidth="64">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                      <Setter Property="Content" Value="停止" />
+                      <Setter Property="Content" Value="閉じる" />
                       <Style.Triggers>
                         <MultiDataTrigger>
                           <MultiDataTrigger.Conditions>
@@ -989,10 +990,10 @@
           BorderBrush="Transparent"
           BorderThickness="0"
           CornerRadius="0">
-  <Grid x:Name="RootLayoutGrid" Background="{StaticResource PanelBackgroundBrush}" Margin="8">
+    <Grid x:Name="RootLayoutGrid" Background="{StaticResource PanelBackgroundBrush}" Margin="8">
     <Grid.RowDefinitions>
       <RowDefinition Height="26" />
-      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
@@ -1003,6 +1004,14 @@
                  FontWeight="SemiBold"
                  Foreground="{StaticResource TextBrush}" />
       <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+        <Button x:Name="HelpButton"
+                Content="?"
+                Width="26"
+                FontSize="12"
+                FontWeight="SemiBold"
+                ToolTip="ヘルプ"
+                Click="HelpButton_Click"
+                Style="{StaticResource ChromeButton}" />
         <Button x:Name="DisplayModeButton"
                 Content="&#xE73F;"
                 Width="30"
@@ -1108,7 +1117,7 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="2" Margin="5,2,5,3">
+    <Grid x:Name="StoredPanelsRowGrid" Grid.Row="2" Margin="5,2,5,3">
       <Expander x:Name="StoredPanelsExpander"
                 Style="{StaticResource StoredPanelsExpanderStyle}"
                 IsExpanded="False"
@@ -1126,7 +1135,7 @@
               BorderBrush="{StaticResource BorderBrushSoft}"
               BorderThickness="1"
               CornerRadius="8"
-              Margin="0,6,0,0"
+              Margin="0,2,0,0"
               Padding="6">
         <Grid>
           <Grid.RowDefinitions>
@@ -1160,6 +1169,7 @@
       <StackPanel Orientation="Horizontal"
                   HorizontalAlignment="Right"
                   VerticalAlignment="Top"
+                  Margin="0,4,4,0"
                   Panel.ZIndex="2">
         <TextBlock Text="Windows"
                    Foreground="{StaticResource MutedTextBrush}"
@@ -1213,34 +1223,34 @@
                   Width="290">
         <Grid Margin="0,0,0,4">
           <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*" />
+            <ColumnDefinition Width="3*" />
+            <ColumnDefinition Width="3*" />
             <ColumnDefinition Width="5*" />
-            <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="3*" />
           </Grid.ColumnDefinitions>
 
           <Button Grid.Column="0"
-            x:Name="ToggleMonitorButton"
-            Content="ディスプレイ移動"
-            Click="ToggleMonitorButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Margin="0,0,4,0" />
-          <Button Grid.Column="1"
             x:Name="TopmostAllButton"
             Content="最前面"
             Click="PinAllTopButton_Click"
                   Style="{StaticResource BarButton}"
                   Margin="0,0,4,0" />
-          <Button Grid.Column="2"
+          <Button Grid.Column="1"
             x:Name="BackmostAllButton"
             Content="最背面"
             Click="SendAllBackButton_Click"
                   Style="{StaticResource BarButton}"
                   Margin="0,0,4,0" />
-          <Button Grid.Column="3"
+          <Button Grid.Column="2"
             x:Name="ToggleVisibilityButton"
             Content="非表示"
             Click="ToggleVisibilityButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="3"
+            x:Name="ToggleMonitorButton"
+            Content="ディスプレイ移動"
+            Click="ToggleMonitorButton_Click"
                   Style="{StaticResource BarButton}" />
         </Grid>
 
@@ -1385,6 +1395,107 @@
       </Grid>
     </Border>
 
+    <Border x:Name="ClearSlotInfoOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="21">
+      <Grid>
+        <Border Width="388"
+                MaxWidth="430"
+                Padding="16"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="#8C3F38"
+                BorderThickness="1"
+                CornerRadius="12"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <Border Width="34"
+                      Height="34"
+                      CornerRadius="10"
+                      Background="#2B1715"
+                      BorderBrush="#8C3F38"
+                      BorderThickness="1"
+                      Margin="0,0,12,0">
+                <TextBlock Text="&#xE74D;"
+                           FontFamily="Segoe MDL2 Assets"
+                           FontSize="16"
+                           Foreground="#F2B7AF"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+              </Border>
+
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="このパネル情報を削除しますか？"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="ClearSlotInfoMessageText"
+                           Margin="0,5,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}" />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Margin="0,14,0,0"
+                    Padding="10,8"
+                    Background="#271A18"
+                    BorderBrush="#8C3F38"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <StackPanel>
+                <TextBlock x:Name="ClearSlotInfoDetailText"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="ClearSlotInfoPathText"
+                           Margin="0,4,0,0"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="2"
+                       Margin="0,12,0,0"
+                       Text="削除すると、タイトル、保存済みワークスペース、選択アプリ、ウィンドウ割り当てが消えます。起動中ウィンドウは閉じずに管理対象から外します。"
+                       Foreground="#F2B7AF"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Grid.Row="3"
+                        Margin="0,16,0,0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+              <Button x:Name="CancelClearSlotInfoButton"
+                      Content="キャンセル"
+                      Click="CancelClearSlotInfoButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="96"
+                      Margin="0,0,8,0" />
+              <Button x:Name="ConfirmClearSlotInfoButton"
+                      Content="削除する"
+                      Click="ConfirmClearSlotInfoButton_Click"
+                      Style="{StaticResource DangerButtonStyle}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
     <Border x:Name="DeleteStoredPanelOverlay"
             Grid.RowSpan="5"
             Visibility="Collapsed"
@@ -1480,6 +1591,125 @@
                       Content="削除する"
                       Click="ConfirmDeleteStoredPanelButton_Click"
                       Style="{StaticResource DangerButtonStyle}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="HelpOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="22">
+      <Grid>
+        <Border Width="486"
+                MaxWidth="520"
+                Padding="16"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1"
+                CornerRadius="12"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="ヘルプ"
+                         FontSize="16"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource TextBrush}" />
+              <Button Grid.Column="1"
+                      Content="X"
+                      ToolTip="閉じる"
+                      Click="CloseHelpButton_Click"
+                      Style="{StaticResource ChromeButton}" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,12,0,0"
+                          MaxHeight="430"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel>
+                <Border Padding="10"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <StackPanel>
+                    <TextBlock Text="CLI のインストール"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <TextBox Margin="0,6,0,0"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Foreground="{StaticResource MutedTextBrush}"
+                             Text="IDE と Windows アプリは、各製品の公式サイトを参照してください。CLI のインストールコマンドは下記を参照してください。" />
+                    <TextBox Margin="0,8,0,0"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             FontFamily="Consolas"
+                             Foreground="{StaticResource TextBrush}"
+                             Text="Codex CLI: npm i -g @openai/codex&#x0a;GitHub Copilot CLI: npm install -g @github/copilot&#x0a;Gemini CLI: npm install -g @google/gemini-cli&#x0a;Claude Code 公式インストーラ: curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd&#x0a;Claude Code npm: npm install -g @anthropic-ai/claude-code" />
+                  </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="10"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <StackPanel>
+                    <TextBlock Text="自律実行向けの起動オプション"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <TextBox Margin="0,6,0,0"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Foreground="#F2B7AF"
+                             Text="下記は承認確認を減らす、または権限を広げるための例です。信頼できるワークスペースでのみ使い、内容が不明なリポジトリでは使わないでください。" />
+                    <TextBox Margin="0,8,0,0"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             FontFamily="Consolas"
+                             Foreground="{StaticResource TextBrush}"
+                             Text="codex --ask-for-approval never --sandbox workspace-write&#x0a;copilot --allow-all&#x0a;gemini --approval-mode=yolo&#x0a;claude --permission-mode bypassPermissions" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <StackPanel Grid.Row="2"
+                        Margin="0,16,0,0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+              <Button x:Name="CloseHelpDialogButton"
+                      Content="閉じる"
+                      Click="CloseHelpButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="96" />
             </StackPanel>
           </Grid>
         </Border>
