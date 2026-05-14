@@ -11,6 +11,7 @@ public sealed class AppConfig
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        WriteIndented = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         Converters = { new JsonStringEnumConverter() }
@@ -66,6 +67,20 @@ public sealed class AppConfig
         return fallback;
     }
 
+    public static string GetUserConfigPath()
+    {
+        return Path.Combine(GetDefaultStateDirectory(), "config", "turtle-ai-quartet-hub.json");
+    }
+
+    public void SaveToUserConfig()
+    {
+        Normalize();
+        var path = GetUserConfigPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
+        ConfigSource = path;
+    }
+
     public void Normalize()
     {
         CodeCommand = string.IsNullOrWhiteSpace(CodeCommand) ? "code" : CodeCommand.Trim();
@@ -101,7 +116,7 @@ public sealed class AppConfig
 
     private static IEnumerable<string> CandidatePaths()
     {
-        yield return Path.Combine(GetDefaultStateDirectory(), "config", "turtle-ai-quartet-hub.json");
+        yield return GetUserConfigPath();
 
         var roots = GetSearchRoots().ToList();
 

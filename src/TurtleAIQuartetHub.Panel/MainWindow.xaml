@@ -85,6 +85,18 @@
       <EventSetter Event="LostKeyboardFocus" Handler="InlineTitleTextBox_LostKeyboardFocus" />
     </Style>
 
+    <Style x:Key="SettingsTextBoxStyle" TargetType="TextBox">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="Background" Value="#121816" />
+      <Setter Property="BorderBrush" Value="#2E3832" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="6,3" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <Style x:Key="BaseButton" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
       <Setter Property="Background" Value="#202823" />
@@ -1004,6 +1016,15 @@
                  FontWeight="SemiBold"
                  Foreground="{StaticResource TextBrush}" />
       <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+        <Button x:Name="SettingsButton"
+                Content="&#xE713;"
+                Width="26"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="12"
+                FontWeight="SemiBold"
+                ToolTip="設定"
+                Click="SettingsButton_Click"
+                Style="{StaticResource ChromeButton}" />
         <Button x:Name="HelpButton"
                 Content="?"
                 Width="26"
@@ -1135,7 +1156,7 @@
               BorderBrush="{StaticResource BorderBrushSoft}"
               BorderThickness="1"
               CornerRadius="8"
-              Margin="0,2,0,0"
+              Margin="0,12,0,0"
               Padding="6">
         <Grid>
           <Grid.RowDefinitions>
@@ -1472,7 +1493,7 @@
 
             <TextBlock Grid.Row="2"
                        Margin="0,12,0,0"
-                       Text="削除すると、タイトル、保存済みワークスペース、選択アプリ、ウィンドウ割り当てが消えます。起動中ウィンドウは閉じずに管理対象から外します。"
+                       Text="削除すると、タイトル、保存済みワークスペース、選択アプリ、ウィンドウ割り当てが消えます。起動中のIDE / CLIウィンドウも閉じます。"
                        Foreground="#F2B7AF"
                        TextWrapping="Wrap" />
 
@@ -1597,11 +1618,324 @@
       </Grid>
     </Border>
 
-    <Border x:Name="HelpOverlay"
+    <Border x:Name="SettingsOverlay"
             Grid.RowSpan="5"
             Visibility="Collapsed"
             Background="#96090B0A"
             Panel.ZIndex="22">
+      <Grid>
+        <Border MaxWidth="610"
+                MaxHeight="500"
+                Margin="14"
+                Padding="16"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1"
+                CornerRadius="12"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="設定"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="SettingsConfigPathText"
+                           Margin="0,4,0,0"
+                           FontSize="10"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+              <Button Grid.Column="1"
+                      Content="X"
+                      ToolTip="閉じる"
+                      Click="CloseSettingsButton_Click"
+                      Style="{StaticResource ChromeButton}" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,12,0,0"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel>
+                <Border Padding="10"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <StackPanel>
+                    <TextBlock Text="アプリケーションパス"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <TextBlock Margin="0,4,0,8"
+                               Text="空欄は自動検出を使います。パスが変わった場合は exe/cmd/lnk またはコマンド名を指定してください。"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding ApplicationPathSettings}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:ApplicationPathSetting}">
+                          <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="92" />
+                              <ColumnDefinition Width="58" />
+                              <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                              <RowDefinition Height="Auto" />
+                              <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="{Binding ShortName}"
+                                       Foreground="{StaticResource TextBrush}"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding KindText}"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       FontSize="10" />
+                            <TextBox Grid.Column="2"
+                                     Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{Binding ToolTip}"
+                                     Style="{StaticResource SettingsTextBoxStyle}" />
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="2"
+                                       Margin="0,2,0,0"
+                                       Text="{Binding ResolvedCommand}"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap" />
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="10"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <StackPanel>
+                    <TextBlock Text="表の Quartet"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <ItemsControl Margin="0,8,0,0"
+                                  ItemsSource="{Binding Slots}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:WindowSlot}">
+                          <Border Margin="0,0,0,8"
+                                  Padding="8"
+                                  Background="#151D19"
+                                  BorderBrush="#2A3A31"
+                                  BorderThickness="1"
+                                  CornerRadius="7">
+                            <Grid>
+                              <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                              </Grid.RowDefinitions>
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="58" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+
+                              <TextBlock Text="{Binding Name}"
+                                         Foreground="{StaticResource AccentBrush}"
+                                         FontWeight="SemiBold" />
+                              <TextBox Grid.Column="1"
+                                       Text="{Binding ApplicationId, UpdateSourceTrigger=LostFocus}"
+                                       ToolTip="vscode / antigravity / codex / github-copilot / gemini / claude"
+                                       Style="{StaticResource SettingsTextBoxStyle}" />
+                              <Button Grid.Column="2"
+                                      Content="空にする"
+                                      Tag="{Binding}"
+                                      Click="SettingsClearVisibleSlotButton_Click"
+                                      Style="{StaticResource StoredAssignButton}"
+                                      Margin="8,0,0,0" />
+
+                              <TextBlock Grid.Row="1"
+                                         Text="名前"
+                                         Foreground="{StaticResource MutedTextBrush}"
+                                         FontSize="10" />
+                              <TextBox Grid.Row="1"
+                                       Grid.Column="1"
+                                       Grid.ColumnSpan="2"
+                                       Text="{Binding PanelTitle, UpdateSourceTrigger=LostFocus}"
+                                       Style="{StaticResource SettingsTextBoxStyle}"
+                                       Margin="0,4,0,0" />
+
+                              <TextBlock Grid.Row="2"
+                                         Text="パス"
+                                         Foreground="{StaticResource MutedTextBrush}"
+                                         FontSize="10" />
+                              <TextBox Grid.Row="2"
+                                       Grid.Column="1"
+                                       Grid.ColumnSpan="2"
+                                       Text="{Binding Path, UpdateSourceTrigger=LostFocus}"
+                                       Style="{StaticResource SettingsTextBoxStyle}"
+                                       Margin="0,4,0,0" />
+
+                              <TextBlock Grid.Row="3"
+                                         Text="保存済"
+                                         Foreground="{StaticResource MutedTextBrush}"
+                                         FontSize="10" />
+                              <Grid Grid.Row="3"
+                                    Grid.Column="1"
+                                    Grid.ColumnSpan="2"
+                                    Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding SavedWorkspacePath, UpdateSourceTrigger=LostFocus}"
+                                         Style="{StaticResource SettingsTextBoxStyle}" />
+                                <CheckBox Grid.Column="1"
+                                          Margin="8,0,0,0"
+                                          VerticalAlignment="Center"
+                                          IsChecked="{Binding SavedWorkspaceConfirmed}"
+                                          Foreground="{StaticResource MutedTextBrush}"
+                                          Content="再利用" />
+                              </Grid>
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="10"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <StackPanel>
+                    <TextBlock Text="控え Quartet"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <ItemsControl Margin="0,8,0,0"
+                                  ItemsSource="{Binding StoredPanels}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:StoredPanelSlot}">
+                          <Border Margin="0,0,0,8"
+                                  Padding="8"
+                                  Background="#151D19"
+                                  BorderBrush="#2A3A31"
+                                  BorderThickness="1"
+                                  CornerRadius="7">
+                            <Grid>
+                              <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                              </Grid.RowDefinitions>
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="58" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+
+                              <TextBlock Text="{Binding Label}"
+                                         Foreground="{StaticResource AccentBrush}"
+                                         FontWeight="SemiBold" />
+                              <TextBox Grid.Column="1"
+                                       Text="{Binding ApplicationId, UpdateSourceTrigger=LostFocus}"
+                                       ToolTip="vscode / antigravity / codex / github-copilot / gemini / claude"
+                                       Style="{StaticResource SettingsTextBoxStyle}" />
+                              <Button Grid.Column="2"
+                                      Content="空にする"
+                                      Tag="{Binding}"
+                                      Click="SettingsClearStoredPanelButton_Click"
+                                      Style="{StaticResource StoredAssignButton}"
+                                      Margin="8,0,0,0" />
+
+                              <TextBlock Grid.Row="1"
+                                         Text="名前"
+                                         Foreground="{StaticResource MutedTextBrush}"
+                                         FontSize="10" />
+                              <TextBox Grid.Row="1"
+                                       Grid.Column="1"
+                                       Grid.ColumnSpan="2"
+                                       Text="{Binding PanelTitle, UpdateSourceTrigger=LostFocus}"
+                                       Style="{StaticResource SettingsTextBoxStyle}"
+                                       Margin="0,4,0,0" />
+
+                              <TextBlock Grid.Row="2"
+                                         Text="パス"
+                                         Foreground="{StaticResource MutedTextBrush}"
+                                         FontSize="10" />
+                              <TextBox Grid.Row="2"
+                                       Grid.Column="1"
+                                       Grid.ColumnSpan="2"
+                                       Text="{Binding WorkspacePath, UpdateSourceTrigger=LostFocus}"
+                                       Style="{StaticResource SettingsTextBoxStyle}"
+                                       Margin="0,4,0,0" />
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <Grid Grid.Row="2"
+                  Margin="0,14,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal">
+                <Button Content="不整合を修復"
+                        Click="RepairPanelStateButton_Click"
+                        Style="{StaticResource BaseButton}"
+                        MinWidth="112"
+                        Margin="0,0,8,0" />
+                <Button Content="再検出"
+                        Click="ReloadApplicationDetectionButton_Click"
+                        Style="{StaticResource BaseButton}"
+                        MinWidth="86" />
+              </StackPanel>
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          HorizontalAlignment="Right">
+                <Button Content="パス設定を保存"
+                        Click="SaveApplicationPathSettingsButton_Click"
+                        Style="{StaticResource BaseButton}"
+                        MinWidth="122"
+                        Margin="0,0,8,0" />
+                <Button x:Name="CloseSettingsDialogButton"
+                        Content="閉じる"
+                        Click="CloseSettingsButton_Click"
+                        Style="{StaticResource BaseButton}"
+                        MinWidth="86" />
+              </StackPanel>
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="HelpOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="23">
       <Grid>
         <Border Width="486"
                 MaxWidth="520"
