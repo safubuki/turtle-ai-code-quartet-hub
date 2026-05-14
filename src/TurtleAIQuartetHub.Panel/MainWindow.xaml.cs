@@ -401,6 +401,40 @@ public partial class MainWindow : Window
         CloseHelpDialogButton.Focus();
     }
 
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _statusStore.ResetApplicationPathSettings();
+        SettingsConfigPathText.Text = AppConfig.GetUserConfigPath();
+        SettingsOverlay.Visibility = Visibility.Visible;
+        CloseSettingsDialogButton.Focus();
+    }
+
+    private void CloseSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideSettingsDialog();
+    }
+
+    private void SaveApplicationPathSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _statusStore.SaveApplicationPathSettings();
+        SettingsConfigPathText.Text = AppConfig.GetUserConfigPath();
+        _statusStore.Message = $"アプリケーションパス設定を保存しました: {AppConfig.GetUserConfigPath()}";
+        RefreshAuxiliaryUi();
+    }
+
+    private void ReloadApplicationDetectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        _statusStore.ReloadApplicationsFromConfig();
+        _statusStore.Message = "アプリケーションを再検出しました。";
+        RefreshAuxiliaryUi();
+    }
+
+    private void RepairPanelStateButton_Click(object sender, RoutedEventArgs e)
+    {
+        _statusStore.Message = _statusStore.RepairPanelState();
+        RefreshAuxiliaryUi();
+    }
+
     private void CloseHelpButton_Click(object sender, RoutedEventArgs e)
     {
         HideHelpDialog();
@@ -409,6 +443,11 @@ public partial class MainWindow : Window
     private void HideHelpDialog()
     {
         HelpOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void HideSettingsDialog()
+    {
+        SettingsOverlay.Visibility = Visibility.Collapsed;
     }
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
@@ -563,6 +602,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        SuppressFocusedSlotReassertForPanelInput();
         var dragData = new DataObject("WindowSlot", slot);
         DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
     }
@@ -571,6 +611,8 @@ public partial class MainWindow : Window
     {
         if (sender is not Border border || !e.Data.GetDataPresent("WindowSlot"))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -605,6 +647,8 @@ public partial class MainWindow : Window
 
         if (!e.Data.GetDataPresent("WindowSlot"))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -619,7 +663,7 @@ public partial class MainWindow : Window
         _statusStore.SwapSlotContents(sourceSlot, targetSlot);
         if (!_areWindowsHidden)
         {
-            ArrangeSlotsOnActiveMonitor();
+            ArrangeSlotsAfterPanelStateChange();
         }
 
         _statusStore.Message = $"スロット{sourceSlot.Name}とスロット{targetSlot.Name}のカードを入れ替えました。";
@@ -656,6 +700,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        SuppressFocusedSlotReassertForPanelInput();
         var dragData = new DataObject("StoredPanelSlot", storedPanel);
         DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
     }
@@ -664,6 +709,8 @@ public partial class MainWindow : Window
     {
         if (sender is not Border border || !e.Data.GetDataPresent("StoredPanelSlot"))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -706,6 +753,8 @@ public partial class MainWindow : Window
         var targetPanel = (sender as FrameworkElement)?.Tag as StoredPanelSlot;
         if (sourcePanel is null || targetPanel is null || ReferenceEquals(sourcePanel, targetPanel))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -724,6 +773,8 @@ public partial class MainWindow : Window
     {
         if (sender is not FrameworkElement element || !e.Data.GetDataPresent("StoredPanelSlot"))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -731,6 +782,8 @@ public partial class MainWindow : Window
         var targetPage = element.DataContext as StoredPanelPage;
         if (sourcePanel is null || targetPage is null || targetPage.Slots.Contains(sourcePanel))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -769,6 +822,8 @@ public partial class MainWindow : Window
         var targetPage = (sender as FrameworkElement)?.DataContext as StoredPanelPage;
         if (sourcePanel is null || targetPage is null)
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -1082,7 +1137,7 @@ public partial class MainWindow : Window
         CancelClearSlotInfoButton.Focus();
     }
 
-    private void ConfirmClearSlotInfoButton_Click(object sender, RoutedEventArgs e)
+    private async void ConfirmClearSlotInfoButton_Click(object sender, RoutedEventArgs e)
     {
         if (_pendingSlotInfoClear is null)
         {
@@ -1090,8 +1145,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        ClearSlotPanelInfo(_pendingSlotInfoClear);
+        var slot = _pendingSlotInfoClear;
         HideClearSlotInfoDialog();
+        await ClearSlotPanelInfoAsync(slot);
     }
 
     private void CancelClearSlotInfoButton_Click(object sender, RoutedEventArgs e)
@@ -1099,12 +1155,34 @@ public partial class MainWindow : Window
         HideClearSlotInfoDialog();
     }
 
-    private void ClearSlotPanelInfo(WindowSlot slot)
+    private async Task ClearSlotPanelInfoAsync(WindowSlot slot)
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
         var hadWindow = slot.WindowHandle != IntPtr.Zero;
         if (hadWindow)
         {
-            _windowArranger.ReleaseTopmost(slot.WindowHandle);
+            var windowHandle = slot.WindowHandle;
+            if (_windowEnumerator.IsLiveWindow(windowHandle))
+            {
+                _statusStore.ClearFocusedSlot();
+                _windowArranger.ReleaseTopmost(windowHandle);
+                if (!_windowArranger.Close(windowHandle))
+                {
+                    _statusStore.Message = $"スロット{slot.Name}のウィンドウを閉じられなかったため、パネル情報は削除していません。";
+                    return;
+                }
+
+                for (var attempt = 0; attempt < 12 && _windowEnumerator.IsLiveWindow(windowHandle); attempt++)
+                {
+                    await Task.Delay(100);
+                }
+            }
         }
 
         var slotName = slot.Name;
@@ -1114,13 +1192,14 @@ public partial class MainWindow : Window
         if (!_areWindowsHidden)
         {
             _hiddenFocusedSlot = null;
-            ArrangeSlotsOnActiveMonitor();
+            ArrangeSlotsAfterPanelStateChange();
         }
 
         _statusStore.Message = hadWindow
-            ? $"スロット{slotName}のパネル情報をクリアし、既存ウィンドウは管理対象から外しました。"
+            ? $"スロット{slotName}のウィンドウを閉じ、パネル情報をクリアしました。"
             : $"スロット{slotName}のパネル情報をクリアしました。";
         RefreshAuxiliaryUi();
+        });
     }
 
     private async void SlotMainActionButton_Click(object sender, RoutedEventArgs e)
@@ -1511,6 +1590,29 @@ public partial class MainWindow : Window
         HideDeleteStoredPanelDialog();
     }
 
+    private async void SettingsClearVisibleSlotButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot } || !slot.HasPanelContent)
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        await ClearSlotPanelInfoAsync(slot);
+    }
+
+    private void SettingsClearStoredPanelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement { Tag: StoredPanelSlot storedPanel } || !storedPanel.HasContent)
+        {
+            return;
+        }
+
+        _statusStore.ClearStoredPanel(storedPanel);
+        _statusStore.Message = $"{storedPanel.Label} を空きスロットに戻しました。";
+        RefreshAuxiliaryUi();
+    }
+
     private void StoredPanelsExpander_Expanded(object sender, RoutedEventArgs e)
     {
         UpdateWindowHeightForStoredPanels(true);
@@ -1561,6 +1663,22 @@ public partial class MainWindow : Window
         ApplyManagedWindowLayers(bringPanelAfterArrange);
         RefreshAuxiliaryUi();
         return arranged;
+    }
+
+    private void ArrangeSlotsAfterPanelStateChange()
+    {
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
+        if (focusedSlot is null)
+        {
+            ArrangeSlotsOnActiveMonitor();
+            return;
+        }
+
+        ArrangeSlotsExceptOnActiveMonitor(focusedSlot, false);
+        SendOtherSlotsToBack(focusedSlot);
+        _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
+        SchedulePanelToFront();
+        RefreshAuxiliaryUi();
     }
 
     private async Task<int> ArrangeSlotsOnActiveMonitorWithSettlingAsync(bool bringPanelAfterArrange = true)
@@ -2055,6 +2173,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsAnyMouseButtonPressed())
+        {
+            SuppressFocusedSlotReassertForPanelInput();
+            return;
+        }
+
         // マウスクリックで panel がアクティブになった直後に SetForegroundWindow すると、
         // Button の MouseUp/Click が成立しないため、focused 再適用は遅延実行する。
         ScheduleFocusedSlotReassert();
@@ -2065,6 +2189,12 @@ public partial class MainWindow : Window
     {
         if (WindowState == WindowState.Minimized)
         {
+            return;
+        }
+
+        if (IsAnyMouseButtonPressed())
+        {
+            SuppressFocusedSlotReassertForPanelInput();
             return;
         }
 
@@ -2578,6 +2708,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (SettingsOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideSettingsDialog();
+            e.Handled = true;
+            return;
+        }
+
         base.OnPreviewKeyDown(e);
     }
 
@@ -2649,9 +2786,12 @@ public partial class MainWindow : Window
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;
+        SettingsButton.IsEnabled = !busy;
+        HelpButton.IsEnabled = !busy;
         DisplayModeButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
+        SettingsOverlay.IsEnabled = !busy;
         AuxiliaryApplicationPanel.IsEnabled = !busy;
     }
 

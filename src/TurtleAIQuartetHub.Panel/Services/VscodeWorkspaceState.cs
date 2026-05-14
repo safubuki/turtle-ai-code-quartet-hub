@@ -6,65 +6,127 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public static class VscodeWorkspaceState
 {
+    private const string AntigravityApplicationId = "antigravity";
+
     public static string? TryReadCurrentWorkspacePath(WindowSlot slot, AppConfig config)
     {
-        return TryReadCurrentWorkspacePath(slot.Name, slot.WindowTitle, config);
+        return TryReadCurrentWorkspacePath(slot.ApplicationId, slot.Name, slot.WindowTitle, config);
     }
 
     public static string? TryReadCurrentWorkspacePath(string slotName, string windowTitle, AppConfig config)
     {
-        var workspacePath = TryReadLastWorkspacePath(slotName, config);
-        if (string.IsNullOrWhiteSpace(workspacePath))
+        return TryReadCurrentWorkspacePath(AppConfig.VsCodeApplicationId, slotName, windowTitle, config);
+    }
+
+    public static string? TryReadCurrentWorkspacePath(string? applicationId, string slotName, string windowTitle, AppConfig config)
+    {
+        foreach (var candidate in TryReadWorkspacePathCandidates(applicationId, slotName, config))
         {
-            return null;
+            if (IsWorkspaceVisibleInWindowTitle(windowTitle, candidate.WorkspacePath))
+            {
+                return candidate.WorkspacePath;
+            }
         }
 
-        return IsWorkspaceVisibleInWindowTitle(windowTitle, workspacePath)
-            ? workspacePath
-            : null;
+        return null;
     }
 
     public static string? TryReadLastWorkspacePath(WindowSlot slot, AppConfig config)
     {
-        return TryReadLastWorkspacePath(slot.Name, config);
+        return TryReadLastWorkspacePath(slot.ApplicationId, slot.Name, config);
     }
 
     public static string? TryReadLastWorkspacePath(string slotName, AppConfig config)
     {
-        var workspaceStorageDirectory = Path.Combine(
-            SlotUserDataPaths.GetUserDataDirectory(slotName, config),
-            "User",
-            "workspaceStorage");
+        return TryReadLastWorkspacePath(AppConfig.VsCodeApplicationId, slotName, config);
+    }
 
-        if (!Directory.Exists(workspaceStorageDirectory))
+    public static string? TryReadLastWorkspacePath(string? applicationId, string slotName, AppConfig config)
+    {
+        var candidate = TryReadWorkspacePathCandidates(applicationId, slotName, config).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(candidate.WorkspacePath)
+            ? null
+            : candidate.WorkspacePath;
+    }
+
+    private static IReadOnlyList<WorkspacePathCandidate> TryReadWorkspacePathCandidates(
+        string? applicationId,
+        string slotName,
+        AppConfig config)
+    {
+        var candidates = new List<WorkspacePathCandidate>();
+
+        foreach (var workspaceStorageDirectory in GetWorkspaceStorageDirectories(applicationId, slotName, config)
+                     .Where(directory => !string.IsNullOrWhiteSpace(directory))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            return null;
-        }
-
-        try
-        {
-            string? latestWorkspacePath = null;
-            var latestWorkspaceTime = DateTime.MinValue;
-
-            foreach (var file in Directory.EnumerateFiles(workspaceStorageDirectory, "workspace.json", SearchOption.AllDirectories)
-                         .Select(path => new FileInfo(path)))
+            if (!Directory.Exists(workspaceStorageDirectory))
             {
-                var workspacePath = TryReadWorkspaceJson(file.FullName);
-                if (!string.IsNullOrWhiteSpace(workspacePath) && file.LastWriteTimeUtc >= latestWorkspaceTime)
-                {
-                    latestWorkspacePath = workspacePath;
-                    latestWorkspaceTime = file.LastWriteTimeUtc;
-                }
+                continue;
             }
 
-            return latestWorkspacePath;
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Write(ex);
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(workspaceStorageDirectory, "workspace.json", SearchOption.AllDirectories)
+                             .Select(path => new FileInfo(path)))
+                {
+                    var workspacePath = TryReadWorkspaceJson(file.FullName);
+                    if (!string.IsNullOrWhiteSpace(workspacePath))
+                    {
+                        candidates.Add(new WorkspacePathCandidate(workspacePath, file.LastWriteTimeUtc));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+            }
         }
 
-        return null;
+        return candidates
+            .OrderByDescending(candidate => candidate.LastWriteTimeUtc)
+            .ToList();
+    }
+
+    private static IEnumerable<string> GetWorkspaceStorageDirectories(string? applicationId, string slotName, AppConfig config)
+    {
+        var normalizedApplicationId = AppConfig.NormalizeApplicationId(applicationId);
+
+        if (string.Equals(normalizedApplicationId, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return Path.Combine(
+                SlotUserDataPaths.GetUserDataDirectory(slotName, config),
+                "User",
+                "workspaceStorage");
+            yield break;
+        }
+
+        if (!string.Equals(normalizedApplicationId, AntigravityApplicationId, StringComparison.OrdinalIgnoreCase))
+        {
+            yield break;
+        }
+
+        foreach (var appDataRoot in GetAntigravityApplicationDataRoots())
+        {
+            yield return Path.Combine(appDataRoot, "User", "workspaceStorage");
+        }
+    }
+
+    private static IEnumerable<string> GetAntigravityApplicationDataRoots()
+    {
+        var roamingAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (!string.IsNullOrWhiteSpace(roamingAppData))
+        {
+            yield return Path.Combine(roamingAppData, "Antigravity");
+            yield return Path.Combine(roamingAppData, "Google", "Antigravity");
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData))
+        {
+            yield return Path.Combine(localAppData, "Antigravity");
+            yield return Path.Combine(localAppData, "Google", "Antigravity");
+        }
     }
 
     public static bool IsWorkspaceVisibleInWindowTitle(string? windowTitle, string workspacePath)
@@ -293,4 +355,6 @@ public static class VscodeWorkspaceState
     }
 
     private readonly record struct NonFileUriInfo(string Scheme, string Authority, string AbsolutePath, string AbsoluteUri);
+
+    private readonly record struct WorkspacePathCandidate(string WorkspacePath, DateTime LastWriteTimeUtc);
 }

@@ -15,13 +15,17 @@
 - Codex / Claude の Windows アプリ版ボタンが、`Windows` ラベル付きで控え Quartet と同じ行の右端に表示されること。
 - Antigravity は A=左上、B=右上、C=左下、D=右下へ配置され、起動後に中央へ戻っても短い遅延再配置で対象象限へ戻ること。
 - 未検出アプリはグレーアウトし、理由がツールチップまたはメッセージで分かること。
-- VS Code の workspaceStorage 読み取りに失敗しても、保存済みワークスペースパスが消えないこと。
+- VS Code / Antigravity の workspaceStorage 読み取りに失敗しても、保存済みワークスペースパスが消えないこと。
+- Antigravity でウィンドウ起動後にアプリ内から対象フォルダを開いた場合も、`%APPDATA%/Antigravity/User/workspaceStorage` とウィンドウタイトルから最新ワークスペースパスを保存できること。
 - 正しく開けたワークスペースは、タイトルと保存済みパスに反映されること。
-- 各スロット右上のゴミ箱アイコンで visible slot の保存情報を削除でき、起動中ウィンドウは閉じずに管理対象から外れること。
+- 各スロット右上のゴミ箱アイコンで visible slot の保存情報を削除でき、起動中の IDE / CLI ウィンドウも閉じること。
 - 各スロット右上のゴミ箱アイコンは、削除確認ダイアログで `削除する` を押すまで削除しないこと。
 - 実行中スロットのアクションボタンが `閉じる` と表示されること。
 - タイトルバーの `?` ヘルプに CLI インストールコマンドと承認確認を減らす起動オプション例が表示されること。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示すること。
 - `?` ヘルプの各セクションに枠があり、説明文とコマンドを選択コピーできること。
+- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Copilot / Gemini / Claude / Codex Windows / Claude Windows の起動コマンドを確認・編集・保存・再検出できること。
+- 歯車設定で、表の Quartet と控え Quartet の保存済みタイトル、パス、アプリ ID を一覧確認・編集・空化できること。
+- 歯車設定の不整合修復で、不完全な控えと重複控えを削除し、同じワークスペースを再登録できる状態に戻せること。
 - Claude などの CLI が PATH に出ていない環境でも、npm / pnpm / Volta の一般的な shim 置き場と Claude Code 公式インストーラの `~\.local\bin` から検出できること。
 - Claude など PATH がアプリ本体へ反映されていない CLI でも、起動した terminal 内で初回コマンドと手入力コマンドの両方が認識されること。
 - 標準表示の下部にある `Launch Quartet` ボタンが見切れないこと。
@@ -30,12 +34,13 @@
 - 縮小表示に切り替えた直後から C/D パネル行と `Windows` 補助アプリボタンが見えること。
 - 一括起動で CLI を含む場合も、terminal の捕捉待ちが後続の VS Code 起動を遅らせないこと。
 - 同じスロットボタンは、CLI / Antigravity / VS Code のいずれでも 1 面フォーカス表示と 4 面表示を押すたびに切り替えること。
+- 4 面表示または 1 面表示中にパネルカードやアプリケーションウィンドウをドラッグしても、フォーカス再適用や再配置が割り込んでウィンドウが一瞬乱れないこと。
 - 控え Quartet への退避、復帰、入れ替えができること。
 - タスクバー Jump List のスロット切替と表示モード切替が動くこと。
 - `scripts/Build-Panel.ps1` と `scripts/Test-StoreReadiness.ps1` が通ること。
 
 ## 残リスク
-- VS Code のウィンドウタイトルや workspaceStorage の変更により、ワークスペース表示がずれる可能性がある。
+- VS Code / Antigravity のウィンドウタイトルや workspaceStorage の変更により、ワークスペース表示がずれる可能性がある。
 - terminal ホストや CLI 実体が環境で異なる場合、`applications[].detection.processNames` の追加設定が必要になる可能性がある。
 - Antigravity の起動ラッパーや初期化タイミングが変わると、遅延再配置の回数や待ち時間の調整が必要になる可能性がある。
 - 実行中 EXE ロックにより通常の `dotnet build` が失敗する場合があるため、反復確認では `scripts/Build-Panel.ps1` を使う。

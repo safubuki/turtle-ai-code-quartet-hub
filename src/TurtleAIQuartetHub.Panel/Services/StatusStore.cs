@@ -42,6 +42,8 @@ public sealed class StatusStore : INotifyPropertyChanged
         Applications = new ObservableCollection<LauncherApplication>(applicationDetectionService.Detect(config));
         WorkspaceApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsWorkspaceApplication));
         AuxiliaryApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsSingleWindowAgent));
+        ApplicationPathSettings = new ObservableCollection<ApplicationPathSetting>(
+            Applications.Select(app => new ApplicationPathSetting(app)));
         Slots = new ObservableCollection<WindowSlot>(config.Slots.Select(slot => new WindowSlot(slot)));
         StoredPanels = new ObservableCollection<StoredPanelSlot>(
             Enumerable.Range(1, StoredPanelsPerPage * StoredPanelPageCount).Select(index => new StoredPanelSlot(index)));
@@ -77,6 +79,8 @@ public sealed class StatusStore : INotifyPropertyChanged
     public ObservableCollection<LauncherApplication> WorkspaceApplications { get; }
 
     public ObservableCollection<LauncherApplication> AuxiliaryApplications { get; }
+
+    public ObservableCollection<ApplicationPathSetting> ApplicationPathSettings { get; }
 
     public LauncherApplication? SelectedWorkspaceApplication
     {
@@ -204,6 +208,75 @@ public sealed class StatusStore : INotifyPropertyChanged
         SavePanelStates();
     }
 
+    public void ResetApplicationPathSettings()
+    {
+        ApplicationPathSettings.Clear();
+        foreach (var application in Applications)
+        {
+            ApplicationPathSettings.Add(new ApplicationPathSetting(application));
+        }
+    }
+
+    public void SaveApplicationPathSettings()
+    {
+        foreach (var setting in ApplicationPathSettings)
+        {
+            var appConfig = Config.Applications.FirstOrDefault(app =>
+                string.Equals(app.Id, setting.Id, StringComparison.OrdinalIgnoreCase));
+            if (appConfig is null)
+            {
+                continue;
+            }
+
+            appConfig.Command = setting.Command?.Trim() ?? string.Empty;
+            if (string.Equals(setting.Id, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase))
+            {
+                Config.CodeCommand = string.IsNullOrWhiteSpace(appConfig.Command) ? "code" : appConfig.Command;
+            }
+        }
+
+        Config.SaveToUserConfig();
+        ReloadApplicationsFromConfig();
+    }
+
+    public void ReloadApplicationsFromConfig()
+    {
+        Config.Normalize();
+        var selectedApplicationId = SelectedWorkspaceApplication?.Id ?? Config.DefaultWorkspaceApplicationId;
+        var applicationDetectionService = new ApplicationDetectionService();
+        var detectedApplications = applicationDetectionService.Detect(Config);
+
+        Applications.Clear();
+        WorkspaceApplications.Clear();
+        AuxiliaryApplications.Clear();
+        foreach (var application in detectedApplications)
+        {
+            Applications.Add(application);
+            if (application.IsWorkspaceApplication)
+            {
+                WorkspaceApplications.Add(application);
+            }
+            else if (application.IsSingleWindowAgent)
+            {
+                AuxiliaryApplications.Add(application);
+            }
+        }
+
+        foreach (var slot in Slots)
+        {
+            ApplyApplicationMetadata(slot);
+        }
+
+        foreach (var storedPanel in StoredPanels)
+        {
+            ApplyApplicationMetadata(storedPanel);
+        }
+
+        ResetApplicationPathSettings();
+        SelectWorkspaceApplication(selectedApplicationId);
+        OnPropertyChanged(nameof(CanLaunchSelectedWorkspaceApplication));
+    }
+
     public bool IsVsCodeSlot(WindowSlot slot)
     {
         return IsVsCodeApplication(slot.ApplicationId);
@@ -212,6 +285,16 @@ public sealed class StatusStore : INotifyPropertyChanged
     public bool IsVsCodeApplication(string? applicationId)
     {
         return string.Equals(AppConfig.NormalizeApplicationId(applicationId), AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public bool IsAntigravityApplication(string? applicationId)
+    {
+        return string.Equals(AppConfig.NormalizeApplicationId(applicationId), "antigravity", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CanReadWorkspacePathFromApplication(string? applicationId)
+    {
+        return IsVsCodeApplication(applicationId) || IsAntigravityApplication(applicationId);
     }
 
     public void ApplyApplicationMetadata(WindowSlot slot)
@@ -376,7 +459,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         var workspacePath = !string.IsNullOrWhiteSpace(slot.CurrentWorkspacePath)
             ? slot.CurrentWorkspacePath
-            : IsVsCodeApplication(slot.ApplicationId)
+            : CanReadWorkspacePathFromApplication(slot.ApplicationId)
                 ? VscodeWorkspaceState.TryReadCurrentWorkspacePath(slot, Config)
                 : null;
         _workspaceRefreshTimestamps[slot.Name] = DateTimeOffset.UtcNow;
@@ -395,7 +478,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             return;
         }
 
-        if (IsVsCodeApplication(slot.ApplicationId))
+        if (CanReadWorkspacePathFromApplication(slot.ApplicationId))
         {
             slot.CurrentWorkspacePath = string.Empty;
         }
@@ -495,6 +578,93 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
 
         SavePanelStates();
+    }
+
+    public string RepairPanelState()
+    {
+        var visiblePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var storedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var normalizedVisible = 0;
+        var normalizedStored = 0;
+        var clearedIncomplete = 0;
+        var clearedDuplicates = 0;
+
+        _suppressPersistence = true;
+        try
+        {
+            foreach (var slot in Slots)
+            {
+                var workspacePath = GetBestWorkspacePath(slot);
+                if (string.IsNullOrWhiteSpace(workspacePath))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(slot.Path))
+                {
+                    slot.Path = workspacePath;
+                    normalizedVisible++;
+                }
+
+                if (string.IsNullOrWhiteSpace(slot.SavedWorkspacePath))
+                {
+                    slot.SavedWorkspacePath = workspacePath;
+                    normalizedVisible++;
+                }
+
+                if (!slot.SavedWorkspaceConfirmed)
+                {
+                    slot.SavedWorkspaceConfirmed = true;
+                    normalizedVisible++;
+                }
+
+                var comparablePath = GetComparableWorkspacePath(workspacePath);
+                if (!string.IsNullOrWhiteSpace(comparablePath))
+                {
+                    visiblePaths.Add(comparablePath);
+                }
+            }
+
+            foreach (var storedPanel in StoredPanels)
+            {
+                if (!storedPanel.HasContent)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(storedPanel.WorkspacePath))
+                {
+                    storedPanel.Clear();
+                    ApplyApplicationMetadata(storedPanel);
+                    clearedIncomplete++;
+                    continue;
+                }
+
+                var comparablePath = GetComparableWorkspacePath(storedPanel.WorkspacePath);
+                if (!string.IsNullOrWhiteSpace(comparablePath)
+                    && (visiblePaths.Contains(comparablePath) || !storedPaths.Add(comparablePath)))
+                {
+                    storedPanel.Clear();
+                    ApplyApplicationMetadata(storedPanel);
+                    clearedDuplicates++;
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(storedPanel.PanelTitle))
+                {
+                    storedPanel.PanelTitle = GetBaseTitleFromWorkspacePath(storedPanel.WorkspacePath);
+                    normalizedStored++;
+                }
+            }
+        }
+        finally
+        {
+            _suppressPersistence = false;
+        }
+
+        SavePanelStates();
+
+        return $"修復完了: 表の補正 {normalizedVisible} 件、控えの補正 {normalizedStored} 件、不完全な控えの削除 {clearedIncomplete} 件、重複控えの削除 {clearedDuplicates} 件。";
     }
 
     public void SwapStoredPanels(StoredPanelSlot source, StoredPanelSlot target)
@@ -680,11 +850,15 @@ public sealed class StatusStore : INotifyPropertyChanged
             var snapshot = request with { WindowTitle = window.Title };
             string? workspacePath = null;
             DateTimeOffset? workspaceRefreshedAt = null;
-            if (IsVsCodeApplication(request.ApplicationId)
+            if (CanReadWorkspacePathFromApplication(request.ApplicationId)
                 && ShouldRefreshWorkspacePath(snapshot, !string.Equals(request.WindowTitle, window.Title, StringComparison.Ordinal)))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                workspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(snapshot.Name, window.Title, Config);
+                workspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(
+                    snapshot.ApplicationId,
+                    snapshot.Name,
+                    window.Title,
+                    Config);
                 workspaceRefreshedAt = refreshStartedAt;
             }
 
@@ -978,6 +1152,44 @@ public sealed class StatusStore : INotifyPropertyChanged
         return new PanelSnapshot(slot.PanelTitle, slot.WorkspacePath, slot.ApplicationId);
     }
 
+    private static string GetBestWorkspacePath(WindowSlot slot)
+    {
+        if (!string.IsNullOrWhiteSpace(slot.CurrentWorkspacePath))
+        {
+            return slot.CurrentWorkspacePath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(slot.SavedWorkspacePath))
+        {
+            return slot.SavedWorkspacePath;
+        }
+
+        return slot.Path;
+    }
+
+    private static string GetComparableWorkspacePath(string? workspacePath)
+    {
+        if (string.IsNullOrWhiteSpace(workspacePath))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = workspacePath.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && !uri.IsFile)
+        {
+            return uri.AbsoluteUri.TrimEnd('/').ToLowerInvariant();
+        }
+
+        try
+        {
+            return Path.GetFullPath(trimmed).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return trimmed;
+        }
+    }
+
     public string MakeUniqueTitle(string desiredTitle, params object?[] excludedItems)
     {
         return MakeUniquePanelTitle(desiredTitle, excludedItems);
@@ -1103,6 +1315,11 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         if (e.PropertyName is nameof(StoredPanelSlot.PanelTitle) or nameof(StoredPanelSlot.WorkspacePath) or nameof(StoredPanelSlot.ApplicationId))
         {
+            if (sender is StoredPanelSlot storedPanel && e.PropertyName == nameof(StoredPanelSlot.ApplicationId))
+            {
+                ApplyApplicationMetadata(storedPanel);
+            }
+
             SavePanelStates();
         }
     }
