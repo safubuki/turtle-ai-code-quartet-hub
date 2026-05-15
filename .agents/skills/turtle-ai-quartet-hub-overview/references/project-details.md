@@ -1,13 +1,13 @@
 ﻿# Turtle AI Code Quartet Hub プロジェクト詳細
 
-更新日: 2026-05-13
+更新日: 2026-05-15
 
 ## 概要
 - 4 つの開発用ウィンドウを A-D スロットとして管理する Windows 向け WPF アプリ。
 - 2x2 配置、集中表示、非表示/再表示、控え Quartet、タスクバー Jump List 操作を提供する。
 - 既定のスロット起動対象は VS Code。
 - VS Code / Antigravity はワークスペース IDE として、Codex / GitHub Copilot / Gemini / Claude はワークスペース CLI として各スロットで起動できる。
-- Codex / Claude の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
+- Codex / ChatGPT / Claude の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
 - AI 状態表示、AI 状態監視、VS Code 外枠フレーム、AI 状態連動の点滅や色変更は削除済み。
 
 ## 技術スタック
@@ -44,14 +44,14 @@
 
 ## 複数アプリ起動
 - `defaultWorkspaceApplicationId` がスロットの既定アプリ。未設定時は `vscode`。
-- `applications` で VS Code、Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / Claude Windows アプリの起動コマンド、引数、検出候補を定義する。
+- `applications` で VS Code、Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリの起動コマンド、引数、検出候補を定義する。
 - `slots[].applicationId` と `slots.json` の `ApplicationId` で、スロット/控えごとの起動対象を保持する。
 - VS Code は専用 user-data-dir と remote URI フォールバックを維持する。
 - Antigravity は汎用 workspace IDE としてワークスペースパスを渡して起動し、新規ウィンドウを A-D の象限へ配置する。アプリ内でフォルダを開いた場合も `%APPDATA%/Antigravity/User/workspaceStorage` から最新パスを保存する。
 - Codex / GitHub Copilot / Gemini / Claude CLI は、対象スロットの保存済みワークスペースをカレントディレクトリにした `cmd.exe` ウィンドウで起動する。
 - GitHub Copilot CLI の既定は `copilot` コマンドのみ。ワークスペースパスを暗黙引数として渡さない。
 - スロット内 UI は `IDE` 枠と `CLI` 枠に分ける。別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウを閉じてから押したアプリを同じ象限へ開く。
-- Codex / Claude Windows アプリは `Windows` ラベル付きの補助ボタンとして表示する。
+- Codex / ChatGPT / Claude Windows アプリは `Windows` ラベル付きの補助ボタンとして表示する。
 - 起動確認または periodic refresh でワークスペースを確認できたスロットは `SavedWorkspacePath` とタイトルを自動保存し、ワークスペース読み取りに失敗しても保存済みパスを消さない。
 - 歯車設定では、表の Quartet と控え Quartet のタイトル、パス、保存済みパス、アプリ ID を一覧で確認・編集・空化できる。不完全な控えや重複控えは修復ボタンで整理できる。
 

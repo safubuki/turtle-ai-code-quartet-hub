@@ -1,12 +1,12 @@
 ﻿# 複数アプリケーション起動対応 仕様書
 
-更新日: 2026-05-13
+更新日: 2026-05-15
 
 ## 概要
 
 Turtle AI Code Quartet Hub は、A-D の 4 スロットそれぞれで起動対象アプリを選べるランチャーです。既定は VS Code ですが、Google Antigravity を workspace IDE として、Codex / GitHub Copilot / Gemini / Claude を workspace CLI として起動できます。
 
-Codex / Claude の Windows アプリ版は CLI とは別扱いです。これらはワークスペース単位の 2x2 管理対象ではなく、補助アプリボタンとして控え Quartet と同じ行の右端に表示します。
+Codex / ChatGPT / Claude の Windows アプリ版は CLI とは別扱いです。これらはワークスペース単位の 2x2 管理対象ではなく、補助アプリボタンとして控え Quartet と同じ行の右端に表示します。
 
 ## アプリ種別
 
@@ -51,6 +51,7 @@ Codex / Claude の Windows アプリ版は CLI とは別扱いです。これら
 
 対象:
 - Codex Windows アプリ (`codex-app`)
+- ChatGPT Windows アプリ (`chatgpt-app`)
 - Claude Windows アプリ (`claude-app`)
 - ユーザー設定で追加された単一ウィンドウ型アプリ
 
@@ -75,8 +76,8 @@ Codex / Claude の Windows アプリ版は CLI とは別扱いです。これら
 - 起動中スロットで別の IDE/CLI ボタンを押すと、現在のウィンドウを閉じてから押したアプリを同じスロット位置へ起動する。
 - スロット右上のゴミ箱アイコンを押すと削除確認ダイアログを表示する。`削除する` で visible slot の保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中ウィンドウは閉じずに管理対象から外す。
 - 実行中スロットのアクションボタンは `閉じる` と表示する。
-- タイトルバーの縮小表示ボタン左に `?` ヘルプを置く。ヘルプは枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示する。本文とコマンドは選択コピーできるようにする。
-- 補助アプリボタンは `Windows` ラベル付きで、控え Quartet と同じ行の右端に表示する。
+- タイトルバーの右上ボタンは、縮小表示、`?` ヘルプ、設定、最小化、閉じるの順に並べる。ヘルプは枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示する。本文とコマンドは選択コピーできるようにする。
+- 補助アプリボタンは `Windows` ラベル付きで、控え Quartet と同じ行の右端に表示する。Codex / ChatGPT / Claude の各ボタン幅は ChatGPT に合わせてそろえる。
 - 標準表示ではスロット領域をカード実寸に詰め、控え Quartet までの黒い余白を作らない。下部の `Launch Quartet` ボタンも見切れないようにする。
 
 ### 縮小表示
@@ -91,6 +92,7 @@ Codex / Claude の Windows アプリ版は CLI とは別扱いです。これら
 - スロットボタンを押すと対象ウィンドウを全画面相当で前面表示する。
 - 同じスロットボタンを押すたびに、対象ウィンドウの 1 面フォーカス表示と 4 面表示を切り替える。
 - このトグルは VS Code / Antigravity / CLI のいずれでも同じ挙動にする。
+- スロットカードまたは控えカードをドラッグアンドドロップ中は、このトグルを一時抑止する。
 
 ## 起動と配置
 
@@ -144,6 +146,21 @@ Codex / Claude の Windows アプリ版は CLI とは別扱いです。これら
         "startMenuNames": ["Codex", "OpenAI Codex"],
         "appPathNames": ["Codex.exe"]
       }
+    },
+    {
+      "id": "chatgpt-app",
+      "displayName": "ChatGPT",
+      "shortName": "ChatGPT",
+      "kind": "SingleWindowAgent",
+      "command": "",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": [],
+        "processNames": ["ChatGPT", "OpenAI ChatGPT"],
+        "startMenuNames": ["ChatGPT", "OpenAI ChatGPT"],
+        "appPathNames": ["ChatGPT.exe", "OpenAI ChatGPT.exe"]
+      }
     }
   ]
 }
@@ -157,9 +174,11 @@ Codex / Claude の Windows アプリ版は CLI とは別扱いです。これら
 - 別アプリボタンを押したとき、現在のスロットウィンドウを閉じてから選択アプリへ切り替わる。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行する。
 - Antigravity は対象スロットの象限へ配置され、起動直後に中央へ戻っても遅延再配置で戻る。
-- Codex / Claude の Windows アプリ版ボタンが `Windows` ラベル付きで補助ボタン行に表示される。
+- Codex / ChatGPT / Claude の Windows アプリ版ボタンが `Windows` ラベル付きで補助ボタン行に表示され、3つのボタン幅がそろう。
 - 未検出アプリは起動できず、理由が表示される。
 - 右上のゴミ箱アイコンから visible slot の保存情報をクリアできる。
+- 右上ボタンが縮小表示、ヘルプ、設定、最小化、閉じるの順で表示される。
 - `Launch Quartet` ボタンが標準表示の下部で見切れない。
 - 集中表示中に他アプリが上に重なった場合、同じスロットボタンで集中表示を維持したまま前面復帰する。
+- ドラッグアンドドロップでカードを移動中に、マウスカーソルがスロット上へ移動しても集中表示へ切り替わらない。
 - `.\scripts\Build-Panel.ps1` と `.\scripts\Test-StoreReadiness.ps1` が成功する。
