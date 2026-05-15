@@ -116,6 +116,21 @@
       }
     },
     {
+      "id": "chatgpt-app",
+      "displayName": "ChatGPT",
+      "shortName": "ChatGPT",
+      "kind": "SingleWindowAgent",
+      "command": "",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": [],
+        "processNames": ["ChatGPT", "OpenAI ChatGPT"],
+        "startMenuNames": ["ChatGPT", "OpenAI ChatGPT"],
+        "appPathNames": ["ChatGPT.exe", "OpenAI ChatGPT.exe"]
+      }
+    },
+    {
       "id": "claude-app",
       "displayName": "Claude",
       "shortName": "Claude",

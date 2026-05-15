@@ -310,8 +310,9 @@ public sealed class AppConfig
             "github-copilot" => 3,
             "gemini" => 4,
             "claude" => 5,
-            "codex-app" => 6,
-            "claude-app" => 7,
+            "chatgpt-app" => 6,
+            "codex-app" => 7,
+            "claude-app" => 8,
             _ => 100
         };
     }
@@ -420,6 +421,23 @@ public sealed class AppConfig
                     ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
                     StartMenuNames = [],
                     AppPathNames = []
+                }
+            },
+            new()
+            {
+                Id = "chatgpt-app",
+                DisplayName = "ChatGPT",
+                ShortName = "ChatGPT",
+                Kind = ApplicationKind.SingleWindowAgent,
+                Command = string.Empty,
+                Arguments = [],
+                SupportsMultipleWindows = false,
+                Detection = new ApplicationDetectionConfig
+                {
+                    Commands = [],
+                    ProcessNames = ["ChatGPT", "OpenAI ChatGPT"],
+                    StartMenuNames = ["ChatGPT", "OpenAI ChatGPT"],
+                    AppPathNames = ["ChatGPT.exe", "OpenAI ChatGPT.exe"]
                 }
             },
             new()

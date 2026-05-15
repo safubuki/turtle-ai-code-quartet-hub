@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
     private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan DragDropFocusSuppressWindow = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan[] PostLaunchArrangeRetryDelays =
     [
@@ -50,12 +51,14 @@ public partial class MainWindow : Window
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private WindowSlot? _hiddenFocusedSlot;
     private Point _dragStartPoint;
+    private bool _isCardDragDropInProgress;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
     private CancellationTokenSource? _focusedSlotReassertCancellation;
     private CancellationTokenSource? _panelLocateCancellation;
     private CancellationTokenSource? _postLaunchArrangeCancellation;
     private bool _isReassertingFocusedSlot;
     private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
+    private DateTimeOffset _suppressSlotFocusFromDragUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
 
     public MainWindow()
@@ -565,6 +568,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsSlotFocusSuppressedByDrag())
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (IsInteractiveCardChild(e.OriginalSource as DependencyObject))
         {
             return;
@@ -580,7 +589,7 @@ public partial class MainWindow : Window
 
     private void SlotCard_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed)
+        if (e.LeftButton != MouseButtonState.Pressed || IsSlotFocusSuppressedByDrag())
         {
             return;
         }
@@ -602,9 +611,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        SuppressFocusedSlotReassertForPanelInput();
         var dragData = new DataObject("WindowSlot", slot);
-        DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
+        BeginCardDragDrop();
+        try
+        {
+            DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
+        }
+        finally
+        {
+            EndCardDragDrop();
+        }
+
+        e.Handled = true;
     }
 
     private void SlotCard_DragEnter(object sender, DragEventArgs e)
@@ -678,7 +696,7 @@ public partial class MainWindow : Window
 
     private void StoredPanelCard_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed)
+        if (e.LeftButton != MouseButtonState.Pressed || IsSlotFocusSuppressedByDrag())
         {
             return;
         }
@@ -700,9 +718,37 @@ public partial class MainWindow : Window
             return;
         }
 
-        SuppressFocusedSlotReassertForPanelInput();
         var dragData = new DataObject("StoredPanelSlot", storedPanel);
-        DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
+        BeginCardDragDrop();
+        try
+        {
+            DragDrop.DoDragDrop((DependencyObject)sender, dragData, DragDropEffects.Move);
+        }
+        finally
+        {
+            EndCardDragDrop();
+        }
+
+        e.Handled = true;
+    }
+
+    private void BeginCardDragDrop()
+    {
+        _isCardDragDropInProgress = true;
+        _suppressSlotFocusFromDragUntil = DateTimeOffset.UtcNow + DragDropFocusSuppressWindow;
+        SuppressFocusedSlotReassertForPanelInput();
+    }
+
+    private void EndCardDragDrop()
+    {
+        _isCardDragDropInProgress = false;
+        _suppressSlotFocusFromDragUntil = DateTimeOffset.UtcNow + DragDropFocusSuppressWindow;
+    }
+
+    private bool IsSlotFocusSuppressedByDrag()
+    {
+        return _isCardDragDropInProgress
+            || DateTimeOffset.UtcNow < _suppressSlotFocusFromDragUntil;
     }
 
     private void StoredPanelCard_DragEnter(object sender, DragEventArgs e)
@@ -1889,6 +1935,8 @@ public partial class MainWindow : Window
         StoredPanelsExpander.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         FooterControlsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         ApplicationLauncherPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        SettingsButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        HelpButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
         if (compact)
         {
