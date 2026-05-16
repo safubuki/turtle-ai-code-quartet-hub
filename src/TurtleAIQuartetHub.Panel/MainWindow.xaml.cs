@@ -983,25 +983,7 @@ public partial class MainWindow : Window
             RestoreHiddenWindowState();
         }
 
-        // 別スロットからのフォーカス切替時は、先に現フォーカスを解除して 4 面に戻し、
-        // OS の復元アニメーションが完了するのを待ってから新スロットを最大化する。
-        // 重ねて呼ぶと最大化と復元のアニメが交錯し、新ウィンドウの白フラッシュが見える。
-        if (previouslyFocusedSlot is not null && !ReferenceEquals(previouslyFocusedSlot, slot))
-        {
-            CapturePreferredLayout(previouslyFocusedSlot);
-            ArrangeSlotsOnActiveMonitor(false);
-            _statusStore.ClearFocusedSlot();
-
-            // OS の最大化→4面復元アニメ(~200ms)が完了するのを待つ。
-            await Task.Delay(220);
-
-            if (slot.WindowHandle == IntPtr.Zero)
-            {
-                RefreshAuxiliaryUi();
-                return;
-            }
-        }
-        else if (previouslyFocusedSlot is not null)
+        if (previouslyFocusedSlot is not null)
         {
             CapturePreferredLayout(previouslyFocusedSlot);
         }
@@ -1011,17 +993,32 @@ public partial class MainWindow : Window
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
         if (_windowArranger.FocusMaximized(slot.WindowHandle))
         {
-            // BringToFrontOnce を先に呼んで対象をZ-order最前面に確定させてから
-            // 他スロットを背面に送り、最後に整列する。
-            // こうすることで他スロットのRestoreForResizeアニメーション中も
-            // 対象ウィンドウが前面を覆っており白いフラッシュが見えない。
+            // 新フォーカスを最大化する間、前フォーカスは最大化状態のまま「後ろで」覆っているので
+            // 白いフラッシュは出ない。整列(他スロットの ShowWindow(SW_RESTORE) アニメ)を
+            // 同時にやると panel もアニメ衝突に巻き込まれて沈むため、新フォーカスのアニメが
+            // 落ち着いてから整列を遅延実行する。アニメは 1 つだけになり panel の沈下も最小化される。
             _windowArranger.BringToFrontOnce(slot.WindowHandle);
             SendOtherSlotsToBack(slot);
-            ArrangeSlotsExceptOnActiveMonitor(slot, false);
             _statusStore.SetFocusedSlot(slot);
+            BringPanelToFrontImmediate();
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             RefreshAuxiliaryUi();
+
+            if (previouslyFocusedSlot is not null && !ReferenceEquals(previouslyFocusedSlot, slot))
+            {
+                // C の最大化アニメ完了後、覆われた状態で B を quadrant に静かに戻す。
+                await Task.Delay(280);
+                if (slot.WindowHandle != IntPtr.Zero)
+                {
+                    ArrangeSlotsExceptOnActiveMonitor(slot, false);
+                    BringPanelToFrontImmediate();
+                }
+            }
+            else
+            {
+                ArrangeSlotsExceptOnActiveMonitor(slot, false);
+            }
             return;
         }
 
