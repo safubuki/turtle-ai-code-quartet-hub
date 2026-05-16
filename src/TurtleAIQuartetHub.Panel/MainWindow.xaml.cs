@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _panelLocateCancellation;
     private CancellationTokenSource? _postLaunchArrangeCancellation;
     private bool _isReassertingFocusedSlot;
+    private bool _isWindowMoveOrResizeActive;
     private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressSlotFocusFromDragUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
@@ -2338,6 +2339,7 @@ public partial class MainWindow : Window
     {
         CancelScheduledFocusedSlotReassert();
         if (WindowState == WindowState.Minimized
+            || _isWindowMoveOrResizeActive
             || DateTimeOffset.UtcNow < _suppressFocusedSlotReassertUntil)
         {
             return;
@@ -2415,6 +2417,7 @@ public partial class MainWindow : Window
         if (_isReassertingFocusedSlot
             || _areWindowsHidden
             || _isBusy
+            || _isWindowMoveOrResizeActive
             || WindowState == WindowState.Minimized
             || DateTimeOffset.UtcNow < _suppressFocusedSlotReassertUntil
             || IsAnyMouseButtonPressed())
@@ -2788,6 +2791,13 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var handle = new WindowInteropHelper(this).Handle;
+        HwndSource.FromHwnd(handle)?.AddHook(PanelWindowProcHook);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _refreshTimer.Stop();
@@ -2800,6 +2810,29 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
         base.OnClosed(e);
+    }
+
+    private IntPtr PanelWindowProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        // パネルウィンドウのタイトルバードラッグ中に focused slot の reassert が走ると
+        // SetForegroundWindow で前面が奪われ、ネイティブ移動ループが破棄されてパネルが
+        // 元位置に戻ってしまう。WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE で操作中フラグを立てる。
+        const int WM_ENTERSIZEMOVE = 0x0231;
+        const int WM_EXITSIZEMOVE = 0x0232;
+
+        switch (msg)
+        {
+            case WM_ENTERSIZEMOVE:
+                _isWindowMoveOrResizeActive = true;
+                SuppressFocusedSlotReassertForPanelInput();
+                break;
+            case WM_EXITSIZEMOVE:
+                _isWindowMoveOrResizeActive = false;
+                SuppressFocusedSlotReassertForPanelInput();
+                break;
+        }
+
+        return IntPtr.Zero;
     }
 
     private async Task RunBusyAsync(Func<Task> action)

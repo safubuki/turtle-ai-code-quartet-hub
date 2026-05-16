@@ -13,7 +13,7 @@
         FontFamily="Segoe UI"
         FontSize="12"
         WindowStyle="None"
-        ResizeMode="CanResize"
+        ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Topmost="True"
         UseLayoutRounding="True"
@@ -23,7 +23,7 @@
         PreviewMouseDown="Window_PreviewMouseDown">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="34"
-                        ResizeBorderThickness="8"
+                        ResizeBorderThickness="0"
                         GlassFrameThickness="0"
                         CornerRadius="0"
                         UseAeroCaptionButtons="False" />
