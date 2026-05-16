@@ -498,6 +498,77 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="MicroSlotButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="2" />
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="MicroFocusFrame"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="2"
+                    CornerRadius="7">
+              <Border x:Name="MicroButtonBorder"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="6">
+                <ContentPresenter HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+              </Border>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="#1A211D" />
+                <Setter TargetName="MicroButtonBorder" Property="BorderBrush" Value="#3D4E45" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="#121715" />
+              </Trigger>
+              <DataTrigger Binding="{Binding IsFocused}" Value="True">
+                <Setter TargetName="MicroFocusFrame" Property="BorderBrush" Value="#45D483" />
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="#123222" />
+                <Setter TargetName="MicroButtonBorder" Property="Effect">
+                  <Setter.Value>
+                    <DropShadowEffect Color="#45D483"
+                                      BlurRadius="9"
+                                      ShadowDepth="0"
+                                      Opacity="0.4" />
+                  </Setter.Value>
+                </Setter>
+              </DataTrigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
+          <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+          <Setter Property="BorderBrush" Value="#505B55" />
+          <Setter Property="Foreground" Value="#6F7B74" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+          <Setter Property="Background" Value="#241F15" />
+          <Setter Property="BorderBrush" Value="#A27E39" />
+          <Setter Property="Foreground" Value="#F2CA57" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="CompactStatusDotStyle" TargetType="Ellipse">
       <Setter Property="Width" Value="5" />
       <Setter Property="Height" Value="5" />
@@ -838,6 +909,24 @@
       </Border>
     </DataTemplate>
 
+    <DataTemplate x:Key="MicroSlotTemplate" DataType="{x:Type models:WindowSlot}">
+      <Button Tag="{Binding}"
+              Click="MicroSlotButton_Click"
+              ToolTip="{Binding DisplayTitle}"
+              Style="{StaticResource MicroSlotButtonStyle}">
+        <!-- フォントの descender 領域がセル中央計算に含まれるため、
+             descender を持たない大文字を視覚的中央へ移すには RenderTransform で
+             上方向に補正する。レイアウトには影響せず純粋に描画位置だけ調整。 -->
+        <TextBlock Text="{Binding Name}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center">
+          <TextBlock.RenderTransform>
+            <TranslateTransform Y="-1" />
+          </TextBlock.RenderTransform>
+        </TextBlock>
+      </Button>
+    </DataTemplate>
+
     <DataTemplate x:Key="CompactSlotTemplate" DataType="{x:Type models:WindowSlot}">
       <Button Tag="{Binding}"
               Click="CompactSlotButton_Click"
@@ -1014,10 +1103,13 @@
     </Grid.RowDefinitions>
 
     <Grid Grid.Row="0">
-      <TextBlock Text="Turtle AI Code Quartet Hub"
+      <TextBlock x:Name="WindowTitleText"
+                 Text="Turtle AI Code Quartet Hub"
                  FontWeight="SemiBold"
                  Foreground="{StaticResource TextBrush}" />
-      <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+      <StackPanel x:Name="TitleBarButtonsPanel"
+                  HorizontalAlignment="Right"
+                  Orientation="Horizontal">
         <Button x:Name="SettingsButton"
                 Content="&#xE713;"
                 Width="26"
@@ -1034,6 +1126,16 @@
                 FontWeight="SemiBold"
                 ToolTip="ヘルプ"
                 Click="HelpButton_Click"
+                Style="{StaticResource ChromeButton}" />
+        <Button x:Name="StandardJumpButton"
+                Content="&#xE740;"
+                Width="26"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="12"
+                FontWeight="SemiBold"
+                Visibility="Collapsed"
+                ToolTip="標準表示へ戻す"
+                Click="StandardJumpButton_Click"
                 Style="{StaticResource ChromeButton}" />
         <Button x:Name="DisplayModeButton"
                 Content="&#xE73F;"
@@ -1138,6 +1240,28 @@
                 Click="SendAllBackButton_Click"
                 Style="{StaticResource CompactBarActionButtonStyle}" />
       </Grid>
+    </Border>
+
+    <Border x:Name="MicroPanel"
+            Grid.Row="1"
+            Visibility="Collapsed"
+            Margin="2,3,2,4"
+            Padding="2"
+            Height="64"
+            Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="1"
+            CornerRadius="8">
+      <UniformGrid Rows="2" Columns="2">
+        <ContentControl Content="{Binding Slots[0]}"
+                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
+        <ContentControl Content="{Binding Slots[1]}"
+                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
+        <ContentControl Content="{Binding Slots[2]}"
+                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
+        <ContentControl Content="{Binding Slots[3]}"
+                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
+      </UniformGrid>
     </Border>
 
     <Grid x:Name="StoredPanelsRowGrid" Grid.Row="2" Margin="5,2,5,3">

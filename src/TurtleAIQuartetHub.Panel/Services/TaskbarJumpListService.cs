@@ -12,7 +12,7 @@ public static class TaskbarJumpListService
 
     public static void Update(
         IReadOnlyList<WindowSlot> slots,
-        bool compactMode,
+        DisplayMode displayMode,
         IReadOnlyList<LauncherApplication> workspaceApplications,
         IReadOnlyList<LauncherApplication> auxiliaryApplications)
     {
@@ -31,7 +31,7 @@ public static class TaskbarJumpListService
 
         var signature = BuildSignature(
             managedSlots,
-            compactMode,
+            displayMode,
             isActiveMenu: true,
             workspaceApplications,
             auxiliaryApplications);
@@ -83,23 +83,43 @@ public static class TaskbarJumpListService
             });
         }
 
+        var (nextModeTitle, nextModeArgs) = displayMode switch
+        {
+            DisplayMode.Standard => ("縮小表示にする", "--mode compact"),
+            DisplayMode.Compact => ("極小表示にする", "--mode micro"),
+            DisplayMode.Micro => ("標準表示に戻す", "--mode standard"),
+            _ => ("縮小表示にする", "--mode compact")
+        };
         jumpList.JumpItems.Add(new JumpTask
         {
-            Title = compactMode ? "標準表示に戻す" : "縮小表示にする",
+            Title = nextModeTitle,
             Description = "パネルの表示モードを切り替えます。",
-            Arguments = compactMode ? "--mode standard" : "--mode compact",
+            Arguments = nextModeArgs,
             ApplicationPath = appPath,
             IconResourcePath = appPath,
             CustomCategory = "表示"
         });
 
-        if (compactMode)
+        if (displayMode != DisplayMode.Standard)
         {
             jumpList.JumpItems.Add(new JumpTask
             {
                 Title = "アプリを探す",
-                Description = "縮小表示のパネル位置を強調して知らせます。",
+                Description = "現在のパネル位置を強調して知らせます。",
                 Arguments = "--locate",
+                ApplicationPath = appPath,
+                IconResourcePath = appPath,
+                CustomCategory = "表示"
+            });
+        }
+
+        if (displayMode != DisplayMode.Standard)
+        {
+            jumpList.JumpItems.Add(new JumpTask
+            {
+                Title = "標準表示に戻す",
+                Description = "パネルを標準サイズで開きます。",
+                Arguments = "--mode standard",
                 ApplicationPath = appPath,
                 IconResourcePath = appPath,
                 CustomCategory = "表示"
@@ -117,7 +137,7 @@ public static class TaskbarJumpListService
             return;
         }
 
-        var signature = BuildSignature([], compactMode: false, isActiveMenu: false);
+        var signature = BuildSignature([], DisplayMode.Standard, isActiveMenu: false);
         if (string.Equals(signature, _lastSignature, StringComparison.Ordinal))
         {
             return;
@@ -183,19 +203,19 @@ public static class TaskbarJumpListService
 
     private static string BuildSignature(
         IEnumerable<WindowSlot> slots,
-        bool compactMode,
+        DisplayMode displayMode,
         bool isActiveMenu,
         IReadOnlyList<LauncherApplication>? workspaceApplications = null,
         IReadOnlyList<LauncherApplication>? auxiliaryApplications = null)
     {
         var slotSignature = string.Join(
             "|",
-            slots.Select(slot => $"{slot.Name}:{slot.WindowStatus}:{slot.ApplicationId}:{slot.DisplayTitle}"));
+            slots.Select(slot => $"{slot.Name}:{slot.WindowStatus}:{slot.ApplicationId}:{slot.DisplayTitle}:{slot.IsFocused}"));
         var appSignature = string.Join(
             "|",
             (workspaceApplications ?? []).Concat(auxiliaryApplications ?? [])
             .Select(app => $"{app.Id}:{app.IsAvailable}:{app.IsSelected}"));
-        return $"{isActiveMenu}:{compactMode}:{slotSignature}:{appSignature}";
+        return $"{isActiveMenu}:{displayMode}:{slotSignature}:{appSignature}";
     }
 
     private static string BuildSlotTitle(WindowSlot slot)
@@ -211,8 +231,19 @@ public static class TaskbarJumpListService
             title = $"{title[..17]}…";
         }
 
-        var status = slot.WindowStatus == SlotWindowStatus.Launching ? "起動中" : "待機";
+        var status = GetSlotStatusTag(slot);
+        return string.IsNullOrEmpty(status)
+            ? $"{slot.Name} {title}"
+            : $"{slot.Name} {title} [{status}]";
+    }
 
-        return $"{slot.Name} {title} [{status}]";
+    private static string GetSlotStatusTag(WindowSlot slot)
+    {
+        if (slot.WindowStatus == SlotWindowStatus.Launching)
+        {
+            return "起動中";
+        }
+
+        return slot.IsFocused ? "表示" : string.Empty;
     }
 }
