@@ -4,7 +4,10 @@
       "Bash(ls \"C:\\\\Users\\\\kamep\\\\AppData\\\\Local\\\\TurtleAIQuartetHub\\\\config\\\\\" 2>/dev/null || echo \"not found\")",
       "Read(//c/Users/kamep/AppData/Local/TurtleAIQuartetHub/config\" 2>/dev/**)",
       "Bash(dotnet build *)",
-      "Bash(dotnet run *)"
+      "Bash(dotnet run *)",
+      "Bash(tasklist /FI \"IMAGENAME eq TurtleAIQuartetHub.exe\")",
+      "PowerShell(Get-Process -Name \"TurtleAIQuartetHub\" -ErrorAction SilentlyContinue)",
+      "Bash(start \"\" \"src/TurtleAIQuartetHub.Panel/bin/Debug/net10.0-windows/TurtleAIQuartetHub.exe\")"
     ]
   }
 }
