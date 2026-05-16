@@ -15,7 +15,11 @@ public partial class MainWindow : Window
     private const double CompactWindowMinHeight = 146;
     private const double CompactWindowMinWidth = 320;
     private const double CompactWindowWidthScale = 0.58;
+    private const double MicroWindowSize = 116;
+    // \u7E2E\u5C0F=Tile, \u6975\u5C0F=AppIconDefault(2x2 \u30C9\u30C3\u30C8), \u6A19\u6E96=ShowResults\u3002
+    // \u30DC\u30BF\u30F3\u306B\u306F\u300C\u6B21\u306B\u9077\u79FB\u3059\u308B\u30E2\u30FC\u30C9\u300D\u306E\u30A2\u30A4\u30B3\u30F3\u3092\u8868\u793A\u3059\u308B\u3002
     private const string CompactModeGlyph = "\uE73F";
+    private const string MicroModeGlyph = "\uF158";
     private const string StandardModeGlyph = "\uE740";
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
@@ -40,7 +44,7 @@ public partial class MainWindow : Window
     private bool _isBusy;
     private bool _isRefreshInFlight;
     private bool _areWindowsHidden;
-    private bool _isCompactMode;
+    private DisplayMode _displayMode = DisplayMode.Standard;
     private double _collapsedWindowHeight;
     private double _collapsedWindowMinHeight;
     private double _standardWindowWidth;
@@ -362,8 +366,16 @@ public partial class MainWindow : Window
             }
 
             case "--mode" when args.Length >= 2:
-                SetCompactMode(string.Equals(args[1], "compact", StringComparison.OrdinalIgnoreCase));
+            {
+                var targetMode = args[1].ToLowerInvariant() switch
+                {
+                    "compact" => DisplayMode.Compact,
+                    "micro" => DisplayMode.Micro,
+                    _ => DisplayMode.Standard
+                };
+                SetDisplayMode(targetMode);
                 break;
+            }
 
             case "--launch-all":
                 await LaunchAllMissingAsync();
@@ -395,8 +407,26 @@ public partial class MainWindow : Window
     private void DisplayModeButton_Click(object sender, RoutedEventArgs e)
     {
         SuppressFocusedSlotReassertForPanelInput();
-        SetCompactMode(!_isCompactMode);
+        SetDisplayMode(GetNextDisplayMode(_displayMode));
         ActivatePanelWindow();
+    }
+
+    private void StandardJumpButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        SetDisplayMode(DisplayMode.Standard);
+        ActivatePanelWindow();
+    }
+
+    private static DisplayMode GetNextDisplayMode(DisplayMode current)
+    {
+        return current switch
+        {
+            DisplayMode.Standard => DisplayMode.Compact,
+            DisplayMode.Compact => DisplayMode.Micro,
+            DisplayMode.Micro => DisplayMode.Standard,
+            _ => DisplayMode.Standard
+        };
     }
 
     private void HelpButton_Click(object sender, RoutedEventArgs e)
@@ -455,6 +485,16 @@ public partial class MainWindow : Window
     }
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        HandleCompactSlotToggle(slot);
+    }
+
+    private void MicroSlotButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
         {
@@ -907,7 +947,7 @@ public partial class MainWindow : Window
         control.ClearValue(Control.BorderBrushProperty);
     }
 
-    private void ToggleSlotFocus(WindowSlot slot)
+    private async void ToggleSlotFocus(WindowSlot slot)
     {
         var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
 
@@ -943,7 +983,25 @@ public partial class MainWindow : Window
             RestoreHiddenWindowState();
         }
 
-        if (previouslyFocusedSlot is not null)
+        // 別スロットからのフォーカス切替時は、先に現フォーカスを解除して 4 面に戻し、
+        // OS の復元アニメーションが完了するのを待ってから新スロットを最大化する。
+        // 重ねて呼ぶと最大化と復元のアニメが交錯し、新ウィンドウの白フラッシュが見える。
+        if (previouslyFocusedSlot is not null && !ReferenceEquals(previouslyFocusedSlot, slot))
+        {
+            CapturePreferredLayout(previouslyFocusedSlot);
+            ArrangeSlotsOnActiveMonitor(false);
+            _statusStore.ClearFocusedSlot();
+
+            // OS の最大化→4面復元アニメ(~200ms)が完了するのを待つ。
+            await Task.Delay(220);
+
+            if (slot.WindowHandle == IntPtr.Zero)
+            {
+                RefreshAuxiliaryUi();
+                return;
+            }
+        }
+        else if (previouslyFocusedSlot is not null)
         {
             CapturePreferredLayout(previouslyFocusedSlot);
         }
@@ -953,11 +1011,13 @@ public partial class MainWindow : Window
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
         if (_windowArranger.FocusMaximized(slot.WindowHandle))
         {
-            // 対象を先に前面化してから他スロットを背面で整える。
-            // 他スロット退避を先に行うと、背後の画面が一瞬見えてちらつく。
-            ArrangeSlotsExceptOnActiveMonitor(slot, false);
-            SendOtherSlotsToBack(slot);
+            // BringToFrontOnce を先に呼んで対象をZ-order最前面に確定させてから
+            // 他スロットを背面に送り、最後に整列する。
+            // こうすることで他スロットのRestoreForResizeアニメーション中も
+            // 対象ウィンドウが前面を覆っており白いフラッシュが見えない。
             _windowArranger.BringToFrontOnce(slot.WindowHandle);
+            SendOtherSlotsToBack(slot);
+            ArrangeSlotsExceptOnActiveMonitor(slot, false);
             _statusStore.SetFocusedSlot(slot);
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
@@ -1721,9 +1781,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        ArrangeSlotsExceptOnActiveMonitor(focusedSlot, false);
-        SendOtherSlotsToBack(focusedSlot);
         _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
+        SendOtherSlotsToBack(focusedSlot);
+        ArrangeSlotsExceptOnActiveMonitor(focusedSlot, false);
         SchedulePanelToFront();
         RefreshAuxiliaryUi();
     }
@@ -1898,9 +1958,9 @@ public partial class MainWindow : Window
         _windowArranger.BringToFront(panelHandle);
     }
 
-    private void SetCompactMode(bool compact, bool updateMessage = true)
+    private void SetDisplayMode(DisplayMode mode, bool updateMessage = true)
     {
-        if (_isCompactMode == compact)
+        if (_displayMode == mode)
         {
             UpdateDisplayModeChrome();
             UpdateCompactPanelFrame();
@@ -1908,7 +1968,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!compact)
+        var previousMode = _displayMode;
+
+        if (mode == DisplayMode.Standard)
         {
             StopPanelLocateEmphasis();
             ClearCompactPanelFrame();
@@ -1922,48 +1984,67 @@ public partial class MainWindow : Window
             }
         }
 
-        if (compact)
+        if (previousMode == DisplayMode.Standard)
         {
             RememberStandardWindowMetrics();
         }
 
-        var preModeChangeBounds = compact ? GetCurrentWindowBounds() : default;
+        var preModeChangeBounds = GetCurrentWindowBounds();
 
-        _isCompactMode = compact;
+        _displayMode = mode;
 
-        StandardSlotsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        CompactBarPanel.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
-        StoredPanelsExpander.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        FooterControlsGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        ApplicationLauncherPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        SettingsButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        HelpButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        var isStandard = mode == DisplayMode.Standard;
+        var isCompact = mode == DisplayMode.Compact;
+        var isMicro = mode == DisplayMode.Micro;
 
-        if (compact)
+        StandardSlotsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        CompactBarPanel.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        MicroPanel.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
+        StoredPanelsExpander.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        HelpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        StandardJumpButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        WindowTitleText.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
+
+        switch (mode)
         {
-            var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : preModeChangeBounds.Width;
-            var compactWidth = Math.Max(CompactWindowMinWidth, Math.Round(baseWidth * CompactWindowWidthScale));
-            var compactHeight = GetCompactModeHeight(compactWidth);
+            case DisplayMode.Compact:
+            {
+                var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : preModeChangeBounds.Width;
+                var compactWidth = Math.Max(CompactWindowMinWidth, Math.Round(baseWidth * CompactWindowWidthScale));
+                var compactHeight = GetCompactModeHeight(compactWidth);
 
-            MinWidth = CompactWindowMinWidth;
-            MinHeight = compactHeight;
-            var targetBounds = GetCompactModeBounds(preModeChangeBounds, compactWidth, compactHeight);
-            SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
-        }
-        else
-        {
-            var compactBounds = GetCurrentWindowBounds();
-            MinWidth = _standardWindowMinWidth > 0 ? _standardWindowMinWidth : MinWidth;
-            MinHeight = _standardWindowMinHeight > 0 ? _standardWindowMinHeight : MinHeight;
-            var targetWidth = _standardWindowWidth > 0
-                ? Math.Max(MinWidth, _standardWindowWidth)
-                : Width;
-            var targetHeight = _standardWindowHeight > 0
-                ? Math.Max(MinHeight, _standardWindowHeight)
-                : Height;
-            var targetBounds = GetStandardModeRestoreBounds(compactBounds, targetWidth, targetHeight);
-
-            SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                MinWidth = CompactWindowMinWidth;
+                MinHeight = compactHeight;
+                var targetBounds = GetCompactModeBounds(preModeChangeBounds, compactWidth, compactHeight);
+                SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                break;
+            }
+            case DisplayMode.Micro:
+            {
+                MinWidth = MicroWindowSize;
+                MinHeight = MicroWindowSize;
+                var targetBounds = GetMicroModeCenteredBounds(MicroWindowSize, MicroWindowSize);
+                SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                break;
+            }
+            case DisplayMode.Standard:
+            default:
+            {
+                MinWidth = _standardWindowMinWidth > 0 ? _standardWindowMinWidth : MinWidth;
+                MinHeight = _standardWindowMinHeight > 0 ? _standardWindowMinHeight : MinHeight;
+                var targetWidth = _standardWindowWidth > 0
+                    ? Math.Max(MinWidth, _standardWindowWidth)
+                    : Width;
+                var targetHeight = _standardWindowHeight > 0
+                    ? Math.Max(MinHeight, _standardWindowHeight)
+                    : Height;
+                var targetBounds = GetStandardModeRestoreBounds(preModeChangeBounds, targetWidth, targetHeight);
+                SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                break;
+            }
         }
 
         UpdateDisplayModeChrome();
@@ -1972,23 +2053,29 @@ public partial class MainWindow : Window
 
         if (updateMessage)
         {
-            _statusStore.Message = compact
-                ? "縮小表示に切り替えました。"
-                : "標準表示に戻しました。";
+            _statusStore.Message = mode switch
+            {
+                DisplayMode.Compact => "縮小表示に切り替えました。",
+                DisplayMode.Micro => "極小表示に切り替えました。",
+                _ => "標準表示に戻しました。"
+            };
         }
     }
 
     private void UpdateDisplayModeChrome()
     {
-        DisplayModeButton.Content = _isCompactMode ? StandardModeGlyph : CompactModeGlyph;
-        DisplayModeButton.ToolTip = _isCompactMode
-            ? "標準表示へ戻す"
-            : "縮小表示へ切り替え";
+        (DisplayModeButton.Content, DisplayModeButton.ToolTip) = _displayMode switch
+        {
+            DisplayMode.Standard => (CompactModeGlyph, "縮小表示へ切り替え"),
+            DisplayMode.Compact => (MicroModeGlyph, "極小表示へ切り替え"),
+            DisplayMode.Micro => (StandardModeGlyph, "標準表示へ戻す"),
+            _ => (CompactModeGlyph, "縮小表示へ切り替え")
+        };
     }
 
     private void RememberStandardWindowMetrics()
     {
-        if (_isCompactMode)
+        if (!IsStandardMode)
         {
             return;
         }
@@ -1998,6 +2085,28 @@ public partial class MainWindow : Window
         _standardWindowHeight = currentBounds.Height;
         _standardWindowMinWidth = MinWidth;
         _standardWindowMinHeight = MinHeight;
+    }
+
+    private WindowArranger.WindowBounds GetMicroModeCenteredBounds(double targetWidth, double targetHeight)
+    {
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        if (panelHandle == IntPtr.Zero
+            || !_windowArranger.TryGetMonitorWorkAreaForWindow(panelHandle, out var workArea))
+        {
+            return new WindowArranger.WindowBounds(
+                (int)Math.Round(Left + Width / 2 - targetWidth / 2),
+                (int)Math.Round(Top + Height / 2 - targetHeight / 2),
+                (int)Math.Round(targetWidth),
+                (int)Math.Round(targetHeight));
+        }
+
+        var left = workArea.Left + (workArea.Width - targetWidth) / 2;
+        var top = workArea.Top + (workArea.Height - targetHeight) / 2;
+        return new WindowArranger.WindowBounds(
+            (int)Math.Round(left),
+            (int)Math.Round(top),
+            (int)Math.Round(targetWidth),
+            (int)Math.Round(targetHeight));
     }
 
     private double GetCompactModeHeight(double targetWindowWidth)
@@ -2095,7 +2204,7 @@ public partial class MainWindow : Window
 
     private async Task LocatePanelAsync()
     {
-        if (!_isCompactMode)
+        if (IsStandardMode)
         {
             return;
         }
@@ -2135,7 +2244,7 @@ public partial class MainWindow : Window
 
     private void UpdateCompactPanelFrame(PanelFrameVisual visual = PanelFrameVisual.Normal)
     {
-        if (!_isCompactMode)
+        if (IsStandardMode)
         {
             ClearCompactPanelFrame();
             return;
@@ -2270,7 +2379,7 @@ public partial class MainWindow : Window
         RefreshLaunchButtonAvailability();
         TaskbarJumpListService.Update(
             _statusStore.Slots,
-            _isCompactMode,
+            _displayMode,
             _statusStore.WorkspaceApplications,
             _statusStore.AuxiliaryApplications);
     }
@@ -2588,12 +2697,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ここでの確定処理はスロットカードのインライン編集 (InlineTitleTextBox) 専用。
+        // 設定ダイアログなどの通常 TextBox を対象に含めると IsReadOnly/Focusable が書き換わって
+        // 2 回目以降クリックしても入力できなくなる。
+        if (!IsInlineTitleTextBox(textBox))
+        {
+            return;
+        }
+
         if (IsSelfOrChild(e.OriginalSource as DependencyObject, textBox))
         {
             return;
         }
 
         FinishInlineTitleTextBoxEdit(textBox, commit: true, clearKeyboardFocus: true);
+    }
+
+    private bool IsInlineTitleTextBox(TextBox textBox)
+    {
+        return textBox.Style is { } style
+            && ReferenceEquals(style, TryFindResource("InlineTitleTextBox") as Style);
     }
 
     private void InlineTitleTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -2870,6 +2993,7 @@ public partial class MainWindow : Window
         SettingsButton.IsEnabled = !busy;
         HelpButton.IsEnabled = !busy;
         DisplayModeButton.IsEnabled = !busy;
+        StandardJumpButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
         SettingsOverlay.IsEnabled = !busy;
@@ -2898,6 +3022,10 @@ public partial class MainWindow : Window
         Normal,
         Emphasis
     }
+
+    private bool IsCompactMode => _displayMode == DisplayMode.Compact;
+    private bool IsMicroMode => _displayMode == DisplayMode.Micro;
+    private bool IsStandardMode => _displayMode == DisplayMode.Standard;
 
     private void SuppressFocusedSlotReassertForPanelInput()
     {
