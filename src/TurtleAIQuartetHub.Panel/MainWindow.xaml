@@ -498,6 +498,54 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="MicroCenterButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="#101714" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <!-- 円形ボタン: 直径 22 → CornerRadius 11 で完全な円。
+                 ContentPresenter は下げ気味の補正で大文字 1 字を視覚的中央に置く。 -->
+            <Border x:Name="MicroCenterBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="11">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RenderTransformOrigin="0.5,0.5">
+                <ContentPresenter.RenderTransform>
+                  <TranslateTransform Y="-1" />
+                </ContentPresenter.RenderTransform>
+              </ContentPresenter>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="MicroCenterBorder" Property="Background" Value="{StaticResource AccentDarkBrush}" />
+                <Setter Property="Foreground" Value="#D8FFE6" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="MicroCenterBorder" Property="Background" Value="#0A1A11" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="MicroSlotButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="MinWidth" Value="0" />
@@ -1252,16 +1300,30 @@
             BorderBrush="{StaticResource BorderBrushSoft}"
             BorderThickness="1"
             CornerRadius="8">
-      <UniformGrid Rows="2" Columns="2">
-        <ContentControl Content="{Binding Slots[0]}"
-                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
-        <ContentControl Content="{Binding Slots[1]}"
-                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
-        <ContentControl Content="{Binding Slots[2]}"
-                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
-        <ContentControl Content="{Binding Slots[3]}"
-                        ContentTemplate="{StaticResource MicroSlotTemplate}" />
-      </UniformGrid>
+      <Grid>
+        <UniformGrid Rows="2" Columns="2">
+          <ContentControl Content="{Binding Slots[0]}"
+                          ContentTemplate="{StaticResource MicroSlotTemplate}" />
+          <ContentControl Content="{Binding Slots[1]}"
+                          ContentTemplate="{StaticResource MicroSlotTemplate}" />
+          <ContentControl Content="{Binding Slots[2]}"
+                          ContentTemplate="{StaticResource MicroSlotTemplate}" />
+          <ContentControl Content="{Binding Slots[3]}"
+                          ContentTemplate="{StaticResource MicroSlotTemplate}" />
+        </UniformGrid>
+
+        <!-- 4 面の交差点に重ねた円形ボタン。スロット配置の空間メタファーを保ったまま
+             全体に効くアクション(全ウィンドウの表示/非表示トグル)を表す。 -->
+        <Button x:Name="MicroVisibilityButton"
+                Width="22"
+                Height="22"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Content="非"
+                ToolTip="管理中ウィンドウを非表示"
+                Click="MicroVisibilityButton_Click"
+                Style="{StaticResource MicroCenterButtonStyle}" />
+      </Grid>
     </Border>
 
     <Grid x:Name="StoredPanelsRowGrid" Grid.Row="2" Margin="5,2,5,3">
