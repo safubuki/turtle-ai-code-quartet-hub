@@ -1,6 +1,6 @@
 ﻿# 現在の既知課題と QA 方針
 
-更新日: 2026-05-14
+更新日: 2026-05-24
 
 ## 重点 QA
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
@@ -12,8 +12,9 @@
 - VS Code から CLI、CLI から VS Code、CLI から別 CLI へ、現在のスロットウィンドウを閉じてから押したアプリへ切り替えられること。
 - 未起動スロットで IDE / CLI ボタンを押しても自動起動せず、起動対象の選択だけが変わること。
 - 一括起動で Codex / Gemini など複数 CLI 種別が混在しても、それぞれの terminal が対象スロットの象限へ配置されること。
-- Codex / Claude の Windows アプリ版ボタンが、`Windows` ラベル付きで控え Quartet と同じ行の右端に表示されること。
+- Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版ボタンが、`Windows` ラベル付きで控え Quartet と同じ行の右端に表示され、Antigravity2 が Claude の右側にあること。
 - Antigravity は A=左上、B=右上、C=左下、D=右下へ配置され、起動後に中央へ戻っても短い遅延再配置で対象象限へ戻ること。
+- Antigravity IDE は `%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe` 相当から、Antigravity2 は `%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe` 相当から、Windows 10 / Windows 11 のユーザープロファイル差に依存せず検出できること。
 - 未検出アプリはグレーアウトし、理由がツールチップまたはメッセージで分かること。
 - VS Code / Antigravity の workspaceStorage 読み取りに失敗しても、保存済みワークスペースパスが消えないこと。
 - Antigravity でウィンドウ起動後にアプリ内から対象フォルダを開いた場合も、`%APPDATA%/Antigravity/User/workspaceStorage` とウィンドウタイトルから最新ワークスペースパスを保存できること。
@@ -23,7 +24,7 @@
 - 実行中スロットのアクションボタンが `閉じる` と表示されること。
 - タイトルバーの `?` ヘルプに CLI インストールコマンドと承認確認を減らす起動オプション例が表示されること。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示すること。
 - `?` ヘルプの各セクションに枠があり、説明文とコマンドを選択コピーできること。
-- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Copilot / Gemini / Claude / Codex Windows / Claude Windows の起動コマンドを確認・編集・保存・再検出できること。
+- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Copilot / Gemini / Claude / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
 - 歯車設定で、表の Quartet と控え Quartet の保存済みタイトル、パス、アプリ ID を一覧確認・編集・空化できること。
 - 歯車設定の不整合修復で、不完全な控えと重複控えを削除し、同じワークスペースを再登録できる状態に戻せること。
 - Claude などの CLI が PATH に出ていない環境でも、npm / pnpm / Volta の一般的な shim 置き場と Claude Code 公式インストーラの `~\.local\bin` から検出できること。

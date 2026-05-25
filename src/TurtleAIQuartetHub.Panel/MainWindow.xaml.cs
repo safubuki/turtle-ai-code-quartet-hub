@@ -13,8 +13,8 @@ namespace TurtleAIQuartetHub.Panel;
 public partial class MainWindow : Window
 {
     private const double CompactWindowMinHeight = 146;
-    private const double CompactWindowMinWidth = 320;
-    private const double CompactWindowWidthScale = 0.58;
+    private const double CompactWindowMinWidth = 430;
+    private const double CompactWindowWidthScale = 0.64;
     private const double MicroWindowSize = 116;
     // \u7E2E\u5C0F=Tile, \u6975\u5C0F=AppIconDefault(2x2 \u30C9\u30C3\u30C8), \u6A19\u6E96=ShowResults\u3002
     // \u30DC\u30BF\u30F3\u306B\u306F\u300C\u6B21\u306B\u9077\u79FB\u3059\u308B\u30E2\u30FC\u30C9\u300D\u306E\u30A2\u30A4\u30B3\u30F3\u3092\u8868\u793A\u3059\u308B\u3002
@@ -30,7 +30,9 @@ public partial class MainWindow : Window
     [
         TimeSpan.FromMilliseconds(1500),
         TimeSpan.FromMilliseconds(3000),
-        TimeSpan.FromMilliseconds(5000)
+        TimeSpan.FromMilliseconds(5000),
+        TimeSpan.FromMilliseconds(8000),
+        TimeSpan.FromMilliseconds(12000)
     ];
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();

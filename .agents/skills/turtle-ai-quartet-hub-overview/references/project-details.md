@@ -1,13 +1,13 @@
 ﻿# Turtle AI Code Quartet Hub プロジェクト詳細
 
-更新日: 2026-05-15
+更新日: 2026-05-24
 
 ## 概要
 - 4 つの開発用ウィンドウを A-D スロットとして管理する Windows 向け WPF アプリ。
 - 2x2 配置、集中表示、非表示/再表示、控え Quartet、タスクバー Jump List 操作を提供する。
 - 既定のスロット起動対象は VS Code。
 - VS Code / Antigravity はワークスペース IDE として、Codex / GitHub Copilot / Gemini / Claude はワークスペース CLI として各スロットで起動できる。
-- Codex / ChatGPT / Claude の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
+- Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
 - AI 状態表示、AI 状態監視、VS Code 外枠フレーム、AI 状態連動の点滅や色変更は削除済み。
 
 ## 技術スタック
@@ -15,6 +15,11 @@
 - パッケージ: MSIX / Windows Application Packaging Project
 - 補助スクリプト: PowerShell
 - 主な API: Win32 P/Invoke, System.Text.Json
+
+## 開発環境
+- Windows 10 / Windows 11 では .NET 10 SDK が入っていれば、追加 workload なしで `dotnet build` と `dotnet run` を実行できる。
+- 未導入端末では PowerShell から `winget install --id Microsoft.DotNet.SDK.10 --exact --accept-package-agreements --accept-source-agreements` で導入できる。
+- SDK 導入後は新しい PowerShell または VS Code ターミナルを開き、`dotnet --list-sdks` と `dotnet --info` で確認する。
 
 ## 主なファイル
 - `TurtleAIQuartetHub.sln`: WPF 本体ソリューション。
@@ -44,18 +49,20 @@
 
 ## 複数アプリ起動
 - `defaultWorkspaceApplicationId` がスロットの既定アプリ。未設定時は `vscode`。
-- `applications` で VS Code、Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリの起動コマンド、引数、検出候補を定義する。
+- `applications` で VS Code、Antigravity IDE、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / ChatGPT / Claude / Antigravity2 Windows アプリの起動コマンド、引数、検出候補を定義する。
 - `slots[].applicationId` と `slots.json` の `ApplicationId` で、スロット/控えごとの起動対象を保持する。
 - VS Code は専用 user-data-dir と remote URI フォールバックを維持する。
-- Antigravity は汎用 workspace IDE としてワークスペースパスを渡して起動し、新規ウィンドウを A-D の象限へ配置する。アプリ内でフォルダを開いた場合も `%APPDATA%/Antigravity/User/workspaceStorage` から最新パスを保存する。
+- Antigravity は汎用 workspace IDE として `%LOCALAPPDATA%/Programs/Antigravity IDE/Antigravity IDE.exe` 相当を優先検出し、ワークスペースパスを渡して起動し、新規ウィンドウを A-D の象限へ配置する。アプリ内でフォルダを開いた場合も `%APPDATA%/Antigravity/User/workspaceStorage` から最新パスを保存する。
 - Codex / GitHub Copilot / Gemini / Claude CLI は、対象スロットの保存済みワークスペースをカレントディレクトリにした `cmd.exe` ウィンドウで起動する。
 - GitHub Copilot CLI の既定は `copilot` コマンドのみ。ワークスペースパスを暗黙引数として渡さない。
 - スロット内 UI は `IDE` 枠と `CLI` 枠に分ける。別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウを閉じてから押したアプリを同じ象限へ開く。
-- Codex / ChatGPT / Claude Windows アプリは `Windows` ラベル付きの補助ボタンとして表示する。
+- Codex / ChatGPT / Claude / Antigravity2 Windows アプリは `Windows` ラベル付きの補助ボタンとして表示し、Antigravity2 は Claude の右側に置く。
 - 起動確認または periodic refresh でワークスペースを確認できたスロットは `SavedWorkspacePath` とタイトルを自動保存し、ワークスペース読み取りに失敗しても保存済みパスを消さない。
 - 歯車設定では、表の Quartet と控え Quartet のタイトル、パス、保存済みパス、アプリ ID を一覧で確認・編集・空化できる。不完全な控えや重複控えは修復ボタンで整理できる。
 
 ## 確認コマンド
+- 通常ビルド: `dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj`
+- 通常実行: `dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj`
 - ビルド: `.\scripts\Build-Panel.ps1`
 - 開発実行: `.\scripts\Build-Panel.ps1 -Run`
 - Store readiness: `.\scripts\Test-StoreReadiness.ps1`

@@ -58,6 +58,15 @@ public sealed class ApplicationDetectionService
             }
         }
 
+        if (application.IsWorkspaceIde)
+        {
+            var desktopPath = ResolveDesktopApplicationPath(application);
+            if (!string.IsNullOrWhiteSpace(desktopPath))
+            {
+                return DetectionResult.Installed(desktopPath, $"デスクトップアプリの候補から検出しました: {desktopPath}");
+            }
+        }
+
         if (!application.IsWorkspaceCli)
         {
             var appxPath = ResolveAppxPackage(application);
@@ -218,6 +227,23 @@ public sealed class ApplicationDetectionService
         }
 
         return null;
+    }
+
+    private static string? ResolveDesktopApplicationPath(LauncherApplication application)
+    {
+        foreach (var appPathName in application.Detection.AppPathNames)
+        {
+            var appPath = ResolveAppPath(appPathName);
+            if (!string.IsNullOrWhiteSpace(appPath))
+            {
+                return appPath;
+            }
+        }
+
+        return ResolveCommonInstallPath(
+            application.DisplayName,
+            application.Detection.AppPathNames,
+            application.Detection.StartMenuNames);
     }
 
     private static string? ResolveAppxPackage(LauncherApplication application)
@@ -424,6 +450,7 @@ public sealed class ApplicationDetectionService
 
         var directoryCandidates = directoryNames
             .Concat(new[] { applicationName })
+            .Concat(executableCandidates.Select(name => Path.GetFileNameWithoutExtension(name) ?? string.Empty))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
