@@ -5,7 +5,7 @@
   "useDedicatedUserDataDirs": true,
   "inheritMainUserState": true,
   "reopenLastWorkspace": true,
-  "launchTimeoutSeconds": 12,
+  "launchTimeoutSeconds": 20,
   "remoteReconnectTimeoutSeconds": 5,
   "statusRefreshIntervalMilliseconds": 1000,
   "defaultWorkspaceApplicationId": "vscode",
@@ -30,14 +30,14 @@
       "displayName": "Antigravity",
       "shortName": "Antigravity",
       "kind": "WorkspaceIde",
-      "command": "antigravity",
+      "command": "",
       "arguments": ["--new-window", "{workspacePath}"],
       "supportsMultipleWindows": true,
       "detection": {
-        "commands": ["antigravity"],
-        "processNames": ["Antigravity"],
-        "startMenuNames": ["Antigravity", "Google Antigravity"],
-        "appPathNames": ["Antigravity.exe"]
+        "commands": ["antigravity-ide"],
+        "processNames": ["Antigravity IDE"],
+        "startMenuNames": ["Antigravity IDE", "Google Antigravity IDE"],
+        "appPathNames": ["Antigravity IDE.exe"]
       }
     },
     {
@@ -143,6 +143,21 @@
         "processNames": ["Claude"],
         "startMenuNames": ["Claude"],
         "appPathNames": ["Claude.exe"]
+      }
+    },
+    {
+      "id": "antigravity-app",
+      "displayName": "Antigravity2",
+      "shortName": "Antigravity2",
+      "kind": "SingleWindowAgent",
+      "command": "",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": [],
+        "processNames": ["Antigravity"],
+        "startMenuNames": ["Antigravity2"],
+        "appPathNames": ["Antigravity.exe"]
       }
     }
   ],
