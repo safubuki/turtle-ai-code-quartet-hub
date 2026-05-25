@@ -35,45 +35,42 @@ public sealed class WindowArranger
         return ArrangeCore(slots, gap, monitorIndex, excludedSlot);
     }
 
+    public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
+    {
+        var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot: null);
+        foreach (var placement in placements)
+        {
+            if (IsIconic(placement.Handle) || !GetWindowRect(placement.Handle, out var rect))
+            {
+                return true;
+            }
+
+            var current = new WindowBounds(
+                rect.Left,
+                rect.Top,
+                Math.Max(0, rect.Right - rect.Left),
+                Math.Max(0, rect.Bottom - rect.Top));
+            if (!IsCloseToExpectedBounds(current, placement, Math.Max(0, tolerance)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot)
     {
-        var monitors = GetOrderedMonitors();
-        if (monitors.Count == 0)
-        {
-            return 0;
-        }
-
-        var workArea = monitors[NormalizeMonitorIndex(monitorIndex, monitors.Count)].WorkArea;
-        var normalizedGap = Math.Clamp(gap, 0, 64);
-        var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
-        var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
-        var placements = new List<WindowPlacement>(Math.Min(4, slots.Count));
-
-        for (var index = 0; index < Math.Min(4, slots.Count); index++)
-        {
-            var slot = slots[index];
-            if (ReferenceEquals(slot, excludedSlot))
-            {
-                continue;
-            }
-
-            if (slot.WindowHandle == IntPtr.Zero || !IsWindow(slot.WindowHandle))
-            {
-                continue;
-            }
-
-            var column = index % 2;
-            var row = index / 2;
-            var x = workArea.Left + normalizedGap + column * (cellWidth + normalizedGap);
-            var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
-
-            RestoreForResize(slot.WindowHandle);
-            placements.Add(new WindowPlacement(slot.WindowHandle, x, y, cellWidth, cellHeight));
-        }
+        var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot);
 
         if (placements.Count == 0)
         {
             return 0;
+        }
+
+        foreach (var placement in placements)
+        {
+            RestoreForResize(placement.Handle);
         }
 
         var deferredWindowPos = BeginDeferWindowPos(placements.Count);
@@ -121,6 +118,55 @@ public sealed class WindowArranger
         }
 
         return arranged;
+    }
+
+    private static List<WindowPlacement> BuildPlacements(
+        IReadOnlyList<WindowSlot> slots,
+        int gap,
+        int monitorIndex,
+        WindowSlot? excludedSlot)
+    {
+        var monitors = GetOrderedMonitors();
+        if (monitors.Count == 0)
+        {
+            return [];
+        }
+
+        var workArea = monitors[NormalizeMonitorIndex(monitorIndex, monitors.Count)].WorkArea;
+        var normalizedGap = Math.Clamp(gap, 0, 64);
+        var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
+        var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
+        var placements = new List<WindowPlacement>(Math.Min(4, slots.Count));
+
+        for (var index = 0; index < Math.Min(4, slots.Count); index++)
+        {
+            var slot = slots[index];
+            if (ReferenceEquals(slot, excludedSlot))
+            {
+                continue;
+            }
+
+            if (slot.WindowHandle == IntPtr.Zero || !IsWindow(slot.WindowHandle))
+            {
+                continue;
+            }
+
+            var column = index % 2;
+            var row = index / 2;
+            var x = workArea.Left + normalizedGap + column * (cellWidth + normalizedGap);
+            var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
+            placements.Add(new WindowPlacement(slot.WindowHandle, x, y, cellWidth, cellHeight));
+        }
+
+        return placements;
+    }
+
+    private static bool IsCloseToExpectedBounds(WindowBounds current, WindowPlacement expected, int tolerance)
+    {
+        return Math.Abs(current.Left - expected.X) <= tolerance
+            && Math.Abs(current.Top - expected.Y) <= tolerance
+            && Math.Abs(current.Width - expected.Width) <= tolerance
+            && Math.Abs(current.Height - expected.Height) <= tolerance;
     }
 
     public bool BringToFront(IntPtr windowHandle)

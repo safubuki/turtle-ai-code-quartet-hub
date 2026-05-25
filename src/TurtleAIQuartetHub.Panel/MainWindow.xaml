@@ -746,6 +746,10 @@
           <Setter Property="Fill" Value="#8C2929" />
           <Setter Property="Stroke" Value="#D96A6A" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+          <Setter Property="Fill" Value="#C9A441" />
+          <Setter Property="Stroke" Value="#FFE18A" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
