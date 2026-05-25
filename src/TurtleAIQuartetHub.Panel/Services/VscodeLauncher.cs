@@ -14,6 +14,7 @@ public sealed class VscodeLauncher
     private const uint WineventOutOfContext = 0x0000;
     private const uint WineventSkipOwnProcess = 0x0002;
     private static readonly TimeSpan RemoteWindowProbeInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan WindowProbeInterval = TimeSpan.FromMilliseconds(250);
     private readonly WindowEnumerator _windowEnumerator;
 
     public VscodeLauncher(WindowEnumerator windowEnumerator)
@@ -66,6 +67,15 @@ public sealed class VscodeLauncher
             VscodeLayoutState.TryApplyPreferredLayout(slot, config, slot.PreferredLayout);
 
             var launchPath = GetLaunchPath(slot, config);
+            var existingSlotWindow = TryFindExistingSlotWindow(slot, config, launchPath);
+            if (existingSlotWindow is not null)
+            {
+                DiagnosticLog.Write($"Reattached existing VS Code window for slot {slot.Name}: handle=0x{existingSlotWindow.Handle.ToInt64():X}, pid={existingSlotWindow.ProcessId}.");
+                knownHandles.Add(existingSlotWindow.Handle);
+                assignments.Add(new WindowAssignment(slot, existingSlotWindow));
+                continue;
+            }
+
             var assignment = await LaunchWindowAsync(slot, config, resolvedCodeCommand, launchPath, knownHandles, timeout, cancellationToken);
             if (assignment is null)
             {
@@ -110,6 +120,7 @@ public sealed class VscodeLauncher
             knownHandles,
             timeout,
             expectedProcessId: null,
+            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
             cancellationToken);
         return window is null ? null : new WindowAssignment(slot, window);
     }
@@ -130,7 +141,12 @@ public sealed class VscodeLauncher
         var launchedProcessId = await Task.Run(() => StartCode(codeCommand, slot, config, launchPath), cancellationToken);
 
         var reconnectStopwatch = Stopwatch.StartNew();
-        var remoteWindow = await WaitForNewWindowAsync(knownHandles, reconnectTimeout, expectedProcessId: null, cancellationToken);
+        var remoteWindow = await WaitForNewWindowAsync(
+            knownHandles,
+            reconnectTimeout,
+            expectedProcessId: null,
+            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
+            cancellationToken);
         if (remoteWindow is not null)
         {
             var remainingReconnectTime = GetRemainingTime(reconnectTimeout, reconnectStopwatch);
@@ -161,20 +177,37 @@ public sealed class VscodeLauncher
 
         DiagnosticLog.Write($"Starting fallback VS Code window for slot {slot.Name}: {codeCommand} {GetLaunchArguments(slot, config, null)}");
         var fallbackProcessId = await Task.Run(() => StartCode(codeCommand, slot, config, null), cancellationToken);
-        var fallbackWindow = await WaitForNewWindowAsync(knownHandles, fallbackTimeout, fallbackProcessId, cancellationToken);
+        var fallbackWindow = await WaitForNewWindowAsync(
+            knownHandles,
+            fallbackTimeout,
+            fallbackProcessId,
+            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, null),
+            cancellationToken);
         return fallbackWindow is null ? null : new WindowAssignment(slot, fallbackWindow);
+    }
+
+    public WindowInfo? TryFindExistingSlotWindow(WindowSlot slot, AppConfig config, string? launchPath = null)
+    {
+        return TryFindSlotOwnedWindow(slot, config, launchPath);
     }
 
     private async Task<WindowInfo?> WaitForNewWindowAsync(
         HashSet<IntPtr> knownHandles,
         TimeSpan timeout,
         uint? expectedProcessId,
+        Func<WindowInfo?>? fallbackWindowProvider,
         CancellationToken cancellationToken)
     {
         var existingWindow = FindNewWindow(knownHandles, expectedProcessId);
         if (existingWindow is not null)
         {
             return existingWindow;
+        }
+
+        var fallbackWindow = fallbackWindowProvider?.Invoke();
+        if (fallbackWindow is not null)
+        {
+            return fallbackWindow;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -210,7 +243,7 @@ public sealed class VscodeLauncher
         if (hook == IntPtr.Zero)
         {
             DiagnosticLog.Write("WinEvent hook could not be registered while waiting for a VS Code window.");
-            return FindNewWindow(knownHandles);
+            return FindNewWindow(knownHandles, expectedProcessId) ?? fallbackWindowProvider?.Invoke();
         }
 
         try
@@ -221,9 +254,38 @@ public sealed class VscodeLauncher
                 return existingWindow;
             }
 
+            fallbackWindow = fallbackWindowProvider?.Invoke();
+            if (fallbackWindow is not null)
+            {
+                return fallbackWindow;
+            }
+
             using var timeoutRegistration = timeoutCts.Token.Register(() => completionSource.TrySetResult(null));
             using var cancellationRegistration = cancellationToken.Register(() => completionSource.TrySetCanceled(cancellationToken));
-            return await completionSource.Task;
+            while (!timeoutCts.IsCancellationRequested)
+            {
+                var completedTask = await Task.WhenAny(
+                    completionSource.Task,
+                    Task.Delay(WindowProbeInterval, cancellationToken));
+                if (completedTask == completionSource.Task)
+                {
+                    return await completionSource.Task;
+                }
+
+                existingWindow = FindNewWindow(knownHandles, expectedProcessId);
+                if (existingWindow is not null)
+                {
+                    return existingWindow;
+                }
+
+                fallbackWindow = fallbackWindowProvider?.Invoke();
+                if (fallbackWindow is not null)
+                {
+                    return fallbackWindow;
+                }
+            }
+
+            return null;
         }
         finally
         {
@@ -241,6 +303,80 @@ public sealed class VscodeLauncher
             .OrderBy(window => window.ProcessId)
             .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
+    }
+
+    private WindowInfo? TryFindSlotOwnedWindow(WindowSlot slot, AppConfig config, string? launchPath)
+    {
+        if (!config.UseDedicatedUserDataDirs
+            || !TryReadSlotLockProcessId(slot, config, out var processId)
+            || !IsProcessAlive(processId))
+        {
+            return null;
+        }
+
+        var windows = _windowEnumerator
+            .GetVsCodeWindows()
+            .Where(window => window.ProcessId == processId)
+            .ToList();
+        if (windows.Count == 0)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(launchPath))
+        {
+            var matchingWindow = windows.FirstOrDefault(window =>
+                VscodeWorkspaceState.IsWorkspaceVisibleInWindowTitle(window.Title, launchPath));
+            if (matchingWindow is not null)
+            {
+                return matchingWindow;
+            }
+        }
+
+        return windows
+            .OrderBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static bool TryReadSlotLockProcessId(WindowSlot slot, AppConfig config, out uint processId)
+    {
+        processId = 0;
+        var lockFile = Path.Combine(SlotUserDataPaths.GetUserDataDirectory(slot, config), "code.lock");
+        if (!File.Exists(lockFile))
+        {
+            return false;
+        }
+
+        try
+        {
+            var lockContent = File.ReadAllText(lockFile).Trim();
+            return uint.TryParse(lockContent, out processId) && processId > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsProcessAlive(uint processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById((int)processId);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
     }
 
     private async Task<HashSet<IntPtr>> GetKnownHandlesAsync(CancellationToken cancellationToken)

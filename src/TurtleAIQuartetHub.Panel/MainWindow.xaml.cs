@@ -32,7 +32,9 @@ public partial class MainWindow : Window
         TimeSpan.FromMilliseconds(3000),
         TimeSpan.FromMilliseconds(5000),
         TimeSpan.FromMilliseconds(8000),
-        TimeSpan.FromMilliseconds(12000)
+        TimeSpan.FromMilliseconds(12000),
+        TimeSpan.FromMilliseconds(20000),
+        TimeSpan.FromMilliseconds(30000)
     ];
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
@@ -1757,6 +1759,13 @@ public partial class MainWindow : Window
         try
         {
             await _statusStore.RefreshWindowStatusesAsync(_windowEnumerator, _refreshCancellation.Token);
+            var reattachedCount = ReattachExistingVsCodeWindowsToMissingSlots();
+            if (reattachedCount > 0
+                && CanReapplyPostLaunchArrangement()
+                && _windowArranger.NeedsArrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex()))
+            {
+                await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1766,6 +1775,42 @@ public partial class MainWindow : Window
             _isRefreshInFlight = false;
             RefreshAuxiliaryUi();
         }
+    }
+
+    private int ReattachExistingVsCodeWindowsToMissingSlots()
+    {
+        if (!_statusStore.Config.UseDedicatedUserDataDirs)
+        {
+            return 0;
+        }
+
+        var assignedHandles = _statusStore.Slots
+            .Where(slot => slot.WindowHandle != IntPtr.Zero && _windowEnumerator.IsLiveWindow(slot.WindowHandle))
+            .Select(slot => slot.WindowHandle)
+            .ToHashSet();
+        var reattachedCount = 0;
+
+        foreach (var slot in _statusStore.Slots.Where(slot =>
+                     slot.IsVsCodeApplication
+                     && slot.WindowStatus == SlotWindowStatus.Missing))
+        {
+            var window = _vscodeLauncher.TryFindExistingSlotWindow(slot, _statusStore.Config);
+            if (window is null || assignedHandles.Contains(window.Handle))
+            {
+                continue;
+            }
+
+            _statusStore.AssignWindow(slot, window);
+            assignedHandles.Add(window.Handle);
+            reattachedCount++;
+        }
+
+        if (reattachedCount > 0)
+        {
+            _statusStore.Message = $"{reattachedCount}個の既に開いていた VS Code ウィンドウをスロットへ再接続しました。";
+        }
+
+        return reattachedCount;
     }
 
     private int ArrangeSlotsOnActiveMonitor(bool bringPanelAfterArrange = true)
@@ -1840,9 +1885,8 @@ public partial class MainWindow : Window
                 await Dispatcher.InvokeAsync(() =>
                 {
                     if (cancellationToken.IsCancellationRequested
-                        || _areWindowsHidden
-                        || WindowState == WindowState.Minimized
-                        || _statusStore.Slots.Any(slot => slot.IsFocused))
+                        || !CanReapplyPostLaunchArrangement()
+                        || !_windowArranger.NeedsArrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex()))
                     {
                         return;
                     }
@@ -1854,6 +1898,13 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private bool CanReapplyPostLaunchArrangement()
+    {
+        return !_areWindowsHidden
+            && WindowState != WindowState.Minimized
+            && !_statusStore.Slots.Any(slot => slot.IsFocused);
     }
 
     private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshAuxiliaryUiAfterArrange = true)
