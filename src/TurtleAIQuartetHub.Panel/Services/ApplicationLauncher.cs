@@ -490,6 +490,7 @@ public sealed class ApplicationLauncher
         if (!string.IsNullOrWhiteSpace(userProfile))
         {
             yield return Path.Combine(userProfile, ".local", "bin");
+            yield return Path.Combine(userProfile, ".grok", "bin");
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);

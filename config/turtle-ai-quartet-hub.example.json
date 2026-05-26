@@ -86,6 +86,21 @@
       }
     },
     {
+      "id": "grok",
+      "displayName": "Grok Build CLI",
+      "shortName": "Grok",
+      "kind": "WorkspaceCli",
+      "command": "grok",
+      "arguments": [],
+      "supportsMultipleWindows": false,
+      "detection": {
+        "commands": ["grok"],
+        "processNames": ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+        "startMenuNames": [],
+        "appPathNames": []
+      }
+    },
+    {
       "id": "claude",
       "displayName": "Claude CLI",
       "shortName": "Claude",

@@ -317,13 +317,14 @@ public sealed class AppConfig
             VsCodeApplicationId => 0,
             "antigravity" => 1,
             "codex" => 2,
-            "github-copilot" => 3,
-            "gemini" => 4,
-            "claude" => 5,
-            "chatgpt-app" => 6,
-            "codex-app" => 7,
-            "claude-app" => 8,
-            "antigravity-app" => 9,
+            "claude" => 3,
+            "github-copilot" => 4,
+            "grok" => 5,
+            "gemini" => 6,
+            "chatgpt-app" => 7,
+            "codex-app" => 8,
+            "claude-app" => 9,
+            "antigravity-app" => 10,
             _ => 100
         };
     }
@@ -451,6 +452,23 @@ public sealed class AppConfig
                 Detection = new ApplicationDetectionConfig
                 {
                     Commands = ["gemini"],
+                    ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
+                    StartMenuNames = [],
+                    AppPathNames = []
+                }
+            },
+            new()
+            {
+                Id = "grok",
+                DisplayName = "Grok Build CLI",
+                ShortName = "Grok",
+                Kind = ApplicationKind.WorkspaceCli,
+                Command = "grok",
+                Arguments = [],
+                SupportsMultipleWindows = false,
+                Detection = new ApplicationDetectionConfig
+                {
+                    Commands = ["grok"],
                     ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
                     StartMenuNames = [],
                     AppPathNames = []

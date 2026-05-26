@@ -180,8 +180,26 @@
           <Setter Property="BorderBrush" Value="#59D58E" />
           <Setter Property="FontWeight" Value="SemiBold" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+          <Setter Property="Foreground" Value="#66716A" />
+          <Setter Property="Background" Value="#121816" />
+          <Setter Property="BorderBrush" Value="#27322C" />
+          <Setter Property="FontWeight" Value="Normal" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
+
+    <DataTemplate x:Key="CliApplicationOptionTemplate" DataType="{x:Type models:SlotApplicationOption}">
+      <Button Tag="{Binding}"
+              Click="SlotApplicationSwitchButton_Click"
+              ToolTip="{Binding ToolTip}"
+              ToolTipService.ShowOnDisabled="True"
+              Style="{StaticResource ApplicationSelectorButtonStyle}">
+        <TextBlock Text="{Binding ShortName}"
+                   TextTrimming="CharacterEllipsis"
+                   TextAlignment="Center" />
+      </Button>
+    </DataTemplate>
 
     <Style x:Key="ApplicationGroupBorderStyle" TargetType="Border">
       <Setter Property="Background" Value="#121816" />
@@ -859,31 +877,44 @@
 
               <Grid Grid.Column="1">
                 <Border Style="{StaticResource ApplicationGroupBorderStyle}">
-                  <ItemsControl ItemsSource="{Binding CliApplicationOptions}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <UniformGrid Columns="2" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemContainerStyle>
-                      <Style TargetType="ContentPresenter">
-                        <Setter Property="Margin" Value="2,0,2,4" />
-                      </Style>
-                    </ItemsControl.ItemContainerStyle>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="{x:Type models:SlotApplicationOption}">
-                        <Button Tag="{Binding}"
-                                Click="SlotApplicationSwitchButton_Click"
-                                ToolTip="{Binding ToolTip}"
-                                ToolTipService.ShowOnDisabled="True"
-                                Style="{StaticResource ApplicationSelectorButtonStyle}">
-                          <TextBlock Text="{Binding ShortName}"
-                                     TextTrimming="CharacterEllipsis"
-                                     TextAlignment="Center" />
-                        </Button>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                  <Grid>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <UniformGrid Grid.Row="0"
+                                 Columns="2">
+                      <ContentControl Content="{Binding CliApplicationOptions[0]}"
+                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
+                                      Margin="2,0,2,4" />
+                      <ContentControl Content="{Binding CliApplicationOptions[1]}"
+                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
+                                      Margin="2,0,2,4" />
+                    </UniformGrid>
+
+                    <Grid Grid.Row="1">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+
+                      <ContentControl Grid.Column="0"
+                                      Content="{Binding CliApplicationOptions[2]}"
+                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
+                                      Margin="2,0,2,4" />
+                      <ContentControl Grid.Column="1"
+                                      Width="46"
+                                      Content="{Binding CliApplicationOptions[3]}"
+                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
+                                      Margin="2,0,2,4" />
+                      <ContentControl Grid.Column="2"
+                                      Content="{Binding CliApplicationOptions[4]}"
+                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
+                                      Margin="2,0,2,4" />
+                    </Grid>
+                  </Grid>
                 </Border>
                 <TextBlock Text="CLI"
                            Style="{StaticResource ApplicationGroupLabelStyle}" />
@@ -1965,7 +1996,7 @@
                                          FontWeight="SemiBold" />
                               <TextBox Grid.Column="1"
                                        Text="{Binding ApplicationId, UpdateSourceTrigger=LostFocus}"
-                                       ToolTip="vscode / antigravity / codex / github-copilot / gemini / claude"
+                                       ToolTip="vscode / antigravity / codex / claude / github-copilot / grok / gemini"
                                        Style="{StaticResource SettingsTextBoxStyle}" />
                               <Button Grid.Column="2"
                                       Content="空にする"
@@ -2062,7 +2093,7 @@
                                          FontWeight="SemiBold" />
                               <TextBox Grid.Column="1"
                                        Text="{Binding ApplicationId, UpdateSourceTrigger=LostFocus}"
-                                       ToolTip="vscode / antigravity / codex / github-copilot / gemini / claude"
+                                       ToolTip="vscode / antigravity / codex / claude / github-copilot / grok / gemini"
                                        Style="{StaticResource SettingsTextBoxStyle}" />
                               <Button Grid.Column="2"
                                       Content="空にする"
@@ -2207,7 +2238,7 @@
                              Background="Transparent"
                              FontFamily="Consolas"
                              Foreground="{StaticResource TextBrush}"
-                             Text="Codex CLI: npm i -g @openai/codex&#x0a;GitHub Copilot CLI: npm install -g @github/copilot&#x0a;Gemini CLI: npm install -g @google/gemini-cli&#x0a;Claude Code 公式インストーラ: curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd&#x0a;Claude Code npm: npm install -g @anthropic-ai/claude-code" />
+                             Text="Codex CLI: npm i -g @openai/codex&#x0a;GitHub Copilot CLI: npm install -g @github/copilot&#x0a;Gemini CLI: npm install -g @google/gemini-cli&#x0a;Claude Code PowerShell: irm https://claude.ai/install.ps1 | iex&#x0a;Claude Code CMD: curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd&#x0a;Claude Code npm: npm install -g @anthropic-ai/claude-code&#x0a;Grok Build CLI (Git Bash/WSL): curl -fsSL https://x.ai/cli/install.sh | bash&#x0a;Grok Build CLI (PowerShell + Git Bash): &amp; &quot;C:\Program Files\Git\bin\bash.exe&quot; -c &quot;curl -fsSL https://x.ai/cli/install.sh | bash&quot;" />
                   </StackPanel>
                 </Border>
 
@@ -2237,7 +2268,7 @@
                              Background="Transparent"
                              FontFamily="Consolas"
                              Foreground="{StaticResource TextBrush}"
-                             Text="codex --ask-for-approval never --sandbox workspace-write&#x0a;copilot --allow-all&#x0a;gemini --approval-mode=yolo&#x0a;claude --permission-mode bypassPermissions" />
+                             Text="codex --ask-for-approval never --sandbox workspace-write&#x0a;copilot --allow-all&#x0a;gemini --approval-mode=yolo&#x0a;claude --permission-mode bypassPermissions&#x0a;grok --always-approve" />
                   </StackPanel>
                 </Border>
               </StackPanel>

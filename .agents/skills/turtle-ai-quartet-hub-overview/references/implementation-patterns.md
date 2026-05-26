@@ -21,22 +21,23 @@
 - Antigravity など VS Code 以外の workspace IDE は `ApplicationLauncher` の汎用起動で扱う。起動プロセスと表示ウィンドウのプロセス ID がずれるため、新規ウィンドウハンドルで割り当てる。
 - Antigravity IDE は `%LOCALAPPDATA%/Programs/Antigravity IDE/Antigravity IDE.exe` 相当を優先検出する。過去設定の bare `antigravity` は新しい Antigravity Windows アプリと衝突しやすいため、既定検出へ戻して IDE 側を開く。
 - Antigravity や terminal が起動完了後に中央へ戻ることがあるため、起動確認直後の配置に加えて短い遅延再配置を複数回行う。標準またはやや低性能な PC に備えて 8 秒、12 秒後の再配置も行い、ユーザーが集中表示に入った後は再配置しない。
-- Codex / GitHub Copilot / Gemini / Claude は `WorkspaceCli`。対象スロットの保存済みワークスペースを working directory にした `cmd.exe /k` で CLI を起動し、terminal 系の新規ウィンドウをスロットに割り当てる。
+- Codex / Claude / GitHub Copilot / Grok Build / Gemini は `WorkspaceCli`。対象スロットの保存済みワークスペースを working directory にした `cmd.exe /k` で CLI を起動し、terminal 系の新規ウィンドウをスロットに割り当てる。
 - 一括起動では CLI 種別同士を並列捕捉しない。VS Code / Antigravity などの非 CLI は並列のまま、CLI グループだけ順次起動して terminal 系プロセス名の競合を避ける。
 - Workspace CLI は同一 CLI 種別の複数スロットでも、まず各 `cmd.exe` を先に起動し、`Turtle {slot} - {shortName}` のタイトルで後から捕捉する。タイトルが Windows Terminal 側で反映されない場合は、新規 terminal ウィンドウを起動順で割り当てる。
-- Workspace CLI はコマンド検出で可用性を判断する。PATH に加えて npm / pnpm / Volta の一般的な shim 置き場、Claude Code 公式インストーラが使うユーザー単位の `~\.local\bin` も探索する。terminal プロセスが起動済みであることや Windows アプリ検出だけで CLI インストール済み扱いにしない。
+- Workspace CLI はコマンド検出で可用性を判断する。PATH に加えて npm / pnpm / Volta の一般的な shim 置き場、Claude Code の公式インストーラが使うユーザー単位の `~\.local\bin`、Grok Build の Git Bash インストーラが使う `~\.grok\bin` も探索する。terminal プロセスが起動済みであることや Windows アプリ検出だけで CLI インストール済み扱いにしない。
+- GitHub Copilot Chat 拡張が作る `globalStorage\github.copilot-chat\copilotCli\copilot*` は、実体が未インストール時のインストール案内ブートストラップなので、GitHub Copilot CLI インストール済み判定には使わない。
 - Workspace CLI の実行コマンドは `ResolvedCommand` を優先し、短い `claude` などの設定コマンドだけに依存しない。起動した `cmd.exe` には検出済みコマンドのフォルダと一般的な shim 置き場を PATH 先頭へ一時追加する。
 - GitHub Copilot CLI の既定起動は、対象ワークスペースへ `cd /d` して `copilot` だけを実行する。`workspacePath` は暗黙の引数として渡さない。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に `codex-app` / `chatgpt-app` / `claude-app` / `antigravity-app` の `SingleWindowAgent` として補助ボタン行に残す。Antigravity2 は `%LOCALAPPDATA%/Programs/Antigravity/Antigravity.exe` 相当を優先検出し、Claude の右側に表示する。
 - スロット内で別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウへ close を送り、短く待ってからスロット状態をクリアし、押されたアプリを同じスロット位置へ起動する。
 
 ## 4. UI とフォーカス
-- UI は各スロット内に `IDE` 枠と `CLI` 枠を持つ。IDE 枠は VS Code / Antigravity を縦並び、CLI 枠は Codex / Claude / Gemini / Copilot をまとめて表示する。
-- 選択中アプリのボタンはベタ塗りではなく、暗めの半透明に近い緑で表示する。未検出アプリは既存の `IsAvailable` 判定でグレーアウトする。
+- UI は各スロット内に `IDE` 枠と `CLI` 枠を持つ。IDE 枠は VS Code / Antigravity を縦並び、CLI 枠は上段 `Codex` / `Claude`、下段 `Copilot` / `Grok` / `Gemini` で表示する。
+- 選択中アプリのボタンはベタ塗りではなく、暗めの半透明に近い緑で表示する。ただし未検出アプリは選択中でも `IsAvailable=false` のグレーアウト表示を優先し、インストール済みと誤認させない。
 - 未起動スロットの IDE / CLI 選択ボタンは起動対象を変更するだけで、アプリを自動起動しない。起動は個別スロットの起動ボタンか `Launch Quartet` のみで行う。
 - メインパネルのクリアアイコンは右上のゴミ箱アイコンで表示する。押下時は削除確認ダイアログを出し、確認後に対象スロットの保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中の IDE / CLI ウィンドウがある場合は close を送ってからパネル情報を削除する。
 - スロットの実行中アクションボタン文言は `閉じる` にする。未起動時は `起動` / `新規`。
-- タイトルバー右上は縮小表示、`?` ヘルプ、歯車設定、最小化、閉じるの順に置く。ヘルプには枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を書く。本文とコマンドは選択コピーできるよう `TextBox IsReadOnly=True` で表示する。
+- タイトルバー右上は縮小表示、`?` ヘルプ、歯車設定、最小化、閉じるの順に置く。ヘルプには枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを書く。本文とコマンドは選択コピーできるよう `TextBox IsReadOnly=True` で表示する。
 - 歯車設定画面では IDE / CLI / Windows アプリの起動コマンドを編集し、`%LOCALAPPDATA%/TurtleAIQuartetHub/config/turtle-ai-quartet-hub.json` へ保存する。VS Code の設定は `CodeCommand` と `applications[].command` を同期させる。
 - 設定画面には表の Quartet と控え Quartet の保存状態を一覧表示する。表は `PanelTitle` / `Path` / `SavedWorkspacePath` / `SavedWorkspaceConfirmed` / `ApplicationId` を編集可能にし、控えは `PanelTitle` / `WorkspacePath` / `ApplicationId` を編集可能にする。空化ボタンと不整合修復ボタンを用意し、過去の重複控えや不完全な控えで再登録できない状態を解消できるようにする。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は、補助ボタン行の左に `Windows` ラベルを置いて CLI と区別する。Antigravity2 の文言が収まる固定幅にそろえ、縮小表示でも行全体が隠れない幅を確保する。
@@ -52,6 +53,8 @@
 ## 6. UI レイアウト細部（2026-05-14 修正済み）
 - `ApplicationGroupLabelStyle` の Margin は `"8,-5,0,0"` で境界線上に浮かせる（負のtopマージンで境界線に重ねる）。正にするとボタンと被る。
 - IDE / CLI ボタンはどちらも高さ 24、`ItemContainerStyle Margin="2,0,2,4"` で統一する。IDE StackPanel と CLI UniformGrid の上端・隙間をそろえる。
+- CLI ボタン配列は上段 `Codex` / `Claude`、下段 `Copilot` / `Grok` / `Gemini`。下段は Copilot と Gemini を同じ可変幅、Grok を短い固定幅にし、5 ボタン化してもカード内に収める。
+- `SlotCardTemplate` 内から `StaticResource` で参照する DataTemplate / Style は、必ず `SlotCardTemplate` より前に定義する。後方定義にするとビルドは通っても起動時に `XamlParseException` で終了する。
 - 控え Quartet Expander のコンテンツ上マージンは `"0,12,0,0"`。右上の `Windows` 補助アプリボタン行がオーバーレイ配置のため、閉じた状態の隙間に寄せつつ、開いた控えカードと重ならないだけの隙間を確保する。
 - 縮小表示は C/D 行と `Windows` 補助アプリ行が初期状態で隠れない高さを最低値にする。
 - 縮小表示の 4 パネルボタン中央には、極小表示と同じ表示/非表示の円形ボタンを重ねる。4 パネルの空間メタファーを崩さないよう、右側の `前` / `背` 操作列には重ねない。

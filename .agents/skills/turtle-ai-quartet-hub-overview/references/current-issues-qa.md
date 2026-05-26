@@ -6,11 +6,12 @@
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
 - 低速または標準スペック端末で VS Code の起動が遅れ、ウィンドウが中央付近に出た場合でも、専用 `user-data-dir` の既存 VS Code ウィンドウとして再接続され、C=左下など対象スロットへ戻ること。
 - 標準表示の丸いステータス LED は、停止中=赤、起動中=黄色、起動済み=緑で表示されること。
-- 各スロットで VS Code / Antigravity / Codex CLI / GitHub Copilot CLI / Gemini CLI / Claude CLI を選択できること。
+- 各スロットで VS Code / Antigravity / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Gemini CLI を選択できること。
 - スロット内アプリ選択が `IDE` 枠と `CLI` 枠に分かれ、IDE は縦並び、CLI は4つを同じ枠内に表示していること。
 - `IDE` と `CLI` のボタン高さ、上下左右の隙間、上端位置がそろっていること。
-- 選択中アプリのボタンがベタ塗りではなく暗めの緑で表示され、未検出アプリはグレーアウトすること。
+- 選択中アプリのボタンがベタ塗りではなく暗めの緑で表示され、未検出アプリは選択中でもグレーアウトすること。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行し、ワークスペースパスを引数として渡さないこと。
+- GitHub Copilot Chat 拡張の `globalStorage\github.copilot-chat\copilotCli\copilot*` だけが存在する環境では、GitHub Copilot CLI を未検出として扱うこと。
 - VS Code から CLI、CLI から VS Code、CLI から別 CLI へ、現在のスロットウィンドウを閉じてから押したアプリへ切り替えられること。
 - 未起動スロットで IDE / CLI ボタンを押しても自動起動せず、起動対象の選択だけが変わること。
 - 一括起動で Codex / Gemini など複数 CLI 種別が混在しても、それぞれの terminal が対象スロットの象限へ配置されること。
@@ -24,13 +25,13 @@
 - 各スロット右上のゴミ箱アイコンで visible slot の保存情報を削除でき、起動中の IDE / CLI ウィンドウも閉じること。
 - 各スロット右上のゴミ箱アイコンは、削除確認ダイアログで `削除する` を押すまで削除しないこと。
 - 実行中スロットのアクションボタンが `閉じる` と表示されること。
-- タイトルバーの `?` ヘルプに CLI インストールコマンドと承認確認を減らす起動オプション例が表示されること。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示すること。
+- タイトルバーの `?` ヘルプに CLI インストールコマンドと承認確認を減らす起動オプション例が表示されること。Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを表示し、Grok Build CLI は Git Bash/WSL と PowerShell + Git Bash のインストールコマンド、および `grok --always-approve` を表示すること。
 - `?` ヘルプの各セクションに枠があり、説明文とコマンドを選択コピーできること。
-- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Copilot / Gemini / Claude / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
+- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Claude / Copilot / Grok / Gemini / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
 - 歯車設定で、表の Quartet と控え Quartet の保存済みタイトル、パス、アプリ ID を一覧確認・編集・空化できること。
 - 歯車設定の不整合修復で、不完全な控えと重複控えを削除し、同じワークスペースを再登録できる状態に戻せること。
-- Claude などの CLI が PATH に出ていない環境でも、npm / pnpm / Volta の一般的な shim 置き場と Claude Code 公式インストーラの `~\.local\bin` から検出できること。
-- Claude など PATH がアプリ本体へ反映されていない CLI でも、起動した terminal 内で初回コマンドと手入力コマンドの両方が認識されること。
+- Claude / Grok などの CLI が PATH に出ていない環境でも、npm / pnpm / Volta の一般的な shim 置き場、Claude Code インストーラが使う `~\.local\bin`、Grok Build インストーラが使う `~\.grok\bin` から検出できること。
+- Claude / Grok など PATH がアプリ本体へ反映されていない CLI でも、起動した terminal 内で初回コマンドと手入力コマンドの両方が認識されること。
 - 標準表示の下部にある `Launch Quartet` ボタンが見切れないこと。
 - スロットカード下から控え Quartet までの黒い余白が不要に広がらないこと。
 - `Launch Quartet` ボタン下に不要な空白が残らないこと。
@@ -45,6 +46,7 @@
 - 控え Quartet への退避、復帰、入れ替えができること。
 - タスクバー Jump List のスロット切替と表示モード切替が動くこと。
 - `scripts/Build-Panel.ps1` と `scripts/Test-StoreReadiness.ps1` が通ること。
+- XAML の共通 DataTemplate / Style を追加・移動した後は、`dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` またはビルド済み EXE の短時間起動で、`StaticResource` 解決失敗による起動直後終了がないこと。
 
 ## 残リスク
 - VS Code / Antigravity のウィンドウタイトルや workspaceStorage の変更により、ワークスペース表示がずれる可能性がある。
