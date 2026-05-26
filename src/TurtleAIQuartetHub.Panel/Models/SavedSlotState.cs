@@ -4,6 +4,8 @@ public sealed class SavedSlotState
 {
     public string Name { get; set; } = string.Empty;
 
+    public string RuntimeSlotName { get; set; } = string.Empty;
+
     public string PanelTitle { get; set; } = string.Empty;
 
     public string AssignedPath { get; set; } = string.Empty;

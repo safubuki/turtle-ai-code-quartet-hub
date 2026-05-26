@@ -20,6 +20,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private string _applicationAvailabilityText = "未確認";
     private string _applicationToolTip = string.Empty;
     private bool _isApplicationAvailable;
+    private string _runtimeSlotName;
     private bool _isVsCodeAvailable;
     private bool _isAntigravityAvailable;
     private string _vsCodeApplicationToolTip = string.Empty;
@@ -38,6 +39,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     public WindowSlot(SlotConfig config)
     {
         Name = config.Name;
+        _runtimeSlotName = NormalizeRuntimeSlotName(config.Name, config.Name);
         _path = NormalizeWorkspacePath(config.Path);
         _applicationId = AppConfig.NormalizeApplicationId(config.ApplicationId);
         _panelTitle = GetDefaultPanelTitle();
@@ -49,6 +51,12 @@ public sealed class WindowSlot : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string Name { get; }
+
+    public string RuntimeSlotName
+    {
+        get => string.IsNullOrWhiteSpace(_runtimeSlotName) ? Name : _runtimeSlotName;
+        set => SetField(ref _runtimeSlotName, NormalizeRuntimeSlotName(value, Name));
+    }
 
     public ObservableCollection<SlotApplicationOption> WorkspaceApplicationOptions { get; }
 
@@ -416,6 +424,12 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
 
         return path;
+    }
+
+    private static string NormalizeRuntimeSlotName(string? value, string fallback)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "slot" : normalized;
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

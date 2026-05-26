@@ -735,6 +735,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             (source.SavedWorkspacePath, target.SavedWorkspacePath) = (target.SavedWorkspacePath, source.SavedWorkspacePath);
             (source.SavedWorkspaceConfirmed, target.SavedWorkspaceConfirmed) = (target.SavedWorkspaceConfirmed, source.SavedWorkspaceConfirmed);
             (source.CurrentWorkspacePath, target.CurrentWorkspacePath) = (target.CurrentWorkspacePath, source.CurrentWorkspacePath);
+            (source.RuntimeSlotName, target.RuntimeSlotName) = (target.RuntimeSlotName, source.RuntimeSlotName);
             (source.WindowHandle, target.WindowHandle) = (target.WindowHandle, source.WindowHandle);
             (source.WindowTitle, target.WindowTitle) = (target.WindowTitle, source.WindowTitle);
             (source.WindowStatus, target.WindowStatus) = (target.WindowStatus, source.WindowStatus);
@@ -765,6 +766,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                 var application = FindApplication(slot.ApplicationId);
                 return new WindowSlotStatusSnapshot(
                     slot.Name,
+                    slot.RuntimeSlotName,
                     slot.ApplicationId,
                     application?.ProcessNames ?? [],
                     slot.WindowHandle,
@@ -856,7 +858,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                 cancellationToken.ThrowIfCancellationRequested();
                 workspacePath = VscodeWorkspaceState.TryReadCurrentWorkspacePath(
                     snapshot.ApplicationId,
-                    snapshot.Name,
+                    snapshot.RuntimeSlotName,
                     window.Title,
                     Config);
                 workspaceRefreshedAt = refreshStartedAt;
@@ -1020,6 +1022,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                     .Select(slot => new SavedSlotState
                     {
                         Name = slot.Name,
+                        RuntimeSlotName = slot.RuntimeSlotName,
                         PanelTitle = slot.PanelTitle,
                         AssignedPath = slot.Path,
                         ApplicationId = slot.ApplicationId,
@@ -1058,6 +1061,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         foreach (var slot in Slots)
         {
             slot.PanelTitle = string.Empty;
+            slot.RuntimeSlotName = slot.Name;
             slot.Path = string.Empty;
             slot.SavedWorkspacePath = string.Empty;
             slot.SavedWorkspaceConfirmed = false;
@@ -1079,6 +1083,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             }
 
             slot.PanelTitle = state.PanelTitle ?? string.Empty;
+            slot.RuntimeSlotName = state.RuntimeSlotName;
 
             if (!string.IsNullOrWhiteSpace(state.AssignedPath))
             {
@@ -1109,6 +1114,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                 slot.WindowHandle = new IntPtr(state.WindowHandle);
             }
         }
+
+        EnsureUniqueRuntimeSlotNames();
     }
 
     private void ApplyStoredStates(IEnumerable<SavedStoredPanelState> states)
@@ -1126,6 +1133,21 @@ public sealed class StatusStore : INotifyPropertyChanged
             if (storedPanel is not null)
             {
                 ApplyApplicationMetadata(storedPanel);
+            }
+        }
+    }
+
+    private void EnsureUniqueRuntimeSlotNames()
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var slot in Slots)
+        {
+            if (string.IsNullOrWhiteSpace(slot.RuntimeSlotName) || !used.Add(slot.RuntimeSlotName))
+            {
+                slot.RuntimeSlotName = Slots
+                    .Select(candidate => candidate.Name)
+                    .FirstOrDefault(candidate => !used.Contains(candidate)) ?? slot.Name;
+                used.Add(slot.RuntimeSlotName);
             }
         }
     }
@@ -1295,7 +1317,8 @@ public sealed class StatusStore : INotifyPropertyChanged
             or nameof(WindowSlot.Path)
             or nameof(WindowSlot.SavedWorkspacePath)
             or nameof(WindowSlot.SavedWorkspaceConfirmed)
-            or nameof(WindowSlot.ApplicationId))
+            or nameof(WindowSlot.ApplicationId)
+            or nameof(WindowSlot.RuntimeSlotName))
         {
             if (sender is WindowSlot slot && e.PropertyName == nameof(WindowSlot.ApplicationId))
             {

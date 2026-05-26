@@ -33,7 +33,7 @@ public static class SlotUserDataPaths
 
     public static string GetUserDataDirectory(WindowSlot slot, AppConfig config)
     {
-        return GetUserDataDirectory(slot.Name, config);
+        return GetUserDataDirectory(slot.RuntimeSlotName, config);
     }
 
     public static string GetUserDataDirectory(string slotName, AppConfig config)
@@ -49,7 +49,7 @@ public static class SlotUserDataPaths
 
     public static string GetEffectiveUserDataDirectory(WindowSlot slot, AppConfig config)
     {
-        return GetEffectiveUserDataDirectory(slot.Name, config);
+        return GetEffectiveUserDataDirectory(slot.RuntimeSlotName, config);
     }
 
     public static string GetEffectiveUserDataDirectory(string slotName, AppConfig config)
