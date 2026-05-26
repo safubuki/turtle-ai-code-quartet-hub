@@ -513,6 +513,11 @@ public partial class MainWindow : Window
         ToggleVisibilityButton_Click(sender, e);
     }
 
+    private void CompactVisibilityButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleVisibilityButton_Click(sender, e);
+    }
+
     private void HandleCompactSlotToggle(WindowSlot slot)
     {
         ActivatePanelWindow();
@@ -2703,6 +2708,12 @@ public partial class MainWindow : Window
                 ? "管理中ウィンドウを再表示"
                 : "管理中ウィンドウを非表示";
         }
+
+        if (CompactVisibilityButton is not null)
+        {
+            CompactVisibilityButton.Content = MicroVisibilityButton?.Content ?? (_areWindowsHidden ? "\u8868" : "\u975E");
+            CompactVisibilityButton.ToolTip = MicroVisibilityButton?.ToolTip;
+        }
     }
 
     private void UpdateWindowHeightForStoredPanels(bool isExpanded, bool force = false)
@@ -3057,6 +3068,7 @@ public partial class MainWindow : Window
         HelpButton.IsEnabled = !busy;
         DisplayModeButton.IsEnabled = !busy;
         StandardJumpButton.IsEnabled = !busy;
+        CompactVisibilityButton.IsEnabled = !busy;
         MicroVisibilityButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
