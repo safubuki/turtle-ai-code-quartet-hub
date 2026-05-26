@@ -44,7 +44,8 @@ public sealed class ApplicationDetectionService
             var resolvedConfiguredCommand = ResolveShellLaunchCommand(configuredCommand)
                 ?? ResolveCommand(configuredCommand)
                 ?? ResolveCommonInstallPath(configuredCommand, application.Detection.AppPathNames, application.Detection.StartMenuNames);
-            if (!string.IsNullOrWhiteSpace(resolvedConfiguredCommand))
+            if (!string.IsNullOrWhiteSpace(resolvedConfiguredCommand)
+                && !IsUnsupportedWorkspaceCliCommand(application, resolvedConfiguredCommand))
             {
                 return DetectionResult.Installed(resolvedConfiguredCommand, $"設定コマンドから検出しました: {resolvedConfiguredCommand}");
             }
@@ -88,7 +89,8 @@ public sealed class ApplicationDetectionService
         foreach (var command in application.Detection.Commands)
         {
             var resolvedCommand = ResolveCommand(Environment.ExpandEnvironmentVariables(command.Trim().Trim('"')));
-            if (!string.IsNullOrWhiteSpace(resolvedCommand))
+            if (!string.IsNullOrWhiteSpace(resolvedCommand)
+                && !IsUnsupportedWorkspaceCliCommand(application, resolvedCommand))
             {
                 return DetectionResult.Installed(resolvedCommand, $"PATH から検出しました: {resolvedCommand}");
             }
@@ -530,6 +532,8 @@ public sealed class ApplicationDetectionService
         {
             // Claude Code's Windows installer can place the launcher here instead of npm's shim directory.
             yield return Path.Combine(userProfile, ".local", "bin");
+            // Grok Build's installer places the Windows launcher here when installed through Git Bash.
+            yield return Path.Combine(userProfile, ".grok", "bin");
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
@@ -580,6 +584,27 @@ public sealed class ApplicationDetectionService
     private static bool IsShellLaunchCommand(string command)
     {
         return command.StartsWith("shell:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUnsupportedWorkspaceCliCommand(LauncherApplication application, string command)
+    {
+        if (!application.IsWorkspaceCli || string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        return string.Equals(application.Id, "github-copilot", StringComparison.OrdinalIgnoreCase)
+            && IsCopilotChatBootstrapperPath(command);
+    }
+
+    private static bool IsCopilotChatBootstrapperPath(string command)
+    {
+        var normalizedPath = command.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        return normalizedPath.Contains(
+            Path.DirectorySeparatorChar + "globalStorage" + Path.DirectorySeparatorChar
+            + "github.copilot-chat" + Path.DirectorySeparatorChar
+            + "copilotCli" + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsExtensionHelperPath(string path)
