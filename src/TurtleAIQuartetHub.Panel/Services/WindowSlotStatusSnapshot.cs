@@ -9,6 +9,7 @@ internal enum WindowSlotRefreshState
 
 internal sealed record WindowSlotStatusSnapshot(
     string Name,
+    string RuntimeSlotName,
     string ApplicationId,
     IReadOnlyList<string> ProcessNames,
     IntPtr WindowHandle,

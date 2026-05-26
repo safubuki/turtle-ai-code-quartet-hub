@@ -10,7 +10,7 @@ public static class VscodeWorkspaceState
 
     public static string? TryReadCurrentWorkspacePath(WindowSlot slot, AppConfig config)
     {
-        return TryReadCurrentWorkspacePath(slot.ApplicationId, slot.Name, slot.WindowTitle, config);
+        return TryReadCurrentWorkspacePath(slot.ApplicationId, slot.RuntimeSlotName, slot.WindowTitle, config);
     }
 
     public static string? TryReadCurrentWorkspacePath(string slotName, string windowTitle, AppConfig config)
@@ -33,7 +33,7 @@ public static class VscodeWorkspaceState
 
     public static string? TryReadLastWorkspacePath(WindowSlot slot, AppConfig config)
     {
-        return TryReadLastWorkspacePath(slot.ApplicationId, slot.Name, config);
+        return TryReadLastWorkspacePath(slot.ApplicationId, slot.RuntimeSlotName, config);
     }
 
     public static string? TryReadLastWorkspacePath(string slotName, AppConfig config)
