@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -290,6 +291,11 @@ public partial class MainWindow : Window
             launchTargets
                 .GroupBy(item => item.Application.DisplayName)
                 .Select(group => $"{group.Key} {group.Count()}個"));
+    }
+
+    private static string QuoteExplorerArgument(string path)
+    {
+        return $"\"{path.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     }
 
     private bool EnsureWorkspaceApplicationAvailable(LauncherApplication? application)
@@ -1229,6 +1235,38 @@ public partial class MainWindow : Window
 
         _statusStore.Message = $"スロット{slot.Name}の{slot.ApplicationDisplayName}ウィンドウが見つかりません。";
         RefreshAuxiliaryUi();
+    }
+
+    private void OpenSlotWorkspaceFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        var explorerPath = slot.ExplorerWorkspacePath;
+        if (string.IsNullOrWhiteSpace(explorerPath))
+        {
+            _statusStore.Message = slot.WorkspaceFolderToolTip;
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = QuoteExplorerArgument(explorerPath),
+                UseShellExecute = false
+            });
+            _statusStore.Message = $"スロット {slot.Name} のフォルダを開きました: {explorerPath}";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            DiagnosticLog.Write(ex);
+            _statusStore.Message = $"フォルダを開けませんでした: {explorerPath}";
+        }
     }
 
     private void ClearSlotPanelInfoButton_Click(object sender, RoutedEventArgs e)

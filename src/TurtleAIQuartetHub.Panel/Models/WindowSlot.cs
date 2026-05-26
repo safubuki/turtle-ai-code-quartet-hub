@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace TurtleAIQuartetHub.Panel.Models;
@@ -74,6 +75,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(EffectivePath));
                 OnPropertyChanged(nameof(DisplayPath));
                 OnPropertyChanged(nameof(ShortPath));
+                OnPropertyChanged(nameof(ExplorerWorkspacePath));
+                OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+                OnPropertyChanged(nameof(WorkspaceFolderToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -195,6 +199,31 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
     }
 
+    public string ExplorerWorkspacePath => GetExplorerWorkspacePath(DisplayPath);
+
+    public bool CanOpenWorkspaceFolder => !string.IsNullOrWhiteSpace(ExplorerWorkspacePath);
+
+    public string WorkspaceFolderToolTip
+    {
+        get
+        {
+            var displayPath = DisplayPath;
+            if (string.IsNullOrWhiteSpace(displayPath))
+            {
+                return "ワークスペースフォルダが未設定です。";
+            }
+
+            if (IsRemoteWorkspacePath(displayPath))
+            {
+                return "SSH などのリモートワークスペースはエクスプローラで開けません。";
+            }
+
+            return CanOpenWorkspaceFolder
+                ? $"エクスプローラで開く: {ExplorerWorkspacePath}"
+                : $"ローカルフォルダが見つかりません: {displayPath}";
+        }
+    }
+
     public string PanelTitle
     {
         get => _panelTitle;
@@ -223,6 +252,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(EffectivePath));
                 OnPropertyChanged(nameof(DisplayPath));
                 OnPropertyChanged(nameof(ShortPath));
+                OnPropertyChanged(nameof(ExplorerWorkspacePath));
+                OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+                OnPropertyChanged(nameof(WorkspaceFolderToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -238,6 +270,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(EffectivePath));
                 OnPropertyChanged(nameof(DisplayPath));
                 OnPropertyChanged(nameof(ShortPath));
+                OnPropertyChanged(nameof(ExplorerWorkspacePath));
+                OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+                OnPropertyChanged(nameof(WorkspaceFolderToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -252,6 +287,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(DisplayPath));
                 OnPropertyChanged(nameof(ShortPath));
+                OnPropertyChanged(nameof(ExplorerWorkspacePath));
+                OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+                OnPropertyChanged(nameof(WorkspaceFolderToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -341,6 +379,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
             OnPropertyChanged(nameof(DisplayPath));
             OnPropertyChanged(nameof(WindowHandleText));
             OnPropertyChanged(nameof(ShortPath));
+            OnPropertyChanged(nameof(ExplorerWorkspacePath));
+            OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+            OnPropertyChanged(nameof(WorkspaceFolderToolTip));
             OnPropertyChanged(nameof(HasPanelContent));
         }
     }
@@ -424,6 +465,125 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
 
         return path;
+    }
+
+    private static string GetExplorerWorkspacePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var path = value.Trim();
+        if (IsRemoteWorkspacePath(path))
+        {
+            return string.Empty;
+        }
+
+        path = Environment.ExpandEnvironmentVariables(GetLocalPathFromFileUriOrPath(path));
+
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                return System.IO.Path.GetFullPath(path);
+            }
+
+            if (File.Exists(path))
+            {
+                return System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path)) ?? string.Empty;
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return string.Empty;
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetLocalPathFromFileUriOrPath(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri is null || !uri.IsFile)
+        {
+            return value;
+        }
+
+        var localPath = uri.LocalPath;
+        if (localPath.Length >= 3 && localPath[0] == '/' && char.IsLetter(localPath[1]) && localPath[2] == ':')
+        {
+            localPath = localPath[1..];
+        }
+
+        return localPath.Replace('/', System.IO.Path.DirectorySeparatorChar);
+    }
+
+    private static bool IsRemoteWorkspacePath(string value)
+    {
+        var path = value.Trim();
+        if (path.StartsWith(@"\\", StringComparison.Ordinal) || IsWindowsPath(path))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(path, UriKind.Absolute, out var uri)
+            && uri is not null
+            && !string.IsNullOrWhiteSpace(uri.Scheme))
+        {
+            return !uri.IsFile;
+        }
+
+        return TryReadUriScheme(path, out var scheme)
+            && !string.Equals(scheme, "file", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryReadUriScheme(string value, out string scheme)
+    {
+        scheme = string.Empty;
+        var schemeSeparatorIndex = value.IndexOf("://", StringComparison.Ordinal);
+        if (schemeSeparatorIndex <= 0)
+        {
+            return false;
+        }
+
+        var candidate = value[..schemeSeparatorIndex];
+        if (!IsValidUriScheme(candidate))
+        {
+            return false;
+        }
+
+        scheme = candidate;
+        return true;
+    }
+
+    private static bool IsValidUriScheme(string scheme)
+    {
+        if (string.IsNullOrWhiteSpace(scheme) || !char.IsLetter(scheme[0]))
+        {
+            return false;
+        }
+
+        for (var index = 1; index < scheme.Length; index++)
+        {
+            var character = scheme[index];
+            if (!char.IsLetterOrDigit(character)
+                && character != '+'
+                && character != '-'
+                && character != '.')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsWindowsPath(string value)
+    {
+        return value.Length >= 3
+            && char.IsLetter(value[0])
+            && value[1] == ':'
+            && (value[2] == '\\' || value[2] == '/');
     }
 
     private static string NormalizeRuntimeSlotName(string? value, string fallback)
