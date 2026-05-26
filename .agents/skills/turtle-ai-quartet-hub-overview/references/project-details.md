@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub プロジェクト詳細
 
-更新日: 2026-05-25
+更新日: 2026-05-27
 
 ## 概要
 - 4 つの開発用ウィンドウを A-D スロットとして管理する Windows 向け WPF アプリ。
@@ -8,6 +8,7 @@
 - 既定のスロット起動対象は VS Code。
 - VS Code / Antigravity はワークスペース IDE として、Codex / Claude / GitHub Copilot / Grok Build / Gemini はワークスペース CLI として各スロットで起動できる。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
+- 通常表示の各スロットにはフォルダボタンがあり、保存済みまたは検出済みのローカルワークスペースを Explorer で開ける。SSH / remote URI のワークスペースではボタンを無効化する。
 - AI 状態表示、AI 状態監視、VS Code 外枠フレーム、AI 状態連動の点滅や色変更は削除済み。
 
 ## 技術スタック

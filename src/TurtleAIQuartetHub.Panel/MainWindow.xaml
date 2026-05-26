@@ -303,6 +303,34 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="SlotOpenFolderButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
+      <Setter Property="MinWidth" Value="28" />
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="#DDEFE5" />
+      <Setter Property="Background" Value="#17271E" />
+      <Setter Property="BorderBrush" Value="#3B604A" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="ToolTip" Value="{Binding WorkspaceFolderToolTip}" />
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="#F2FFF8" />
+          <Setter Property="Background" Value="#203629" />
+          <Setter Property="BorderBrush" Value="#6BE49B" />
+        </Trigger>
+        <DataTrigger Binding="{Binding CanOpenWorkspaceFolder}" Value="False">
+          <Setter Property="IsEnabled" Value="False" />
+          <Setter Property="Opacity" Value="0.42" />
+          <Setter Property="Foreground" Value="#768179" />
+          <Setter Property="Background" Value="#151A17" />
+          <Setter Property="BorderBrush" Value="#2A332E" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
       <Setter Property="Foreground" Value="#FFF4F2" />
       <Setter Property="Background" Value="#6F2D27" />
@@ -927,6 +955,15 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
+
+              <Button Grid.Column="0"
+                      Content="&#xE8B7;"
+                      Tag="{Binding}"
+                      Click="OpenSlotWorkspaceFolderButton_Click"
+                      AutomationProperties.Name="ワークスペースフォルダを開く"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Center"
+                      Style="{StaticResource SlotOpenFolderButtonStyle}" />
 
               <StackPanel Grid.Column="1"
                           Orientation="Horizontal"
