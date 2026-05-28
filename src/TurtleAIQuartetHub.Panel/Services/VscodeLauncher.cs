@@ -331,6 +331,10 @@ public sealed class VscodeLauncher
             {
                 return matchingWindow;
             }
+
+            DiagnosticLog.Write(
+                $"Ignoring slot-owned VS Code window for slot {slot.Name} because it does not match launch path: {launchPath}");
+            return null;
         }
 
         return windows
