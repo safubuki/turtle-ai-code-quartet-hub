@@ -1544,10 +1544,7 @@ public partial class MainWindow : Window
             return true;
         }
 
-        if (_statusStore.IsVsCodeSlot(slot))
-        {
-            _statusStore.CaptureWorkspacePath(slot);
-        }
+        _statusStore.CaptureWorkspacePath(slot);
 
         _statusStore.ClearFocusedSlot();
         _windowArranger.ReleaseTopmost(currentHandle);
@@ -1642,13 +1639,11 @@ public partial class MainWindow : Window
 
         await RunBusyAsync(async () =>
         {
-            if (targetSlot.WindowHandle != IntPtr.Zero && !_windowArranger.Close(targetSlot.WindowHandle))
+            if (!await CloseSlotWindowForReplacementAsync(targetSlot))
             {
-                _statusStore.Message = $"スロット{targetSlot.Name}の現在のアプリを閉じられないため入れ替えできません。";
                 return;
             }
 
-            _statusStore.CaptureWorkspacePath(targetSlot);
             _statusStore.ClearFocusedSlot();
             if (!_statusStore.TryShowStoredPanel(storedPanel, targetSlot, out var swappedVisiblePanel))
             {

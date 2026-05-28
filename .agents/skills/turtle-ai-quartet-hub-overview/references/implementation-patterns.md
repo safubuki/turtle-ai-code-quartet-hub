@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-05-27
+更新日: 2026-05-28
 
 ## 1. AI 状態監視を戻さない
 - AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
@@ -13,6 +13,7 @@
 - パネルカードを A-D 間でドラッグ移動するときは、表示位置の `Name` と VS Code user-data / workspaceStorage / code.lock 用の `RuntimeSlotName` を分けて扱う。実行中ウィンドウを B から D に移した場合、D は B の runtime profile を持ち続け、空いた B は D の runtime profile で新規起動することで、同じ user-data を二重に再利用しない。
 - VS Code / Antigravity の workspaceStorage 読み取りに失敗しても `SavedWorkspacePath` は消さない。強制終了後や中途半端な user-data 状態でも、次回起動に使える保存済みパスを残す。
 - 起動確認または periodic refresh で正しいワークスペースが読めた場合は、`Path` / `SavedWorkspacePath` / `SavedWorkspaceConfirmed` と自動タイトルを保存する。
+- 控え Quartet から表示スロットへ復帰するときは、旧ウィンドウへ close を送っただけで次の起動へ進めない。置換用の close 待ち処理を通し、VS Code の再接続では起動予定の `SavedWorkspacePath` / `Path` とタイトルが一致しない既存 slot-owned window を採用しない。旧 workspace のウィンドウを新しいパネル表示へ誤接続すると、パネル名と実ワークスペースが永続的にずれる。
 
 ## 3. 複数アプリ起動
 - 既定のスロットアプリは VS Code (`vscode`)。一括起動はスロットごとの `ApplicationId` に従う。

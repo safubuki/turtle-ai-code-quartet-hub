@@ -1,6 +1,6 @@
 ﻿# 現在の既知課題と QA 方針
 
-更新日: 2026-05-27
+更新日: 2026-05-28
 
 ## 重点 QA
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
@@ -46,6 +46,7 @@
 - 4 面表示または 1 面表示中にパネルカードやアプリケーションウィンドウをドラッグしても、フォーカス再適用や再配置が割り込んでウィンドウが一瞬乱れないこと。
 - D などのスロットを削除して空にした後、実行中の B パネルを空スロットへドラッグ移動し、空いた B で新規 VS Code を起動しても、B と D が同じ VS Code user-data / code.lock を掴まず、フォーカスや操作対象が入れ替わらないこと。
 - 控え Quartet への退避、復帰、入れ替えができること。
+- 控え Kame と D の Mura を入れ替え、続けて控えに戻った Mura を同じ D へ入れ替えても、パネル表示と実際に開くワークスペースが一致すること。旧 D の VS Code が閉じ切る前でも、Mura のウィンドウを Kame として再接続しないこと。
 - タスクバー Jump List のスロット切替と表示モード切替が動くこと。
 - `scripts/Build-Panel.ps1` と `scripts/Test-StoreReadiness.ps1` が通ること。
 - XAML の共通 DataTemplate / Style を追加・移動した後は、`dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` またはビルド済み EXE の短時間起動で、`StaticResource` 解決失敗による起動直後終了がないこと。
