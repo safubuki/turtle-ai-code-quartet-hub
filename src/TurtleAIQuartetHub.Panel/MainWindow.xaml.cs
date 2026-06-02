@@ -1692,6 +1692,47 @@ public partial class MainWindow : Window
         });
     }
 
+    private void RegisterStoredPanelFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not Button { Tag: StoredPanelSlot storedPanel })
+        {
+            return;
+        }
+
+        if (storedPanel.HasContent)
+        {
+            return;
+        }
+
+        // エクスプローラのフォルダ選択ダイアログ。ローカルフォルダのみ選択でき、リモート URI は指定できない。
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = $"{storedPanel.Label} に登録するワークスペースフォルダを選択",
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var folderPath = dialog.FolderName;
+        if (string.IsNullOrWhiteSpace(folderPath) || !System.IO.Directory.Exists(folderPath))
+        {
+            _statusStore.Message = "選択したフォルダを控えに登録できませんでした。";
+            return;
+        }
+
+        if (!_statusStore.RegisterStoredPanelWorkspace(storedPanel, folderPath))
+        {
+            _statusStore.Message = "選択したフォルダを控えに登録できませんでした。";
+            return;
+        }
+
+        _statusStore.Message = $"{storedPanel.Label} に「{storedPanel.DisplayTitle}」を登録しました。";
+        RefreshAuxiliaryUi();
+    }
+
     private void DeleteStoredPanelButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isBusy)

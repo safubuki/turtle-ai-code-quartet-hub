@@ -15,7 +15,7 @@ public sealed class StatusStore : INotifyPropertyChanged
     private static readonly TimeSpan SlowRefreshLogInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SlowSlotProbeLogInterval = TimeSpan.FromSeconds(5);
     private const int StoredPanelsPerPage = 4;
-    private const int StoredPanelPageCount = 3;
+    private const int StoredPanelPageCount = 4;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -557,6 +557,37 @@ public sealed class StatusStore : INotifyPropertyChanged
                     : $"スロット{targetSlot.Name}";
 
             targetSlot.PanelTitle = MakeUniquePanelTitle(preferredTitle, targetSlot);
+        }
+
+        SavePanelStates();
+        return true;
+    }
+
+    public bool RegisterStoredPanelWorkspace(StoredPanelSlot storedPanel, string workspacePath)
+    {
+        if (string.IsNullOrWhiteSpace(workspacePath))
+        {
+            return false;
+        }
+
+        _suppressPersistence = true;
+        try
+        {
+            storedPanel.LoadFrom(string.Empty, workspacePath, Config.DefaultWorkspaceApplicationId);
+            if (!storedPanel.HasContent)
+            {
+                storedPanel.Clear();
+                return false;
+            }
+
+            storedPanel.PanelTitle = MakeUniquePanelTitle(
+                GetBaseTitleFromWorkspacePath(storedPanel.WorkspacePath),
+                storedPanel);
+            ApplyApplicationMetadata(storedPanel);
+        }
+        finally
+        {
+            _suppressPersistence = false;
         }
 
         SavePanelStates();

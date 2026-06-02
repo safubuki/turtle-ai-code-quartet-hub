@@ -279,6 +279,29 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="StoredRegisterFolderButton" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
+      <Setter Property="MinWidth" Value="24" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="#DDEFE5" />
+      <Setter Property="Background" Value="#17271E" />
+      <Setter Property="BorderBrush" Value="#3B604A" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="ToolTip" Value="フォルダを選んでこの控えに登録（ローカルのみ）" />
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="#F2FFF8" />
+          <Setter Property="Background" Value="#203629" />
+          <Setter Property="BorderBrush" Value="#6BE49B" />
+        </Trigger>
+        <DataTrigger Binding="{Binding HasContent}" Value="True">
+          <Setter Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="SlotClearInfoButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
       <Setter Property="MinWidth" Value="24" />
       <Setter Property="Width" Value="24" />
@@ -1121,6 +1144,14 @@
                        FontWeight="SemiBold"
                        Foreground="{StaticResource TextBrush}"
                        VerticalAlignment="Center" />
+
+                <Button Grid.Column="2"
+                  Content="&#xED25;"
+                  Tag="{Binding}"
+                  Click="RegisterStoredPanelFolderButton_Click"
+                  Style="{StaticResource StoredRegisterFolderButton}"
+                  AutomationProperties.Name="フォルダを選んでこの控えに登録"
+                  VerticalAlignment="Top" />
 
                 <Button Grid.Column="2"
                   Content="&#xE74D;"
