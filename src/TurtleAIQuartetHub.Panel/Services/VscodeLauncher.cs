@@ -117,9 +117,12 @@ public sealed class VscodeLauncher
         DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {launchCodeCommand} {GetLaunchArguments(slot, config, launchPath)}");
         var launchedProcessId = await Task.Run(() => StartCode(launchCodeCommand, slot, config, launchPath), cancellationToken);
         var window = await WaitForNewWindowAsync(
+            slot,
+            config,
             knownHandles,
             timeout,
             expectedProcessId: null,
+            launchPath,
             fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
             cancellationToken);
         return window is null ? null : new WindowAssignment(slot, window);
@@ -142,9 +145,12 @@ public sealed class VscodeLauncher
 
         var reconnectStopwatch = Stopwatch.StartNew();
         var remoteWindow = await WaitForNewWindowAsync(
+            slot,
+            config,
             knownHandles,
             reconnectTimeout,
             expectedProcessId: null,
+            launchPath,
             fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
             cancellationToken);
         if (remoteWindow is not null)
@@ -178,9 +184,12 @@ public sealed class VscodeLauncher
         DiagnosticLog.Write($"Starting fallback VS Code window for slot {slot.Name}: {codeCommand} {GetLaunchArguments(slot, config, null)}");
         var fallbackProcessId = await Task.Run(() => StartCode(codeCommand, slot, config, null), cancellationToken);
         var fallbackWindow = await WaitForNewWindowAsync(
+            slot,
+            config,
             knownHandles,
             fallbackTimeout,
             fallbackProcessId,
+            launchPath: null,
             fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, null),
             cancellationToken);
         return fallbackWindow is null ? null : new WindowAssignment(slot, fallbackWindow);
@@ -192,13 +201,16 @@ public sealed class VscodeLauncher
     }
 
     private async Task<WindowInfo?> WaitForNewWindowAsync(
+        WindowSlot slot,
+        AppConfig config,
         HashSet<IntPtr> knownHandles,
         TimeSpan timeout,
         uint? expectedProcessId,
+        string? launchPath,
         Func<WindowInfo?>? fallbackWindowProvider,
         CancellationToken cancellationToken)
     {
-        var existingWindow = FindNewWindow(knownHandles, expectedProcessId);
+        var existingWindow = FindExpectedNewWindow(slot, config, knownHandles, expectedProcessId, launchPath);
         if (existingWindow is not null)
         {
             return existingWindow;
@@ -224,8 +236,7 @@ public sealed class VscodeLauncher
 
             var window = _windowEnumerator.TryGetWindow(windowHandle);
             if (window is not null
-                && !knownHandles.Contains(window.Handle)
-                && (!expectedProcessId.HasValue || window.ProcessId == expectedProcessId.Value))
+                && IsExpectedNewWindow(slot, config, window, knownHandles, expectedProcessId, launchPath))
             {
                 completionSource.TrySetResult(window);
             }
@@ -243,12 +254,12 @@ public sealed class VscodeLauncher
         if (hook == IntPtr.Zero)
         {
             DiagnosticLog.Write("WinEvent hook could not be registered while waiting for a VS Code window.");
-            return FindNewWindow(knownHandles, expectedProcessId) ?? fallbackWindowProvider?.Invoke();
+            return FindExpectedNewWindow(slot, config, knownHandles, expectedProcessId, launchPath) ?? fallbackWindowProvider?.Invoke();
         }
 
         try
         {
-            existingWindow = FindNewWindow(knownHandles, expectedProcessId);
+            existingWindow = FindExpectedNewWindow(slot, config, knownHandles, expectedProcessId, launchPath);
             if (existingWindow is not null)
             {
                 return existingWindow;
@@ -272,7 +283,7 @@ public sealed class VscodeLauncher
                     return await completionSource.Task;
                 }
 
-                existingWindow = FindNewWindow(knownHandles, expectedProcessId);
+                existingWindow = FindExpectedNewWindow(slot, config, knownHandles, expectedProcessId, launchPath);
                 if (existingWindow is not null)
                 {
                     return existingWindow;
@@ -294,15 +305,57 @@ public sealed class VscodeLauncher
         }
     }
 
-    private WindowInfo? FindNewWindow(HashSet<IntPtr> knownHandles, uint? expectedProcessId = null)
+    private WindowInfo? FindExpectedNewWindow(
+        WindowSlot slot,
+        AppConfig config,
+        HashSet<IntPtr> knownHandles,
+        uint? expectedProcessId,
+        string? launchPath)
     {
-        return _windowEnumerator
+        var windows = _windowEnumerator
             .GetVsCodeWindows()
             .Where(item => !knownHandles.Contains(item.Handle))
             .Where(item => !expectedProcessId.HasValue || item.ProcessId == expectedProcessId.Value)
             .OrderBy(window => window.ProcessId)
             .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
+            .ToList();
+
+        return windows.FirstOrDefault(window => IsExpectedNewWindow(slot, config, window, knownHandles, expectedProcessId, launchPath));
+    }
+
+    private static bool IsExpectedNewWindow(
+        WindowSlot slot,
+        AppConfig config,
+        WindowInfo window,
+        HashSet<IntPtr> knownHandles,
+        uint? expectedProcessId,
+        string? launchPath)
+    {
+        if (knownHandles.Contains(window.Handle)
+            || expectedProcessId.HasValue && window.ProcessId != expectedProcessId.Value)
+        {
+            return false;
+        }
+
+        if (config.UseDedicatedUserDataDirs
+            && TryReadSlotLockProcessId(slot, config, out var slotProcessId)
+            && IsProcessAlive(slotProcessId))
+        {
+            return window.ProcessId == slotProcessId;
+        }
+
+        if (config.UseDedicatedUserDataDirs && !string.IsNullOrWhiteSpace(launchPath))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(launchPath)
+            && VscodeWorkspaceState.IsWorkspaceVisibleInWindowTitle(window.Title, launchPath))
+        {
+            return true;
+        }
+
+        return !config.UseDedicatedUserDataDirs || string.IsNullOrWhiteSpace(launchPath);
     }
 
     private WindowInfo? TryFindSlotOwnedWindow(WindowSlot slot, AppConfig config, string? launchPath)

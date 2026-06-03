@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-05-28
+更新日: 2026-06-04
 
 ## 1. AI 状態監視を戻さない
 - AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
@@ -64,10 +64,13 @@
 - Windows 補助アプリが 4 つに増えたため、縮小表示の最低幅は Antigravity2 ボタンまで収まる値にする。
 - Windows 補助アプリボタンは 4 つすべて同じ幅を保ちつつ、左の `Windows` ラベルが `indows` のように見切れない幅に収める。
 
-## 7. 一括起動の並列化（2026-05-14 修正済み）
-- `LaunchAllMissingAsync` では非 CLI の異なるアプリグループを `Task.WhenAll` で並列起動する。CLI グループは順次起動するが、非 CLI と同時に走らせるため CLI 待機中に VS Code が遅延しない。
+## 7. 一括起動の逐次化（2026-06-04 修正済み）
+- `LaunchAllMissingAsync` では A-D の対象スロットを 1 つずつ順番に起動する。非 CLI も `Task.WhenAll` で並列起動しない。VS Code / Antigravity / terminal の新規ウィンドウ捕捉が競合し、4 つ起動しきれない、または別スロットの遅延ウィンドウを拾って 2x2 配置がずれる問題を避けるため。
+- 各スロットの起動結果は捕捉できた時点で `StatusStore.AssignWindow` へ反映し、短い間隔を置いて次スロットへ進む。最後に `RefreshSlotsAsync` と `ArrangeSlotsOnActiveMonitorWithSettlingAsync` を実行し、遅れて再接続されたウィンドウも 2x2 配置対象に含める。
+- 起動スロット間の待ちは短めに保ち、テンポよく進める。起動後の 260ms / 720ms 付近の即時補正と 30 秒までの遅延補正は、`WindowArranger.NeedsArrange` で位置ずれがある場合だけ実行する。追加補正ではレイヤー再適用やパネル前面化を繰り返さず、`ArrangeSlotsOnActiveMonitorQuietly` で静かに座標だけ戻す。
+- VS Code の新規ウィンドウ捕捉では、専用 `user-data-dir` 有効時は `code.lock` PID に一致するウィンドウを採用する。専用 user-data を使わない設定では対象ワークスペース名がタイトルに出たウィンドウを補助的に採用する。単に「最初に見えた VS Code ウィンドウ」を採用すると、直前スロットの遅延表示を次スロットへ誤割り当てするため避ける。
 - CLI (cmd.exe) は `UseShellExecute = true` で起動する。`WindowStyle = Normal` が適用されウィンドウが即時表示される。`UseShellExecute = false` + `CreateNoWindow = false` の組み合わせより表示が速い。
-- VS Code など IDE の同一アプリタイプ内スロットは引き続きシーケンシャル起動。Workspace CLI はタイトルでスロットを識別できるため、同一 CLI 種別内でも先に複数 terminal を開いてから捕捉する。
+- VS Code など IDE の同一アプリタイプ内スロットは引き続きシーケンシャル起動。Workspace CLI も一括起動ではスロット単位で順次起動し、terminal 系プロセス名の競合を避ける。
 - VS Code は起動プロセス ID と実際のウィンドウプロセス ID がずれる場合があるため、新規 VS Code ウィンドウの HWND を優先して捕捉する。
 - VS Code が低速端末で新規 HWND 捕捉前に既存スロット用ウィンドウとして残った場合は、専用 `user-data-dir` の `code.lock` に記録された PID と VS Code のトップレベル HWND を照合して再接続する。これにより、ウィンドウ自体は開いているがスロットが赤表示のままになる状態を次回起動・再起動時にも回復する。
-- 起動後の遅延再配置は 30 秒まで確認するが、`WindowArranger.NeedsArrange` で現在位置が期待 2x2 配置から大きく外れている場合だけ再配置する。高速端末で既に正しい位置にあるウィンドウは触らない。
+- 起動後の遅延再配置は 30 秒まで確認するが、`WindowArranger.NeedsArrange` で現在位置が期待 2x2 配置から大きく外れている場合だけ静かに再配置する。高速端末で既に正しい位置にあるウィンドウは触らない。

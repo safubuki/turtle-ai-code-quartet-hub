@@ -27,6 +27,12 @@ public partial class MainWindow : Window
     private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan DragDropFocusSuppressWindow = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan LaunchAllSlotPaceDelay = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan[] ImmediateArrangeSettleDelays =
+    [
+        TimeSpan.FromMilliseconds(260),
+        TimeSpan.FromMilliseconds(720)
+    ];
     private static readonly TimeSpan[] PostLaunchArrangeRetryDelays =
     [
         TimeSpan.FromMilliseconds(1500),
@@ -214,46 +220,20 @@ public partial class MainWindow : Window
             }
 
             _statusStore.Message = $"未起動スロットを選択アプリで起動しています... {BuildLaunchPlanSummary(launchTargets)}";
-            var allAssignments = new List<WindowAssignment>();
             var config = _statusStore.Config;
-            var launchGroups = launchTargets
-                .GroupBy(item => item.Application.Id)
-                .Select(group =>
-                {
-                    var application = group.First().Application;
-                    var slots = group.Select(item => item.Slot).ToList();
-                    return (Application: application, Slots: slots);
-                })
-                .ToList();
-            var nonCliTasks = launchGroups
-                .Where(group => !group.Application.IsWorkspaceCli)
-                .Select(group => _applicationLauncher.LaunchMissingAsync(group.Slots, config, group.Application, CancellationToken.None))
-                .ToList();
-            var cliTask = LaunchCliGroupsSequentiallyAsync(
-                launchGroups.Where(group => group.Application.IsWorkspaceCli).ToList(),
-                config);
-            var groupTasks = nonCliTasks.Append(cliTask);
-            var groupResults = await Task.WhenAll(groupTasks);
-            foreach (var assignments in groupResults)
-            {
-                allAssignments.AddRange(assignments);
-            }
-
-            foreach (var assignment in allAssignments)
-            {
-                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
-            }
+            await LaunchTargetsSequentiallyAsync(launchTargets, config);
 
             await RefreshSlotsAsync(allowDuringBusy: true);
 
             var skippedMessage = unavailableSlots.Count > 0
                 ? $" 未検出でスキップ: {string.Join(", ", unavailableSlots)}"
                 : string.Empty;
-            if (allAssignments.Count > 0)
+            var readyLaunchTargetCount = launchTargets.Count(target => target.Slot.WindowStatus == SlotWindowStatus.Ready);
+            if (readyLaunchTargetCount > 0)
             {
                 await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
                 _statusStore.ClearFocusedSlot();
-                _statusStore.Message = $"{allAssignments.Count}個のスロットを選択アプリで起動して2x2に配置しました。{skippedMessage}";
+                _statusStore.Message = $"{readyLaunchTargetCount}個のスロットを選択アプリで起動して2x2に配置しました。{skippedMessage}";
             }
             else
             {
@@ -266,19 +246,32 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task<IReadOnlyList<WindowAssignment>> LaunchCliGroupsSequentiallyAsync(
-        IReadOnlyList<(LauncherApplication Application, List<WindowSlot> Slots)> groups,
+    private async Task<IReadOnlyList<WindowAssignment>> LaunchTargetsSequentiallyAsync(
+        IReadOnlyList<(WindowSlot Slot, LauncherApplication Application)> launchTargets,
         AppConfig config)
     {
         var assignments = new List<WindowAssignment>();
-        foreach (var group in groups)
+        for (var index = 0; index < launchTargets.Count; index++)
         {
-            var groupAssignments = await _applicationLauncher.LaunchMissingAsync(
-                group.Slots,
+            var (slot, application) = launchTargets[index];
+            _statusStore.Message = $"スロット{slot.Name}の{application.DisplayName}を順番に起動しています... ({index + 1}/{launchTargets.Count})";
+            DiagnosticLog.Write($"Launch Quartet starting slot {slot.Name} sequentially with {application.DisplayName} ({index + 1}/{launchTargets.Count}).");
+
+            var slotAssignments = await _applicationLauncher.LaunchMissingAsync(
+                new[] { slot },
                 config,
-                group.Application,
+                application,
                 CancellationToken.None);
-            assignments.AddRange(groupAssignments);
+            foreach (var assignment in slotAssignments)
+            {
+                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
+                assignments.Add(assignment);
+            }
+
+            if (index < launchTargets.Count - 1)
+            {
+                await Task.Delay(LaunchAllSlotPaceDelay);
+            }
         }
 
         return assignments;
@@ -1900,6 +1893,11 @@ public partial class MainWindow : Window
         return arranged;
     }
 
+    private int ArrangeSlotsOnActiveMonitorQuietly()
+    {
+        return _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
+    }
+
     private void ArrangeSlotsAfterPanelStateChange()
     {
         var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
@@ -1919,10 +1917,16 @@ public partial class MainWindow : Window
     private async Task<int> ArrangeSlotsOnActiveMonitorWithSettlingAsync(bool bringPanelAfterArrange = true)
     {
         var arranged = ArrangeSlotsOnActiveMonitor(bringPanelAfterArrange);
-        foreach (var delay in new[] { TimeSpan.FromMilliseconds(350), TimeSpan.FromMilliseconds(900) })
+        foreach (var delay in ImmediateArrangeSettleDelays)
         {
             await Task.Delay(delay);
-            arranged = ArrangeSlotsOnActiveMonitor(bringPanelAfterArrange);
+            if (!CanReapplyPostLaunchArrangement()
+                || !_windowArranger.NeedsArrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex()))
+            {
+                continue;
+            }
+
+            arranged = ArrangeSlotsOnActiveMonitorQuietly();
         }
 
         SchedulePostLaunchArrangeRetries(bringPanelAfterArrange);
@@ -1970,7 +1974,7 @@ public partial class MainWindow : Window
                         return;
                     }
 
-                    ArrangeSlotsOnActiveMonitor(bringPanelAfterArrange);
+                    ArrangeSlotsOnActiveMonitorQuietly();
                 }, DispatcherPriority.Background);
             }
         }
