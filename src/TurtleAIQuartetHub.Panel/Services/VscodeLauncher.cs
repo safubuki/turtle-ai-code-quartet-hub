@@ -15,6 +15,11 @@ public sealed class VscodeLauncher
     private const uint WineventSkipOwnProcess = 0x0002;
     private static readonly TimeSpan RemoteWindowProbeInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan WindowProbeInterval = TimeSpan.FromMilliseconds(250);
+
+    // Process names (without extension) that a slot's code.lock may legitimately belong to.
+    // Mirrors WindowEnumerator.GetVsCodeWindows so we never terminate a recycled PID owned by an unrelated process.
+    private static readonly string[] VsCodeProcessNames = ["code", "code - insiders", "vscodium", "codium"];
+
     private readonly WindowEnumerator _windowEnumerator;
 
     public VscodeLauncher(WindowEnumerator windowEnumerator)
@@ -590,6 +595,17 @@ public sealed class VscodeLauncher
             using var process = Process.GetProcessById(pid);
             if (process.HasExited)
             {
+                // The lock outlived its owner; clear it so the next launch is not steered toward a dead PID.
+                TryDeleteStaleLock(lockFile, slot, pid, "process already exited");
+                return;
+            }
+
+            // Guard against PID recycling: only ever terminate a lock holder that is genuinely a VS Code process.
+            // If the original VS Code died and Windows reused its PID for something else, the lock is stale and
+            // the unrelated process must not be killed.
+            if (!IsVsCodeProcess(process))
+            {
+                TryDeleteStaleLock(lockFile, slot, pid, $"lock PID reused by unrelated process '{SafeProcessName(process) ?? "unknown"}'");
                 return;
             }
 
@@ -606,7 +622,8 @@ public sealed class VscodeLauncher
         }
         catch (ArgumentException)
         {
-            // Process no longer exists
+            // Process no longer exists; the lock is stale.
+            TryDeleteStaleLock(lockFile, slot, pid, "process no longer exists");
         }
         catch (InvalidOperationException)
         {
@@ -615,6 +632,42 @@ public sealed class VscodeLauncher
         catch (System.ComponentModel.Win32Exception ex)
         {
             DiagnosticLog.Write($"Failed to kill zombie process {pid}: {ex.Message}");
+        }
+    }
+
+    private static bool IsVsCodeProcess(Process process)
+    {
+        var name = SafeProcessName(process);
+        return name is not null
+            && VsCodeProcessNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? SafeProcessName(Process process)
+    {
+        try
+        {
+            return process.ProcessName;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+    }
+
+    private static void TryDeleteStaleLock(string lockFile, WindowSlot slot, int pid, string reason)
+    {
+        try
+        {
+            File.Delete(lockFile);
+            DiagnosticLog.Write($"Removed stale code.lock for slot {slot.Name} (pid {pid}: {reason}).");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write($"Failed to remove stale code.lock for slot {slot.Name}: {ex.Message}");
         }
     }
 
