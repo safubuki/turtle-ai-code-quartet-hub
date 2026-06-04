@@ -18,6 +18,7 @@ public sealed class WindowArranger
     private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
+    private const int DwmwaExtendedFrameBounds = 9;
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
@@ -40,16 +41,12 @@ public sealed class WindowArranger
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot: null);
         foreach (var placement in placements)
         {
-            if (IsIconic(placement.Handle) || !GetWindowRect(placement.Handle, out var rect))
+            // 期待セルは可視枠（DWM 拡張フレーム）基準なので、現在値も可視枠で比較する。
+            if (IsIconic(placement.Handle) || !TryGetVisibleBounds(placement.Handle, out var current))
             {
                 return true;
             }
 
-            var current = new WindowBounds(
-                rect.Left,
-                rect.Top,
-                Math.Max(0, rect.Right - rect.Left),
-                Math.Max(0, rect.Bottom - rect.Top));
             if (!IsCloseToExpectedBounds(current, placement, Math.Max(0, tolerance)))
             {
                 return true;
@@ -73,20 +70,26 @@ public sealed class WindowArranger
             RestoreForResize(placement.Handle);
         }
 
-        var deferredWindowPos = BeginDeferWindowPos(placements.Count);
+        // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
+        // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
+        var targets = placements
+            .Select(CompensateForFrame)
+            .ToList();
+
+        var deferredWindowPos = BeginDeferWindowPos(targets.Count);
         if (deferredWindowPos != IntPtr.Zero)
         {
             var queued = true;
-            foreach (var placement in placements)
+            foreach (var target in targets)
             {
                 deferredWindowPos = DeferWindowPos(
                     deferredWindowPos,
-                    placement.Handle,
+                    target.Handle,
                     IntPtr.Zero,
-                    placement.X,
-                    placement.Y,
-                    placement.Width,
-                    placement.Height,
+                    target.X,
+                    target.Y,
+                    target.Width,
+                    target.Height,
                     ArrangeFlags);
                 if (deferredWindowPos == IntPtr.Zero)
                 {
@@ -97,20 +100,20 @@ public sealed class WindowArranger
 
             if (queued && EndDeferWindowPos(deferredWindowPos))
             {
-                return placements.Count;
+                return targets.Count;
             }
         }
 
         var arranged = 0;
-        foreach (var placement in placements)
+        foreach (var target in targets)
         {
             if (SetWindowPos(
-                placement.Handle,
+                target.Handle,
                 IntPtr.Zero,
-                placement.X,
-                placement.Y,
-                placement.Width,
-                placement.Height,
+                target.X,
+                target.Y,
+                target.Width,
+                target.Height,
                 ArrangeFlags))
             {
                 arranged++;
@@ -167,6 +170,67 @@ public sealed class WindowArranger
             && Math.Abs(current.Top - expected.Y) <= tolerance
             && Math.Abs(current.Width - expected.Width) <= tolerance
             && Math.Abs(current.Height - expected.Height) <= tolerance;
+    }
+
+    // セル（可視枠で表現した目標矩形）を、ウィンドウの不可視枠ぶん外側へ広げた
+    // 実際の SetWindowPos 用矩形へ変換する。
+    private static WindowPlacement CompensateForFrame(WindowPlacement cell)
+    {
+        var inset = GetFrameInset(cell.Handle);
+        return new WindowPlacement(
+            cell.Handle,
+            cell.X - inset.Left,
+            cell.Y - inset.Top,
+            cell.Width + inset.Left + inset.Right,
+            cell.Height + inset.Top + inset.Bottom);
+    }
+
+    // GetWindowRect と DWM 拡張フレーム（可視枠）の差＝各辺の不可視枠幅を返す。
+    // DWM 非対応や取得失敗時は補正なし（ゼロ）。
+    private static FrameInset GetFrameInset(IntPtr windowHandle)
+    {
+        if (GetWindowRect(windowHandle, out var windowRect)
+            && DwmGetWindowAttribute(windowHandle, DwmwaExtendedFrameBounds, out var frame, Marshal.SizeOf<RECT>()) == 0)
+        {
+            var left = frame.Left - windowRect.Left;
+            var top = frame.Top - windowRect.Top;
+            var right = windowRect.Right - frame.Right;
+            var bottom = windowRect.Bottom - frame.Bottom;
+            if (left >= 0 && top >= 0 && right >= 0 && bottom >= 0
+                && (left > 0 || top > 0 || right > 0 || bottom > 0))
+            {
+                return new FrameInset(left, top, right, bottom);
+            }
+        }
+
+        return FrameInset.Zero;
+    }
+
+    // ウィンドウの可視枠（DWM 拡張フレーム）を返す。取得できないときは GetWindowRect で代用。
+    private static bool TryGetVisibleBounds(IntPtr windowHandle, out WindowBounds bounds)
+    {
+        if (DwmGetWindowAttribute(windowHandle, DwmwaExtendedFrameBounds, out var frame, Marshal.SizeOf<RECT>()) == 0)
+        {
+            bounds = new WindowBounds(
+                frame.Left,
+                frame.Top,
+                Math.Max(0, frame.Right - frame.Left),
+                Math.Max(0, frame.Bottom - frame.Top));
+            return true;
+        }
+
+        if (GetWindowRect(windowHandle, out var rect))
+        {
+            bounds = new WindowBounds(
+                rect.Left,
+                rect.Top,
+                Math.Max(0, rect.Right - rect.Left),
+                Math.Max(0, rect.Bottom - rect.Top));
+            return true;
+        }
+
+        bounds = default;
+        return false;
     }
 
     public bool BringToFront(IntPtr windowHandle)
@@ -532,11 +596,19 @@ public sealed class WindowArranger
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
 
     public readonly record struct WindowBounds(int Left, int Top, int Width, int Height);
 
     private readonly record struct WindowPlacement(IntPtr Handle, int X, int Y, int Width, int Height);
+
+    private readonly record struct FrameInset(int Left, int Top, int Right, int Bottom)
+    {
+        public static FrameInset Zero { get; } = new(0, 0, 0, 0);
+    }
 
     private readonly record struct WorkArea(int Left, int Top, int Width, int Height);
 

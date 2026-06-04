@@ -1,7 +1,7 @@
 {
   "codeCommand": "code",
   "monitor": "primary",
-  "gap": 8,
+  "gap": 6,
   "useDedicatedUserDataDirs": true,
   "inheritMainUserState": true,
   "reopenLastWorkspace": true,

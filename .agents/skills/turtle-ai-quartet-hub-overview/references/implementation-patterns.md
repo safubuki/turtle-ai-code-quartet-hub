@@ -74,3 +74,7 @@
 - VS Code は起動プロセス ID と実際のウィンドウプロセス ID がずれる場合があるため、新規 VS Code ウィンドウの HWND を優先して捕捉する。
 - VS Code が低速端末で新規 HWND 捕捉前に既存スロット用ウィンドウとして残った場合は、専用 `user-data-dir` の `code.lock` に記録された PID と VS Code のトップレベル HWND を照合して再接続する。これにより、ウィンドウ自体は開いているがスロットが赤表示のままになる状態を次回起動・再起動時にも回復する。
 - 起動後の遅延再配置は 30 秒まで確認するが、`WindowArranger.NeedsArrange` で現在位置が期待 2x2 配置から大きく外れている場合だけ静かに再配置する。高速端末で既に正しい位置にあるウィンドウは触らない。
+- ディスプレイ切替（`ToggleMonitorButton_Click`）と非表示からの復帰（`ToggleVisibilityButton_Click`）も単発の `ArrangeSlotsOnActiveMonitor` ではなく `ArrangeSlotsOnActiveMonitorWithSettlingAsync` を使う。DPI/解像度が異なるディスプレイへ移すと、移動直後に対象ウィンドウへ `WM_DPICHANGED` が届いてこちらの指定サイズを上書きするため、遅延付きの `NeedsArrange` 補正で移動先の作業領域に合わせて再補正する。
+- 移動直後の「小さく出てから直る」フラッシュを抑えるため、即時補正 `ImmediateArrangeSettleDelays` は前倒しの密な間隔（40/110/220/420/720ms）にする。`WM_DPICHANGED` のサイズ上書きはクロスプロセスで非同期に届くため、単発の同期再適用では防げない。短い間隔で `NeedsArrange` を見て静かに補正することで、上書き後のずれを素早く戻す。
+- 2x2 配置はウィンドウの不可視リサイズ枠（`DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` と `GetWindowRect` の差）を打ち消して配置する。`WindowArranger.BuildPlacements` のセルは可視枠の目標矩形とし、`CompensateForFrame` で各辺の不可視枠ぶん外側へ広げて `SetWindowPos` する。これをしないと上端は不可視枠 0、左右下は約 7px(DPI で増減) のぶん見た目の隙間が偏る。`NeedsArrange` の現在値比較も可視枠（`TryGetVisibleBounds`）で行う。
+- セル計算（`BuildPlacements`）は `gap` を内側の隙間と外周マージンの両方に使う（縦横とも 3 枠ぶん）。不可視枠を補正済みなので `gap` がそのまま見た目の均等な隙間になる。隙間を詰めるときは `gap` を下げる。既定は `6`（密着させず均等に詰める値）。

@@ -30,7 +30,10 @@ public partial class MainWindow : Window
     private static readonly TimeSpan LaunchAllSlotPaceDelay = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan[] ImmediateArrangeSettleDelays =
     [
-        TimeSpan.FromMilliseconds(260),
+        TimeSpan.FromMilliseconds(40),
+        TimeSpan.FromMilliseconds(110),
+        TimeSpan.FromMilliseconds(220),
+        TimeSpan.FromMilliseconds(420),
         TimeSpan.FromMilliseconds(720)
     ];
     private static readonly TimeSpan[] PostLaunchArrangeRetryDelays =
@@ -1126,7 +1129,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
+    private async void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
     {
         SuppressFocusedSlotReassertForPanelInput();
         if (_areWindowsHidden)
@@ -1140,7 +1143,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var arranged = ArrangeSlotsOnActiveMonitor();
+            // 非表示中にディスプレイ切替した場合はここで別ディスプレイへ移動するため、
+            // 移動先 DPI/解像度に合わせて遅延付きで再補正し、サイズくずれを防ぐ。
+            var arranged = await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
             _statusStore.Message = arranged > 0
                 ? $"{arranged}個の管理中ウィンドウを表示しました。"
                 : "表示できる管理中ウィンドウがありません。";
@@ -1180,7 +1185,7 @@ public partial class MainWindow : Window
         RefreshAuxiliaryUi();
     }
 
-    private void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
+    private async void ToggleMonitorButton_Click(object sender, RoutedEventArgs e)
     {
         SuppressFocusedSlotReassertForPanelInput();
         var monitorCount = _windowArranger.GetMonitorCount();
@@ -1204,7 +1209,11 @@ public partial class MainWindow : Window
         // ReassertFocusedSlotIfNeeded が走り、無限ループでハングする。
         CaptureFocusedLayout();
         _statusStore.ClearFocusedSlot();
-        var arranged = ArrangeSlotsOnActiveMonitor();
+        // ディスプレイ間で DPI や解像度が異なる場合、単発の配置では移動直後に
+        // WM_DPICHANGED が届いて各ウィンドウのサイズが上書きされ 2x2 がくずれる。
+        // 起動時と同じ遅延付き再配置を使い、移動先ディスプレイの作業領域に合わせて
+        // NeedsArrange でズレを検出したときだけ静かに再補正する。
+        var arranged = await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
         _statusStore.Message = arranged > 0
             ? $"{arranged}個の管理中ウィンドウを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に移動しました。"
             : $"次回の配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました。";

@@ -21,7 +21,7 @@ public sealed class AppConfig
 
     public string Monitor { get; set; } = "primary";
 
-    public int Gap { get; set; } = 8;
+    public int Gap { get; set; } = 6;
 
     public bool UseDedicatedUserDataDirs { get; set; } = true;
 
