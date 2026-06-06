@@ -396,6 +396,12 @@ public sealed class WindowArranger
         return ShowWindow(windowHandle, SW_RESTORE);
     }
 
+    // ウィンドウが最小化（アイコン化）されているか。ユーザーがアプリ外で直接最小化したかの判定に使う。
+    public bool IsMinimized(IntPtr windowHandle)
+    {
+        return windowHandle != IntPtr.Zero && IsWindow(windowHandle) && IsIconic(windowHandle);
+    }
+
     public bool TryGetWindowBounds(IntPtr windowHandle, out WindowBounds bounds)
     {
         bounds = default;

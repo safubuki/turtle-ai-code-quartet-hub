@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private const string MicroModeGlyph = "\uF158";
     private const string StandardModeGlyph = "\uE740";
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan FocusSwitchArrangeDelay = TimeSpan.FromMilliseconds(280);
     private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
     private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan DragDropFocusSuppressWindow = TimeSpan.FromMilliseconds(700);
@@ -71,6 +72,7 @@ public partial class MainWindow : Window
     private Point _dragStartPoint;
     private bool _isCardDragDropInProgress;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
+    private CancellationTokenSource? _focusSwitchArrangeCancellation;
     private CancellationTokenSource? _focusedSlotReassertCancellation;
     private CancellationTokenSource? _panelLocateCancellation;
     private CancellationTokenSource? _postLaunchArrangeCancellation;
@@ -965,6 +967,11 @@ public partial class MainWindow : Window
 
     private async void ToggleSlotFocus(WindowSlot slot)
     {
+        // 直前のフォーカス切替が予約した遅延整列を破棄してから新しい操作を始める。
+        // 破棄しないと、古い整列が新フォーカスの 1 面表示を 4 面へ戻し、別スロットの 1 面だけが
+        // 背面に残る不整合表示（1 面が背面・4 面が前面）になる。
+        CancelFocusSwitchArrange();
+
         var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
 
         if (slot.IsFocused)
@@ -1024,8 +1031,29 @@ public partial class MainWindow : Window
             if (previouslyFocusedSlot is not null && !ReferenceEquals(previouslyFocusedSlot, slot))
             {
                 // C の最大化アニメ完了後、覆われた状態で B を quadrant に静かに戻す。
-                await Task.Delay(280);
-                if (slot.WindowHandle != IntPtr.Zero)
+                // 遅延中に別スロットへフォーカスが切り替わったら、この整列は古い要求なので破棄する。
+                var cancellation = new CancellationTokenSource();
+                _focusSwitchArrangeCancellation = cancellation;
+                try
+                {
+                    await Task.Delay(FocusSwitchArrangeDelay, cancellation.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                finally
+                {
+                    if (ReferenceEquals(_focusSwitchArrangeCancellation, cancellation))
+                    {
+                        _focusSwitchArrangeCancellation = null;
+                    }
+
+                    cancellation.Dispose();
+                }
+
+                // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
+                if (slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
                 {
                     ArrangeSlotsExceptOnActiveMonitor(slot, false);
                     BringPanelToFrontImmediate();
@@ -1840,6 +1868,14 @@ public partial class MainWindow : Window
         try
         {
             await _statusStore.RefreshWindowStatusesAsync(_windowEnumerator, _refreshCancellation.Token);
+
+            // フォーカス中（1 面）ウィンドウをアプリ外で直接最小化したケースを実体に合わせて回復する。
+            // 回復したらこの周回の再接続・再配置は行わない（4 面へ戻した直後なのでズレ判定が不要）。
+            if (ReconcileExternallyMinimizedFocusedSlot())
+            {
+                return;
+            }
+
             var reattachedCount = ReattachExistingVsCodeWindowsToMissingSlots();
             if (reattachedCount > 0
                 && CanReapplyPostLaunchArrangement()
@@ -2613,6 +2649,13 @@ public partial class MainWindow : Window
         _focusedSlotReassertCancellation = null;
     }
 
+    private void CancelFocusSwitchArrange()
+    {
+        // 実体の破棄は所有側 (ToggleSlotFocus) の finally に任せ、ここではキャンセルのみ行う。
+        // すべて UI スレッド上で逐次実行されるため、二重 Dispose や競合は起きない。
+        _focusSwitchArrangeCancellation?.Cancel();
+    }
+
     private async Task ReassertFocusedSlotAfterDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
         try
@@ -2687,6 +2730,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ユーザーがフォーカス中ウィンドウをアプリ外で直接最小化していたら、再最大化で抵抗せず
+        // フォーカスだけ解除し、最小化のまま残す。最小化に逆らうと勝手に 1 面へ戻り不整合表示になる。
+        if (_windowArranger.IsMinimized(focusedSlot.WindowHandle))
+        {
+            ReconcileExternallyMinimizedFocusedSlot();
+            return;
+        }
+
         _isReassertingFocusedSlot = true;
         try
         {
@@ -2714,6 +2765,43 @@ public partial class MainWindow : Window
 
             _windowArranger.SetBackmost(slot.WindowHandle);
         }
+    }
+
+    /// <summary>
+    /// フォーカス中（1 面表示）のウィンドウを、アプリを介さず OS 側で直接最小化したケースを実体に合わせる。
+    /// アプリのフォーカス状態が実体とずれたまま再アサートや遅延整列が走ると、最小化したはずの
+    /// ウィンドウが勝手に 1 面へ戻り、別スロットの 4 面が前面へ重なる不整合表示になる。
+    /// ユーザーの手動最小化を尊重し、フォーカスだけ解除する。ウィンドウは最小化のまま、
+    /// 他スロットは現在の象限のまま残し、再最大化や再配置で勝手に復帰させない。
+    /// アプリ主導の非表示（一括最小化）中やビジー中、パネル最小化中は対象外。
+    /// </summary>
+    private bool ReconcileExternallyMinimizedFocusedSlot()
+    {
+        if (_areWindowsHidden
+            || _isBusy
+            || _isReassertingFocusedSlot
+            || WindowState == WindowState.Minimized)
+        {
+            return false;
+        }
+
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot =>
+            slot.IsFocused
+            && slot.WindowHandle != IntPtr.Zero
+            && _windowArranger.IsMinimized(slot.WindowHandle));
+        if (focusedSlot is null)
+        {
+            return false;
+        }
+
+        // フォーカスだけ解除する。最小化中ウィンドウの復元も、他スロットの再配置も行わない。
+        // これで再アサートが最小化に逆らって 1 面へ戻すことも、別スロットが前面へ重なることもなくなる。
+        CancelFocusSwitchArrange();
+        CancelScheduledFocusedSlotReassert();
+        _statusStore.ClearFocusedSlot();
+        _statusStore.Message = $"スロット{focusedSlot.Name}の手動最小化を検出したためフォーカスを解除しました。";
+        RefreshAuxiliaryUi();
+        return true;
     }
 
     private void HideCloseAllConfirmDialog()
@@ -3088,6 +3176,7 @@ public partial class MainWindow : Window
         _refreshCancellation.Cancel();
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
+        _focusSwitchArrangeCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Dispose();
         _postLaunchArrangeCancellation?.Cancel();
