@@ -1014,7 +1014,8 @@ public partial class MainWindow : Window
         EnsurePreferredLayout(slot);
         VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
-        if (_windowArranger.FocusMaximized(slot.WindowHandle))
+        // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
+        if (_windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, slot.MonitorOverride ?? GetActiveMonitorIndex()))
         {
             // 新フォーカスを最大化する間、前フォーカスは最大化状態のまま「後ろで」覆っているので
             // 白いフラッシュは出ない。整列(他スロットの ShowWindow(SW_RESTORE) アニメ)を
@@ -1225,9 +1226,15 @@ public partial class MainWindow : Window
 
         var nextMonitorIndex = (GetActiveMonitorIndex() + 1) % monitorCount;
         _activeMonitorIndex = nextMonitorIndex;
+        // ベースが進んだことで、その面へ単独移動していたスロットは「単独」ではなくなる。
+        // override == 新ベースのスロットは解除し、以降は群れ（全移動の対象）として扱う。
+        // これにより「2 に単独移動 → 全移動でベースが 1→2 → そのスロットは 2 に留まりつつ合流」
+        // が成立する。単独移動が 2→1 に押し戻されるスワップは起こさない。
+        CollapseMonitorOverridesMatchingBase();
 
         if (_areWindowsHidden)
         {
+            UpdateDisplayBadges();
             _statusStore.Message = $"配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました（表示時に反映されます）。";
             return;
         }
@@ -1242,9 +1249,81 @@ public partial class MainWindow : Window
         // 起動時と同じ遅延付き再配置を使い、移動先ディスプレイの作業領域に合わせて
         // NeedsArrange でズレを検出したときだけ静かに再補正する。
         var arranged = await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+        UpdateDisplayBadges();
+        // 単独移動中のスロットはその面に留まるため「全部が移動した」とは限らない。
         _statusStore.Message = arranged > 0
-            ? $"{arranged}個の管理中ウィンドウを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に移動しました。"
+            ? $"管理中ウィンドウを{_windowArranger.GetMonitorLabel(nextMonitorIndex)}基準に移動しました。"
             : $"次回の配置先を{_windowArranger.GetMonitorLabel(nextMonitorIndex)}に切り替えました。";
+    }
+
+    private async void MoveSlotToNextDisplayButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+
+        var monitorCount = _windowArranger.GetMonitorCount();
+        if (monitorCount <= 1)
+        {
+            _statusStore.Message = "利用可能なディスプレイが1枚のため切り替えできません。";
+            return;
+        }
+
+        if (slot.WindowHandle == IntPtr.Zero)
+        {
+            _statusStore.Message = $"スロット{slot.Name}に移動できる管理中ウィンドウがありません。";
+            return;
+        }
+
+        // 実効ディスプレイ（override ?? ベース）を次へ巡回。次がベースに一致したら override を
+        // 解除して群れに戻す。2 枚なら「ベース ⇄ もう一方」のトグルになる。
+        var baseIndex = NormalizeMonitorIndex(GetActiveMonitorIndex(), monitorCount);
+        var current = NormalizeMonitorIndex(slot.MonitorOverride ?? baseIndex, monitorCount);
+        var next = (current + 1) % monitorCount;
+        slot.MonitorOverride = next == baseIndex ? null : next;
+        UpdateDisplayBadges();
+
+        if (_areWindowsHidden)
+        {
+            _statusStore.Message = $"スロット{slot.Name}の配置先を{_windowArranger.GetMonitorLabel(next)}に切り替えました（表示時に反映されます）。";
+            return;
+        }
+
+        var effectiveMonitor = slot.MonitorOverride ?? GetActiveMonitorIndex();
+
+        // このスロット自身がフォーカス（1 面）中なら、移動先で最大化し直す。他ディスプレイは触らない。
+        if (slot.IsFocused)
+        {
+            _windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, effectiveMonitor);
+            _windowArranger.BringToFrontOnce(slot.WindowHandle);
+            SendOtherSlotsToBack(slot);
+            BringPanelToFrontImmediate();
+            SchedulePanelToFront();
+            _statusStore.Message = $"フォーカス中のスロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}へ移動しました。";
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        // 別スロットがフォーカス中なら、その 1 面表示を崩さず、移動スロットだけ象限へ静かに置く。
+        var focusedSlot = _statusStore.Slots.FirstOrDefault(s => s.IsFocused && s.WindowHandle != IntPtr.Zero);
+        if (focusedSlot is not null)
+        {
+            ArrangeSlotsExceptOnActiveMonitor(focusedSlot, false);
+            RefreshAuxiliaryUi();
+            _statusStore.Message = $"スロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}に移動しました。";
+            return;
+        }
+
+        // 4 面表示中: DPI/解像度の異なる面へ移すと WM_DPICHANGED で上書きされるため、
+        // 全移動と同じ遅延付き再配置で移動先の作業領域に合わせて補正する。
+        // 他スロットは実効ディスプレイが変わらないので見た目は動かない。
+        await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+        UpdateDisplayBadges();
+        _statusStore.Message = $"スロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}に移動しました。";
     }
 
     private void CloseSlotButton_Click(object sender, RoutedEventArgs e)
@@ -2559,6 +2638,7 @@ public partial class MainWindow : Window
 
     private void RefreshAuxiliaryUi()
     {
+        UpdateDisplayBadges();
         RefreshLaunchButtonAvailability();
         TaskbarJumpListService.Update(
             _statusStore.Slots,
@@ -2741,7 +2821,9 @@ public partial class MainWindow : Window
         _isReassertingFocusedSlot = true;
         try
         {
-            if (_windowArranger.FocusMaximized(focusedSlot.WindowHandle))
+            // 実効ディスプレイで再最大化する。EnsureWindowOnMonitor は面が同じなら何もしないため、
+            // 通常運用では従来と同じ挙動。単独移動中だけ移動先で最大化が保たれる。
+            if (_windowArranger.FocusMaximizedOnMonitor(focusedSlot.WindowHandle, focusedSlot.MonitorOverride ?? GetActiveMonitorIndex()))
             {
                 SendOtherSlotsToBack(focusedSlot);
                 _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
@@ -2856,7 +2938,7 @@ public partial class MainWindow : Window
         }
 
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
-        _windowArranger.Maximize(focusedSlot.WindowHandle);
+        _windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, focusedSlot.MonitorOverride ?? GetActiveMonitorIndex());
         SendOtherSlotsToBack(focusedSlot);
         if (!_windowArranger.BringToFrontOnce(focusedSlot.WindowHandle))
         {
@@ -3099,6 +3181,97 @@ public partial class MainWindow : Window
 
         _activeMonitorIndex = _windowArranger.GetDefaultMonitorIndex(_statusStore.Config.Monitor);
         return _activeMonitorIndex.Value;
+    }
+
+    private static int NormalizeMonitorIndex(int monitorIndex, int monitorCount)
+    {
+        if (monitorCount <= 0)
+        {
+            return 0;
+        }
+
+        var normalized = monitorIndex % monitorCount;
+        return normalized < 0 ? normalized + monitorCount : normalized;
+    }
+
+    // 全ディスプレイ移動でベースが進んだ後に呼ぶ。override が新ベースに一致するスロットは
+    // 「単独」ではなくなったとみなして解除し、以降は群れとして扱う（リベースの肝）。
+    private void CollapseMonitorOverridesMatchingBase()
+    {
+        var monitorCount = _windowArranger.GetMonitorCount();
+        if (monitorCount <= 0)
+        {
+            return;
+        }
+
+        var baseIndex = NormalizeMonitorIndex(GetActiveMonitorIndex(), monitorCount);
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (!slot.MonitorOverride.HasValue)
+            {
+                continue;
+            }
+
+            if (NormalizeMonitorIndex(slot.MonitorOverride.Value, monitorCount) == baseIndex)
+            {
+                slot.MonitorOverride = null;
+            }
+        }
+    }
+
+    // モニタ構成が変わったとき（例: 単独移動先のディスプレイを抜いた）に override を健全化する。
+    // 正規化後にベースと一致するものは解除、範囲外のものは正規化済み値へ丸める。1 枚運用では
+    // すべてベースに収束するので単独移動は自然に解消される。
+    private void NormalizeMonitorOverrides()
+    {
+        var monitorCount = _windowArranger.GetMonitorCount();
+        if (monitorCount <= 0)
+        {
+            return;
+        }
+
+        var baseIndex = NormalizeMonitorIndex(GetActiveMonitorIndex(), monitorCount);
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (!slot.MonitorOverride.HasValue)
+            {
+                continue;
+            }
+
+            var normalized = NormalizeMonitorIndex(slot.MonitorOverride.Value, monitorCount);
+            if (normalized == baseIndex)
+            {
+                slot.MonitorOverride = null;
+            }
+            else if (normalized != slot.MonitorOverride.Value)
+            {
+                slot.MonitorOverride = normalized;
+            }
+        }
+    }
+
+    // 各カードに現在の実効ディスプレイ（例: "D2"）を表示する。複数モニタかついずれかのスロットが
+    // 単独移動しているときだけ出し、全パネルが同一面に揃っているときは雑音を出さない。
+    private void UpdateDisplayBadges()
+    {
+        NormalizeMonitorOverrides();
+
+        var monitorCount = _windowArranger.GetMonitorCount();
+        var anyOverride = _statusStore.Slots.Any(slot => slot.MonitorOverride.HasValue);
+        var showBadges = monitorCount > 1 && anyOverride;
+        var baseIndex = GetActiveMonitorIndex();
+
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (!showBadges || slot.WindowHandle == IntPtr.Zero)
+            {
+                slot.DisplayBadgeText = string.Empty;
+                continue;
+            }
+
+            var effectiveMonitor = slot.MonitorOverride ?? baseIndex;
+            slot.DisplayBadgeText = $"D{_windowArranger.ResolveMonitorNumber(effectiveMonitor)}";
+        }
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)

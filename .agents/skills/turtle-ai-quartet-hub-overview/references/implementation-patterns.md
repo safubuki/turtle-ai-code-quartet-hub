@@ -78,3 +78,12 @@
 - 移動直後の「小さく出てから直る」フラッシュを抑えるため、即時補正 `ImmediateArrangeSettleDelays` は前倒しの密な間隔（40/110/220/420/720ms）にする。`WM_DPICHANGED` のサイズ上書きはクロスプロセスで非同期に届くため、単発の同期再適用では防げない。短い間隔で `NeedsArrange` を見て静かに補正することで、上書き後のずれを素早く戻す。
 - 2x2 配置はウィンドウの不可視リサイズ枠（`DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` と `GetWindowRect` の差）を打ち消して配置する。`WindowArranger.BuildPlacements` のセルは可視枠の目標矩形とし、`CompensateForFrame` で各辺の不可視枠ぶん外側へ広げて `SetWindowPos` する。これをしないと上端は不可視枠 0、左右下は約 7px(DPI で増減) のぶん見た目の隙間が偏る。`NeedsArrange` の現在値比較も可視枠（`TryGetVisibleBounds`）で行う。
 - セル計算（`BuildPlacements`）は `gap` を内側の隙間と外周マージンの両方に使う（縦横とも 3 枠ぶん）。不可視枠を補正済みなので `gap` がそのまま見た目の均等な隙間になる。隙間を詰めるときは `gap` を下げる。既定は `6`（密着させず均等に詰める値）。
+
+## 8. ディスプレイ移動（全移動＋単独移動, 2026-06-08 追加）
+- 配置先は「ベースディスプレイ（全体）」＋「各スロットの単独 override（`WindowSlot.MonitorOverride`, 非永続）」で表す。実効ディスプレイ＝`override ?? ベース`。フォーカスやレイヤーと同じランタイム状態として扱い、`slots.json` には保存しない。`WindowSlot.ClearWindow` で override も解除する。
+- フッタの「全ディスプレイ移動」（旧「ディスプレイ移動」）はベース（`_activeMonitorIndex`）だけを次の面へ進める。進めた直後に `CollapseMonitorOverridesMatchingBase` で「override == 新ベース」のスロットの override を解除し、群れへ合流させる。これで「2 に単独移動 → 全移動でベースが 1→2 → 単独スロットは 2 に留まりつつ合流」が成立する。単独移動を 2→1 へ押し戻すスワップは行わない（リベースの不変条件）。
+- 各スロットカードの「単独ディスプレイ移動」ボタン（モニタアイコン）は、そのスロットの実効ディスプレイを次へ巡回する。次がベースに一致したら override=null（ベースに戻る）。2 枚運用では「ベース ⇄ もう一方」のトグル。管理中ウィンドウが無いスロットでは無効。
+- `WindowArranger.BuildPlacements` は象限セル（index→列/行）を固定したまま、作業領域だけスロットごとの実効ディスプレイから取る。同じ面へ複数スロットを単独移動しても各々の象限へタイルする。`Arrange` / `ArrangeExcept` / `NeedsArrange` の `monitorIndex` 引数は「ベース」を意味し、内部で per-slot に解決する。
+- フォーカス（1 面）は実効ディスプレイで最大化する（`FocusMaximizedOnMonitor` / `MaximizeOnMonitor`）。`EnsureWindowOnMonitor` は対象が既にその面なら何もしないため、未移動スロットは従来どおりベース面で最大化する。単独移動したパネルをフォーカス・フォーカス解除しても、他ディスプレイのパネルは触らない。
+- モニタ構成が変わったとき（単独移動先のディスプレイを抜く等）は `NormalizeMonitorOverrides` が override を健全化する。正規化後にベースと一致するものは解除、範囲外は丸める。1 枚運用ではすべてベースへ収束し単独移動は自然解消する。
+- カードの `DisplayBadgeText`（例 "D2"）は、複数モニタかついずれかのスロットが単独移動中のときだけ表示する。全パネルが同一面に揃っているときは雑音を出さない。`RefreshAuxiliaryUi` から `UpdateDisplayBadges` を呼んで常時最新化する。

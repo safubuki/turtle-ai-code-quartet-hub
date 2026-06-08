@@ -35,6 +35,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private bool _isFocused;
     private SlotWindowLayerMode _windowLayerMode = SlotWindowLayerMode.Topmost;
     private bool _isHidden;
+    private int? _monitorOverride;
+    private string _displayBadgeText = string.Empty;
     private VscodeLayoutPreference _preferredLayout = VscodeLayoutPreference.Empty;
 
     public WindowSlot(SlotConfig config)
@@ -339,6 +341,43 @@ public sealed class WindowSlot : INotifyPropertyChanged
         set => _preferredLayout = value ?? VscodeLayoutPreference.Empty;
     }
 
+    /// <summary>
+    /// このスロットだけを単独で配置するディスプレイ。null はベースディスプレイに追従する状態。
+    /// フォーカスやレイヤーと同じランタイム状態として扱い、保存はしない。全ディスプレイ移動で
+    /// ベースが追いついたら（override == ベース）解除して群れに戻す。
+    /// </summary>
+    public int? MonitorOverride
+    {
+        get => _monitorOverride;
+        set
+        {
+            if (SetField(ref _monitorOverride, value))
+            {
+                OnPropertyChanged(nameof(HasMonitorOverride));
+            }
+        }
+    }
+
+    public bool HasMonitorOverride => _monitorOverride.HasValue;
+
+    /// <summary>
+    /// 現在の実効ディスプレイをカードに表示する短いバッジ（例: "D2"）。複数モニタかつ
+    /// いずれかのパネルが単独移動しているときだけ MainWindow が設定する。それ以外は空。
+    /// </summary>
+    public string DisplayBadgeText
+    {
+        get => _displayBadgeText;
+        set
+        {
+            if (SetField(ref _displayBadgeText, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(HasDisplayBadge));
+            }
+        }
+    }
+
+    public bool HasDisplayBadge => !string.IsNullOrEmpty(_displayBadgeText);
+
     public string WindowStatusText
     {
         get
@@ -414,6 +453,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
         WindowStatus = SlotWindowStatus.Missing;
         IsFocused = false;
         WindowLayerMode = SlotWindowLayerMode.Topmost;
+        MonitorOverride = null;
+        DisplayBadgeText = string.Empty;
     }
 
     public void ApplyAssignedPanel(string? panelTitle, string? workspacePath)

@@ -979,14 +979,62 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
 
-              <Button Grid.Column="0"
-                      Content="&#xE8B7;"
-                      Tag="{Binding}"
-                      Click="OpenSlotWorkspaceFolderButton_Click"
-                      AutomationProperties.Name="ワークスペースフォルダを開く"
-                      HorizontalAlignment="Left"
-                      VerticalAlignment="Center"
-                      Style="{StaticResource SlotOpenFolderButtonStyle}" />
+              <StackPanel Grid.Column="0"
+                          Orientation="Horizontal"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center">
+                <Button Content="&#xE8B7;"
+                        Tag="{Binding}"
+                        Click="OpenSlotWorkspaceFolderButton_Click"
+                        AutomationProperties.Name="ワークスペースフォルダを開く"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource SlotOpenFolderButtonStyle}" />
+
+                <Button Content="&#xE7F4;"
+                        Tag="{Binding}"
+                        Click="MoveSlotToNextDisplayButton_Click"
+                        AutomationProperties.Name="このパネルを次のディスプレイへ移動"
+                        VerticalAlignment="Center"
+                        Margin="6,0,0,0">
+                  <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource SlotOpenFolderButtonStyle}">
+                      <Setter Property="ToolTip" Value="このパネルだけ次のディスプレイへ移動（ベースに戻すまで巡回）" />
+                      <Setter Property="IsEnabled" Value="False" />
+                      <Setter Property="Opacity" Value="0.4" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Ready}">
+                          <Setter Property="IsEnabled" Value="True" />
+                          <Setter Property="Opacity" Value="1" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+
+                <Border CornerRadius="6"
+                        Background="#17271E"
+                        BorderBrush="#3B604A"
+                        BorderThickness="1"
+                        Padding="6,1"
+                        Margin="6,0,0,0"
+                        VerticalAlignment="Center">
+                  <Border.Style>
+                    <Style TargetType="Border">
+                      <Setter Property="Visibility" Value="Visible" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasDisplayBadge}" Value="False">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Border.Style>
+                  <TextBlock Text="{Binding DisplayBadgeText}"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource AccentBrush}"
+                             ToolTip="このパネルが表示されているディスプレイ" />
+                </Border>
+              </StackPanel>
 
               <StackPanel Grid.Column="1"
                           Orientation="Horizontal"
@@ -1577,7 +1625,8 @@
                   Margin="0,0,4,0" />
           <Button Grid.Column="3"
             x:Name="ToggleMonitorButton"
-            Content="ディスプレイ移動"
+            Content="全ディスプレイ移動"
+            ToolTip="全パネルをまとめて次のディスプレイへ移動します"
             Click="ToggleMonitorButton_Click"
                   Style="{StaticResource BarButton}" />
         </Grid>

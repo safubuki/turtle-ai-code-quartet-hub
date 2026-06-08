@@ -123,10 +123,14 @@ public sealed class WindowArranger
         return arranged;
     }
 
+    // baseMonitorIndex は全ディスプレイ移動で決まる「ベース」。各スロットは MonitorOverride を
+    // 持つときだけ別ディスプレイへ単独配置し、持たないときはベースに追従する。象限セル（index→
+    // 列/行）は固定のまま、作業領域だけスロットごとの実効ディスプレイから取る。これにより同じ
+    // ディスプレイへ複数スロットを単独移動しても、各々の象限へ自然にタイルする。
     private static List<WindowPlacement> BuildPlacements(
         IReadOnlyList<WindowSlot> slots,
         int gap,
-        int monitorIndex,
+        int baseMonitorIndex,
         WindowSlot? excludedSlot)
     {
         var monitors = GetOrderedMonitors();
@@ -135,10 +139,7 @@ public sealed class WindowArranger
             return [];
         }
 
-        var workArea = monitors[NormalizeMonitorIndex(monitorIndex, monitors.Count)].WorkArea;
         var normalizedGap = Math.Clamp(gap, 0, 64);
-        var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
-        var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
         var placements = new List<WindowPlacement>(Math.Min(4, slots.Count));
 
         for (var index = 0; index < Math.Min(4, slots.Count); index++)
@@ -153,6 +154,11 @@ public sealed class WindowArranger
             {
                 continue;
             }
+
+            var effectiveMonitor = NormalizeMonitorIndex(slot.MonitorOverride ?? baseMonitorIndex, monitors.Count);
+            var workArea = monitors[effectiveMonitor].WorkArea;
+            var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
+            var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
 
             var column = index % 2;
             var row = index / 2;
@@ -334,6 +340,13 @@ public sealed class WindowArranger
         return $"ディスプレイ {NormalizeMonitorIndex(monitorIndex, monitorCount) + 1}/{monitorCount}";
     }
 
+    // バッジ表示用に、指定インデックスを現在のモニタ枚数で正規化した 1 始まりの番号を返す。
+    public int ResolveMonitorNumber(int monitorIndex)
+    {
+        var monitorCount = GetMonitorCount();
+        return NormalizeMonitorIndex(monitorIndex, monitorCount) + 1;
+    }
+
     public bool Focus(IntPtr windowHandle)
     {
         if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
@@ -356,6 +369,20 @@ public sealed class WindowArranger
         return SetForegroundWindow(windowHandle);
     }
 
+    // 指定ディスプレイで最大化してから前面化する。単独移動したスロットのフォーカス（1 面）を
+    // その実効ディスプレイで開くために使う。ウィンドウが既にそのディスプレイに居れば移動しない。
+    public bool FocusMaximizedOnMonitor(IntPtr windowHandle, int monitorIndex)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        EnsureWindowOnMonitor(windowHandle, monitorIndex);
+        ShowWindow(windowHandle, SW_MAXIMIZE);
+        return SetForegroundWindow(windowHandle);
+    }
+
     public bool Maximize(IntPtr windowHandle)
     {
         if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
@@ -364,6 +391,49 @@ public sealed class WindowArranger
         }
 
         return ShowWindow(windowHandle, SW_MAXIMIZE);
+    }
+
+    // 前面化を伴わずに指定ディスプレイで最大化する。非表示からのフォーカス復帰で使う。
+    public bool MaximizeOnMonitor(IntPtr windowHandle, int monitorIndex)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        EnsureWindowOnMonitor(windowHandle, monitorIndex);
+        return ShowWindow(windowHandle, SW_MAXIMIZE);
+    }
+
+    // ウィンドウが指定ディスプレイに無ければ、そのディスプレイの作業領域内へ移してから
+    // 最大化できるようにする。SW_MAXIMIZE は「現在ウィンドウが載っているディスプレイ」へ
+    // 最大化するため、先に移動しておかないと別ディスプレイで最大化されてしまう。
+    private static void EnsureWindowOnMonitor(IntPtr windowHandle, int monitorIndex)
+    {
+        var monitors = GetOrderedMonitors();
+        if (monitors.Count == 0)
+        {
+            return;
+        }
+
+        var target = NormalizeMonitorIndex(monitorIndex, monitors.Count);
+        var currentHandle = MonitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST);
+        if (monitors[target].Handle == currentHandle)
+        {
+            return;
+        }
+
+        RestoreForResize(windowHandle);
+        var workArea = monitors[target].WorkArea;
+        // 直後に SW_MAXIMIZE するので暫定サイズ。作業領域内へ確実に載せることだけが目的。
+        SetWindowPos(
+            windowHandle,
+            IntPtr.Zero,
+            workArea.Left + 40,
+            workArea.Top + 40,
+            Math.Max(320, workArea.Width - 80),
+            Math.Max(240, workArea.Height - 80),
+            ArrangeFlags);
     }
 
     public bool Close(IntPtr windowHandle)
