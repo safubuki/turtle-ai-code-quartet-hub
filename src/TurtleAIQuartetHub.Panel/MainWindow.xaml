@@ -38,6 +38,10 @@
     <SolidColorBrush x:Key="MutedTextBrush" Color="#9AA59E" />
     <SolidColorBrush x:Key="AccentBrush" Color="#45D483" />
     <SolidColorBrush x:Key="AccentDarkBrush" Color="#123222" />
+    <!-- 非ベースディスプレイの色。ベース（作業ベース）は AccentBrush の緑、単独移動先は番号順に青→紫→金。 -->
+    <SolidColorBrush x:Key="DisplayAccent2Brush" Color="#4FB4E8" />
+    <SolidColorBrush x:Key="DisplayAccent3Brush" Color="#B488E8" />
+    <SolidColorBrush x:Key="DisplayAccent4Brush" Color="#E8C24F" />
     <Style TargetType="TextBlock">
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -826,6 +830,7 @@
       <Border x:Name="SlotCardFocusFrame"
               Background="Transparent"
               BorderThickness="2"
+              BorderBrush="{Binding FocusFrameBrush}"
               CornerRadius="10"
               Tag="{Binding}"
               Cursor="Hand"
@@ -1013,7 +1018,7 @@
 
                 <Border CornerRadius="6"
                         Background="#17271E"
-                        BorderBrush="#3B604A"
+                        BorderBrush="{Binding DisplayBrush}"
                         BorderThickness="1"
                         Padding="6,1"
                         Margin="6,0,0,0"
@@ -1031,7 +1036,7 @@
                   <TextBlock Text="{Binding DisplayBadgeText}"
                              FontSize="11"
                              FontWeight="SemiBold"
-                             Foreground="{StaticResource AccentBrush}"
+                             Foreground="{Binding DisplayBrush}"
                              ToolTip="このパネルが表示されているディスプレイ" />
                 </Border>
               </StackPanel>
@@ -1088,16 +1093,6 @@
             </Grid>
           </Grid>
         </Border>
-        <Border.Style>
-          <Style TargetType="Border">
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Style.Triggers>
-              <DataTrigger Binding="{Binding IsFocused}" Value="True">
-                <Setter Property="BorderBrush" Value="#45D483" />
-              </DataTrigger>
-            </Style.Triggers>
-          </Style>
-        </Border.Style>
       </Border>
     </DataTemplate>
 

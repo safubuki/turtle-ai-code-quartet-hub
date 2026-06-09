@@ -60,3 +60,14 @@
 - フォーカス（1 面）は実効ディスプレイで最大化する（`FocusMaximizedOnMonitor` / `MaximizeOnMonitor`）。`EnsureWindowOnMonitor` は対象が既にその面なら何もしないため、未移動スロットは従来どおりベース面で最大化する。単独移動したパネルをフォーカス・フォーカス解除しても、他ディスプレイのパネルは触らない。
 - モニタ構成が変わったとき（単独移動先のディスプレイを抜く等）は `NormalizeMonitorOverrides` が override を健全化する。正規化後にベースと一致するものは解除、範囲外は丸める。1 枚運用ではすべてベースへ収束し単独移動は自然解消する。
 - カードの `DisplayBadgeText`（例 "D2"）は、複数モニタかついずれかのスロットが単独移動中のときだけ表示する。全パネルが同一面に揃っているときは雑音を出さない。`RefreshAuxiliaryUi` から `UpdateDisplayBadges` を呼んで常時最新化する。
+
+## 9. 複数ディスプレイの同時フォーカス（2026-06-09 追加）
+- フォーカス（1 面・最大化）は「全体で 1 つ」ではなく「各ディスプレイで 1 つ」。3 画面なら最大 3 フォーカスを許容する。`WindowSlot.IsFocused` は複数同時 true を取り得る（ただし同一実効ディスプレイには 1 つ）。
+- 土台は `WindowArranger.BuildPlacements` が `IsFocused` のスロットを必ずスキップすること。これで全 Arrange は各ディスプレイの最大化ウィンドウを保ったまま非フォーカスだけ象限へ並べる。フォーカス操作は基本「フラグを更新 → Arrange → `ReassertAllFocusedSlots`（各面で最大化・前面化）」で表現する。
+- フォーカスの集合操作はディスプレイ単位のヘルパで行う: `GetSlotMonitorIndex` / `GetFocusedSlotOnMonitor` / `SetFocusedSlotForDisplay`（同面の旧フォーカスだけ解除）/ `ClearFocusedSlotForDisplay` / `SendOtherSlotsToBackOnSameDisplay`。z-order は「同じ実効ディスプレイの他スロットだけ背面へ」。別ディスプレイのフォーカスや前後は触らない。
+- リアサート（`ReassertFocusedSlotIfNeeded`）と手動最小化整合（`ReconcileExternallyMinimizedFocusedSlot`）、非表示復帰（`_hiddenFocusedSlots` リスト）、`CaptureFocusedLayout`、`ApplyLayerPreservingFocusMode`、`ArrangeSlotsAfterPanelStateChange` はすべて全フォーカスをループ処理する。1 つの面を手動最小化したらその面のフォーカスだけ解除し、他面は維持する。
+- スロットクリックのトグルは「そのディスプレイだけ」を 1 面/4 面で切り替える。他ディスプレイのフォーカスは保持。
+- 全ディスプレイ移動を押したら全フォーカスを解除して全員 4 面に戻す（`ClearFocusedSlot` で全解除 → 4 面 Arrange）。リベース（override==新ベースの解除）も従来どおり行う。
+- 単独ディスプレイ移動とフォーカスの干渉は「移動先優先」: フォーカス中パネルを、既にフォーカスを持つディスプレイへ移すと、移動先のフォーカスを優先し、移動したパネルはフォーカス解除（移動先で非フォーカス＝最大化の背面）になる。移動元のフォーカスはそのパネルが去るので自然に解ける。移動先にフォーカスが無ければフォーカスを引き継いで移動先で最大化する。
+- ディスプレイ色: ベース（作業ベース）は常に緑（`AccentBrush`）、非ベースは番号の小さい順に 青 `DisplayAccent2Brush` → 紫 `DisplayAccent3Brush` → 金 `DisplayAccent4Brush`（`GetDisplayBrushForMonitor`）。全ディスプレイ移動でベースが動いても「緑＝ベース」を維持する（番号固定ではない）。
+- 色は `WindowSlot.DisplayBrush`（実効ディスプレイの色、常時更新）に集約し、バッジ文字色・枠線色、フォーカス枠 `FocusFrameBrush`（フォーカス中だけ DisplayBrush、それ以外は透明）に使う。`FocusFrameBrush` はカードの外枠 `SlotCardFocusFrame` の `BorderBrush` に直接バインドする（`Setter.Value` はバインド不可のためトリガではなく直接バインド）。縮小/極小ビューのフォーカス枠はバッジ非対応のため緑のまま。

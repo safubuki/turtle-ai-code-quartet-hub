@@ -68,7 +68,8 @@ public partial class MainWindow : Window
     private double _standardWindowMinHeight;
     private WindowSlot? _pendingSlotInfoClear;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
-    private WindowSlot? _hiddenFocusedSlot;
+    // 非表示（一括最小化）に入る直前のフォーカス（ディスプレイごとに 1 つ）を覚え、表示時に復帰する。
+    private readonly List<WindowSlot> _hiddenFocusedSlots = [];
     private Point _dragStartPoint;
     private bool _isCardDragDropInProgress;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
@@ -171,7 +172,7 @@ public partial class MainWindow : Window
             if (_areWindowsHidden)
             {
                 _areWindowsHidden = false;
-                _hiddenFocusedSlot = null;
+                _hiddenFocusedSlots.Clear();
                 UpdateVisibilityButtonVisual();
                 foreach (var slot in _statusStore.Slots)
                 {
@@ -609,7 +610,7 @@ public partial class MainWindow : Window
         _areWindowsHidden = _statusStore.Slots.Any(slot => slot.WindowHandle != IntPtr.Zero && slot.IsHidden);
         if (!_areWindowsHidden)
         {
-            _hiddenFocusedSlot = null;
+            _hiddenFocusedSlots.Clear();
         }
 
         UpdateVisibilityButtonVisual();
@@ -972,15 +973,25 @@ public partial class MainWindow : Window
         // 背面に残る不整合表示（1 面が背面・4 面が前面）になる。
         CancelFocusSwitchArrange();
 
-        var previouslyFocusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
+        // フォーカスはディスプレイごとに 1 つ。対象スロットの実効ディスプレイに絞って操作する。
+        var monitor = GetSlotMonitorIndex(slot);
+        var previouslyFocusedOnDisplay = GetFocusedSlotOnMonitor(monitor);
 
         if (slot.IsFocused)
         {
+            // このディスプレイのフォーカスだけ解除し、その面を 4 面へ戻す。他ディスプレイは維持。
             if (!_areWindowsHidden)
             {
                 CapturePreferredLayout(slot);
+                ClearFocusedSlotForDisplay(monitor);
                 var arranged = ArrangeSlotsOnActiveMonitor(false);
-                _statusStore.ClearFocusedSlot();
+                // 他ディスプレイのフォーカスは Arrange でタイル対象外だが、レイヤー再適用で前後が
+                // 乱れ得るので前面に立て直す。
+                if (FocusedSlots().Any())
+                {
+                    ReassertAllFocusedSlots();
+                }
+
                 SchedulePanelToFront();
                 _statusStore.Message = arranged == 0
                     ? "4分割表示に戻せる管理中ウィンドウがありません。"
@@ -988,7 +999,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                _statusStore.ClearFocusedSlot();
+                ClearFocusedSlotForDisplay(monitor);
                 _statusStore.Message = "フォーカスを解除しました。";
             }
 
@@ -1006,30 +1017,30 @@ public partial class MainWindow : Window
             RestoreHiddenWindowState();
         }
 
-        if (previouslyFocusedSlot is not null)
+        if (previouslyFocusedOnDisplay is not null)
         {
-            CapturePreferredLayout(previouslyFocusedSlot);
+            CapturePreferredLayout(previouslyFocusedOnDisplay);
         }
 
         EnsurePreferredLayout(slot);
         VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
         // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
-        if (_windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, slot.MonitorOverride ?? GetActiveMonitorIndex()))
+        if (_windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor))
         {
             // 新フォーカスを最大化する間、前フォーカスは最大化状態のまま「後ろで」覆っているので
             // 白いフラッシュは出ない。整列(他スロットの ShowWindow(SW_RESTORE) アニメ)を
             // 同時にやると panel もアニメ衝突に巻き込まれて沈むため、新フォーカスのアニメが
             // 落ち着いてから整列を遅延実行する。アニメは 1 つだけになり panel の沈下も最小化される。
             _windowArranger.BringToFrontOnce(slot.WindowHandle);
-            SendOtherSlotsToBack(slot);
-            _statusStore.SetFocusedSlot(slot);
+            SendOtherSlotsToBackOnSameDisplay(slot);
+            SetFocusedSlotForDisplay(slot);
             BringPanelToFrontImmediate();
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             RefreshAuxiliaryUi();
 
-            if (previouslyFocusedSlot is not null && !ReferenceEquals(previouslyFocusedSlot, slot))
+            if (previouslyFocusedOnDisplay is not null && !ReferenceEquals(previouslyFocusedOnDisplay, slot))
             {
                 // C の最大化アニメ完了後、覆われた状態で B を quadrant に静かに戻す。
                 // 遅延中に別スロットへフォーカスが切り替わったら、この整列は古い要求なので破棄する。
@@ -1126,10 +1137,15 @@ public partial class MainWindow : Window
     {
         SetManagedWindowLayerState(layerMode);
 
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
-        if (focusedSlot is not null)
+        var focusedSlots = FocusedSlots().ToList();
+        if (focusedSlots.Count > 0)
         {
-            ApplyLayerPreservingFocusedSlotOrder(focusedSlot, layerMode);
+            // 各ディスプレイのフォーカスを、そのディスプレイ内で前後関係を保ったままレイヤー変更する。
+            foreach (var focusedSlot in focusedSlots)
+            {
+                ApplyLayerPreservingFocusedSlotOrder(focusedSlot, layerMode);
+            }
+
             BringPanelToFrontImmediate();
             return;
         }
@@ -1147,13 +1163,13 @@ public partial class MainWindow : Window
         switch (layerMode)
         {
             case WindowSlot.SlotWindowLayerMode.Topmost:
-                SendOtherSlotsToBack(focusedSlot);
+                SendOtherSlotsToBackOnSameDisplay(focusedSlot);
                 _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
                 break;
 
             case WindowSlot.SlotWindowLayerMode.Backmost:
                 _windowArranger.SetBackmost(focusedSlot.WindowHandle);
-                SendOtherSlotsToBack(focusedSlot);
+                SendOtherSlotsToBackOnSameDisplay(focusedSlot);
                 break;
         }
     }
@@ -1184,7 +1200,8 @@ public partial class MainWindow : Window
             // フォーカスモード中の場合、先にフォーカスを解除してから最小化する。
             // ClearFocusedSlot を最小化の後に呼ぶと、最小化中にパネルがアクティブになり
             // ReassertFocusedSlotIfNeeded が走って FocusMaximized でウィンドウが復元され、無限ループになる。
-            _hiddenFocusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
+            _hiddenFocusedSlots.Clear();
+            _hiddenFocusedSlots.AddRange(_statusStore.Slots.Where(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero));
             CaptureFocusedLayout();
             _statusStore.ClearFocusedSlot();
 
@@ -1206,7 +1223,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                _hiddenFocusedSlot = null;
+                _hiddenFocusedSlots.Clear();
                 _statusStore.Message = "非表示にできる管理中ウィンドウがありません。";
             }
         }
@@ -1293,37 +1310,42 @@ public partial class MainWindow : Window
             return;
         }
 
-        var effectiveMonitor = slot.MonitorOverride ?? GetActiveMonitorIndex();
+        var destMonitor = GetSlotMonitorIndex(slot);
 
-        // このスロット自身がフォーカス（1 面）中なら、移動先で最大化し直す。他ディスプレイは触らない。
         if (slot.IsFocused)
         {
-            _windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, effectiveMonitor);
-            _windowArranger.BringToFrontOnce(slot.WindowHandle);
-            SendOtherSlotsToBack(slot);
-            BringPanelToFrontImmediate();
-            SchedulePanelToFront();
-            _statusStore.Message = $"フォーカス中のスロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}へ移動しました。";
-            RefreshAuxiliaryUi();
-            return;
+            // 移動するパネルは移動元でフォーカス（1 面）中。移動元の 1 面はこのパネルが去るので解ける。
+            var destExistingFocus = GetFocusedSlotOnMonitor(destMonitor, except: slot);
+            if (destExistingFocus is not null)
+            {
+                // 移動先が既にフォーカスを持つ → 移動先優先。移動したパネルはフォーカス解除し、
+                // 移動先では非フォーカス（最大化中フォーカスの背面）になる。移動先のフォーカスは維持。
+                slot.IsFocused = false;
+                _statusStore.Message = $"スロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}へ移動しました（移動先のフォーカスを優先）。";
+            }
+            else
+            {
+                // 移動先にフォーカスが無い → フォーカスを引き継いで移動先で最大化する。
+                SetFocusedSlotForDisplay(slot);
+                _statusStore.Message = $"フォーカス中のスロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}へ移動しました。";
+            }
         }
-
-        // 別スロットがフォーカス中なら、その 1 面表示を崩さず、移動スロットだけ象限へ静かに置く。
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(s => s.IsFocused && s.WindowHandle != IntPtr.Zero);
-        if (focusedSlot is not null)
+        else
         {
-            ArrangeSlotsExceptOnActiveMonitor(focusedSlot, false);
-            RefreshAuxiliaryUi();
             _statusStore.Message = $"スロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}に移動しました。";
-            return;
         }
 
-        // 4 面表示中: DPI/解像度の異なる面へ移すと WM_DPICHANGED で上書きされるため、
-        // 全移動と同じ遅延付き再配置で移動先の作業領域に合わせて補正する。
-        // 他スロットは実効ディスプレイが変わらないので見た目は動かない。
-        await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+        // 現在のフォーカス状態に合わせて全体を整える:
+        //   非フォーカスは各実効ディスプレイの象限へタイル（Arrange は IsFocused をスキップ。
+        //   フォーカスが去った移動元が 4 面へ戻るのもここで反映される）。
+        //   フォーカス中は各実効ディスプレイで最大化・前面化する。
+        //   DPI/解像度差は settling 付き再配置で吸収する（フォーカスがある面は最大化が吸収）。
+        await ArrangeSlotsOnActiveMonitorWithSettlingAsync(false);
+        ReassertAllFocusedSlots();
+        BringPanelToFrontImmediate();
+        SchedulePanelToFront();
         UpdateDisplayBadges();
-        _statusStore.Message = $"スロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}に移動しました。";
+        RefreshAuxiliaryUi();
     }
 
     private void CloseSlotButton_Click(object sender, RoutedEventArgs e)
@@ -1456,7 +1478,7 @@ public partial class MainWindow : Window
         _areWindowsHidden = _statusStore.Slots.Any(item => item.WindowHandle != IntPtr.Zero && item.IsHidden);
         if (!_areWindowsHidden)
         {
-            _hiddenFocusedSlot = null;
+            _hiddenFocusedSlots.Clear();
             ArrangeSlotsAfterPanelStateChange();
         }
 
@@ -1520,7 +1542,7 @@ public partial class MainWindow : Window
             if (_areWindowsHidden)
             {
                 _areWindowsHidden = false;
-                _hiddenFocusedSlot = null;
+                _hiddenFocusedSlots.Clear();
                 UpdateVisibilityButtonVisual();
                 foreach (var s in _statusStore.Slots)
                 {
@@ -1673,7 +1695,7 @@ public partial class MainWindow : Window
         _areWindowsHidden = _statusStore.Slots.Any(item => item.WindowHandle != IntPtr.Zero && item.IsHidden);
         if (!_areWindowsHidden)
         {
-            _hiddenFocusedSlot = null;
+            _hiddenFocusedSlots.Clear();
         }
 
         return true;
@@ -2024,16 +2046,16 @@ public partial class MainWindow : Window
 
     private void ArrangeSlotsAfterPanelStateChange()
     {
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
-        if (focusedSlot is null)
+        if (!FocusedSlots().Any())
         {
             ArrangeSlotsOnActiveMonitor();
             return;
         }
 
-        _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
-        SendOtherSlotsToBack(focusedSlot);
-        ArrangeSlotsExceptOnActiveMonitor(focusedSlot, false);
+        // 非フォーカスを各ディスプレイの象限へ並べ（Arrange は IsFocused をスキップ）、
+        // 各ディスプレイのフォーカスを最大化・前面に立て直す。
+        ArrangeSlotsOnActiveMonitor(false);
+        ReassertAllFocusedSlots();
         SchedulePanelToFront();
         RefreshAuxiliaryUi();
     }
@@ -2680,8 +2702,8 @@ public partial class MainWindow : Window
 
     private void CaptureFocusedLayout()
     {
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(item => item.IsFocused);
-        if (focusedSlot is not null)
+        // 複数ディスプレイで同時にフォーカスし得るため、すべてのフォーカス中スロットを対象にする。
+        foreach (var focusedSlot in _statusStore.Slots.Where(item => item.IsFocused))
         {
             CapturePreferredLayout(focusedSlot);
         }
@@ -2804,48 +2826,44 @@ public partial class MainWindow : Window
             return;
         }
 
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
-        if (focusedSlot is null)
+        var focusedSlots = FocusedSlots().ToList();
+        if (focusedSlots.Count == 0)
         {
             return;
         }
 
         // ユーザーがフォーカス中ウィンドウをアプリ外で直接最小化していたら、再最大化で抵抗せず
-        // フォーカスだけ解除し、最小化のまま残す。最小化に逆らうと勝手に 1 面へ戻り不整合表示になる。
-        if (_windowArranger.IsMinimized(focusedSlot.WindowHandle))
+        // そのディスプレイのフォーカスだけ解除し、最小化のまま残す。最小化に逆らうと勝手に 1 面へ
+        // 戻り不整合表示になる。複数フォーカスのうち最小化された面だけを対象にする。
+        if (focusedSlots.Any(slot => _windowArranger.IsMinimized(slot.WindowHandle)))
         {
             ReconcileExternallyMinimizedFocusedSlot();
-            return;
+            focusedSlots = FocusedSlots().Where(slot => !_windowArranger.IsMinimized(slot.WindowHandle)).ToList();
+            if (focusedSlots.Count == 0)
+            {
+                return;
+            }
         }
 
         _isReassertingFocusedSlot = true;
         try
         {
-            // 実効ディスプレイで再最大化する。EnsureWindowOnMonitor は面が同じなら何もしないため、
-            // 通常運用では従来と同じ挙動。単独移動中だけ移動先で最大化が保たれる。
-            if (_windowArranger.FocusMaximizedOnMonitor(focusedSlot.WindowHandle, focusedSlot.MonitorOverride ?? GetActiveMonitorIndex()))
+            // 各ディスプレイのフォーカスを、それぞれの実効ディスプレイで再最大化・前面化する。
+            // EnsureWindowOnMonitor は面が同じなら何もしないため、通常運用では従来と同じ挙動。
+            foreach (var focusedSlot in focusedSlots)
             {
-                SendOtherSlotsToBack(focusedSlot);
-                _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
-                SchedulePanelToFront();
+                if (_windowArranger.FocusMaximizedOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot)))
+                {
+                    SendOtherSlotsToBackOnSameDisplay(focusedSlot);
+                    _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
+                }
             }
+
+            SchedulePanelToFront();
         }
         finally
         {
             _isReassertingFocusedSlot = false;
-        }
-    }
-
-    private void SendOtherSlotsToBack(WindowSlot focusedSlot)
-    {
-        foreach (var slot in _statusStore.Slots)
-        {
-            if (ReferenceEquals(slot, focusedSlot) || slot.WindowHandle == IntPtr.Zero)
-            {
-                continue;
-            }
-
-            _windowArranger.SetBackmost(slot.WindowHandle);
         }
     }
 
@@ -2867,21 +2885,29 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var focusedSlot = _statusStore.Slots.FirstOrDefault(slot =>
-            slot.IsFocused
-            && slot.WindowHandle != IntPtr.Zero
-            && _windowArranger.IsMinimized(slot.WindowHandle));
-        if (focusedSlot is null)
+        var minimizedFocusedSlots = _statusStore.Slots
+            .Where(slot => slot.IsFocused
+                && slot.WindowHandle != IntPtr.Zero
+                && _windowArranger.IsMinimized(slot.WindowHandle))
+            .ToList();
+        if (minimizedFocusedSlots.Count == 0)
         {
             return false;
         }
 
-        // フォーカスだけ解除する。最小化中ウィンドウの復元も、他スロットの再配置も行わない。
-        // これで再アサートが最小化に逆らって 1 面へ戻すことも、別スロットが前面へ重なることもなくなる。
+        // 手動最小化された面のフォーカスだけ解除する。最小化中ウィンドウの復元も、他スロットの
+        // 再配置も行わない。他ディスプレイのフォーカスはそのまま維持する。
         CancelFocusSwitchArrange();
         CancelScheduledFocusedSlotReassert();
-        _statusStore.ClearFocusedSlot();
-        _statusStore.Message = $"スロット{focusedSlot.Name}の手動最小化を検出したためフォーカスを解除しました。";
+        foreach (var slot in minimizedFocusedSlots)
+        {
+            slot.IsFocused = false;
+        }
+
+        var name = minimizedFocusedSlots[0].Name;
+        _statusStore.Message = minimizedFocusedSlots.Count == 1
+            ? $"スロット{name}の手動最小化を検出したためフォーカスを解除しました。"
+            : $"{minimizedFocusedSlots.Count}個の手動最小化を検出したためフォーカスを解除しました。";
         RefreshAuxiliaryUi();
         return true;
     }
@@ -2910,7 +2936,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _hiddenFocusedSlot = null;
+        _hiddenFocusedSlots.Clear();
         RestoreHiddenWindows();
         RefreshAuxiliaryUi();
     }
@@ -2929,25 +2955,34 @@ public partial class MainWindow : Window
     private bool TryRestoreHiddenFocusedSlot(out WindowSlot restoredFocusedSlot)
     {
         restoredFocusedSlot = null!;
-        var focusedSlot = _hiddenFocusedSlot;
-        _hiddenFocusedSlot = null;
+        var toRestore = _hiddenFocusedSlots.Where(slot => slot.WindowHandle != IntPtr.Zero).ToList();
+        _hiddenFocusedSlots.Clear();
 
-        if (focusedSlot is null || focusedSlot.WindowHandle == IntPtr.Zero)
+        if (toRestore.Count == 0)
         {
             return false;
         }
 
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
-        _windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, focusedSlot.MonitorOverride ?? GetActiveMonitorIndex());
-        SendOtherSlotsToBack(focusedSlot);
-        if (!_windowArranger.BringToFrontOnce(focusedSlot.WindowHandle))
+        var anyRestored = false;
+        foreach (var focusedSlot in toRestore)
+        {
+            _windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot));
+            SetFocusedSlotForDisplay(focusedSlot);
+            SendOtherSlotsToBackOnSameDisplay(focusedSlot);
+            if (_windowArranger.BringToFrontOnce(focusedSlot.WindowHandle))
+            {
+                anyRestored = true;
+                restoredFocusedSlot = focusedSlot;
+            }
+        }
+
+        if (!anyRestored)
         {
             return false;
         }
 
-        _statusStore.SetFocusedSlot(focusedSlot);
         SchedulePanelToFront();
-        restoredFocusedSlot = focusedSlot;
         return true;
     }
 
@@ -3250,8 +3285,10 @@ public partial class MainWindow : Window
         }
     }
 
-    // 各カードに現在の実効ディスプレイ（例: "D2"）を表示する。複数モニタかついずれかのスロットが
-    // 単独移動しているときだけ出し、全パネルが同一面に揃っているときは雑音を出さない。
+    // 各カードに現在の実効ディスプレイ（例: "D2"）と色を反映する。
+    // バッジ文字は複数モニタかついずれかのスロットが単独移動しているときだけ表示し、全パネルが
+    // 同一面に揃っているときは雑音を出さない。色（DisplayBrush）は常時、実効ディスプレイに合わせて
+    // 更新する。フォーカス枠の色はこの DisplayBrush を使うため、バッジ非表示でも正しい色が要る。
     private void UpdateDisplayBadges()
     {
         NormalizeMonitorOverrides();
@@ -3263,14 +3300,123 @@ public partial class MainWindow : Window
 
         foreach (var slot in _statusStore.Slots)
         {
-            if (!showBadges || slot.WindowHandle == IntPtr.Zero)
+            var effectiveMonitor = slot.MonitorOverride ?? baseIndex;
+            slot.DisplayBrush = GetDisplayBrushForMonitor(effectiveMonitor);
+
+            slot.DisplayBadgeText = showBadges && slot.WindowHandle != IntPtr.Zero
+                ? $"D{_windowArranger.ResolveMonitorNumber(effectiveMonitor)}"
+                : string.Empty;
+        }
+    }
+
+    // 実効ディスプレイの色を返す。ベースディスプレイは常に緑（作業ベースの目印）。
+    // 非ベースは番号の小さい順に 青→紫→金… を割り当てる（ベースが移動しても緑＝ベースを維持）。
+    private Brush GetDisplayBrushForMonitor(int monitorIndex)
+    {
+        var monitorCount = _windowArranger.GetMonitorCount();
+        var normalized = NormalizeMonitorIndex(monitorIndex, monitorCount);
+        var baseIndex = NormalizeMonitorIndex(GetActiveMonitorIndex(), monitorCount);
+
+        if (normalized == baseIndex)
+        {
+            return (Brush)FindResource("AccentBrush");
+        }
+
+        // 非ベースの並び順（ベースを除いた昇順での位置）で色を選ぶ。
+        var rank = normalized < baseIndex ? normalized : normalized - 1;
+        var keys = NonBaseDisplayBrushKeys;
+        return (Brush)FindResource(keys[rank % keys.Length]);
+    }
+
+    private static readonly string[] NonBaseDisplayBrushKeys =
+    [
+        "DisplayAccent2Brush",
+        "DisplayAccent3Brush",
+        "DisplayAccent4Brush"
+    ];
+
+    // スロットの実効ディスプレイ（正規化済み）。override があればそれ、無ければベース。
+    private int GetSlotMonitorIndex(WindowSlot slot)
+    {
+        var monitorCount = _windowArranger.GetMonitorCount();
+        return NormalizeMonitorIndex(slot.MonitorOverride ?? GetActiveMonitorIndex(), monitorCount);
+    }
+
+    private IEnumerable<WindowSlot> FocusedSlots()
+    {
+        return _statusStore.Slots.Where(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
+    }
+
+    // 指定ディスプレイで現在フォーカス中のスロット（無ければ null）。except を渡すとそれを除外する。
+    private WindowSlot? GetFocusedSlotOnMonitor(int monitorIndex, WindowSlot? except = null)
+    {
+        var target = NormalizeMonitorIndex(monitorIndex, _windowArranger.GetMonitorCount());
+        return _statusStore.Slots.FirstOrDefault(slot =>
+            slot.IsFocused
+            && slot.WindowHandle != IntPtr.Zero
+            && !ReferenceEquals(slot, except)
+            && GetSlotMonitorIndex(slot) == target);
+    }
+
+    // 指定スロットを、その実効ディスプレイのフォーカスにする。同じディスプレイの旧フォーカスだけ
+    // 解除し、他ディスプレイのフォーカスは保持する（フォーカスはディスプレイごとに 1 つ）。
+    private void SetFocusedSlotForDisplay(WindowSlot slot)
+    {
+        var monitor = GetSlotMonitorIndex(slot);
+        foreach (var other in _statusStore.Slots)
+        {
+            if (!ReferenceEquals(other, slot) && other.IsFocused && GetSlotMonitorIndex(other) == monitor)
             {
-                slot.DisplayBadgeText = string.Empty;
+                other.IsFocused = false;
+            }
+        }
+
+        slot.IsFocused = true;
+    }
+
+    // 指定ディスプレイのフォーカスだけを解除する。他ディスプレイのフォーカスは触らない。
+    private void ClearFocusedSlotForDisplay(int monitorIndex)
+    {
+        var target = NormalizeMonitorIndex(monitorIndex, _windowArranger.GetMonitorCount());
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (slot.IsFocused && GetSlotMonitorIndex(slot) == target)
+            {
+                slot.IsFocused = false;
+            }
+        }
+    }
+
+    // フォーカス中スロットと同じ実効ディスプレイにある他スロットだけを背面へ送る。
+    // 別ディスプレイのフォーカスや配置には干渉しない。
+    private void SendOtherSlotsToBackOnSameDisplay(WindowSlot focusedSlot)
+    {
+        var monitor = GetSlotMonitorIndex(focusedSlot);
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (ReferenceEquals(slot, focusedSlot) || slot.WindowHandle == IntPtr.Zero)
+            {
                 continue;
             }
 
-            var effectiveMonitor = slot.MonitorOverride ?? baseIndex;
-            slot.DisplayBadgeText = $"D{_windowArranger.ResolveMonitorNumber(effectiveMonitor)}";
+            if (GetSlotMonitorIndex(slot) != monitor)
+            {
+                continue;
+            }
+
+            _windowArranger.SetBackmost(slot.WindowHandle);
+        }
+    }
+
+    // 全ディスプレイのフォーカス中スロットを、各実効ディスプレイで最大化・前面に立て直す。
+    // Arrange（非フォーカスのタイル配置）の後に呼び、各面の 1 面表示を保つ。
+    private void ReassertAllFocusedSlots()
+    {
+        foreach (var focusedSlot in FocusedSlots().ToList())
+        {
+            _windowArranger.FocusMaximizedOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot));
+            SendOtherSlotsToBackOnSameDisplay(focusedSlot);
+            _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
         }
     }
 
@@ -3329,7 +3475,7 @@ public partial class MainWindow : Window
             }
 
             _areWindowsHidden = false;
-            _hiddenFocusedSlot = null;
+            _hiddenFocusedSlots.Clear();
             ArrangeSlotsOnActiveMonitor(false);
         }
 

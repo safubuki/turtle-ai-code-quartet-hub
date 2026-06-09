@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Windows.Media;
 
 namespace TurtleAIQuartetHub.Panel.Models;
 
@@ -37,7 +38,11 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private bool _isHidden;
     private int? _monitorOverride;
     private string _displayBadgeText = string.Empty;
+    private Brush _displayBrush = DefaultDisplayBrush;
     private VscodeLayoutPreference _preferredLayout = VscodeLayoutPreference.Empty;
+
+    // 既定（ベースディスプレイ）の色。テーマのアクセント緑に合わせる。
+    private static readonly Brush DefaultDisplayBrush = CreateFrozenBrush("#45D483");
 
     public WindowSlot(SlotConfig config)
     {
@@ -302,7 +307,10 @@ public sealed class WindowSlot : INotifyPropertyChanged
         get => _isFocused;
         set
         {
-            SetField(ref _isFocused, value);
+            if (SetField(ref _isFocused, value))
+            {
+                OnPropertyChanged(nameof(FocusFrameBrush));
+            }
         }
     }
 
@@ -377,6 +385,28 @@ public sealed class WindowSlot : INotifyPropertyChanged
     }
 
     public bool HasDisplayBadge => !string.IsNullOrEmpty(_displayBadgeText);
+
+    /// <summary>
+    /// このスロットの実効ディスプレイを表す色。ベースディスプレイは緑、単独移動先は青/紫/金…と
+    /// MainWindow が割り当てる。バッジ文字色とフォーカス枠の色に使う。
+    /// </summary>
+    public Brush DisplayBrush
+    {
+        get => _displayBrush;
+        set
+        {
+            var normalized = value ?? DefaultDisplayBrush;
+            if (!ReferenceEquals(_displayBrush, normalized))
+            {
+                _displayBrush = normalized;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(FocusFrameBrush));
+            }
+        }
+    }
+
+    /// <summary>フォーカス枠の色。フォーカス中だけ実効ディスプレイ色、それ以外は透明。</summary>
+    public Brush FocusFrameBrush => IsFocused ? DisplayBrush : Brushes.Transparent;
 
     public string WindowStatusText
     {
@@ -625,6 +655,13 @@ public sealed class WindowSlot : INotifyPropertyChanged
             && char.IsLetter(value[0])
             && value[1] == ':'
             && (value[2] == '\\' || value[2] == '/');
+    }
+
+    private static Brush CreateFrozenBrush(string hex)
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        brush.Freeze();
+        return brush;
     }
 
     private static string NormalizeRuntimeSlotName(string? value, string fallback)

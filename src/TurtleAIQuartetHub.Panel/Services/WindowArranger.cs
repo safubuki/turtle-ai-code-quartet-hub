@@ -150,6 +150,14 @@ public sealed class WindowArranger
                 continue;
             }
 
+            // フォーカス中（1 面・最大化）のスロットはタイル配置の対象外。これにより全 Arrange は
+            // 各ディスプレイの最大化ウィンドウを保ったまま、非フォーカスのみを象限へ並べる。
+            // 複数ディスプレイで同時にフォーカス（各ディスプレイ 1 つ）を維持する土台になる。
+            if (slot.IsFocused)
+            {
+                continue;
+            }
+
             if (slot.WindowHandle == IntPtr.Zero || !IsWindow(slot.WindowHandle))
             {
                 continue;
