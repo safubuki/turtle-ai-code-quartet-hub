@@ -1,6 +1,4 @@
 using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Media;
 using System.Windows.Threading;
 using TurtleAIQuartetHub.Panel.Services;
 
@@ -12,9 +10,13 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // 描画はGPU既定に任せる（SoftwareOnly強制を撤去）。パネルUIの描画の滑らかさを優先し、
+        // 特定環境で描画乱れが出る場合のみ SoftwareOnly へ戻すこと。
+        // ランチャーは外部ウィンドウや P/Invoke を多用するため、一過性の例外で全体が落ちないようにする。
+        // UI スレッドの未処理例外はログして握りつぶし、アプリを継続させる。
         DispatcherUnhandledException += App_DispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += App_AppDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += App_UnobservedTaskException;
-        AppDomain.CurrentDomain.UnhandledException += App_DomainUnhandledException;
 
         _singleInstanceCoordinator = new SingleInstanceCoordinator();
         if (!_singleInstanceCoordinator.IsPrimary)
@@ -51,19 +53,20 @@ public partial class App : Application
 
     private static void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        // ログだけ残し、アプリは終了させない。ウィンドウ配置やフォーカス整列の一過性の失敗で
+        // ランチャー本体が勝手に落ちる事故を防ぐ。
         DiagnosticLog.Write(e.Exception);
-        // UI スレッドの単発例外（ウィンドウ消滅との競合など）でアプリ全体を道連れにしない。
         e.Handled = true;
     }
 
     private static void App_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
+        // バックグラウンドの遅延整列・再アサートなどで観測されなかったタスク例外を握りつぶす。
         DiagnosticLog.Write(e.Exception);
-        // fire-and-forget タスクの例外がファイナライザ経由でプロセスを落とすのを防ぐ。
         e.SetObserved();
     }
 
-    private static void App_DomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    private static void App_AppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         // ここに来たら継続不能だが、原因調査のため必ずログには残す。
         if (e.ExceptionObject is Exception exception)

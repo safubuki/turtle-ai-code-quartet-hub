@@ -1147,22 +1147,22 @@ public partial class MainWindow : Window
     {
         SetManagedWindowLayerState(layerMode);
 
-        var focusedSlots = FocusedSlots().ToList();
-        if (focusedSlots.Count > 0)
-        {
-            // 各ディスプレイのフォーカスを、そのディスプレイ内で前後関係を保ったままレイヤー変更する。
-            foreach (var focusedSlot in focusedSlots)
-            {
-                ApplyLayerPreservingFocusedSlotOrder(focusedSlot, layerMode);
-            }
-
-            BringPanelToFrontImmediate();
-            return;
-        }
-
+        // まず非フォーカスの全スロットへレイヤーを適用する。これでフォーカスの無いディスプレイの
+        // ウィンドウも確実に前面/背面化され、複数ディスプレイで最前面/最背面が機能する。
         foreach (var slot in _statusStore.Slots)
         {
+            if (slot.IsFocused)
+            {
+                continue;
+            }
+
             ApplyLayerToSlot(slot, layerMode, false);
+        }
+
+        // 次に、フォーカスを持つ各ディスプレイで、フォーカスと同面の前後関係を保ち直す。
+        foreach (var focusedSlot in FocusedSlots().ToList())
+        {
+            ApplyLayerPreservingFocusedSlotOrder(focusedSlot, layerMode);
         }
 
         BringPanelToFrontImmediate();
@@ -1371,10 +1371,13 @@ public partial class MainWindow : Window
             _statusStore.Message = $"スロット{slot.Name}を{_windowArranger.GetMonitorLabel(next)}に移動しました。";
         }
 
+        // まず移動先のフォーカスを先行して最大化する。await（settle 遅延）を挟む前に確定させることで、
+        // 「移動先で 4 面のまま少し残ってから 1 面へ遷移」する見た目のラグを抑える。
+        ReassertAllFocusedSlots();
+
         // 現在のフォーカス状態に合わせて全体を整える:
         //   非フォーカスは各実効ディスプレイの象限へタイル（Arrange は IsFocused をスキップ。
         //   フォーカスが去った移動元が 4 面へ戻るのもここで反映される）。
-        //   フォーカス中は各実効ディスプレイで最大化・前面化する。
         //   DPI/解像度差は settling 付き再配置で吸収する（フォーカスがある面は最大化が吸収）。
         if (FocusedSlots().Any())
         {
@@ -2934,10 +2937,11 @@ public partial class MainWindow : Window
         try
         {
             // 各ディスプレイのフォーカスを、それぞれの実効ディスプレイで再最大化・前面化する。
-            // EnsureWindowOnMonitor は面が同じなら何もしないため、通常運用では従来と同じ挙動。
+            // フォアグラウンドは奪わない（MaximizeOnMonitor）。複数フォーカスへ毎回 SetForegroundWindow
+            // すると争奪でちらつき・ハングするため、最大化と z-order だけ整え、前面化はパネルに任せる。
             foreach (var focusedSlot in focusedSlots)
             {
-                if (_windowArranger.FocusMaximizedOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot)))
+                if (_windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot)))
                 {
                     SendOtherSlotsToBackOnSameDisplay(focusedSlot);
                     _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
@@ -3404,13 +3408,20 @@ public partial class MainWindow : Window
 
         if (normalized == baseIndex)
         {
-            return (Brush)FindResource("AccentBrush");
+            return ResolveBrush("AccentBrush");
         }
 
         // 非ベースの並び順（ベースを除いた昇順での位置）で色を選ぶ。
         var rank = normalized < baseIndex ? normalized : normalized - 1;
         var keys = NonBaseDisplayBrushKeys;
-        return (Brush)FindResource(keys[rank % keys.Length]);
+        return ResolveBrush(keys[rank % keys.Length]);
+    }
+
+    // リソースが見つからなくても例外を投げない。毎ティックの再描画から呼ばれるため、
+    // ここで例外を出すとアプリ全体が落ちる。フォールバックは緑（ベース色）。
+    private Brush ResolveBrush(string key)
+    {
+        return TryFindResource(key) as Brush ?? Brushes.LimeGreen;
     }
 
     private static readonly string[] NonBaseDisplayBrushKeys =
@@ -3495,11 +3506,13 @@ public partial class MainWindow : Window
 
     // 全ディスプレイのフォーカス中スロットを、各実効ディスプレイで最大化・前面に立て直す。
     // Arrange（非フォーカスのタイル配置）の後に呼び、各面の 1 面表示を保つ。
+    // フォアグラウンド（SetForegroundWindow）は奪わない。複数ウィンドウへ繰り返し奪うと
+    // アクティベーション争奪でちらつき・ハングを招くため、最大化と z-order だけ整える。
     private void ReassertAllFocusedSlots()
     {
         foreach (var focusedSlot in FocusedSlots().ToList())
         {
-            _windowArranger.FocusMaximizedOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot));
+            _windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot));
             SendOtherSlotsToBackOnSameDisplay(focusedSlot);
             _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
         }
