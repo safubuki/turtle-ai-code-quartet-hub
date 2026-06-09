@@ -70,4 +70,9 @@
 - 全ディスプレイ移動を押したら全フォーカスを解除して全員 4 面に戻す（`ClearFocusedSlot` で全解除 → 4 面 Arrange）。リベース（override==新ベースの解除）も従来どおり行う。
 - 単独ディスプレイ移動とフォーカスの干渉は「移動先優先」: フォーカス中パネルを、既にフォーカスを持つディスプレイへ移すと、移動先のフォーカスを優先し、移動したパネルはフォーカス解除（移動先で非フォーカス＝最大化の背面）になる。移動元のフォーカスはそのパネルが去るので自然に解ける。移動先にフォーカスが無ければフォーカスを引き継いで移動先で最大化する。
 - ディスプレイ色: ベース（作業ベース）は常に緑（`AccentBrush`）、非ベースは番号の小さい順に 青 `DisplayAccent2Brush` → 紫 `DisplayAccent3Brush` → 金 `DisplayAccent4Brush`（`GetDisplayBrushForMonitor`）。全ディスプレイ移動でベースが動いても「緑＝ベース」を維持する（番号固定ではない）。
-- 色は `WindowSlot.DisplayBrush`（実効ディスプレイの色、常時更新）に集約し、バッジ文字色・枠線色、フォーカス枠 `FocusFrameBrush`（フォーカス中だけ DisplayBrush、それ以外は透明）に使う。`FocusFrameBrush` はカードの外枠 `SlotCardFocusFrame` の `BorderBrush` に直接バインドする（`Setter.Value` はバインド不可のためトリガではなく直接バインド）。縮小/極小ビューのフォーカス枠はバッジ非対応のため緑のまま。
+- 色は `WindowSlot.DisplayBrush`（実効ディスプレイの色、常時更新）に集約し、バッジ文字色・枠線色、フォーカス枠 `FocusFrameBrush`（フォーカス中だけ DisplayBrush、それ以外は透明）に使う。`FocusFrameBrush` は標準カード `SlotCardFocusFrame`、縮小 `CompactFocusFrame`、極小 `MicroFocusFrame` の `BorderBrush` に直接バインドする（`Setter.Value` はバインド不可のためトリガではなく直接バインド。トリガ側の固定色 `BorderBrush` 設定は撤去）。グロー(DropShadow)と LED ドットは Setter 内 Freezable で DataContext が効かないため緑のまま。
+- 色解決 `GetDisplayBrushForMonitor` は `TryFindResource`（見つからなければ緑フォールバック）で必ず例外を出さない。`UpdateDisplayBadges` は毎ティックの `RefreshAuxiliaryUi` から呼ばれるため、ここで例外を投げるとアプリ全体が落ちる。
+- リアサート（`ReassertFocusedSlotIfNeeded` / `ReassertAllFocusedSlots`）は `SetForegroundWindow` を呼ばない（`MaximizeOnMonitor` + `BringToFrontOnce` + 同面背面のみ）。複数ディスプレイのフォーカスへ毎回フォアグラウンドを奪うと、アクティベーション争奪でちらつき・ハングになる。前面化はパネル（`SchedulePanelToFront`）に任せる。初回フォーカス（`ToggleSlotFocus`）だけは従来どおり `FocusMaximizedOnMonitor` で一度だけ前面化する。
+- 単独移動は settle 付き再配置の await を挟む前に `ReassertAllFocusedSlots` で移動先の最大化を先行確定し、「4 面のまま少し残ってから 1 面へ遷移」する見た目のラグを抑える。
+- 最前面/最背面（`ApplyLayerPreservingFocusMode`）は、非フォーカスの全スロットへレイヤーを適用してから、フォーカスを持つ各ディスプレイで同面の前後関係を保ち直す。フォーカスの無いディスプレイのウィンドウも確実に前面/背面化される。
+- 致命傷対策: `App.OnStartup` で `DispatcherUnhandledException`（`e.Handled=true`）/ `TaskScheduler.UnobservedTaskException`（`SetObserved`）/ `AppDomain.UnhandledException` をログ付きで握りつぶす。外部ウィンドウや P/Invoke の一過性失敗でランチャー本体が勝手に終了する事故を防ぐ。
