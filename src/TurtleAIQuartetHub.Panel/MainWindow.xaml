@@ -988,7 +988,9 @@
                           Orientation="Horizontal"
                           HorizontalAlignment="Left"
                           VerticalAlignment="Center">
-                <Button Content="&#xE8B7;"
+                <!-- E838 (FolderOpen): E8B7 (Folder) は小サイズだと四角にしか見えないため、
+                     開いたフォルダのグリフでエクスプローラを開く操作だと分かるようにする。 -->
+                <Button Content="&#xE838;"
                         Tag="{Binding}"
                         Click="OpenSlotWorkspaceFolderButton_Click"
                         AutomationProperties.Name="ワークスペースフォルダを開く"

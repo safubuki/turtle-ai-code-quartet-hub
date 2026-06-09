@@ -716,7 +716,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void SlotCard_Drop(object sender, DragEventArgs e)
+    private async void SlotCard_Drop(object sender, DragEventArgs e)
     {
         if (sender is Border border)
         {
@@ -739,14 +739,24 @@ public partial class MainWindow : Window
         }
 
         _statusStore.SwapSlotContents(sourceSlot, targetSlot);
-        if (!_areWindowsHidden)
-        {
-            ArrangeSlotsAfterPanelStateChange();
-        }
-
+        UpdateDisplayBadges();
         _statusStore.Message = $"スロット{sourceSlot.Name}とスロット{targetSlot.Name}のカードを入れ替えました。";
         RefreshAuxiliaryUi();
         e.Handled = true;
+
+        if (_areWindowsHidden)
+        {
+            return;
+        }
+
+        try
+        {
+            await ArrangeSlotsAfterPanelStateChangeWithSettlingAsync();
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+        }
     }
 
     private void StoredPanelCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1259,13 +1269,39 @@ public partial class MainWindow : Window
         // フォーカスモード中の場合、先にフォーカスを解除してからArrangeする。
         // ClearFocusedSlot を後に呼ぶと、Arrange 中にパネルがアクティブ化して
         // ReassertFocusedSlotIfNeeded が走り、無限ループでハングする。
-        CaptureFocusedLayout();
-        _statusStore.ClearFocusedSlot();
+        // ただし単独移動中（override あり）のスロットはベース移動の影響を受けず
+        // ディスプレイが変わらないため、その面のフォーカス（1 面表示）は維持し、
+        // 配置後に立て直す。解除するのはベースに追従して移動するスロットだけ。
+        foreach (var focusedSlot in FocusedSlots().ToList())
+        {
+            if (focusedSlot.MonitorOverride.HasValue)
+            {
+                continue;
+            }
+
+            CapturePreferredLayout(focusedSlot);
+            focusedSlot.IsFocused = false;
+        }
+
         // ディスプレイ間で DPI や解像度が異なる場合、単発の配置では移動直後に
         // WM_DPICHANGED が届いて各ウィンドウのサイズが上書きされ 2x2 がくずれる。
         // 起動時と同じ遅延付き再配置を使い、移動先ディスプレイの作業領域に合わせて
         // NeedsArrange でズレを検出したときだけ静かに再補正する。
-        var arranged = await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+        int arranged;
+        if (FocusedSlots().Any())
+        {
+            // フォーカスが残る場合は settling 中も CanReapplyPostLaunchArrangement に
+            // ブロックされないフォーカス対応版で配置し、各面の 1 面表示を立て直す。
+            arranged = ArrangeSlotsOnActiveMonitor(false);
+            ReassertAllFocusedSlots();
+            SchedulePanelToFront();
+            await SettleArrangementPreservingFocusAsync();
+        }
+        else
+        {
+            arranged = await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+        }
+
         UpdateDisplayBadges();
         // 単独移動中のスロットはその面に留まるため「全部が移動した」とは限らない。
         _statusStore.Message = arranged > 0
@@ -1340,8 +1376,19 @@ public partial class MainWindow : Window
         //   フォーカスが去った移動元が 4 面へ戻るのもここで反映される）。
         //   フォーカス中は各実効ディスプレイで最大化・前面化する。
         //   DPI/解像度差は settling 付き再配置で吸収する（フォーカスがある面は最大化が吸収）。
-        await ArrangeSlotsOnActiveMonitorWithSettlingAsync(false);
-        ReassertAllFocusedSlots();
+        if (FocusedSlots().Any())
+        {
+            // フォーカスを保ったまま配置し、フォーカス対応の settling で DPI 差を補正する
+            // （ArrangeSlotsOnActiveMonitorWithSettlingAsync の settling はフォーカス中に走らない）。
+            ArrangeSlotsOnActiveMonitor(false);
+            ReassertAllFocusedSlots();
+            await SettleArrangementPreservingFocusAsync();
+        }
+        else
+        {
+            await ArrangeSlotsOnActiveMonitorWithSettlingAsync(false);
+        }
+
         BringPanelToFrontImmediate();
         SchedulePanelToFront();
         UpdateDisplayBadges();
@@ -1948,7 +1995,16 @@ public partial class MainWindow : Window
 
     private async void RefreshTimer_Tick(object? sender, EventArgs e)
     {
-        await RefreshSlotsAsync();
+        try
+        {
+            await RefreshSlotsAsync();
+        }
+        catch (Exception ex)
+        {
+            // async void のためここで捕捉しないと未処理例外でアプリごと落ちる。
+            // 周期更新の 1 回失敗は致命的ではないので記録して次周回に任せる。
+            DiagnosticLog.Write(ex);
+        }
     }
 
     private async Task RefreshSlotsAsync(bool allowDuringBusy = false)
@@ -2058,6 +2114,35 @@ public partial class MainWindow : Window
         ReassertAllFocusedSlots();
         SchedulePanelToFront();
         RefreshAuxiliaryUi();
+    }
+
+    // パネル入替など、フォーカス（各ディスプレイ 1 面）を保ったまま行う再配置の settling 版。
+    private async Task ArrangeSlotsAfterPanelStateChangeWithSettlingAsync()
+    {
+        ArrangeSlotsAfterPanelStateChange();
+        await SettleArrangementPreservingFocusAsync();
+    }
+
+    // ディスプレイ間で DPI/解像度が異なると、配置直後の WM_DPICHANGED でサイズが上書きされ
+    // 4 面セルがくずれるため、ズレを検出したときだけ静かに再補正する。NeedsArrange は
+    // フォーカス中スロットを対象外にするので、フォーカスがあっても安全に走る。
+    private async Task SettleArrangementPreservingFocusAsync()
+    {
+        foreach (var delay in ImmediateArrangeSettleDelays)
+        {
+            await Task.Delay(delay);
+            if (_areWindowsHidden || WindowState == WindowState.Minimized)
+            {
+                return;
+            }
+
+            if (!_windowArranger.NeedsArrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex()))
+            {
+                continue;
+            }
+
+            ArrangeSlotsOnActiveMonitorQuietly();
+        }
     }
 
     private async Task<int> ArrangeSlotsOnActiveMonitorWithSettlingAsync(bool bringPanelAfterArrange = true)
