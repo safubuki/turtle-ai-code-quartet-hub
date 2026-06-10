@@ -1038,52 +1038,46 @@ public partial class MainWindow : Window
         // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
         if (_windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor))
         {
-            // 新フォーカスを最大化する間、前フォーカスは最大化状態のまま「後ろで」覆っているので
-            // 白いフラッシュは出ない。整列(他スロットの ShowWindow(SW_RESTORE) アニメ)を
-            // 同時にやると panel もアニメ衝突に巻き込まれて沈むため、新フォーカスのアニメが
-            // 落ち着いてから整列を遅延実行する。アニメは 1 つだけになり panel の沈下も最小化される。
+            // 新フォーカスを最大化する間、他スロットのタイルと前フォーカスの最大化はそのまま残して
+            // 画面を覆わせておく。ここで他スロットを背面（HWND_BOTTOM）へ送ると、最大化アニメが
+            // 画面を覆い切るまでの間、タイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
+            // 背面送り・前フォーカスの復元・整列はすべてアニメ完了後に覆いの下で行う。
             _windowArranger.BringToFrontOnce(slot.WindowHandle);
-            SendOtherSlotsToBackOnSameDisplay(slot);
             SetFocusedSlotForDisplay(slot);
             BringPanelToFrontImmediate();
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             RefreshAuxiliaryUi();
 
-            if (previouslyFocusedOnDisplay is not null && !ReferenceEquals(previouslyFocusedOnDisplay, slot))
+            // 遅延中に別スロットへフォーカスが切り替わったら、この後片付けは古い要求なので破棄する。
+            var cancellation = new CancellationTokenSource();
+            _focusSwitchArrangeCancellation = cancellation;
+            try
             {
-                // C の最大化アニメ完了後、覆われた状態で B を quadrant に静かに戻す。
-                // 遅延中に別スロットへフォーカスが切り替わったら、この整列は古い要求なので破棄する。
-                var cancellation = new CancellationTokenSource();
-                _focusSwitchArrangeCancellation = cancellation;
-                try
-                {
-                    await Task.Delay(FocusSwitchArrangeDelay, cancellation.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                finally
-                {
-                    if (ReferenceEquals(_focusSwitchArrangeCancellation, cancellation))
-                    {
-                        _focusSwitchArrangeCancellation = null;
-                    }
-
-                    cancellation.Dispose();
-                }
-
-                // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
-                if (slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
-                {
-                    ArrangeSlotsExceptOnActiveMonitor(slot, false);
-                    BringPanelToFrontImmediate();
-                }
+                await Task.Delay(FocusSwitchArrangeDelay, cancellation.Token);
             }
-            else
+            catch (OperationCanceledException)
             {
+                return;
+            }
+            finally
+            {
+                if (ReferenceEquals(_focusSwitchArrangeCancellation, cancellation))
+                {
+                    _focusSwitchArrangeCancellation = null;
+                }
+
+                cancellation.Dispose();
+            }
+
+            // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
+            if (slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
+            {
+                // 最大化が画面を覆ってから、覆いの下で他スロットを背面へ送り、
+                // 前フォーカスを quadrant へ静かに（アニメ無しで）戻す。
+                SendOtherSlotsToBackOnSameDisplay(slot);
                 ArrangeSlotsExceptOnActiveMonitor(slot, false);
+                BringPanelToFrontImmediate();
             }
             return;
         }

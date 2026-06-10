@@ -66,35 +66,39 @@ public sealed class WindowArranger
             return 0;
         }
 
-        // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
-        // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
-        var targets = placements
-            .Select(CompensateForFrame)
-            .ToList();
-
         // 最大化/最小化中のウィンドウは、復元先（rcNormalPosition）を目的セルへ差し替えてから
         // SW_RESTORE する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズームアウトの
         // 演出を残したまま目的セルへ直接着地し、「旧位置へ戻ってから SetWindowPos でセルへ
         // ジャンプ」する二段移動（ちらつき）にならない。animateRestore=false のときは
         // フォーカス切替の背面整列や settling 補正なので、遷移アニメ自体を止めて無音で行う。
-        var restoring = targets
-            .Where(target => IsIconic(target.Handle) || IsZoomed(target.Handle))
+        var restoring = placements
+            .Where(placement => IsIconic(placement.Handle) || IsZoomed(placement.Handle))
             .ToList();
         if (!animateRestore)
         {
-            foreach (var target in restoring)
+            foreach (var placement in restoring)
             {
-                SetDwmTransitionsDisabled(target.Handle, true);
+                SetDwmTransitionsDisabled(placement.Handle, true);
             }
         }
 
         try
         {
-            foreach (var target in restoring)
+            foreach (var placement in restoring)
             {
-                PresetRestoreBoundsToCell(target);
-                ShowWindow(target.Handle, SW_RESTORE);
+                // 最大化/最小化中は不可視枠を正しく測れないため、通常状態のときに記録した
+                // キャッシュ値で復元先を補正する。
+                PresetRestoreBoundsToCell(CompensateForFrameCached(placement));
+                ShowWindow(placement.Handle, SW_RESTORE);
             }
+
+            // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
+            // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
+            // 必ず復元「後」（全員が通常状態）に測ること。最大化中に測ると枠のはみ出し方が
+            // 通常状態と異なり、セルより大きい/ずれたサイズで配置されてしまう。
+            var targets = placements
+                .Select(CompensateForFrameCached)
+                .ToList();
 
             var deferredWindowPos = BeginDeferWindowPos(targets.Count);
             if (deferredWindowPos != IntPtr.Zero)
@@ -249,9 +253,9 @@ public sealed class WindowArranger
 
     // セル（可視枠で表現した目標矩形）を、ウィンドウの不可視枠ぶん外側へ広げた
     // 実際の SetWindowPos 用矩形へ変換する。
-    private static WindowPlacement CompensateForFrame(WindowPlacement cell)
+    private WindowPlacement CompensateForFrameCached(WindowPlacement cell)
     {
-        var inset = GetFrameInset(cell.Handle);
+        var inset = GetFrameInsetCached(cell.Handle);
         return new WindowPlacement(
             cell.Handle,
             cell.X - inset.Left,
@@ -259,6 +263,29 @@ public sealed class WindowArranger
             cell.Width + inset.Left + inset.Right,
             cell.Height + inset.Top + inset.Bottom);
     }
+
+    // 不可視枠は「通常状態」のときに測った値だけを信用し、ハンドルごとにキャッシュする。
+    // 最大化中は枠が画面外へはみ出し、最小化中は GetWindowRect が無効な座標を返すため、
+    // そのまま測ると補正が狂って 4 面セルより大きい/ずれた配置になる。通常状態でない間は
+    // 直近のキャッシュ値（無ければ補正なし）で代用し、最終配置は復元後の実測で行う。
+    private FrameInset GetFrameInsetCached(IntPtr windowHandle)
+    {
+        if (!IsIconic(windowHandle) && !IsZoomed(windowHandle))
+        {
+            var inset = GetFrameInset(windowHandle);
+            if (_frameInsetCache.Count > 64)
+            {
+                _frameInsetCache.Clear();
+            }
+
+            _frameInsetCache[windowHandle] = inset;
+            return inset;
+        }
+
+        return _frameInsetCache.TryGetValue(windowHandle, out var cached) ? cached : FrameInset.Zero;
+    }
+
+    private readonly Dictionary<IntPtr, FrameInset> _frameInsetCache = new();
 
     // GetWindowRect と DWM 拡張フレーム（可視枠）の差＝各辺の不可視枠幅を返す。
     // DWM 非対応や取得失敗時は補正なし（ゼロ）。
