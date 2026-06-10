@@ -19,6 +19,7 @@ public sealed class WindowArranger
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
     private const int DwmwaExtendedFrameBounds = 9;
+    private const int DwmwaTransitionsForceDisabled = 3;
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
@@ -26,14 +27,14 @@ public sealed class WindowArranger
     private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
     private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
 
-    public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
+    public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, bool animateRestore = true)
     {
-        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null);
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null, animateRestore);
     }
 
-    public int ArrangeExcept(IReadOnlyList<WindowSlot> slots, WindowSlot excludedSlot, int gap, int monitorIndex)
+    public int ArrangeExcept(IReadOnlyList<WindowSlot> slots, WindowSlot excludedSlot, int gap, int monitorIndex, bool animateRestore = true)
     {
-        return ArrangeCore(slots, gap, monitorIndex, excludedSlot);
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot, animateRestore);
     }
 
     public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
@@ -56,7 +57,7 @@ public sealed class WindowArranger
         return false;
     }
 
-    private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot)
+    private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot, bool animateRestore)
     {
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot);
 
@@ -65,62 +66,126 @@ public sealed class WindowArranger
             return 0;
         }
 
-        foreach (var placement in placements)
+        // 最大化/最小化中のウィンドウは、復元先（rcNormalPosition）を目的セルへ差し替えてから
+        // SW_RESTORE する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズームアウトの
+        // 演出を残したまま目的セルへ直接着地し、「旧位置へ戻ってから SetWindowPos でセルへ
+        // ジャンプ」する二段移動（ちらつき）にならない。animateRestore=false のときは
+        // フォーカス切替の背面整列や settling 補正なので、遷移アニメ自体を止めて無音で行う。
+        var restoring = placements
+            .Where(placement => IsIconic(placement.Handle) || IsZoomed(placement.Handle))
+            .ToList();
+        if (!animateRestore)
         {
-            RestoreForResize(placement.Handle);
+            foreach (var placement in restoring)
+            {
+                SetDwmTransitionsDisabled(placement.Handle, true);
+            }
         }
 
-        // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
-        // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
-        var targets = placements
-            .Select(CompensateForFrame)
-            .ToList();
-
-        var deferredWindowPos = BeginDeferWindowPos(targets.Count);
-        if (deferredWindowPos != IntPtr.Zero)
+        try
         {
-            var queued = true;
+            foreach (var placement in restoring)
+            {
+                // 最大化/最小化中は不可視枠を正しく測れないため、通常状態のときに記録した
+                // キャッシュ値で復元先を補正する。
+                PresetRestoreBoundsToCell(CompensateForFrameCached(placement));
+                ShowWindow(placement.Handle, SW_RESTORE);
+            }
+
+            // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
+            // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
+            // 必ず復元「後」（全員が通常状態）に測ること。最大化中に測ると枠のはみ出し方が
+            // 通常状態と異なり、セルより大きい/ずれたサイズで配置されてしまう。
+            var targets = placements
+                .Select(CompensateForFrameCached)
+                .ToList();
+
+            var deferredWindowPos = BeginDeferWindowPos(targets.Count);
+            if (deferredWindowPos != IntPtr.Zero)
+            {
+                var queued = true;
+                foreach (var target in targets)
+                {
+                    deferredWindowPos = DeferWindowPos(
+                        deferredWindowPos,
+                        target.Handle,
+                        IntPtr.Zero,
+                        target.X,
+                        target.Y,
+                        target.Width,
+                        target.Height,
+                        ArrangeFlags);
+                    if (deferredWindowPos == IntPtr.Zero)
+                    {
+                        queued = false;
+                        break;
+                    }
+                }
+
+                if (queued && EndDeferWindowPos(deferredWindowPos))
+                {
+                    return targets.Count;
+                }
+            }
+
+            var arranged = 0;
             foreach (var target in targets)
             {
-                deferredWindowPos = DeferWindowPos(
-                    deferredWindowPos,
+                if (SetWindowPos(
                     target.Handle,
                     IntPtr.Zero,
                     target.X,
                     target.Y,
                     target.Width,
                     target.Height,
-                    ArrangeFlags);
-                if (deferredWindowPos == IntPtr.Zero)
+                    ArrangeFlags))
                 {
-                    queued = false;
-                    break;
+                    arranged++;
                 }
             }
 
-            if (queued && EndDeferWindowPos(deferredWindowPos))
-            {
-                return targets.Count;
-            }
+            return arranged;
         }
-
-        var arranged = 0;
-        foreach (var target in targets)
+        finally
         {
-            if (SetWindowPos(
-                target.Handle,
-                IntPtr.Zero,
-                target.X,
-                target.Y,
-                target.Width,
-                target.Height,
-                ArrangeFlags))
+            if (!animateRestore)
             {
-                arranged++;
+                foreach (var target in restoring)
+                {
+                    SetDwmTransitionsDisabled(target.Handle, false);
+                }
             }
         }
+    }
 
-        return arranged;
+    // 復元先（通常時の位置）を目的セルへ事前設定する。rcNormalPosition はワークスペース座標
+    // （プライマリディスプレイの作業領域原点が基準。タスクバーが下/右なら画面座標と一致）の
+    // ため、プライマリ作業領域の原点ぶんを差し引く。誤差が残っても直後の SetWindowPos が
+    // 画面座標で上書きするので、最終的な着地位置は常に正確になる。
+    // WPF_RESTORETOMAXIMIZED も解除し、「最大化中に最小化」されたウィンドウが復元で最大化へ
+    // 戻らず、セルへ向かうようにする。
+    private static void PresetRestoreBoundsToCell(WindowPlacement target)
+    {
+        var placement = new WINDOWPLACEMENT
+        {
+            length = Marshal.SizeOf<WINDOWPLACEMENT>()
+        };
+        if (!GetWindowPlacement(target.Handle, ref placement))
+        {
+            return;
+        }
+
+        var monitors = GetOrderedMonitors();
+        var primaryWorkArea = monitors[0].WorkArea;
+        placement.flags = 0;
+        placement.rcNormalPosition = new RECT
+        {
+            Left = target.X - primaryWorkArea.Left,
+            Top = target.Y - primaryWorkArea.Top,
+            Right = target.X + target.Width - primaryWorkArea.Left,
+            Bottom = target.Y + target.Height - primaryWorkArea.Top
+        };
+        _ = SetWindowPlacement(target.Handle, ref placement);
     }
 
     // baseMonitorIndex は全ディスプレイ移動で決まる「ベース」。各スロットは MonitorOverride を
@@ -188,9 +253,9 @@ public sealed class WindowArranger
 
     // セル（可視枠で表現した目標矩形）を、ウィンドウの不可視枠ぶん外側へ広げた
     // 実際の SetWindowPos 用矩形へ変換する。
-    private static WindowPlacement CompensateForFrame(WindowPlacement cell)
+    private WindowPlacement CompensateForFrameCached(WindowPlacement cell)
     {
-        var inset = GetFrameInset(cell.Handle);
+        var inset = GetFrameInsetCached(cell.Handle);
         return new WindowPlacement(
             cell.Handle,
             cell.X - inset.Left,
@@ -198,6 +263,29 @@ public sealed class WindowArranger
             cell.Width + inset.Left + inset.Right,
             cell.Height + inset.Top + inset.Bottom);
     }
+
+    // 不可視枠は「通常状態」のときに測った値だけを信用し、ハンドルごとにキャッシュする。
+    // 最大化中は枠が画面外へはみ出し、最小化中は GetWindowRect が無効な座標を返すため、
+    // そのまま測ると補正が狂って 4 面セルより大きい/ずれた配置になる。通常状態でない間は
+    // 直近のキャッシュ値（無ければ補正なし）で代用し、最終配置は復元後の実測で行う。
+    private FrameInset GetFrameInsetCached(IntPtr windowHandle)
+    {
+        if (!IsIconic(windowHandle) && !IsZoomed(windowHandle))
+        {
+            var inset = GetFrameInset(windowHandle);
+            if (_frameInsetCache.Count > 64)
+            {
+                _frameInsetCache.Clear();
+            }
+
+            _frameInsetCache[windowHandle] = inset;
+            return inset;
+        }
+
+        return _frameInsetCache.TryGetValue(windowHandle, out var cached) ? cached : FrameInset.Zero;
+    }
+
+    private readonly Dictionary<IntPtr, FrameInset> _frameInsetCache = new();
 
     // GetWindowRect と DWM 拡張フレーム（可視枠）の差＝各辺の不可視枠幅を返す。
     // DWM 非対応や取得失敗時は補正なし（ゼロ）。
@@ -386,9 +474,19 @@ public sealed class WindowArranger
             return false;
         }
 
-        EnsureWindowOnMonitor(windowHandle, monitorIndex);
-        ShowWindow(windowHandle, SW_MAXIMIZE);
-        return SetForegroundWindow(windowHandle);
+        var movedAcrossMonitors = EnsureWindowOnMonitor(windowHandle, monitorIndex);
+        try
+        {
+            ShowWindow(windowHandle, SW_MAXIMIZE);
+            return SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (movedAcrossMonitors)
+            {
+                SetDwmTransitionsDisabled(windowHandle, false);
+            }
+        }
     }
 
     public bool Maximize(IntPtr windowHandle)
@@ -409,28 +507,42 @@ public sealed class WindowArranger
             return false;
         }
 
-        EnsureWindowOnMonitor(windowHandle, monitorIndex);
-        return ShowWindow(windowHandle, SW_MAXIMIZE);
+        var movedAcrossMonitors = EnsureWindowOnMonitor(windowHandle, monitorIndex);
+        try
+        {
+            return ShowWindow(windowHandle, SW_MAXIMIZE);
+        }
+        finally
+        {
+            if (movedAcrossMonitors)
+            {
+                SetDwmTransitionsDisabled(windowHandle, false);
+            }
+        }
     }
 
     // ウィンドウが指定ディスプレイに無ければ、そのディスプレイの作業領域内へ移してから
     // 最大化できるようにする。SW_MAXIMIZE は「現在ウィンドウが載っているディスプレイ」へ
     // 最大化するため、先に移動しておかないと別ディスプレイで最大化されてしまう。
-    private static void EnsureWindowOnMonitor(IntPtr windowHandle, int monitorIndex)
+    // ディスプレイをまたいで移動した場合は true を返す。その間は「復元アニメ → 暫定位置 →
+    // 最大化」の三段の見た目になるのを避けるため遷移アニメを止めておくので、呼び出し側は
+    // 最大化まで終えたあとに SetDwmTransitionsDisabled(handle, false) で必ず戻すこと。
+    private static bool EnsureWindowOnMonitor(IntPtr windowHandle, int monitorIndex)
     {
         var monitors = GetOrderedMonitors();
         if (monitors.Count == 0)
         {
-            return;
+            return false;
         }
 
         var target = NormalizeMonitorIndex(monitorIndex, monitors.Count);
         var currentHandle = MonitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST);
         if (monitors[target].Handle == currentHandle)
         {
-            return;
+            return false;
         }
 
+        SetDwmTransitionsDisabled(windowHandle, true);
         RestoreForResize(windowHandle);
         var workArea = monitors[target].WorkArea;
         // 直後に SW_MAXIMIZE するので暫定サイズ。作業領域内へ確実に載せることだけが目的。
@@ -442,6 +554,7 @@ public sealed class WindowArranger
             Math.Max(320, workArea.Width - 80),
             Math.Max(240, workArea.Height - 80),
             ArrangeFlags);
+        return true;
     }
 
     public bool Close(IntPtr windowHandle)
@@ -551,6 +664,19 @@ public sealed class WindowArranger
         {
             ShowWindow(windowHandle, SW_RESTORE);
         }
+    }
+
+    // 対象ウィンドウの DWM 遷移アニメ（最小化/復元/最大化時のズーム演出）を一時的に止める。
+    // 失敗（DWM 無効や対象消滅）は無視してよい。必ず disabled=false で対で戻すこと。
+    private static void SetDwmTransitionsDisabled(IntPtr windowHandle, bool disabled)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return;
+        }
+
+        var value = disabled ? 1 : 0;
+        _ = DwmSetWindowAttribute(windowHandle, DwmwaTransitionsForceDisabled, ref value, sizeof(int));
     }
 
     private static List<MonitorWorkArea> GetOrderedMonitors()
@@ -680,8 +806,17 @@ public sealed class WindowArranger
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
 
@@ -714,5 +849,23 @@ public sealed class WindowArranger
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPLACEMENT
+    {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public POINT ptMinPosition;
+        public POINT ptMaxPosition;
+        public RECT rcNormalPosition;
     }
 }

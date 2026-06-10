@@ -771,6 +771,9 @@ public sealed class StatusStore : INotifyPropertyChanged
             (source.WindowTitle, target.WindowTitle) = (target.WindowTitle, source.WindowTitle);
             (source.WindowStatus, target.WindowStatus) = (target.WindowStatus, source.WindowStatus);
             (source.IsFocused, target.IsFocused) = (target.IsFocused, source.IsFocused);
+            // ディスプレイ割当はワークスペース側に付いて行く。これにより入替はカード上の象限だけを
+            // 交換し、各ワークスペースは元のディスプレイ（とフォーカス/4 面の見え方）を維持する。
+            (source.MonitorOverride, target.MonitorOverride) = (target.MonitorOverride, source.MonitorOverride);
             (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
             (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
             (source.PreferredLayout, target.PreferredLayout) = (target.PreferredLayout, source.PreferredLayout);

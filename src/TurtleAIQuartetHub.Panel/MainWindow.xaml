@@ -486,7 +486,7 @@
           <ControlTemplate TargetType="Button">
             <Border x:Name="CompactFocusFrame"
                     Background="Transparent"
-                    BorderBrush="Transparent"
+                    BorderBrush="{Binding FocusFrameBrush}"
                     BorderThickness="2"
                     CornerRadius="8">
               <Border x:Name="CompactButtonBorder"
@@ -508,7 +508,6 @@
                 <Setter TargetName="CompactButtonBorder" Property="Background" Value="#121715" />
               </Trigger>
               <DataTrigger Binding="{Binding IsFocused}" Value="True">
-                <Setter TargetName="CompactFocusFrame" Property="BorderBrush" Value="#45D483" />
                 <Setter TargetName="CompactButtonBorder" Property="Effect">
                   <Setter.Value>
                     <DropShadowEffect Color="#45D483"
@@ -638,7 +637,7 @@
           <ControlTemplate TargetType="Button">
             <Border x:Name="MicroFocusFrame"
                     Background="Transparent"
-                    BorderBrush="Transparent"
+                    BorderBrush="{Binding FocusFrameBrush}"
                     BorderThickness="2"
                     CornerRadius="7">
               <Border x:Name="MicroButtonBorder"
@@ -659,7 +658,6 @@
                 <Setter TargetName="MicroButtonBorder" Property="Background" Value="#121715" />
               </Trigger>
               <DataTrigger Binding="{Binding IsFocused}" Value="True">
-                <Setter TargetName="MicroFocusFrame" Property="BorderBrush" Value="#45D483" />
                 <Setter TargetName="MicroButtonBorder" Property="Background" Value="#123222" />
                 <Setter TargetName="MicroButtonBorder" Property="Effect">
                   <Setter.Value>
@@ -988,7 +986,9 @@
                           Orientation="Horizontal"
                           HorizontalAlignment="Left"
                           VerticalAlignment="Center">
-                <Button Content="&#xE8B7;"
+                <!-- E838 (FolderOpen): E8B7 (Folder) は小サイズだと四角にしか見えないため、
+                     開いたフォルダのグリフでエクスプローラを開く操作だと分かるようにする。 -->
+                <Button Content="&#xE838;"
                         Tag="{Binding}"
                         Click="OpenSlotWorkspaceFolderButton_Click"
                         AutomationProperties.Name="ワークスペースフォルダを開く"
