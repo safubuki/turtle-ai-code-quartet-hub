@@ -1721,7 +1721,9 @@ public partial class MainWindow : Window
 
         _statusStore.CaptureWorkspacePath(slot);
 
-        _statusStore.ClearFocusedSlot();
+        // 置き換え対象スロットがあるディスプレイのフォーカスだけ解除し、
+        // 他ディスプレイの 1 面表示（フォーカス）は保つ。
+        ClearFocusedSlotForDisplay(GetSlotMonitorIndex(slot));
         _windowArranger.ReleaseTopmost(currentHandle);
 
         if (_windowEnumerator.IsLiveWindow(currentHandle) && !_windowArranger.Close(currentHandle))
@@ -1764,7 +1766,8 @@ public partial class MainWindow : Window
         }
 
         _statusStore.CaptureWorkspacePath(slot);
-        _statusStore.ClearFocusedSlot();
+        // 控えへ移すスロットがあるディスプレイのフォーカスだけ解除し、他ディスプレイは保つ。
+        ClearFocusedSlotForDisplay(GetSlotMonitorIndex(slot));
         if (!_statusStore.TryStoreSlotInBack(slot, out var storedPanel))
         {
             _statusStore.Message = _statusStore.StoredPanels.All(item => item.HasContent)
@@ -1775,7 +1778,8 @@ public partial class MainWindow : Window
 
         if (!_areWindowsHidden)
         {
-            ArrangeSlotsOnActiveMonitor();
+            // 他ディスプレイのフォーカス（1 面表示）を保ったまま再配置する。
+            ArrangeSlotsAfterPanelStateChange();
         }
 
         _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ控え保存しました。";
@@ -1819,7 +1823,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _statusStore.ClearFocusedSlot();
+            ClearFocusedSlotForDisplay(GetSlotMonitorIndex(targetSlot));
             if (!_statusStore.TryShowStoredPanel(storedPanel, targetSlot, out var swappedVisiblePanel))
             {
                 _statusStore.Message = $"{storedPanel.Label} をスロット{targetSlot.Name}へ表示できませんでした。";
@@ -1852,6 +1856,16 @@ public partial class MainWindow : Window
                     _windowArranger.Minimize(assignment.Slot.WindowHandle);
                     assignment.Slot.IsHidden = true;
                 }
+            }
+            else if (FocusedSlots().Any())
+            {
+                // 他ディスプレイにフォーカス（1 面表示）が残っているときは、それを保ったまま
+                // 非フォーカスのみ象限へ整列し、フォーカス対応の settling で DPI 差を補正する
+                // （ArrangeSlotsOnActiveMonitorWithSettlingAsync の settling はフォーカス中に走らない）。
+                ArrangeSlotsOnActiveMonitor(false);
+                ReassertAllFocusedSlots();
+                await SettleArrangementPreservingFocusAsync();
+                SchedulePanelToFront();
             }
             else
             {
