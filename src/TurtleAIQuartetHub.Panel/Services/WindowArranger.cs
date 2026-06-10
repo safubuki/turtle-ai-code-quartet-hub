@@ -20,6 +20,11 @@ public sealed class WindowArranger
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
     private const int DwmwaExtendedFrameBounds = 9;
     private const int DwmwaTransitionsForceDisabled = 3;
+    private const int DwmwaCloaked = 14;
+    private const uint GW_HWNDPREV = 3;
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TOPMOST = 0x00000008;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
@@ -382,6 +387,82 @@ public sealed class WindowArranger
         }
 
         return SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
+    }
+
+    // 指定ウィンドウより z-order が上に、管理外アプリの可視ウィンドウが重なって表示されて
+    // いるかを返す。managedHandles（管理中スロットのウィンドウ）と自プロセスのウィンドウは
+    // 「身内」として遮蔽とみなさない。TOPMOST ウィンドウも除外する。前面化（NOTOPMOST へ
+    // 降ろす実装）では覆えない相手なので、遮蔽扱いにするとクリックでフォーカス解除へ
+    // 永遠に到達できなくなる。
+    public bool IsObscuredByExternalWindow(IntPtr windowHandle, IReadOnlyCollection<IntPtr> managedHandles)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle) || IsIconic(windowHandle))
+        {
+            return false;
+        }
+
+        if (!TryGetVisibleBounds(windowHandle, out var bounds) || bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return false;
+        }
+
+        var ownProcessId = (uint)Environment.ProcessId;
+        for (var above = GetWindow(windowHandle, GW_HWNDPREV);
+             above != IntPtr.Zero;
+             above = GetWindow(above, GW_HWNDPREV))
+        {
+            if (managedHandles.Contains(above) || !IsWindowVisible(above) || IsIconic(above))
+            {
+                continue;
+            }
+
+            _ = GetWindowThreadProcessId(above, out var processId);
+            if (processId == ownProcessId)
+            {
+                continue;
+            }
+
+            // タイトルなし（タスクバー・IME 等のシェル類）やツールウィンドウは操作対象の
+            // アプリではないので遮蔽とみなさない。
+            if (GetWindowTextLength(above) == 0)
+            {
+                continue;
+            }
+
+            var exStyle = GetWindowLong(above, GWL_EXSTYLE);
+            if ((exStyle & (WS_EX_TOOLWINDOW | WS_EX_TOPMOST)) != 0)
+            {
+                continue;
+            }
+
+            // クローク中（UWP の停止中ウィンドウ等）は画面に描画されていない。
+            if (DwmGetWindowAttributeInt(above, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0)
+            {
+                continue;
+            }
+
+            if (!TryGetVisibleBounds(above, out var aboveBounds)
+                || aboveBounds.Width <= 0
+                || aboveBounds.Height <= 0)
+            {
+                continue;
+            }
+
+            if (Intersects(bounds, aboveBounds))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Intersects(WindowBounds first, WindowBounds second)
+    {
+        return first.Left < second.Left + second.Width
+            && second.Left < first.Left + first.Width
+            && first.Top < second.Top + second.Height
+            && second.Top < first.Top + first.Height;
     }
 
     public int GetMonitorCount()
@@ -814,6 +895,22 @@ public sealed class WindowArranger
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    private static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+    // 拡張スタイル（GWL_EXSTYLE）は 64bit プロセスでも 32bit 値なので GetWindowLongW で足りる。
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hWnd);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);

@@ -989,6 +989,21 @@ public partial class MainWindow : Window
 
         if (slot.IsFocused)
         {
+            // フォーカス中スロットが管理外アプリ（チャットツール等）の背面に隠れているときの
+            // クリックは「解除」ではなく「前面に呼び戻したい」意図とみなし、フォーカスを
+            // 保ったまま前面化する（タスクバーのボタンと同じ状態依存動作）。
+            // 前面に見えている状態でのクリックは従来どおりフォーカス解除。
+            if (!_areWindowsHidden
+                && slot.WindowHandle != IntPtr.Zero
+                && _windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, GetManagedWindowHandles()))
+            {
+                _windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor);
+                BringPanelToFrontImmediate();
+                SchedulePanelToFront();
+                RefreshAuxiliaryUi();
+                return;
+            }
+
             // このディスプレイのフォーカスだけ解除し、その面を 4 面へ戻す。他ディスプレイは維持。
             if (!_areWindowsHidden)
             {
@@ -3452,6 +3467,15 @@ public partial class MainWindow : Window
     private IEnumerable<WindowSlot> FocusedSlots()
     {
         return _statusStore.Slots.Where(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero);
+    }
+
+    // 管理中スロットのウィンドウハンドル一式。遮蔽判定で「身内」を除外するために使う。
+    private IReadOnlyCollection<IntPtr> GetManagedWindowHandles()
+    {
+        return _statusStore.Slots
+            .Where(slot => slot.WindowHandle != IntPtr.Zero)
+            .Select(slot => slot.WindowHandle)
+            .ToHashSet();
     }
 
     // 指定ディスプレイで現在フォーカス中のスロット（無ければ null）。except を渡すとそれを除外する。
