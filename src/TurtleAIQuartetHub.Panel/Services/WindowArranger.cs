@@ -27,14 +27,14 @@ public sealed class WindowArranger
     private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
     private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
 
-    public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex)
+    public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, bool animateRestore = true)
     {
-        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null);
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null, animateRestore);
     }
 
-    public int ArrangeExcept(IReadOnlyList<WindowSlot> slots, WindowSlot excludedSlot, int gap, int monitorIndex)
+    public int ArrangeExcept(IReadOnlyList<WindowSlot> slots, WindowSlot excludedSlot, int gap, int monitorIndex, bool animateRestore = true)
     {
-        return ArrangeCore(slots, gap, monitorIndex, excludedSlot);
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot, animateRestore);
     }
 
     public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
@@ -57,7 +57,7 @@ public sealed class WindowArranger
         return false;
     }
 
-    private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot)
+    private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot, bool animateRestore)
     {
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot);
 
@@ -66,26 +66,35 @@ public sealed class WindowArranger
             return 0;
         }
 
-        // 最大化/最小化からの SW_RESTORE は「旧位置への復元アニメ → 直後の SetWindowPos で
-        // 目的セルへジャンプ」という二段移動になり、ちらつきとして見える。配置の間だけ
-        // DWM の遷移アニメを止め、配置完了後に必ず元へ戻す。
-        foreach (var placement in placements)
+        // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
+        // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
+        var targets = placements
+            .Select(CompensateForFrame)
+            .ToList();
+
+        // 最大化/最小化中のウィンドウは、復元先（rcNormalPosition）を目的セルへ差し替えてから
+        // SW_RESTORE する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズームアウトの
+        // 演出を残したまま目的セルへ直接着地し、「旧位置へ戻ってから SetWindowPos でセルへ
+        // ジャンプ」する二段移動（ちらつき）にならない。animateRestore=false のときは
+        // フォーカス切替の背面整列や settling 補正なので、遷移アニメ自体を止めて無音で行う。
+        var restoring = targets
+            .Where(target => IsIconic(target.Handle) || IsZoomed(target.Handle))
+            .ToList();
+        if (!animateRestore)
         {
-            SetDwmTransitionsDisabled(placement.Handle, true);
+            foreach (var target in restoring)
+            {
+                SetDwmTransitionsDisabled(target.Handle, true);
+            }
         }
 
         try
         {
-            foreach (var placement in placements)
+            foreach (var target in restoring)
             {
-                RestoreForResize(placement.Handle);
+                PresetRestoreBoundsToCell(target);
+                ShowWindow(target.Handle, SW_RESTORE);
             }
-
-            // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
-            // 可視枠がセルにそろうように配置する。これで上端/下端/中央や縦横の隙間が均等になる。
-            var targets = placements
-                .Select(CompensateForFrame)
-                .ToList();
 
             var deferredWindowPos = BeginDeferWindowPos(targets.Count);
             if (deferredWindowPos != IntPtr.Zero)
@@ -135,11 +144,44 @@ public sealed class WindowArranger
         }
         finally
         {
-            foreach (var placement in placements)
+            if (!animateRestore)
             {
-                SetDwmTransitionsDisabled(placement.Handle, false);
+                foreach (var target in restoring)
+                {
+                    SetDwmTransitionsDisabled(target.Handle, false);
+                }
             }
         }
+    }
+
+    // 復元先（通常時の位置）を目的セルへ事前設定する。rcNormalPosition はワークスペース座標
+    // （プライマリディスプレイの作業領域原点が基準。タスクバーが下/右なら画面座標と一致）の
+    // ため、プライマリ作業領域の原点ぶんを差し引く。誤差が残っても直後の SetWindowPos が
+    // 画面座標で上書きするので、最終的な着地位置は常に正確になる。
+    // WPF_RESTORETOMAXIMIZED も解除し、「最大化中に最小化」されたウィンドウが復元で最大化へ
+    // 戻らず、セルへ向かうようにする。
+    private static void PresetRestoreBoundsToCell(WindowPlacement target)
+    {
+        var placement = new WINDOWPLACEMENT
+        {
+            length = Marshal.SizeOf<WINDOWPLACEMENT>()
+        };
+        if (!GetWindowPlacement(target.Handle, ref placement))
+        {
+            return;
+        }
+
+        var monitors = GetOrderedMonitors();
+        var primaryWorkArea = monitors[0].WorkArea;
+        placement.flags = 0;
+        placement.rcNormalPosition = new RECT
+        {
+            Left = target.X - primaryWorkArea.Left,
+            Top = target.Y - primaryWorkArea.Top,
+            Right = target.X + target.Width - primaryWorkArea.Left,
+            Bottom = target.Y + target.Height - primaryWorkArea.Top
+        };
+        _ = SetWindowPlacement(target.Handle, ref placement);
     }
 
     // baseMonitorIndex は全ディスプレイ移動で決まる「ベース」。各スロットは MonitorOverride を
@@ -737,6 +779,12 @@ public sealed class WindowArranger
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
 
@@ -774,5 +822,23 @@ public sealed class WindowArranger
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPLACEMENT
+    {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public POINT ptMinPosition;
+        public POINT ptMaxPosition;
+        public RECT rcNormalPosition;
     }
 }

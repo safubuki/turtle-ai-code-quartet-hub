@@ -2100,7 +2100,8 @@ public partial class MainWindow : Window
 
     private int ArrangeSlotsOnActiveMonitorQuietly()
     {
-        return _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
+        // settling 補正は演出ではないので、復元が必要でもアニメーションさせず無音で整える。
+        return _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex(), animateRestore: false);
     }
 
     private void ArrangeSlotsAfterPanelStateChange()
@@ -2226,7 +2227,9 @@ public partial class MainWindow : Window
 
     private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshAuxiliaryUiAfterArrange = true)
     {
-        var arranged = _windowArranger.ArrangeExcept(_statusStore.Slots, excludedSlot, _statusStore.Config.Gap, GetActiveMonitorIndex());
+        // フォーカスイン（ズームイン演出）に随伴する背面整列。前面では新フォーカスの最大化アニメ
+        // だけを見せたいので、旧フォーカスの復元などはアニメーションさせず背面で速やかに済ませる。
+        var arranged = _windowArranger.ArrangeExcept(_statusStore.Slots, excludedSlot, _statusStore.Config.Gap, GetActiveMonitorIndex(), animateRestore: false);
         if (refreshAuxiliaryUiAfterArrange)
         {
             RefreshAuxiliaryUi();

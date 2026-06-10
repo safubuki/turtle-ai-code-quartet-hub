@@ -106,5 +106,6 @@
 - 周期更新 `RefreshTimer_Tick` は async void のため内部でも try/catch して `DiagnosticLog` へ記録する（`DispatcherUnhandledException` の手前で握る多重防御）。
 - D&D 入替（`SwapSlotContents`）は `MonitorOverride` もワークスペース側と一緒に交換する。入替はカード上の象限位置だけを交換し、各ワークスペースは元のディスプレイ・フォーカス状態・4 面/1 面の見え方を維持する（入替でウィンドウはディスプレイをまたがない）。
 - 入替・単独移動・全体移動後の DPI/解像度差の補正は、フォーカスがあっても走る `SettleArrangementPreservingFocusAsync`（`NeedsArrange` はフォーカス中スロットをスキップ）で行う。`ArrangeSlotsOnActiveMonitorWithSettlingAsync` の settling は `CanReapplyPostLaunchArrangement` によりフォーカス中は走らないため、フォーカスを保つ操作では使わない。
-- ちらつき対策: `WindowArranger` は配置（`ArrangeCore`）とディスプレイまたぎ移動（`EnsureWindowOnMonitor`〜最大化完了）の間だけ `DWMWA_TRANSITIONS_FORCEDISABLED` で DWM 遷移アニメを止め、必ず対で戻す。SW_RESTORE の「旧位置への復元アニメ → セルへジャンプ」という二段移動を見せないため。同一ディスプレイでのズームイン（`ToggleSlotFocus` の最大化）のアニメは演出として維持する。
+- ズームアウト演出とちらつき対策: 配置（`ArrangeCore`）は最大化/最小化中のウィンドウの復元先 `rcNormalPosition` を目的セルへ事前設定（`SetWindowPlacement`。`WPF_RESTORETOMAXIMIZED` も解除）してから `SW_RESTORE` する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズーム解除はアニメーション付きで目的セルへ直接着地し、「旧位置へ戻ってからセルへジャンプ」する二段移動（ちらつき）は出ない。rcNormalPosition はワークスペース座標（プライマリ作業領域原点基準）なので原点ぶん補正し、残差は直後の `SetWindowPos`（画面座標）が吸収する。
+- アニメを出さない配置: フォーカスイン随伴の背面整列（`ArrangeSlotsExceptOnActiveMonitor`）と settling 補正（`ArrangeSlotsOnActiveMonitorQuietly`）は `animateRestore=false` で、復元が必要なウィンドウにだけ `DWMWA_TRANSITIONS_FORCEDISABLED` を対で適用して無音・即時に行う。A フォーカス中に B を押す即切替は、B のズームイン（`SW_MAXIMIZE`）を前面で演出し、A の解除は遅延後に B の背面でアニメ無しで済ませる。ディスプレイまたぎのフォーカス移動（`EnsureWindowOnMonitor`〜最大化）も遷移アニメを止める。
 - パネル UI の描画は GPU 既定（`RenderMode.SoftwareOnly` 強制は撤去）。特定環境で描画乱れが出る場合のみ SoftwareOnly へ戻す。
