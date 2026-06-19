@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     ];
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
+    private readonly FocusNameOverlay _focusNameOverlay;
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly ApplicationLauncher _applicationLauncher;
     private readonly StatusStore _statusStore;
@@ -66,6 +67,7 @@ public partial class MainWindow : Window
     private double _standardWindowHeight;
     private double _standardWindowMinWidth;
     private double _standardWindowMinHeight;
+    private WindowSlot? _overlayShownForSlot;
     private WindowSlot? _pendingSlotInfoClear;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     // 非表示（一括最小化）に入る直前のフォーカス（ディスプレイごとに 1 つ）を覚え、表示時に復帰する。
@@ -92,6 +94,15 @@ public partial class MainWindow : Window
         _vscodeLauncher = new VscodeLauncher(_windowEnumerator);
         _applicationLauncher = new ApplicationLauncher(_windowEnumerator, _vscodeLauncher);
         DataContext = _statusStore;
+
+        // フォーカスしたスロット名を対象ディスプレイ中央へ数秒だけ出すオーバーレイ。
+        // 各スロットの IsFocused 変化を購読し、true で表示・false で即消しを一元化する
+        //（個々のフォーカス制御経路に手を入れずに済む）。
+        _focusNameOverlay = new FocusNameOverlay(_windowArranger);
+        foreach (var slot in _statusStore.Slots)
+        {
+            slot.PropertyChanged += Slot_PropertyChanged;
+        }
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -3489,8 +3500,47 @@ public partial class MainWindow : Window
             && GetSlotMonitorIndex(slot) == target);
     }
 
-    // 指定スロットを、その実効ディスプレイのフォーカスにする。同じディスプレイの旧フォーカスだけ
-    // 解除し、他ディスプレイのフォーカスは保持する（フォーカスはディスプレイごとに 1 つ）。
+    // 各スロットの IsFocused 変化を捉えてフォーカス名オーバーレイを出し入れする。
+    // true になった瞬間に対象ディスプレイ中央へ表示し、今表示中のスロットが false に
+    // なったら即座に消す。フォーカス制御の全経路は最終的に IsFocused を切り替えるので、
+    // ここ一箇所で表示タイミングを面倒見られる。
+    private void Slot_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(WindowSlot.IsFocused) || sender is not WindowSlot slot)
+        {
+            return;
+        }
+
+        if (slot.IsFocused)
+        {
+            // 非表示（一括最小化）中のフォーカス復帰では画面に何も見えないので出さない。
+            if (_areWindowsHidden)
+            {
+                return;
+            }
+
+            _overlayShownForSlot = slot;
+
+            // 1 段目: パネル名（パネルD）、2 段目: ユーザーが付けたタイトル、3 段目: アプリ名。
+            // PanelTitle が空、または既定タイトル（「スロット D」）のままのときは 1 段目と
+            // 内容が重複するので、タイトル行を省いて 2 行にフォールバックする。
+            var title = string.IsNullOrWhiteSpace(slot.PanelTitle)
+                || string.Equals(slot.PanelTitle, slot.DefaultPanelTitle, StringComparison.Ordinal)
+                ? string.Empty
+                : slot.PanelTitle;
+            _focusNameOverlay.Show(
+                $"パネル{slot.Name}",
+                title,
+                slot.ApplicationDisplayName,
+                GetSlotMonitorIndex(slot));
+        }
+        else if (ReferenceEquals(_overlayShownForSlot, slot))
+        {
+            _overlayShownForSlot = null;
+            _focusNameOverlay.Hide();
+        }
+    }
+
     private void SetFocusedSlotForDisplay(WindowSlot slot)
     {
         var monitor = GetSlotMonitorIndex(slot);
@@ -3634,6 +3684,7 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Cancel();
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
+        _focusNameOverlay.Close();
         base.OnClosed(e);
     }
 

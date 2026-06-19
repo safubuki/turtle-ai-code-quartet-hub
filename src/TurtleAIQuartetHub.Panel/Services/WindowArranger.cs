@@ -722,6 +722,24 @@ public sealed class WindowArranger
         return true;
     }
 
+    // 指定ディスプレイ（GetSlotMonitorIndex などで得た正規化済みインデックス）の作業領域を
+    // 物理ピクセルで返す。最大化されたウィンドウが覆う範囲＝作業領域なので、その中央に
+    // フォーカス名のオーバーレイを重ねるための座標計算に使う。
+    public bool TryGetMonitorWorkArea(int monitorIndex, out WindowBounds workAreaBounds)
+    {
+        workAreaBounds = default;
+        var monitors = GetOrderedMonitors();
+        if (monitors.Count == 0)
+        {
+            return false;
+        }
+
+        var target = NormalizeMonitorIndex(monitorIndex, monitors.Count);
+        var workArea = monitors[target].WorkArea;
+        workAreaBounds = new WindowBounds(workArea.Left, workArea.Top, workArea.Width, workArea.Height);
+        return true;
+    }
+
     public bool SetWindowBounds(IntPtr windowHandle, WindowBounds bounds)
     {
         if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
