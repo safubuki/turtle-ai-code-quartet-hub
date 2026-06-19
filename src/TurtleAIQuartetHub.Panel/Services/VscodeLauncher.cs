@@ -16,6 +16,10 @@ public sealed class VscodeLauncher
     private static readonly TimeSpan RemoteWindowProbeInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan WindowProbeInterval = TimeSpan.FromMilliseconds(250);
 
+    // lock を握ったままウィンドウが無いプロセスを「ゾンビ」と断ずる前に与える猶予。
+    // 起動直後でメインウィンドウ描画前の正常な VS Code を誤って kill しないための保険。
+    private static readonly TimeSpan ZombieGracePeriod = TimeSpan.FromSeconds(45);
+
     // Process names (without extension) that a slot's code.lock may legitimately belong to.
     // Mirrors WindowEnumerator.GetVsCodeWindows so we never terminate a recycled PID owned by an unrelated process.
     private static readonly string[] VsCodeProcessNames = ["code", "code - insiders", "vscodium", "codium"];
@@ -317,15 +321,27 @@ public sealed class VscodeLauncher
         uint? expectedProcessId,
         string? launchPath)
     {
-        var windows = _windowEnumerator
-            .GetVsCodeWindows()
+        var allVsCodeWindows = _windowEnumerator.GetVsCodeWindows();
+        var windows = allVsCodeWindows
             .Where(item => !knownHandles.Contains(item.Handle))
             .Where(item => !expectedProcessId.HasValue || item.ProcessId == expectedProcessId.Value)
             .OrderBy(window => window.ProcessId)
             .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return windows.FirstOrDefault(window => IsExpectedNewWindow(slot, config, window, knownHandles, expectedProcessId, launchPath));
+        var match = windows.FirstOrDefault(window => IsExpectedNewWindow(slot, config, window, knownHandles, expectedProcessId, launchPath));
+        if (match is null && windows.Count > 0)
+        {
+            // 候補ウィンドウはあるのに 1 つも受理できなかったとき、なぜ弾いたのかを残す。
+            // 「No new window」だけだと専用 user-data の lock 待ちなのか別原因か切り分けられないため。
+            DiagnosticLog.Write(
+                $"No VS Code window accepted for slot {slot.Name}: "
+                + $"{windows.Count} unknown candidate(s) rejected by IsExpectedNewWindow "
+                + $"(dedicated={config.UseDedicatedUserDataDirs}, launchPath={launchPath ?? "<none>"}). "
+                + $"Candidates: {string.Join(", ", windows.Select(w => $"pid={w.ProcessId},title='{w.Title}'"))}");
+        }
+
+        return match;
     }
 
     private static bool IsExpectedNewWindow(
@@ -351,6 +367,12 @@ public sealed class VscodeLauncher
 
         if (config.UseDedicatedUserDataDirs && !string.IsNullOrWhiteSpace(launchPath))
         {
+            // 専用 user-data モードでは、slot の code.lock がまだ書かれていない（=起動直後）か、
+            // lock のプロセスが死んでいる間は、ワークスペース付き起動のウィンドウを一切受理しない。
+            // ここで何度も弾かれ続けるとタイムアウトに至るので、その状況を残す。
+            DiagnosticLog.Write(
+                $"Rejecting VS Code window for slot {slot.Name} (pid={window.ProcessId}, title='{window.Title}'): "
+                + "dedicated user-data with launch path but no live code.lock owner yet.");
             return false;
         }
 
@@ -616,7 +638,23 @@ public sealed class VscodeLauncher
                 return;
             }
 
-            DiagnosticLog.Write($"Killing zombie VS Code process {pid} for slot {slot.Name} (lock held but no window).");
+            // 「lock は握っているがウィンドウが無い」状態は、本物のゾンビだけでなく、
+            // 起動直後でまだメインウィンドウを描画していない正常なプロセスでも起こる。
+            // 重い環境（例: Antigravity と同時起動）では初期化に時間がかかり、その隙に
+            // 起動したばかりの VS Code を誤って kill すると、lock だけが残って次回以降の
+            // 起動が連鎖的に壊れる。起動から十分時間が経ったプロセスだけを真のゾンビと見なす。
+            var processAge = GetProcessAge(process);
+            if (processAge is { } age && age < ZombieGracePeriod)
+            {
+                DiagnosticLog.Write(
+                    $"Skipping zombie kill for VS Code process {pid} (slot {slot.Name}): "
+                    + $"started {age.TotalSeconds:0.0}s ago, still within {ZombieGracePeriod.TotalSeconds:0}s grace period (likely still starting up).");
+                return;
+            }
+
+            DiagnosticLog.Write(
+                $"Killing zombie VS Code process {pid} for slot {slot.Name} "
+                + $"(lock held but no window; age={(processAge is { } a ? $"{a.TotalSeconds:0.0}s" : "unknown")}).");
             process.Kill(entireProcessTree: true);
             process.WaitForExit(5000);
         }
@@ -632,6 +670,23 @@ public sealed class VscodeLauncher
         catch (System.ComponentModel.Win32Exception ex)
         {
             DiagnosticLog.Write($"Failed to kill zombie process {pid}: {ex.Message}");
+        }
+    }
+
+    // プロセスの起動からの経過時間。StartTime が取得できない（権限不足等）場合は null。
+    private static TimeSpan? GetProcessAge(Process process)
+    {
+        try
+        {
+            return DateTime.Now - process.StartTime;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return null;
         }
     }
 
