@@ -36,7 +36,7 @@
       EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Turtle AI Code Quartet Hub"
-        Description="Arrange four VS Code windows and show local AI coding status."
+        Description="Launch four workspace slots and arrange local developer IDEs and AI CLIs in a 2x2 layout."
         BackgroundColor="#0B1512"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

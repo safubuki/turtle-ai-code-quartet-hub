@@ -8,44 +8,51 @@ Turtle AI Code Quartet Hub
 
 ## 短い説明
 
-4つの VS Code ウィンドウを小さな Windows パネルから起動・配置・切替できます。
+4つの開発ワークスペースを A-D スロットとして一括起動し、IDE と AI CLI をすばやく切り替えられる Windows ランチャーです。
 
 ## 長い説明
 
-Turtle AI Code Quartet Hub は、複数の Visual Studio Code セッションを扱う開発者向けのローカル Windows ユーティリティです。
+Turtle AI Code Quartet Hub は、複数の案件・複数の AI エージェント・複数のターミナルを行き来する開発者向けのローカル Windows ランチャーです。
 
-最大4つの VS Code ウィンドウを起動して2x2に配置し、スロットごとのフォーカス切替、タイトル管理、ワークスペース状態の保存、控え Quartet への退避と復帰を行えます。縮小モードでは、常に最前面の小さなパネルから各スロットへ素早くアクセスできます。
+4つの開発ワークスペースを A-D のスロットとしてまとめて起動し、画面上に 2x2 で整列表示します。各スロットには VS Code / Google Antigravity などの IDE か、Codex / GitHub Copilot / Gemini / Grok / Claude などの AI CLI を割り当てられ、同じワークスペースを IDE と CLI のどちらでもすばやく開き直せます。起動中スロットで別のアプリを選ぶと、同じ象限でウィンドウを差し替えます。
 
-AIの実行状態を推定する機能、VS Code外周フレーム、状態連動の点滅表示は搭載していません。VS Code や拡張機能の仕様変更に左右されにくい、軽量なウィンドウ管理に集中しています。
+スロットのタイトル、ワークスペースパス、選択アプリ、控え Quartet を保存し、スロットボタンで1面フォーカス表示と4面表示を切り替えられます。縮小モードでは、常に最前面の小さな操作バーから各スロット操作と Windows 補助アプリの起動をすぐに行えます。
 
-Visual Studio Code は別途インストールが必要です。Remote workspace や AI サービス、VS Code 拡張機能は、それぞれのツール・サービスにより提供されます。
+VS Code、Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプリ版は、いずれもこのアプリには同梱されず、使う場合はそれぞれ別途インストールが必要です。Remote workspace や AI サービス、VS Code 拡張機能は、それぞれのツール・サービスにより提供されます。
 
 ## 主な機能
 
-- 最大4つの VS Code ウィンドウを起動・配置。
-- A-D スロット、パネルタイトル、ワークスペースパス、控えパネルを保持。
-- 小さな常時最前面パネルとして使える縮小モード。
-- ディスプレイ移動、最前面/最背面、非表示/再表示をまとめて操作。
+- 4つの開発ワークスペースを A-D スロットとして一括起動し、2x2 に配置。
+- 各スロットで IDE（VS Code / Antigravity）と AI CLI（Codex / GitHub Copilot / Gemini / Grok / Claude）を選択。
+- 起動中スロットで別アプリを押すと、同じ象限でウィンドウを差し替え。
+- スロット名、ワークスペースパス、選択アプリ、控え Quartet をローカル保存。
+- スロットボタンで1面フォーカス表示と4面表示を切り替え。
+- 小さな常時最前面の操作バーとして使える縮小モード。
+- Codex / ChatGPT / Claude などの Windows アプリ版を補助ボタンから起動。
+- Jump List からスロット切替・表示モード切替・前面/背面操作。
 - 複数セッションを分けやすいスロット別 VS Code user-data-dir。
 
 ## 依存関係
 
-- Windows。
-- Visual Studio Code。
-- VS Code コマンドラインランチャー `code`、または `Code.exe` への設定済みパス。
+- Windows 10 / Windows 11。
+- 起動対象のアプリ（このアプリには同梱されません）:
+  - VS Code（既定のスロット起動対象。`code` コマンド、または `Code.exe` への設定済みパスが必要）。
+  - 任意で Google Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Grok CLI、Claude CLI。
+  - 任意で Codex / ChatGPT / Claude の Windows アプリ版。
 - 自己完結版では .NET Desktop Runtime の別途インストールは不要。開発環境では .NET SDK が必要。
 
 ## プライバシー要約
 
-このアプリは、VS Code ウィンドウの起動・配置・保存復元に必要なローカル情報を扱います。設定と状態は `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。アプリ独自のテレメトリ、プロンプト、ソースコード、ワークスペース情報、ログを公開者へ送信しません。
+このアプリは、管理対象ウィンドウの起動・配置・保存復元に必要なローカル情報を扱います。設定と状態は `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。アプリ独自のテレメトリ、プロンプト、ソースコード、ワークスペース情報、ログを公開者へ送信しません。
 
 プライバシーポリシー草案: [PRIVACY.md](../PRIVACY.md)
 
 ## サポート注記
 
-- このアプリは Microsoft、Visual Studio Code、GitHub、OpenAI、Anthropic の公式アプリ、提携アプリ、承認済みアプリではありません。
+- このアプリは Microsoft、Visual Studio Code、GitHub、OpenAI、Anthropic、Google、xAI の公式アプリ、提携アプリ、承認済みアプリではありません。
 - VS Code が未インストール、または `code` コマンドが使えない場合は、`codeCommand` に `Code.exe` のパスを設定してください。
-- Remote SSH や AI サービスの挙動は、VS Code とインストール済み拡張機能側で管理されます。
+- Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプリ版を使う場合は、それぞれ別途インストールが必要です。
+- Remote SSH や AI サービスの挙動は、VS Code とインストール済み拡張機能、各ツール側で管理されます。
 
 サポート案内草案: [SUPPORT.md](../SUPPORT.md)
 リリースノート草案: [release-notes-draft.md](release-notes-draft.md)
