@@ -1,6 +1,12 @@
 ﻿<Application x:Class="TurtleAIQuartetHub.Panel.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <!-- ShutdownMode を OnExplicitShutdown にして、フォーカス名オーバーレイ等の補助 Window が
+       一時的に最後の Window になった瞬間（リモート接続の切断/再接続でセッションが揺らいだ時など）に
+       WPF 既定の OnLastWindowClose 判定でアプリ本体が勝手に終了する事故を断つ。
+       終了はメインウィンドウのクローズ時に明示 Shutdown() で行うため、ユーザーから見た挙動
+       （パネルを閉じたら終わる）は従来どおり変わらない。 -->
   <Application.Resources>
   </Application.Resources>
 </Application>

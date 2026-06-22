@@ -39,10 +39,14 @@ public sealed class ApplicationDetectionService
             }
         }
 
+        // このアプリにとって「実在しても受理できない」候補を弾く述語。PATH 解決時にこの述語へ
+        // 該当する候補は読み飛ばし、次の候補（正規のシム等）まで探索を続けさせる。
+        bool Reject(string candidate) => IsUnsupportedWorkspaceCliCommand(application, candidate);
+
         if (!string.IsNullOrWhiteSpace(configuredCommand))
         {
             var resolvedConfiguredCommand = ResolveShellLaunchCommand(configuredCommand)
-                ?? ResolveCommand(configuredCommand)
+                ?? ResolveCommand(configuredCommand, Reject)
                 ?? ResolveCommonInstallPath(configuredCommand, application.Detection.AppPathNames, application.Detection.StartMenuNames);
             if (!string.IsNullOrWhiteSpace(resolvedConfiguredCommand)
                 && !IsUnsupportedWorkspaceCliCommand(application, resolvedConfiguredCommand))
@@ -88,7 +92,7 @@ public sealed class ApplicationDetectionService
 
         foreach (var command in application.Detection.Commands)
         {
-            var resolvedCommand = ResolveCommand(Environment.ExpandEnvironmentVariables(command.Trim().Trim('"')));
+            var resolvedCommand = ResolveCommand(Environment.ExpandEnvironmentVariables(command.Trim().Trim('"')), Reject);
             if (!string.IsNullOrWhiteSpace(resolvedCommand)
                 && !IsUnsupportedWorkspaceCliCommand(application, resolvedCommand))
             {
@@ -129,27 +133,75 @@ public sealed class ApplicationDetectionService
             $"{application.DisplayName} は検出できません。設定で実行ファイルまたはコマンドを指定してください。");
     }
 
-    private static string? ResolveCommand(string command)
+    // コマンド名（または明示パス）を実在する実行ファイルのフルパスへ解決する。
+    // reject は「実在はするが、このアプリにとっては受理できない候補」を弾くための述語。
+    // 弾いた候補で打ち切らず次の候補へ進むので、PATH 上に受理できない実体（例: VS Code 拡張の
+    // copilot-chat ブートストラッパー）が先に並んでいても、後続の正規シム（%APPDATA%\npm\copilot）
+    // まで探索が届く。これが「dotnet run（VS Code ターミナル）だと Copilot が未検出になるのに
+    // exe 直接起動だと検出される」現象の修正点。PATH に copilotCli が注入される実行環境でも、
+    // 受理可能な実体を最後まで探すようにする。
+    private static string? ResolveCommand(string command, Func<string, bool>? reject = null)
     {
         if (string.IsNullOrWhiteSpace(command))
         {
             return null;
         }
 
-        if (File.Exists(command))
+        if (FileExistsResilient(command))
         {
-            return Path.GetFullPath(command);
+            var full = Path.GetFullPath(command);
+            if (reject is null || !reject(full))
+            {
+                return full;
+            }
         }
 
         foreach (var candidate in GetPathCandidates(command))
         {
-            if (File.Exists(candidate))
+            if (FileExistsResilient(candidate) && (reject is null || !reject(candidate)))
             {
                 return candidate;
             }
         }
 
         return null;
+    }
+
+    // File.Exists は、ウイルス対策ソフトのオンアクセススキャンや共有違反で実在するファイルに
+    // 対しても稀に false を返すことがある（特に %APPDATA%\npm 配下の CLI シム。GitHub Copilot
+    // CLI などが稀に未検出になり、再起動で直る現象の主因）。false のときは、親フォルダが
+    // 実在するなら同フォルダのファイル名一致をディレクトリ列挙で取り直して一過性の取りこぼしを
+    // 吸収する。列挙も実在ファイルだけを返すので、実在しないコマンドを誤検出することはない。
+    private static bool FileExistsResilient(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        if (File.Exists(path))
+        {
+            return true;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            var fileName = Path.GetFileName(path);
+            if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(fileName) || !Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            return Directory
+                .EnumerateFiles(directory)
+                .Any(found => string.Equals(Path.GetFileName(found), fileName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            DiagnosticLog.Write(ex);
+            return false;
+        }
     }
 
     private static string? ResolveShellLaunchCommand(string command)

@@ -479,14 +479,198 @@ public partial class MainWindow : Window
     private void ReloadApplicationDetectionButton_Click(object sender, RoutedEventArgs e)
     {
         _statusStore.ReloadApplicationsFromConfig();
-        _statusStore.Message = "アプリケーションを再検出しました。";
         RefreshAuxiliaryUi();
+
+        var available = _statusStore.Applications.Where(app => app.IsAvailable).ToList();
+        var unavailable = _statusStore.Applications.Where(app => !app.IsAvailable).ToList();
+
+        _statusStore.Message = $"再検出しました（起動可 {available.Count} / 未検出 {unavailable.Count}）。";
+
+        string detail;
+        if (_statusStore.Applications.Count == 0)
+        {
+            detail = "検出対象のアプリケーションがありません。設定でアプリやパスを登録してください。";
+        }
+        else
+        {
+            var lines = new List<string>
+            {
+                $"起動可 {available.Count} 件 / 未検出 {unavailable.Count} 件"
+            };
+            if (available.Count > 0)
+            {
+                lines.Add("");
+                lines.Add("◯ 起動可:");
+                lines.AddRange(available.Select(app => $"　・{app.DisplayName}"));
+            }
+
+            if (unavailable.Count > 0)
+            {
+                lines.Add("");
+                lines.Add("× 未検出（設定でパス／コマンドを指定してください）:");
+                lines.AddRange(unavailable.Select(app => $"　・{app.DisplayName}（{app.StatusText}）"));
+            }
+
+            detail = string.Join(Environment.NewLine, lines);
+        }
+
+        ShowMaintenanceResult("再検出が完了しました", detail);
     }
 
     private void RepairPanelStateButton_Click(object sender, RoutedEventArgs e)
     {
-        _statusStore.Message = _statusStore.RepairPanelState();
+        var result = _statusStore.RepairPanelState();
+        _statusStore.Message = result.Summary;
         RefreshAuxiliaryUi();
+
+        string title;
+        string detail;
+        if (!result.HasChanges)
+        {
+            title = "不整合は見つかりませんでした";
+            detail = "スロットと保存パネルの保存情報を点検しましたが、修正が必要な不整合はありませんでした。";
+        }
+        else
+        {
+            title = $"{result.TotalChanges} 件の不整合を修正しました";
+            detail = string.Join(
+                Environment.NewLine,
+                $"・スロット表示の補正: {result.NormalizedVisible} 件",
+                $"・保存パネルの補正: {result.NormalizedStored} 件",
+                $"・不完全な保存パネルの削除: {result.ClearedIncomplete} 件",
+                $"・重複した保存パネルの削除: {result.ClearedDuplicates} 件");
+        }
+
+        ShowMaintenanceResult(title, detail);
+    }
+
+    private void ShowMaintenanceResult(string title, string detail)
+    {
+        MaintenanceResultTitleText.Text = title;
+        MaintenanceResultDetailText.Text = detail;
+        MaintenanceResultOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void CloseMaintenanceResultButton_Click(object sender, RoutedEventArgs e)
+    {
+        MaintenanceResultOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowTodayLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        LoadTodayLogIntoView();
+        LogOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void ReloadLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        LoadTodayLogIntoView();
+    }
+
+    // 表示中の本日分ログをクリップボードへコピーする。リモートではクリップボード操作が
+    // 一時的に失敗することがあるため、例外はログして握り、アプリは落とさない。
+    private void CopyLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        var text = LogContentTextBox.Text;
+        if (string.IsNullOrEmpty(text))
+        {
+            _statusStore.Message = "コピーするログがありません。";
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(text);
+            _statusStore.Message = "本日分のログをコピーしました。";
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            DiagnosticLog.Write(ex);
+            _statusStore.Message = "クリップボードへコピーできませんでした。";
+        }
+    }
+
+    private void CloseLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        LogOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    // panel.log を OS の関連付けで開く。関連付けが無い／リモートで開けない環境では
+    // 保存フォルダをエクスプローラーで開く（さらに失敗してもメッセージだけ出してアプリは継続）。
+    private void OpenLogFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        var logPath = DiagnosticLog.FilePath;
+        try
+        {
+            if (System.IO.File.Exists(logPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = logPath,
+                    UseShellExecute = true
+                });
+                _statusStore.Message = $"ログを開きました: {logPath}";
+                return;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            DiagnosticLog.Write(ex);
+        }
+
+        TryOpenLogFolder(logPath);
+    }
+
+    private void TryOpenLogFolder(string logPath)
+    {
+        var folder = System.IO.Path.GetDirectoryName(logPath);
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            _statusStore.Message = "ログの保存場所を特定できませんでした。";
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = QuoteExplorerArgument(folder),
+                UseShellExecute = false
+            });
+            _statusStore.Message = $"ログの保存フォルダを開きました: {folder}";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            DiagnosticLog.Write(ex);
+            _statusStore.Message = $"ログを開けませんでした。場所: {logPath}";
+        }
+    }
+
+    // 本日分のログをオーバーレイの TextBox へ読み込む。末尾（最新）が見えるようキャレットを末尾へ。
+    // 行数が多いと TextBox が重くなるうえ縦に伸びやすいので、直近 MaxDisplayedLogLines 行だけ表示する。
+    private const int MaxDisplayedLogLines = 500;
+
+    private void LoadTodayLogIntoView()
+    {
+        LogFilePathText.Text = DiagnosticLog.FilePath;
+        var lines = DiagnosticLog.ReadTodayLines();
+        if (lines.Count == 0)
+        {
+            LogContentTextBox.Text = "本日のログはまだありません。";
+            LogContentTextBox.CaretIndex = 0;
+            return;
+        }
+
+        var truncated = lines.Count > MaxDisplayedLogLines;
+        var shown = truncated ? lines.Skip(lines.Count - MaxDisplayedLogLines).ToList() : lines;
+        var body = string.Join(Environment.NewLine, shown);
+        LogContentTextBox.Text = truncated
+            ? $"（古い {lines.Count - MaxDisplayedLogLines} 行は省略。直近 {MaxDisplayedLogLines} 行を表示。全文は「ファイルを開く」から確認できます）"
+                + Environment.NewLine + Environment.NewLine + body
+            : body;
+        LogContentTextBox.CaretIndex = LogContentTextBox.Text.Length;
+        LogContentTextBox.ScrollToEnd();
     }
 
     private void CloseHelpButton_Click(object sender, RoutedEventArgs e)
@@ -3633,6 +3817,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 結果ダイアログ・ログは設定の上に重ねて開くので、Escape は上から順に閉じる。
+        if (MaintenanceResultOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            MaintenanceResultOverlay.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            return;
+        }
+
+        if (LogOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            LogOverlay.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            return;
+        }
+
         if (SettingsOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideSettingsDialog();
@@ -3686,6 +3885,11 @@ public partial class MainWindow : Window
         StopPanelLocateEmphasis();
         _focusNameOverlay.Close();
         base.OnClosed(e);
+
+        // App は ShutdownMode=OnExplicitShutdown のため、メインウィンドウを閉じても自動終了しない。
+        // 従来の OnLastWindowClose と同じ「パネルを閉じたらアプリも終わる」挙動を保つため、
+        // メインウィンドウのクローズ時にここで明示的に終了させる。
+        Application.Current?.Shutdown();
     }
 
     private IntPtr PanelWindowProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

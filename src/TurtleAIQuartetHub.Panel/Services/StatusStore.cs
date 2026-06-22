@@ -611,7 +611,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         SavePanelStates();
     }
 
-    public string RepairPanelState()
+    public PanelStateRepairResult RepairPanelState()
     {
         var visiblePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var storedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -695,7 +695,11 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         SavePanelStates();
 
-        return $"修復完了: 表の補正 {normalizedVisible} 件、控えの補正 {normalizedStored} 件、不完全な控えの削除 {clearedIncomplete} 件、重複控えの削除 {clearedDuplicates} 件。";
+        return new PanelStateRepairResult(
+            normalizedVisible,
+            normalizedStored,
+            clearedIncomplete,
+            clearedDuplicates);
     }
 
     public void SwapStoredPanels(StoredPanelSlot source, StoredPanelSlot target)
@@ -1394,4 +1398,21 @@ public sealed class StatusStore : INotifyPropertyChanged
         if (hasA) dict[keyB] = valueA!;
         if (hasB) dict[keyA] = valueB!;
     }
+}
+
+// 不整合修復の結果。件数の内訳と「何か直したか」を保持し、結果ダイアログの文面に使う。
+public sealed record PanelStateRepairResult(
+    int NormalizedVisible,
+    int NormalizedStored,
+    int ClearedIncomplete,
+    int ClearedDuplicates)
+{
+    public int TotalChanges => NormalizedVisible + NormalizedStored + ClearedIncomplete + ClearedDuplicates;
+
+    public bool HasChanges => TotalChanges > 0;
+
+    // 状態バー向けの一行サマリー（従来と同じ文面）。
+    public string Summary => HasChanges
+        ? $"修復完了: 表の補正 {NormalizedVisible} 件、控えの補正 {NormalizedStored} 件、不完全な控えの削除 {ClearedIncomplete} 件、重複控えの削除 {ClearedDuplicates} 件。"
+        : "不整合は見つかりませんでした。";
 }
