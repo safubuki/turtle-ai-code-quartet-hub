@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -81,6 +82,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _postLaunchArrangeCancellation;
     private bool _isReassertingFocusedSlot;
     private bool _isWindowMoveOrResizeActive;
+    private bool _wasMinimized;
     private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressSlotFocusFromDragUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
@@ -2601,17 +2603,24 @@ public partial class MainWindow : Window
         StandardJumpButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         WindowTitleText.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
 
+        // モードのサイズ計算はすべて論理サイズ(DIP)で行い（定数や記憶値・WPF Measure はみな DIP）、
+        // 位置計算と SetWindowPos は物理pxで行うため、ここで現在ディスプレイの DPI を一度だけ取り、
+        // 目標サイズを DIP→物理px に変換してから位置計算・適用へ渡す。これにより、別 DPI の
+        // ディスプレイへ移ってモードを切り替えても、サイズはその場の DPI に正しく変換され、
+        // 物理pxの使い回しによる巨大化や下部余白が起きない。
+        var scale = GetCurrentDpiScale(new WindowInteropHelper(this).Handle);
+
         switch (mode)
         {
             case DisplayMode.Compact:
             {
-                var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : preModeChangeBounds.Width;
+                var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : preModeChangeBounds.Width / scale;
                 var compactWidth = Math.Max(CompactWindowMinWidth, Math.Round(baseWidth * CompactWindowWidthScale));
                 var compactHeight = GetCompactModeHeight(compactWidth);
 
                 MinWidth = CompactWindowMinWidth;
                 MinHeight = compactHeight;
-                var targetBounds = GetCompactModeBounds(preModeChangeBounds, compactWidth, compactHeight);
+                var targetBounds = GetCompactModeBounds(preModeChangeBounds, compactWidth * scale, compactHeight * scale);
                 SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
                 break;
             }
@@ -2619,7 +2628,7 @@ public partial class MainWindow : Window
             {
                 MinWidth = MicroWindowSize;
                 MinHeight = MicroWindowSize;
-                var targetBounds = GetMicroModeCenteredBounds(MicroWindowSize, MicroWindowSize);
+                var targetBounds = GetMicroModeCenteredBounds(MicroWindowSize * scale, MicroWindowSize * scale);
                 SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
                 break;
             }
@@ -2634,7 +2643,7 @@ public partial class MainWindow : Window
                 var targetHeight = _standardWindowHeight > 0
                     ? Math.Max(MinHeight, _standardWindowHeight)
                     : Height;
-                var targetBounds = GetStandardModeRestoreBounds(preModeChangeBounds, targetWidth, targetHeight);
+                var targetBounds = GetStandardModeRestoreBounds(preModeChangeBounds, targetWidth * scale, targetHeight * scale);
                 SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
                 break;
             }
@@ -2666,6 +2675,9 @@ public partial class MainWindow : Window
         };
     }
 
+    // 標準サイズは DPI 非依存の論理サイズ(DIP)で記憶する。物理pxで覚えると、別 DPI の
+    // ディスプレイへ移って標準へ戻したとき、その物理pxがそのまま適用されてウィンドウが
+    // 巨大化（または縮小）してしまう。現在の物理サイズを現在DPIで割って DIP に直して保持する。
     private void RememberStandardWindowMetrics()
     {
         if (!IsStandardMode)
@@ -2673,9 +2685,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        var scale = GetCurrentDpiScale(panelHandle);
         var currentBounds = GetCurrentWindowBounds();
-        _standardWindowWidth = currentBounds.Width;
-        _standardWindowHeight = currentBounds.Height;
+        _standardWindowWidth = currentBounds.Width / scale;
+        _standardWindowHeight = currentBounds.Height / scale;
         _standardWindowMinWidth = MinWidth;
         _standardWindowMinHeight = MinHeight;
     }
@@ -2776,6 +2790,8 @@ public partial class MainWindow : Window
             (int)Math.Round(targetHeight));
     }
 
+    // left/top/width/height はすべて物理px。位置・サイズとも物理pxで SetWindowPos に渡す。
+    // 論理サイズ(DIP)からの変換は呼び出し側（モード切替）で現在DPIを用いて済ませておく。
     private void SetWindowBounds(double left, double top, double width, double height)
     {
         var bounds = new WindowArranger.WindowBounds(
@@ -2784,6 +2800,7 @@ public partial class MainWindow : Window
             (int)Math.Round(width),
             (int)Math.Round(height));
         var panelHandle = new WindowInteropHelper(this).Handle;
+
         if (panelHandle != IntPtr.Zero && _windowArranger.SetWindowBounds(panelHandle, bounds))
         {
             return;
@@ -2918,10 +2935,22 @@ public partial class MainWindow : Window
     {
         if (WindowState == WindowState.Minimized)
         {
+            _wasMinimized = true;
             CancelScheduledPanelFrontRestore();
             CancelScheduledFocusedSlotReassert();
             CancelScheduledPostLaunchArrange();
             return;
+        }
+
+        // 最小化からの復元時は、最小化中にDPIの異なるディスプレイへ移動していると、WPF が
+        // 旧ディスプレイのスケールで記憶した物理サイズのまま復元してウィンドウが過大化する
+        // （高DPI側で最小化→低DPI側で復元すると巨大化し下部に余白）。最小化中の移動では復元時に
+        // WM_DPICHANGED が来ないことがあるため、ここで現在ディスプレイの実DPIに基づき基準サイズを
+        // 物理pxで再適用して確実に正す。
+        if (_wasMinimized)
+        {
+            _wasMinimized = false;
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(CorrectWindowSizeForCurrentDpi));
         }
 
         if (IsAnyMouseButtonPressed())
@@ -3899,6 +3928,9 @@ public partial class MainWindow : Window
         // 元位置に戻ってしまう。WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE で操作中フラグを立てる。
         const int WM_ENTERSIZEMOVE = 0x0231;
         const int WM_EXITSIZEMOVE = 0x0232;
+        // 別 DPI のディスプレイへ移ると Windows が送ってくる。lParam に「移動先 DPI に合わせた
+        // 推奨ウィンドウ矩形（物理px）」が入る。
+        const int WM_DPICHANGED = 0x02E0;
 
         switch (msg)
         {
@@ -3910,9 +3942,142 @@ public partial class MainWindow : Window
                 _isWindowMoveOrResizeActive = false;
                 SuppressFocusedSlotReassertForPanelInput();
                 break;
+            case WM_DPICHANGED:
+                // 解像度（DPI）の異なるディスプレイ間を移動・復元したとき、WPF 既定の DPI 追従と
+                // このアプリが物理pxで行うサイズ指定が二重適用され、ウィンドウが過大化して下部に
+                // 余白ができることがある（特に高DPI側で最小化→低DPI側へドラッグ→復元）。
+                // handled は立てず WPF 本来の DPI（描画スケール）更新はそのまま行わせたうえで、
+                // 遷移が落ち着いた次のフレームで、Windows が lParam で渡した「移動先 DPI 用の推奨
+                // 矩形（物理px）」へ最終サイズを合わせ直し、二重スケールの取りこぼしを正す。
+                if (lParam != IntPtr.Zero)
+                {
+                    var suggested = Marshal.PtrToStructure<RECT>(lParam);
+                    _ = Dispatcher.BeginInvoke(
+                        DispatcherPriority.Render,
+                        new Action(() => ApplyDpiSuggestedBounds(suggested)));
+                }
+
+                break;
         }
 
         return IntPtr.Zero;
+    }
+
+    // WM_DPICHANGED で受け取った推奨矩形（物理px）へウィンドウを合わせ直す。最小化中は
+    // 復元後に改めて DPICHANGED が来るので何もしない。推奨矩形へ SetWindowPos すると WM_SIZE が
+    // 走って WPF が中身を測り直すため、二重スケールで膨らんだ状態と下部の余白が解消される。
+    private void ApplyDpiSuggestedBounds(RECT suggested)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        if (panelHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        SetWindowPos(
+            panelHandle,
+            IntPtr.Zero,
+            suggested.Left,
+            suggested.Top,
+            suggested.Right - suggested.Left,
+            suggested.Bottom - suggested.Top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    // 最小化からの復元後に、ウィンドウが現在載っているディスプレイの実DPIに合わせて
+    // 物理サイズを引き直す。WPF の論理サイズ（DIP）× 現在DPI/96 を正しい物理サイズとし、
+    // 旧ディスプレイのスケールを引きずって膨らんだ状態を是正する。位置は現状を維持する。
+    // 標準表示以外（コンパクト/極小）は各モードが独自にサイズ管理するため対象外。
+    private void CorrectWindowSizeForCurrentDpi()
+    {
+        if (!IsStandardMode || WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        if (panelHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var dpi = GetDpiForWindow(panelHandle);
+        if (dpi == 0)
+        {
+            return;
+        }
+
+        // WPF の論理サイズ（DIP）。ウィンドウ定義の Width/Height がそのまま使える。
+        var logicalWidth = Width;
+        var logicalHeight = Height;
+        if (double.IsNaN(logicalWidth) || double.IsNaN(logicalHeight) || logicalWidth <= 0 || logicalHeight <= 0)
+        {
+            return;
+        }
+
+        var scale = dpi / 96.0;
+        var expectedWidthPx = (int)Math.Round(logicalWidth * scale);
+        var expectedHeightPx = (int)Math.Round(logicalHeight * scale);
+
+        if (!_windowArranger.TryGetWindowBounds(panelHandle, out var current))
+        {
+            return;
+        }
+
+        // 既に期待サイズに収まっていれば何もしない（毎回 SetWindowPos して揺らさない）。
+        if (Math.Abs(current.Width - expectedWidthPx) <= 2 && Math.Abs(current.Height - expectedHeightPx) <= 2)
+        {
+            return;
+        }
+
+        SetWindowPos(
+            panelHandle,
+            IntPtr.Zero,
+            current.Left,
+            current.Top,
+            expectedWidthPx,
+            expectedHeightPx,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    // ウィンドウが現在載っているディスプレイの DPI 倍率（100%=1.0, 150%=1.5）。
+    // 取得できないときは WPF が認識している倍率→1.0 の順でフォールバックする。
+    private double GetCurrentDpiScale(IntPtr panelHandle)
+    {
+        if (panelHandle != IntPtr.Zero)
+        {
+            var dpi = GetDpiForWindow(panelHandle);
+            if (dpi > 0)
+            {
+                return dpi / 96.0;
+            }
+        }
+
+        var wpfDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        return wpfDpi > 0 ? wpfDpi : 1.0;
     }
 
     private async Task RunBusyAsync(Func<Task> action)
