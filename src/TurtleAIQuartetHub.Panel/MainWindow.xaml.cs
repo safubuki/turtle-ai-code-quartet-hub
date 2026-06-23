@@ -3902,6 +3902,10 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // パネルのクローズ要求が来たことを記録。App.OnExit の正常終了マーカーと突き合わせると、
+        // 「閉じ操作は届いたのに終了処理が完走しなかった（＝終了直前のハング）」も切り分けられる。
+        DiagnosticLog.Write(LogLevel.Info, "Main panel window closed; requesting application shutdown.");
+
         _refreshTimer.Stop();
         _refreshCancellation.Cancel();
         _panelFrontRestoreCancellation?.Cancel();

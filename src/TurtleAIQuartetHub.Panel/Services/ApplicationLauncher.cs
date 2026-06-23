@@ -109,7 +109,7 @@ public sealed class ApplicationLauncher
             var window = await WaitForNewApplicationWindowAsync(application, knownHandles, expectedProcessId: null, timeout, cancellationToken);
             if (window is null)
             {
-                DiagnosticLog.Write($"No new {application.DisplayName} window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
+                DiagnosticLog.Write(LogLevel.Warn, $"No new {application.DisplayName} window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
@@ -218,7 +218,7 @@ public sealed class ApplicationLauncher
 
         foreach (var launch in pendingLaunches)
         {
-            DiagnosticLog.Write($"No new {application.DisplayName} terminal window detected for slot {launch.Slot.Name} within {timeout.TotalSeconds:0} seconds.");
+            DiagnosticLog.Write(LogLevel.Warn, $"No new {application.DisplayName} terminal window detected for slot {launch.Slot.Name} within {timeout.TotalSeconds:0} seconds.");
             launch.Slot.WindowStatus = SlotWindowStatus.Missing;
         }
 

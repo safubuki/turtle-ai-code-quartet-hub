@@ -3,6 +3,23 @@ using System.Text;
 
 namespace TurtleAIQuartetHub.Panel.Services;
 
+// ログ1行の重大度。行を一目で仕分けできるよう、時刻の直後に "[INFO]" などの
+// プレフィックスとして出力する。ハング/異常終了の切り分けを楽にするのが目的。
+public enum LogLevel
+{
+    // 通常の動作トレース（起動・終了・各種処理の経過）。
+    Info,
+
+    // 致命的ではないが注意したい事象（タイムアウト、想定外だが継続可能な状態）。
+    Warn,
+
+    // ハンドルした例外など、異常だがアプリは継続できるもの。
+    Error,
+
+    // 継続不能な致命的エラー（AppDomain 未処理例外など）。プロセスが落ちる直前。
+    Fatal,
+}
+
 public static class DiagnosticLog
 {
     // 本日分を抽出するために、各行の先頭に書く時刻プレフィックスのフォーマットと、
@@ -17,12 +34,19 @@ public static class DiagnosticLog
     // 設定画面の「ログを表示」「ファイルを開く」から参照するための公開パス。
     public static string FilePath => LogPath;
 
-    public static void Write(string message)
+    // レベル未指定の文字列ログは情報扱い。既存の呼び出しは無変更のまま [INFO] になる。
+    public static void Write(string message) => Write(LogLevel.Info, message);
+
+    public static void Write(LogLevel level, string message)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-            File.AppendAllText(LogPath, $"[{DateTimeOffset.Now:O}] {message}{Environment.NewLine}");
+            // 形式: "[yyyy-MM-ddTHH:mm:ss...] [LEVEL] message"
+            // 日付プレフィックスの位置は従来どおり先頭に保ち、ReadTodayLines の抽出ロジックを壊さない。
+            File.AppendAllText(
+                LogPath,
+                $"[{DateTimeOffset.Now:O}] [{LevelTag(level)}] {message}{Environment.NewLine}");
         }
         catch
         {
@@ -30,10 +54,18 @@ public static class DiagnosticLog
         }
     }
 
-    public static void Write(Exception exception)
+    // 例外はレベル未指定なら異常として扱う。致命的なケースは Write(LogLevel.Fatal, ...) を使う。
+    public static void Write(Exception exception) => Write(LogLevel.Error, exception);
+
+    public static void Write(LogLevel level, Exception exception) => Write(level, exception.ToString());
+
+    private static string LevelTag(LogLevel level) => level switch
     {
-        Write(exception.ToString());
-    }
+        LogLevel.Warn => "WARN",
+        LogLevel.Error => "ERROR",
+        LogLevel.Fatal => "FATAL",
+        _ => "INFO",
+    };
 
     // 本日（ローカル日付）のログ行だけを古い順に返す。アプリ自身が追記中でも読めるよう
     // 共有読み取りで開く。行頭の "[yyyy-MM-dd" を本日の日付と突き合わせて抽出する。

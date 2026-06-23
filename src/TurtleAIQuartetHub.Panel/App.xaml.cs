@@ -18,6 +18,11 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += App_AppDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += App_UnobservedTaskException;
 
+        // 起動マーカー。会社環境などでハングした際、ログの最後がこの行（＝終了マーカー無し）か
+        // [ERROR]/[FATAL] かで「正常に閉じたのか／落ちたのか／固まったのか」を切り分けられる。
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        DiagnosticLog.Write(LogLevel.Info, $"Panel starting (version={version}, pid={Environment.ProcessId}).");
+
         _singleInstanceCoordinator = new SingleInstanceCoordinator();
         if (!_singleInstanceCoordinator.IsPrimary)
         {
@@ -68,15 +73,27 @@ public partial class App : Application
 
     private static void App_AppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
-        // ここに来たら継続不能だが、原因調査のため必ずログには残す。
+        // ここに来たら継続不能（プロセスが落ちる直前）。原因調査のため必ず FATAL で残す。
+        // IsTerminating が true なら、この直後にプロセスが終了する＝異常終了の決定的な痕跡になる。
         if (e.ExceptionObject is Exception exception)
         {
-            DiagnosticLog.Write(exception);
+            DiagnosticLog.Write(LogLevel.Fatal, $"Unhandled exception, terminating={e.IsTerminating}.");
+            DiagnosticLog.Write(LogLevel.Fatal, exception);
+        }
+        else
+        {
+            DiagnosticLog.Write(
+                LogLevel.Fatal,
+                $"Unhandled non-exception error, terminating={e.IsTerminating}: {e.ExceptionObject}");
         }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // 正常終了マーカー。この行がログ末尾にあれば「ユーザー操作で正常に閉じた」と判断できる。
+        // 逆に起動マーカーの後にこの行が無ければ、ハングまたは強制終了（タスクキル・クラッシュ）を疑う。
+        DiagnosticLog.Write(LogLevel.Info, $"Panel exiting normally (code={e.ApplicationExitCode}).");
+
         if (_singleInstanceCoordinator?.IsPrimary == true)
         {
             TaskbarJumpListService.SetInactiveMenu();

@@ -88,7 +88,7 @@ public sealed class VscodeLauncher
             var assignment = await LaunchWindowAsync(slot, config, resolvedCodeCommand, launchPath, knownHandles, timeout, cancellationToken);
             if (assignment is null)
             {
-                DiagnosticLog.Write($"No new VS Code window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
+                DiagnosticLog.Write(LogLevel.Warn, $"No new VS Code window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
@@ -186,7 +186,7 @@ public sealed class VscodeLauncher
         var fallbackTimeout = GetRemainingTime(totalTimeout, totalStopwatch);
         if (fallbackTimeout <= TimeSpan.Zero)
         {
-            DiagnosticLog.Write($"No timeout budget remains for slot {slot.Name} fallback launch.");
+            DiagnosticLog.Write(LogLevel.Warn, $"No timeout budget remains for slot {slot.Name} fallback launch.");
             return null;
         }
 
@@ -262,7 +262,7 @@ public sealed class VscodeLauncher
 
         if (hook == IntPtr.Zero)
         {
-            DiagnosticLog.Write("WinEvent hook could not be registered while waiting for a VS Code window.");
+            DiagnosticLog.Write(LogLevel.Warn, "WinEvent hook could not be registered while waiting for a VS Code window.");
             return FindExpectedNewWindow(slot, config, knownHandles, expectedProcessId, launchPath) ?? fallbackWindowProvider?.Invoke();
         }
 
@@ -669,7 +669,7 @@ public sealed class VscodeLauncher
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            DiagnosticLog.Write($"Failed to kill zombie process {pid}: {ex.Message}");
+            DiagnosticLog.Write(LogLevel.Warn, $"Failed to kill zombie process {pid}: {ex.Message}");
         }
     }
 
@@ -722,7 +722,7 @@ public sealed class VscodeLauncher
         }
         catch (Exception ex)
         {
-            DiagnosticLog.Write($"Failed to remove stale code.lock for slot {slot.Name}: {ex.Message}");
+            DiagnosticLog.Write(LogLevel.Warn, $"Failed to remove stale code.lock for slot {slot.Name}: {ex.Message}");
         }
     }
 
@@ -1010,7 +1010,7 @@ public sealed class VscodeLauncher
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            DiagnosticLog.Write($"Failed to kill launch process {processId.Value} for slot {slotName}: {ex.Message}");
+            DiagnosticLog.Write(LogLevel.Warn, $"Failed to kill launch process {processId.Value} for slot {slotName}: {ex.Message}");
         }
     }
 
