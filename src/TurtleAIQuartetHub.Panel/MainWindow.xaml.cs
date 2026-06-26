@@ -2206,6 +2206,22 @@ public partial class MainWindow : Window
         RefreshAuxiliaryUi();
     }
 
+    private void CompactStoredPanelsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var movedCount = _statusStore.CompactStoredPanels();
+
+        _statusStore.Message = movedCount > 0
+            ? $"控えの空きを詰めて整列しました（{movedCount} 件移動）。"
+            : "控えはすでに整列済みです。詰める空きはありませんでした。";
+
+        if (movedCount > 0 && _statusStore.StoredPanelPages.Count > 0)
+        {
+            _statusStore.SelectStoredPanelPage(_statusStore.StoredPanelPages[0]);
+        }
+
+        RefreshAuxiliaryUi();
+    }
+
     private void StoredPanelsExpander_Expanded(object sender, RoutedEventArgs e)
     {
         UpdateWindowHeightForStoredPanels(true);

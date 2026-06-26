@@ -727,6 +727,64 @@ public sealed class StatusStore : INotifyPropertyChanged
         SavePanelStates();
     }
 
+    /// <summary>
+    /// 控え（全ページ通し）の空き隙間を前詰めする。9と11の間の10が空きなら11を10へ、
+    /// ページをまたいで控え2の8が空きで控え3の9に内容があれば8へ、という具合に歯抜けを解消する。
+    /// </summary>
+    /// <returns>前へ移動した控えの件数。0なら歯抜けが無く何も変わっていない。</returns>
+    public int CompactStoredPanels()
+    {
+        var contents = StoredPanels
+            .Where(slot => slot.HasContent)
+            .Select(slot => (slot.PanelTitle, slot.WorkspacePath, slot.ApplicationId))
+            .ToList();
+
+        // 既に前詰め済みなら（先頭から contents.Count 個がすべて中身あり）何もしない。
+        var alreadyCompact = StoredPanels
+            .Take(contents.Count)
+            .All(slot => slot.HasContent);
+        if (alreadyCompact)
+        {
+            return 0;
+        }
+
+        var movedCount = 0;
+        _suppressPersistence = true;
+
+        try
+        {
+            for (var i = 0; i < StoredPanels.Count; i++)
+            {
+                var slot = StoredPanels[i];
+                var hadContent = slot.HasContent;
+
+                if (i < contents.Count)
+                {
+                    var (title, path, applicationId) = contents[i];
+                    slot.LoadFrom(title, path, applicationId);
+                }
+                else if (hadContent)
+                {
+                    slot.Clear();
+                }
+
+                ApplyApplicationMetadata(slot);
+
+                if (!hadContent && slot.HasContent)
+                {
+                    movedCount++;
+                }
+            }
+        }
+        finally
+        {
+            _suppressPersistence = false;
+        }
+
+        SavePanelStates();
+        return movedCount;
+    }
+
     public bool TryMoveStoredPanelToPage(
         StoredPanelSlot source,
         StoredPanelPage targetPage,

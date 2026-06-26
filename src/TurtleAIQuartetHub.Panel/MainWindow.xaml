@@ -1516,21 +1516,42 @@
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
 
-          <ItemsControl ItemsSource="{Binding StoredPanelPages}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="{x:Type models:StoredPanelPage}">
-                <Button Content="{Binding Header}"
-                        Tag="{Binding}"
-                        Click="StoredPanelPageTab_Click"
-                        Style="{StaticResource StoredPageTabButtonStyle}" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <ItemsControl Grid.Column="0" ItemsSource="{Binding StoredPanelPages}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type models:StoredPanelPage}">
+                  <Button Content="{Binding Header}"
+                          Tag="{Binding}"
+                          Click="StoredPanelPageTab_Click"
+                          Style="{StaticResource StoredPageTabButtonStyle}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Grid.Column="1"
+                    x:Name="CompactStoredPanelsButton"
+                    Content="整列"
+                    Click="CompactStoredPanelsButton_Click"
+                    Style="{StaticResource BarButton}"
+                    VerticalAlignment="Top"
+                    MinWidth="82"
+                    Height="22"
+                    MinHeight="22"
+                    FontSize="11"
+                    Padding="12,0"
+                    Margin="6,0,4,4"
+                    ToolTip="控えの空き（歯抜け）を前に詰めて整列します。ページをまたいで詰めます。" />
+          </Grid>
 
           <ContentControl Grid.Row="1"
                           Content="{Binding SelectedStoredPanelPage}"
