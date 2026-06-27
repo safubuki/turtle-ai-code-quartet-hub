@@ -1289,6 +1289,13 @@ public partial class MainWindow : Window
                 // 前フォーカスを quadrant へ静かに（アニメ無しで）戻す。
                 SendOtherSlotsToBackOnSameDisplay(slot);
                 ArrangeSlotsExceptOnActiveMonitor(slot, false);
+
+                // ArrangeSlotsExceptOnActiveMonitor は他スロットを 4 面セルへ SWP_SHOWWINDOW 付きで
+                // 配置し直すため、直前に背面へ送った旧フォーカス（C など）の Z 順が持ち上がり、新フォーカス
+                // （D）の前に出てしまうことがある（素早い C→D 切替で再現）。配置でレイヤーが乱れたあと、
+                // 他スロットを改めて背面へ送り、新フォーカスを最前面に立て直して 1 面表示を確定させる。
+                SendOtherSlotsToBackOnSameDisplay(slot);
+                _windowArranger.BringToFrontOnce(slot.WindowHandle);
                 BringPanelToFrontImmediate();
             }
             return;
