@@ -658,6 +658,45 @@ public sealed class WindowArranger
         return windowHandle != IntPtr.Zero && IsWindow(windowHandle) && IsIconic(windowHandle);
     }
 
+    // フォーカスズーム演出用: 可視枠（DWM 拡張フレーム）基準の現在境界を物理 px で返す。
+    // 演出の開始矩形はユーザーが画面上で見ている枠と一致している必要があるため、
+    // 不可視枠込みの GetWindowRect ではなくこちらを使う。
+    public bool TryGetVisibleWindowBounds(IntPtr windowHandle, out WindowBounds bounds)
+    {
+        bounds = default;
+        return windowHandle != IntPtr.Zero && IsWindow(windowHandle) && TryGetVisibleBounds(windowHandle, out bounds);
+    }
+
+    // フォーカスズーム演出用: DWM の最小化/復元/最大化アニメを外部から抑止・解除する。
+    // 自前のズーム演出中に OS 側のアニメが二重再生されるのを防ぐ。必ず false で対にして戻すこと。
+    public void SuppressTransitions(IntPtr windowHandle, bool suppressed)
+    {
+        SetDwmTransitionsDisabled(windowHandle, suppressed);
+    }
+
+    // フォーカスズーム演出用: このスロットが次の Arrange で着地する 4 面セル（可視枠基準・
+    // 物理 px）を、実際に配置せずに計算して返す。縮小演出の終点に使う。
+    // 呼び出し時点の IsFocused に基づくため、フォーカス解除を反映した後に呼ぶこと。
+    public bool TryGetPlannedCellBounds(
+        IReadOnlyList<WindowSlot> slots,
+        WindowSlot slot,
+        int gap,
+        int monitorIndex,
+        out WindowBounds bounds)
+    {
+        bounds = default;
+        foreach (var placement in BuildPlacements(slots, gap, monitorIndex, excludedSlot: null))
+        {
+            if (placement.Handle == slot.WindowHandle)
+            {
+                bounds = new WindowBounds(placement.X, placement.Y, placement.Width, placement.Height);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public bool TryGetWindowBounds(IntPtr windowHandle, out WindowBounds bounds)
     {
         bounds = default;

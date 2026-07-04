@@ -37,6 +37,11 @@ public sealed class AppConfig
 
     public int StatusRefreshIntervalMilliseconds { get; set; } = 1000;
 
+    // フォーカス切替（1 面化／4 面戻し）を DWM サムネイルの覆いで滑らかに見せる演出。
+    // 純粋な視覚効果で、ウィンドウ管理の実体には影響しない。違和感があれば false で
+    // 従来の OS 標準アニメに戻せる。
+    public bool EnableFocusZoomAnimation { get; set; } = true;
+
     public string DefaultWorkspaceApplicationId { get; set; } = VsCodeApplicationId;
 
     public List<ToolApplicationConfig> Applications { get; set; } = DefaultApplications();

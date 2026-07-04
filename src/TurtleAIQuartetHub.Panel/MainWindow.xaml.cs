@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
     private readonly FocusNameOverlay _focusNameOverlay;
+    private readonly FocusZoomOverlay _focusZoomOverlay = new();
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly ApplicationLauncher _applicationLauncher;
     private readonly StatusStore _statusStore;
@@ -1206,6 +1207,17 @@ public partial class MainWindow : Window
             {
                 CapturePreferredLayout(slot);
                 ClearFocusedSlotForDisplay(monitor);
+
+                // 縮小演出: 作業領域→戻り先の 4 面セルへ、ライブサムネイルの覆いを縮小させる。
+                // 実ウィンドウの復元リサイズ（白ちらつきの原因）は覆いの下で進む。
+                // セル計算はフォーカス解除を反映した後・Arrange と同じ引数で行い、着地点を一致させる。
+                if (_windowArranger.TryGetVisibleWindowBounds(slot.WindowHandle, out var shrinkFrom)
+                    && _windowArranger.TryGetPlannedCellBounds(
+                        _statusStore.Slots, slot, _statusStore.Config.Gap, GetActiveMonitorIndex(), out var shrinkTo))
+                {
+                    TryBeginFocusZoom(slot, shrinkFrom, shrinkTo);
+                }
+
                 var arranged = ArrangeSlotsOnActiveMonitor(false);
                 // 他ディスプレイのフォーカスは Arrange でタイル対象外だが、レイヤー再適用で前後が
                 // 乱れ得るので前面に立て直す。
@@ -1247,6 +1259,20 @@ public partial class MainWindow : Window
         EnsurePreferredLayout(slot);
         VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
+
+        // ズーム演出: 現在のタイル位置→対象ディスプレイの作業領域へ、ライブサムネイルの覆いを
+        // 拡大させる。実際の最大化と Electron の再描画（白ちらつきの原因）は覆いの下で進む。
+        // ディスプレイをまたぐ単独移動（EnsureWindowOnMonitor が走るケース）は開始矩形と
+        // 終点が別画面になり演出が成立しないため、従来動作に任せる。
+        var zoomCovered = false;
+        if (_windowArranger.TryGetVisibleWindowBounds(slot.WindowHandle, out var zoomFrom)
+            && _windowArranger.TryGetMonitorWorkArea(monitor, out var zoomTo)
+            && _windowArranger.GetMonitorIndexForWindow(slot.WindowHandle)
+                == NormalizeMonitorIndex(monitor, _windowArranger.GetMonitorCount()))
+        {
+            zoomCovered = TryBeginFocusZoom(slot, zoomFrom, zoomTo);
+        }
+
         // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
         if (_windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor))
         {
@@ -1254,7 +1280,13 @@ public partial class MainWindow : Window
             // 画面を覆わせておく。ここで他スロットを背面（HWND_BOTTOM）へ送ると、最大化アニメが
             // 画面を覆い切るまでの間、タイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
             // 背面送り・前フォーカスの復元・整列はすべてアニメ完了後に覆いの下で行う。
-            _windowArranger.BringToFrontOnce(slot.WindowHandle);
+            // ズーム演出中の TOPMOST バウンスは対象ウィンドウを覆いの上へ持ち上げて
+            // ちらつきを見せてしまうため、覆いが出ているときは行わない（覆い自体が遮蔽の
+            // 役割を果たし、最終的な前面化は遅延整列ブロックが改めて行う）。
+            if (!zoomCovered)
+            {
+                _windowArranger.BringToFrontOnce(slot.WindowHandle);
+            }
             SetFocusedSlotForDisplay(slot);
             BringPanelToFrontImmediate();
             SchedulePanelToFront();
@@ -2553,6 +2585,37 @@ public partial class MainWindow : Window
         Show();
         Activate();
         BringPanelToFront();
+    }
+
+    // フォーカス切替のズーム演出（拡大・縮小共通）を開始する。覆いを出せたときだけ true。
+    // 開始できない条件（設定オフ・非表示中・最小化中・DWM 登録失敗）ではすべて従来動作へ
+    // フォールバックし、ウィンドウ管理の実体には何の影響も与えない。
+    private bool TryBeginFocusZoom(WindowSlot slot, WindowArranger.WindowBounds from, WindowArranger.WindowBounds to)
+    {
+        if (!_statusStore.Config.EnableFocusZoomAnimation
+            || _areWindowsHidden
+            || slot.WindowHandle == IntPtr.Zero
+            || _windowArranger.IsMinimized(slot.WindowHandle))
+        {
+            return false;
+        }
+
+        var handle = slot.WindowHandle;
+        // 覆いの下で実ウィンドウが状態遷移する間、OS 標準のズームアニメが二重再生されないよう
+        // 抑止する。解除は演出の後始末（onFinished）で必ず 1 回行われる。
+        _windowArranger.SuppressTransitions(handle, true);
+        var started = _focusZoomOverlay.TryPlay(
+            handle,
+            from,
+            to,
+            new WindowInteropHelper(this).Handle,
+            onFinished: () => _windowArranger.SuppressTransitions(handle, false));
+        if (!started)
+        {
+            _windowArranger.SuppressTransitions(handle, false);
+        }
+
+        return started;
     }
 
     private void BringPanelToFrontImmediate()
@@ -3946,6 +4009,7 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
         _focusNameOverlay.Close();
+        _focusZoomOverlay.Close();
         base.OnClosed(e);
 
         // App は ShutdownMode=OnExplicitShutdown のため、メインウィンドウを閉じても自動終了しない。
