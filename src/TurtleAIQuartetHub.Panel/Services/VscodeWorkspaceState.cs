@@ -8,6 +8,20 @@ public static class VscodeWorkspaceState
 {
     private const string AntigravityApplicationId = "antigravity";
 
+    // workspaceStorage のスキャン結果キャッシュ。共有プロファイルでは配下が数百フォルダに
+    // なり得るのに、状態リフレッシュのたび（既定 1 秒周期×4 スロット）に全列挙＋全 JSON
+    // パースするのはディスク IO と GC の無駄が大きい。新しいワークスペースを開くと
+    // workspaceStorage 直下にフォルダが増えてルートの更新時刻が変わるため、
+    // 「ルートの LastWriteTimeUtc が変わったら再スキャン＋保険の TTL」で十分追従できる。
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CachedScan> ScanCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan ScanCacheTtl = TimeSpan.FromSeconds(60);
+
+    private sealed record CachedScan(
+        DateTime ScannedAtUtc,
+        DateTime RootWriteTimeUtc,
+        IReadOnlyList<WorkspacePathCandidate> Candidates);
+
     public static string? TryReadCurrentWorkspacePath(WindowSlot slot, AppConfig config)
     {
         return TryReadCurrentWorkspacePath(slot.ApplicationId, slot.RuntimeSlotName, slot.WindowTitle, config);
@@ -60,32 +74,58 @@ public static class VscodeWorkspaceState
                      .Where(directory => !string.IsNullOrWhiteSpace(directory))
                      .Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (!Directory.Exists(workspaceStorageDirectory))
-            {
-                continue;
-            }
-
-            try
-            {
-                foreach (var file in Directory.EnumerateFiles(workspaceStorageDirectory, "workspace.json", SearchOption.AllDirectories)
-                             .Select(path => new FileInfo(path)))
-                {
-                    var workspacePath = TryReadWorkspaceJson(file.FullName);
-                    if (!string.IsNullOrWhiteSpace(workspacePath))
-                    {
-                        candidates.Add(new WorkspacePathCandidate(workspacePath, file.LastWriteTimeUtc));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Write(ex);
-            }
+            candidates.AddRange(GetCandidatesForDirectory(workspaceStorageDirectory));
         }
 
         return candidates
             .OrderByDescending(candidate => candidate.LastWriteTimeUtc)
             .ToList();
+    }
+
+    private static IReadOnlyList<WorkspacePathCandidate> GetCandidatesForDirectory(string workspaceStorageDirectory)
+    {
+        if (!Directory.Exists(workspaceStorageDirectory))
+        {
+            return [];
+        }
+
+        var now = DateTime.UtcNow;
+        var rootWriteTimeUtc = Directory.GetLastWriteTimeUtc(workspaceStorageDirectory);
+        if (ScanCache.TryGetValue(workspaceStorageDirectory, out var cached)
+            && cached.RootWriteTimeUtc == rootWriteTimeUtc
+            && now - cached.ScannedAtUtc < ScanCacheTtl)
+        {
+            return cached.Candidates;
+        }
+
+        var candidates = new List<WorkspacePathCandidate>();
+        try
+        {
+            // VS Code / Antigravity とも workspace.json は workspaceStorage/<hash>/ 直下の
+            // 1 階層目に置かれる。AllDirectories で state.vscdb 等まで含む全ツリーを歩くのは
+            // 無駄なので、サブフォルダ直下だけを見る。
+            foreach (var directory in Directory.EnumerateDirectories(workspaceStorageDirectory))
+            {
+                var workspaceJsonPath = Path.Combine(directory, "workspace.json");
+                if (!File.Exists(workspaceJsonPath))
+                {
+                    continue;
+                }
+
+                var workspacePath = TryReadWorkspaceJson(workspaceJsonPath);
+                if (!string.IsNullOrWhiteSpace(workspacePath))
+                {
+                    candidates.Add(new WorkspacePathCandidate(workspacePath, File.GetLastWriteTimeUtc(workspaceJsonPath)));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+        }
+
+        ScanCache[workspaceStorageDirectory] = new CachedScan(now, rootWriteTimeUtc, candidates);
+        return candidates;
     }
 
     private static IEnumerable<string> GetWorkspaceStorageDirectories(string? applicationId, string slotName, AppConfig config)

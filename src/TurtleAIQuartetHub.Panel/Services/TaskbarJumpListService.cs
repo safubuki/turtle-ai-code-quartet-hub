@@ -178,7 +178,8 @@ public static class TaskbarJumpListService
             return null;
         }
 
-        _cachedAppPath = Process.GetCurrentProcess().MainModule?.FileName;
+        using var currentProcess = Process.GetCurrentProcess();
+        _cachedAppPath = currentProcess.MainModule?.FileName;
         return _cachedAppPath;
     }
 

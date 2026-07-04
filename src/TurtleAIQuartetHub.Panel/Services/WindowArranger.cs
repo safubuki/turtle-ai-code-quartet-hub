@@ -15,6 +15,13 @@ public sealed class WindowArranger
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_NOOWNERZORDER = 0x0200;
     private const uint SWP_SHOWWINDOW = 0x0040;
+    // 対象ウィンドウ（VS Code 等の他プロセス）のスレッドが応答不能でも、この呼び出しが
+    // ブロックせず要求をキューに積んで即戻るようにする。これが無いと SetWindowPos は相手
+    // スレッドへ同期メッセージを送るため、ハングした管理対象ウィンドウ 1 つでパネルの
+    // UI スレッドごと無期限に凍結する（＝ログに何も残らない「痕跡なきハング」の正体）。
+    private const uint SWP_ASYNCWINDOWPOS = 0x4000;
+    // SetWindowPlacement 用の同趣旨のフラグ。他プロセス窓への配置要求を非同期化する。
+    private const int WPF_ASYNCWINDOWPLACEMENT = 0x0004;
     private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
@@ -29,8 +36,8 @@ public sealed class WindowArranger
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
     private static readonly IntPtr HWND_NOTOPMOST = new(-2);
-    private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
-    private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+    private static readonly uint ArrangeFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS;
+    private static readonly uint LayerFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, bool animateRestore = true)
     {
@@ -105,34 +112,10 @@ public sealed class WindowArranger
                 .Select(CompensateForFrameCached)
                 .ToList();
 
-            var deferredWindowPos = BeginDeferWindowPos(targets.Count);
-            if (deferredWindowPos != IntPtr.Zero)
-            {
-                var queued = true;
-                foreach (var target in targets)
-                {
-                    deferredWindowPos = DeferWindowPos(
-                        deferredWindowPos,
-                        target.Handle,
-                        IntPtr.Zero,
-                        target.X,
-                        target.Y,
-                        target.Width,
-                        target.Height,
-                        ArrangeFlags);
-                    if (deferredWindowPos == IntPtr.Zero)
-                    {
-                        queued = false;
-                        break;
-                    }
-                }
-
-                if (queued && EndDeferWindowPos(deferredWindowPos))
-                {
-                    return targets.Count;
-                }
-            }
-
+            // かつては BeginDeferWindowPos/EndDeferWindowPos で一括配置していたが、
+            // EndDeferWindowPos は SWP_ASYNCWINDOWPOS を尊重せず各ウィンドウへ同期
+            // メッセージを送るため、ハング中の管理対象が 1 つあるだけで UI スレッドが
+            // 無期限に凍結する。非同期フラグ付きの SetWindowPos を個別に発行する。
             var arranged = 0;
             foreach (var target in targets)
             {
@@ -182,7 +165,8 @@ public sealed class WindowArranger
 
         var monitors = GetOrderedMonitors();
         var primaryWorkArea = monitors[0].WorkArea;
-        placement.flags = 0;
+        // 相手プロセスが応答不能でもブロックしないよう、配置要求を非同期で積む。
+        placement.flags = WPF_ASYNCWINDOWPLACEMENT;
         placement.rcNormalPosition = new RECT
         {
             Left = target.X - primaryWorkArea.Left,
@@ -870,7 +854,10 @@ public sealed class WindowArranger
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
+    // ShowWindow ではなく ShowWindowAsync を使う。ShowWindow は他プロセスのウィンドウへ
+    // 同期メッセージを送るため、相手スレッドがハングしていると呼び出し元（パネルの UI
+    // スレッド）が無期限にブロックする。Async 版は表示要求をキューに積んで即座に戻る。
+    [DllImport("user32.dll", EntryPoint = "ShowWindowAsync")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -878,23 +865,6 @@ public sealed class WindowArranger
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr BeginDeferWindowPos(int nNumWindows);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr DeferWindowPos(
-        IntPtr hWinPosInfo,
-        IntPtr hWnd,
-        IntPtr hWndInsertAfter,
-        int x,
-        int y,
-        int cx,
-        int cy,
-        uint uFlags);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool EndDeferWindowPos(IntPtr hWinPosInfo);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);

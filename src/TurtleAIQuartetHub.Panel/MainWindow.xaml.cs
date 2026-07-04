@@ -3916,11 +3916,17 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    // HwndSource.AddHook はフックを弱参照でしか保持しないため、デリゲートを自分で
+    // 強参照しておかないと GC 後にフックが黙って外れ、DPI 補正や移動中判定が
+    // ある時点から効かなくなる。フィールドに保持して寿命をウィンドウと揃える。
+    private HwndSourceHook? _panelWindowProcHookKeepAlive;
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         var handle = new WindowInteropHelper(this).Handle;
-        HwndSource.FromHwnd(handle)?.AddHook(PanelWindowProcHook);
+        _panelWindowProcHookKeepAlive = PanelWindowProcHook;
+        HwndSource.FromHwnd(handle)?.AddHook(_panelWindowProcHookKeepAlive);
     }
 
     protected override void OnClosed(EventArgs e)

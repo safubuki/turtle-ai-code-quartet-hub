@@ -31,8 +31,54 @@ public static class DiagnosticLog
         "TurtleAIQuartetHub",
         "panel.log");
 
+    // UI スレッドとウォッチドッグ等の背景スレッドが同時に書き込むと AppendAllText 同士が
+    // 共有違反で失敗し、行が黙って失われる。プロセス内の書き込みを直列化して取りこぼしを防ぐ。
+    private static readonly object WriteGate = new();
+
+    // 無制限に追記し続けると数年で肥大するため、起動時にこのサイズを超えていたら
+    // 末尾側（新しい方）だけ残して切り詰める。
+    private const long MaxLogBytes = 2 * 1024 * 1024;
+    private const long TrimTargetBytes = 1 * 1024 * 1024;
+
     // 設定画面の「ログを表示」「ファイルを開く」から参照するための公開パス。
     public static string FilePath => LogPath;
+
+    // 起動時に一度だけ呼ぶ。上限超過時、末尾 TrimTargetBytes ぶんを行境界で残して書き戻す。
+    // 失敗してもログ機能自体は生かす（次回起動で再試行される）。
+    public static void TrimIfOversized()
+    {
+        try
+        {
+            var info = new FileInfo(LogPath);
+            if (!info.Exists || info.Length <= MaxLogBytes)
+            {
+                return;
+            }
+
+            byte[] tail;
+            using (var stream = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                stream.Seek(-TrimTargetBytes, SeekOrigin.End);
+                tail = new byte[TrimTargetBytes];
+                var read = stream.Read(tail, 0, tail.Length);
+                Array.Resize(ref tail, read);
+            }
+
+            // 途中で切れた行を捨て、次の改行の直後から始める。
+            var newlineIndex = Array.IndexOf(tail, (byte)'\n');
+            var start = newlineIndex >= 0 ? newlineIndex + 1 : 0;
+
+            lock (WriteGate)
+            {
+                using var output = new FileStream(LogPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                output.Write(tail, start, tail.Length - start);
+            }
+        }
+        catch
+        {
+            // Logging must never break the panel UI.
+        }
+    }
 
     // レベル未指定の文字列ログは情報扱い。既存の呼び出しは無変更のまま [INFO] になる。
     public static void Write(string message) => Write(LogLevel.Info, message);
@@ -44,9 +90,12 @@ public static class DiagnosticLog
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
             // 形式: "[yyyy-MM-ddTHH:mm:ss...] [LEVEL] message"
             // 日付プレフィックスの位置は従来どおり先頭に保ち、ReadTodayLines の抽出ロジックを壊さない。
-            File.AppendAllText(
-                LogPath,
-                $"[{DateTimeOffset.Now:O}] [{LevelTag(level)}] {message}{Environment.NewLine}");
+            lock (WriteGate)
+            {
+                File.AppendAllText(
+                    LogPath,
+                    $"[{DateTimeOffset.Now:O}] [{LevelTag(level)}] {message}{Environment.NewLine}");
+            }
         }
         catch
         {

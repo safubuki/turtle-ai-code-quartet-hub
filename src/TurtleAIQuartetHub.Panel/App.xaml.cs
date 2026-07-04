@@ -7,6 +7,7 @@ namespace TurtleAIQuartetHub.Panel;
 public partial class App : Application
 {
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
+    private UiThreadWatchdog? _uiThreadWatchdog;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -20,8 +21,14 @@ public partial class App : Application
 
         // 起動マーカー。会社環境などでハングした際、ログの最後がこの行（＝終了マーカー無し）か
         // [ERROR]/[FATAL] かで「正常に閉じたのか／落ちたのか／固まったのか」を切り分けられる。
+        DiagnosticLog.TrimIfOversized();
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         DiagnosticLog.Write(LogLevel.Info, $"Panel starting (version={version}, pid={Environment.ProcessId}).");
+
+        // OS のシャットダウン/サインアウトによる終了は OnExit まで完走せず「終了マーカー無し」に
+        // なることがある。「勝手に落ちた」と区別できるよう、セッション終了要求そのものを記録する。
+        SessionEnding += (_, args) =>
+            DiagnosticLog.Write(LogLevel.Info, $"OS session ending ({args.ReasonSessionEnding}); panel will be terminated by the system.");
 
         _singleInstanceCoordinator = new SingleInstanceCoordinator();
         if (!_singleInstanceCoordinator.IsPrimary)
@@ -47,6 +54,10 @@ public partial class App : Application
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
         mainWindow.Show();
+
+        // ハングは例外を投げずログにも現れないため、UI スレッドの応答途絶を背景スレッドから
+        // 監視して痕跡を残す。原因調査（どの時刻から固まったか）の起点になる。
+        _uiThreadWatchdog = new UiThreadWatchdog(Dispatcher);
 
         if (e.Args.Length > 0)
         {
@@ -92,6 +103,7 @@ public partial class App : Application
     {
         // 正常終了マーカー。この行がログ末尾にあれば「ユーザー操作で正常に閉じた」と判断できる。
         // 逆に起動マーカーの後にこの行が無ければ、ハングまたは強制終了（タスクキル・クラッシュ）を疑う。
+        _uiThreadWatchdog?.Dispose();
         DiagnosticLog.Write(LogLevel.Info, $"Panel exiting normally (code={e.ApplicationExitCode}).");
 
         if (_singleInstanceCoordinator?.IsPrimary == true)
