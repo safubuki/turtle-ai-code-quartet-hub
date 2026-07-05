@@ -131,6 +131,10 @@ public partial class MainWindow : Window
             UpdateCompactPanelFrame();
             RefreshAuxiliaryUi();
             RefreshLaunchButtonAvailability();
+
+            // ズーム演出の覆いウィンドウを先に生成しておき、初回フォーカス時の
+            // ウィンドウ生成コストで覆いの表示が遅れないようにする。
+            _focusZoomOverlay.Warmup();
         };
     }
 
@@ -1213,9 +1217,12 @@ public partial class MainWindow : Window
                 // セル計算はフォーカス解除を反映した後・Arrange と同じ引数で行い、着地点を一致させる。
                 if (_windowArranger.TryGetVisibleWindowBounds(slot.WindowHandle, out var shrinkFrom)
                     && _windowArranger.TryGetPlannedCellBounds(
-                        _statusStore.Slots, slot, _statusStore.Config.Gap, GetActiveMonitorIndex(), out var shrinkTo))
+                        _statusStore.Slots, slot, _statusStore.Config.Gap, GetActiveMonitorIndex(), out var shrinkTo)
+                    && _windowArranger.TryGetMonitorWorkArea(monitor, out var shrinkArea)
+                    && TryBeginFocusZoomShrink(slot, shrinkFrom, shrinkTo, shrinkArea, monitor))
                 {
-                    TryBeginFocusZoom(slot, shrinkFrom, shrinkTo);
+                    // 覆いが画面へ合成されてから復元・整列を発行する（拡大側と同じ理由）。
+                    await _focusZoomOverlay.WaitForCoverPresentedAsync();
                 }
 
                 var arranged = ArrangeSlotsOnActiveMonitor(false);
@@ -1270,7 +1277,14 @@ public partial class MainWindow : Window
             && _windowArranger.GetMonitorIndexForWindow(slot.WindowHandle)
                 == NormalizeMonitorIndex(monitor, _windowArranger.GetMonitorCount()))
         {
-            zoomCovered = TryBeginFocusZoom(slot, zoomFrom, zoomTo);
+            zoomCovered = TryBeginFocusZoomGrow(slot, zoomFrom, zoomTo);
+        }
+
+        if (zoomCovered)
+        {
+            // 覆いが実際に画面へ合成されるまで最大化を発行しない。Show 直後の未合成の隙間に
+            // 実ウィンドウの遷移（未描画サーフェス＝背面が透ける）が丸見えになるのを防ぐ。
+            await _focusZoomOverlay.WaitForCoverPresentedAsync();
         }
 
         // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
@@ -2587,15 +2601,20 @@ public partial class MainWindow : Window
         BringPanelToFront();
     }
 
-    // フォーカス切替のズーム演出（拡大・縮小共通）を開始する。覆いを出せたときだけ true。
-    // 開始できない条件（設定オフ・非表示中・最小化中・DWM 登録失敗）ではすべて従来動作へ
-    // フォールバックし、ウィンドウ管理の実体には何の影響も与えない。
-    private bool TryBeginFocusZoom(WindowSlot slot, WindowArranger.WindowBounds from, WindowArranger.WindowBounds to)
+    // フォーカスズーム演出の共通ガード。開始できない条件（設定オフ・非表示中・最小化中）では
+    // すべて従来動作へフォールバックし、ウィンドウ管理の実体には何の影響も与えない。
+    private bool CanBeginFocusZoom(WindowSlot slot)
     {
-        if (!_statusStore.Config.EnableFocusZoomAnimation
-            || _areWindowsHidden
-            || slot.WindowHandle == IntPtr.Zero
-            || _windowArranger.IsMinimized(slot.WindowHandle))
+        return _statusStore.Config.EnableFocusZoomAnimation
+            && !_areWindowsHidden
+            && slot.WindowHandle != IntPtr.Zero
+            && !_windowArranger.IsMinimized(slot.WindowHandle);
+    }
+
+    // 拡大（1 面化）演出を開始する。覆いを出せたときだけ true。
+    private bool TryBeginFocusZoomGrow(WindowSlot slot, WindowArranger.WindowBounds from, WindowArranger.WindowBounds workArea)
+    {
+        if (!CanBeginFocusZoom(slot))
         {
             return false;
         }
@@ -2604,10 +2623,60 @@ public partial class MainWindow : Window
         // 覆いの下で実ウィンドウが状態遷移する間、OS 標準のズームアニメが二重再生されないよう
         // 抑止する。解除は演出の後始末（onFinished）で必ず 1 回行われる。
         _windowArranger.SuppressTransitions(handle, true);
-        var started = _focusZoomOverlay.TryPlay(
+        var started = _focusZoomOverlay.TryPlayGrow(
+            handle,
+            from,
+            workArea,
+            new WindowInteropHelper(this).Handle,
+            onFinished: () => _windowArranger.SuppressTransitions(handle, false));
+        if (!started)
+        {
+            _windowArranger.SuppressTransitions(handle, false);
+        }
+
+        return started;
+    }
+
+    // 縮小（4 面戻し）演出を開始する。背面に同一ディスプレイの他タイルをライブサムネイルで敷き、
+    // 覆いを外したときの絵と一致させる。
+    private bool TryBeginFocusZoomShrink(
+        WindowSlot slot,
+        WindowArranger.WindowBounds from,
+        WindowArranger.WindowBounds to,
+        WindowArranger.WindowBounds workArea,
+        int monitor)
+    {
+        if (!CanBeginFocusZoom(slot))
+        {
+            return false;
+        }
+
+        var backdrops = new List<FocusZoomOverlay.BackdropWindow>();
+        foreach (var other in _statusStore.Slots)
+        {
+            if (ReferenceEquals(other, slot)
+                || other.WindowHandle == IntPtr.Zero
+                || other.IsHidden
+                || GetSlotMonitorIndex(other) != monitor
+                || _windowArranger.IsMinimized(other.WindowHandle))
+            {
+                continue;
+            }
+
+            if (_windowArranger.TryGetVisibleWindowBounds(other.WindowHandle, out var bounds))
+            {
+                backdrops.Add(new FocusZoomOverlay.BackdropWindow(other.WindowHandle, bounds));
+            }
+        }
+
+        var handle = slot.WindowHandle;
+        _windowArranger.SuppressTransitions(handle, true);
+        var started = _focusZoomOverlay.TryPlayShrink(
             handle,
             from,
             to,
+            workArea,
+            backdrops,
             new WindowInteropHelper(this).Handle,
             onFinished: () => _windowArranger.SuppressTransitions(handle, false));
         if (!started)
