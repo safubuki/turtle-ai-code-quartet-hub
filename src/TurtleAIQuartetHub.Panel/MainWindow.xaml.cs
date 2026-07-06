@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     private const string MicroModeGlyph = "\uF158";
     private const string StandardModeGlyph = "\uE740";
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
-    private static readonly TimeSpan FocusSwitchArrangeDelay = TimeSpan.FromMilliseconds(280);
+    private static readonly TimeSpan FocusSwitchArrangeDelay = TimeSpan.FromMilliseconds(420);
     private static readonly TimeSpan FocusedSlotReassertDelay = TimeSpan.FromMilliseconds(220);
     private static readonly TimeSpan FocusedSlotReassertInputSuppressWindow = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan DragDropFocusSuppressWindow = TimeSpan.FromMilliseconds(700);
@@ -1194,6 +1194,7 @@ public partial class MainWindow : Window
                 && slot.WindowHandle != IntPtr.Zero
                 && _windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, GetManagedWindowHandles()))
             {
+                PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: false);
                 _windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor);
                 BringPanelToFrontImmediate();
                 SchedulePanelToFront();
@@ -1205,8 +1206,9 @@ public partial class MainWindow : Window
             if (!_areWindowsHidden)
             {
                 CapturePreferredLayout(slot);
+                PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: true);
                 ClearFocusedSlotForDisplay(monitor);
-                var arranged = ArrangeSlotsOnActiveMonitor(false);
+                var arranged = ArrangeSlotsOnActiveMonitor(false, applyLayersAfterArrange: false);
                 // 他ディスプレイのフォーカスは Arrange でタイル対象外だが、レイヤー再適用で前後が
                 // 乱れ得るので前面に立て直す。
                 if (FocusedSlots().Any())
@@ -1215,6 +1217,7 @@ public partial class MainWindow : Window
                 }
 
                 SchedulePanelToFront();
+                ScheduleFocusTransitionLayerFinalize();
                 _statusStore.Message = arranged == 0
                     ? "4分割表示に戻せる管理中ウィンドウがありません。"
                     : $"{arranged}個の管理中ウィンドウを4分割表示に戻しました。";
@@ -1247,6 +1250,7 @@ public partial class MainWindow : Window
         EnsurePreferredLayout(slot);
         VscodeLayoutState.TryApplyPreferredLayout(slot, _statusStore.Config, slot.PreferredLayout);
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
+        PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: false);
         // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
         if (_windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor))
         {
@@ -1285,18 +1289,23 @@ public partial class MainWindow : Window
             // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
             if (slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
             {
-                // 最大化が画面を覆ってから、覆いの下で他スロットを背面へ送り、
-                // 前フォーカスを quadrant へ静かに（アニメ無しで）戻す。
-                SendOtherSlotsToBackOnSameDisplay(slot);
-                ArrangeSlotsExceptOnActiveMonitor(slot, false);
+                // 最大化が完全に落ち着いてから、フォーカス対象を一時的に最上位へ固定したまま
+                // 覆いの下で旧フォーカスを quadrant へ静かに戻す。Arrange 中の SW_RESTORE が
+                // 旧ウィンドウを一瞬だけ前へ持ち上げると、1 面化の最後にちらつきとして見える。
+                _windowArranger.BringToFront(slot.WindowHandle);
+                try
+                {
+                    ArrangeSlotsExceptOnActiveMonitor(slot, false);
 
-                // ArrangeSlotsExceptOnActiveMonitor は他スロットを 4 面セルへ SWP_SHOWWINDOW 付きで
-                // 配置し直すため、直前に背面へ送った旧フォーカス（C など）の Z 順が持ち上がり、新フォーカス
-                // （D）の前に出てしまうことがある（素早い C→D 切替で再現）。配置でレイヤーが乱れたあと、
-                // 他スロットを改めて背面へ送り、新フォーカスを最前面に立て直して 1 面表示を確定させる。
-                SendOtherSlotsToBackOnSameDisplay(slot);
-                _windowArranger.BringToFrontOnce(slot.WindowHandle);
-                BringPanelToFrontImmediate();
+                    // ArrangeSlotsExceptOnActiveMonitor は他スロットを 4 面セルへ SWP_SHOWWINDOW 付きで
+                    // 配置し直すため、配置後に他スロットを改めて背面へ送り、新フォーカスの 1 面表示を確定させる。
+                    SendOtherSlotsToBackOnSameDisplay(slot);
+                }
+                finally
+                {
+                    _windowArranger.BringToFrontOnce(slot.WindowHandle);
+                    BringPanelToFrontImmediate();
+                }
             }
             return;
         }
@@ -2333,10 +2342,14 @@ public partial class MainWindow : Window
         return reattachedCount;
     }
 
-    private int ArrangeSlotsOnActiveMonitor(bool bringPanelAfterArrange = true)
+    private int ArrangeSlotsOnActiveMonitor(bool bringPanelAfterArrange = true, bool applyLayersAfterArrange = true)
     {
         var arranged = _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex());
-        ApplyManagedWindowLayers(bringPanelAfterArrange);
+        if (applyLayersAfterArrange)
+        {
+            ApplyManagedWindowLayers(bringPanelAfterArrange);
+        }
+
         RefreshAuxiliaryUi();
         return arranged;
     }
@@ -2479,6 +2492,34 @@ public partial class MainWindow : Window
         }
 
         return arranged;
+    }
+
+    private void PrepareFocusTransitionBackdrop(WindowSlot focusSlot, bool arrangeOtherSlotsFirst)
+    {
+        if (_areWindowsHidden || focusSlot.WindowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (arrangeOtherSlotsFirst)
+        {
+            ArrangeSlotsExceptOnActiveMonitor(focusSlot, false);
+        }
+
+        var monitor = GetSlotMonitorIndex(focusSlot);
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (ReferenceEquals(slot, focusSlot)
+                || slot.WindowHandle == IntPtr.Zero
+                || GetSlotMonitorIndex(slot) != monitor)
+            {
+                continue;
+            }
+
+            _windowArranger.BringToFrontOnce(slot.WindowHandle);
+        }
+
+        _windowArranger.BringToFrontOnce(focusSlot.WindowHandle);
     }
 
     private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true)
@@ -3114,9 +3155,63 @@ public partial class MainWindow : Window
 
     private void CancelFocusSwitchArrange()
     {
-        // 実体の破棄は所有側 (ToggleSlotFocus) の finally に任せ、ここではキャンセルのみ行う。
+        // 実体の破棄は所有側の finally に任せ、ここではキャンセルのみ行う。
         // すべて UI スレッド上で逐次実行されるため、二重 Dispose や競合は起きない。
         _focusSwitchArrangeCancellation?.Cancel();
+    }
+
+    private void ScheduleFocusTransitionLayerFinalize()
+    {
+        CancelFocusSwitchArrange();
+        if (_areWindowsHidden || WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _focusSwitchArrangeCancellation = cancellation;
+        _ = FinalizeFocusTransitionLayerAfterDelayAsync(cancellation);
+    }
+
+    private async Task FinalizeFocusTransitionLayerAfterDelayAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(FocusSwitchArrangeDelay, cancellation.Token);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (cancellation.IsCancellationRequested
+                    || _areWindowsHidden
+                    || WindowState == WindowState.Minimized)
+                {
+                    return;
+                }
+
+                if (FocusedSlots().Any())
+                {
+                    ApplyLayerPreservingFocusMode(_managedWindowLayerMode);
+                }
+                else
+                {
+                    ApplyManagedWindowLayers(false);
+                    BringPanelToFrontImmediate();
+                }
+
+                RefreshAuxiliaryUi();
+            }, DispatcherPriority.Background);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_focusSwitchArrangeCancellation, cancellation))
+            {
+                _focusSwitchArrangeCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
     }
 
     private async Task ReassertFocusedSlotAfterDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
