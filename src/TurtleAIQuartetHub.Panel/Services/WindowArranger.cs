@@ -41,12 +41,18 @@ public sealed class WindowArranger
 
     public int Arrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, bool animateRestore = true)
     {
-        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null, animateRestore);
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null, animateRestore, keepAboveHandle: IntPtr.Zero);
     }
 
-    public int ArrangeExcept(IReadOnlyList<WindowSlot> slots, WindowSlot excludedSlot, int gap, int monitorIndex, bool animateRestore = true)
+    public int ArrangeExcept(
+        IReadOnlyList<WindowSlot> slots,
+        WindowSlot excludedSlot,
+        int gap,
+        int monitorIndex,
+        bool animateRestore = true,
+        IntPtr keepAboveHandle = default)
     {
-        return ArrangeCore(slots, gap, monitorIndex, excludedSlot, animateRestore);
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot, animateRestore, keepAboveHandle);
     }
 
     public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
@@ -69,7 +75,13 @@ public sealed class WindowArranger
         return false;
     }
 
-    private int ArrangeCore(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, WindowSlot? excludedSlot, bool animateRestore)
+    private int ArrangeCore(
+        IReadOnlyList<WindowSlot> slots,
+        int gap,
+        int monitorIndex,
+        WindowSlot? excludedSlot,
+        bool animateRestore,
+        IntPtr keepAboveHandle)
     {
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot);
 
@@ -102,6 +114,7 @@ public sealed class WindowArranger
                 // キャッシュ値で復元先を補正する。
                 PresetRestoreBoundsToCell(CompensateForFrameCached(placement));
                 ShowWindow(placement.Handle, SW_RESTORE);
+                BringToFrontWithoutTopmostIfNeeded(keepAboveHandle);
             }
 
             // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
@@ -132,6 +145,7 @@ public sealed class WindowArranger
                 }
             }
 
+            BringToFrontWithoutTopmostIfNeeded(keepAboveHandle);
             return arranged;
         }
         finally
@@ -144,6 +158,29 @@ public sealed class WindowArranger
                 }
             }
         }
+    }
+
+    private static bool BringToFrontWithoutTopmostCore(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        var demoted = IsTopmost(windowHandle)
+            && SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
+        var raised = SetWindowPos(windowHandle, HWND_TOP, 0, 0, 0, 0, LayerFlags);
+        return demoted || raised;
+    }
+
+    private static bool IsTopmost(IntPtr windowHandle)
+    {
+        return (GetWindowLong(windowHandle, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    }
+
+    private static void BringToFrontWithoutTopmostIfNeeded(IntPtr windowHandle)
+    {
+        _ = BringToFrontWithoutTopmostCore(windowHandle);
     }
 
     // 復元先（通常時の位置）を目的セルへ事前設定する。rcNormalPosition はワークスペース座標
@@ -349,6 +386,21 @@ public sealed class WindowArranger
         var raised = SetWindowPos(windowHandle, HWND_TOPMOST, 0, 0, 0, 0, LayerFlags);
         var demoted = SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
         return raised || demoted;
+    }
+
+    public bool BringToFrontWithoutTopmost(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        if (IsIconic(windowHandle))
+        {
+            ShowWindow(windowHandle, SW_RESTORE);
+        }
+
+        return BringToFrontWithoutTopmostCore(windowHandle);
     }
 
     public bool SetBackmost(IntPtr windowHandle)

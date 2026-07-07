@@ -1289,22 +1289,17 @@ public partial class MainWindow : Window
             // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
             if (slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
             {
-                // 最大化が完全に落ち着いてから、フォーカス対象を一時的に最上位へ固定したまま
-                // 覆いの下で旧フォーカスを quadrant へ静かに戻す。Arrange 中の SW_RESTORE が
-                // 旧ウィンドウを一瞬だけ前へ持ち上げると、1 面化の最後にちらつきとして見える。
-                _windowArranger.BringToFront(slot.WindowHandle);
+                // 最大化が完全に落ち着いてから、フォーカス対象を通常 Z 順の先頭に保ったまま
+                // 覆いの下で旧フォーカスを quadrant へ静かに戻す。ここで他スロットを HWND_BOTTOM
+                // へ送ると、隣接セルや 3 枚起動時に管理外ウィンドウの白い背景が露出しやすい。
+                _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
                 try
                 {
-                    ArrangeSlotsExceptOnActiveMonitor(slot, false);
-
-                    // ArrangeSlotsExceptOnActiveMonitor は他スロットを 4 面セルへ SWP_SHOWWINDOW 付きで
-                    // 配置し直すため、配置後に他スロットを改めて背面へ送り、新フォーカスの 1 面表示を確定させる。
-                    SendOtherSlotsToBackOnSameDisplay(slot);
+                    ArrangeSlotsExceptOnActiveMonitor(slot, false, keepExcludedSlotAbove: true);
                 }
                 finally
                 {
-                    _windowArranger.BringToFrontOnce(slot.WindowHandle);
-                    BringPanelToFrontImmediate();
+                    _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
                 }
             }
             return;
@@ -2481,11 +2476,21 @@ public partial class MainWindow : Window
             && !_statusStore.Slots.Any(slot => slot.IsFocused);
     }
 
-    private int ArrangeSlotsExceptOnActiveMonitor(WindowSlot excludedSlot, bool refreshAuxiliaryUiAfterArrange = true)
+    private int ArrangeSlotsExceptOnActiveMonitor(
+        WindowSlot excludedSlot,
+        bool refreshAuxiliaryUiAfterArrange = true,
+        bool keepExcludedSlotAbove = false)
     {
         // フォーカスイン（ズームイン演出）に随伴する背面整列。前面では新フォーカスの最大化アニメ
         // だけを見せたいので、旧フォーカスの復元などはアニメーションさせず背面で速やかに済ませる。
-        var arranged = _windowArranger.ArrangeExcept(_statusStore.Slots, excludedSlot, _statusStore.Config.Gap, GetActiveMonitorIndex(), animateRestore: false);
+        var keepAboveHandle = keepExcludedSlotAbove ? excludedSlot.WindowHandle : IntPtr.Zero;
+        var arranged = _windowArranger.ArrangeExcept(
+            _statusStore.Slots,
+            excludedSlot,
+            _statusStore.Config.Gap,
+            GetActiveMonitorIndex(),
+            animateRestore: false,
+            keepAboveHandle: keepAboveHandle);
         if (refreshAuxiliaryUiAfterArrange)
         {
             RefreshAuxiliaryUi();

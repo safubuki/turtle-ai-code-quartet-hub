@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-07-05
+更新日: 2026-07-07
 
 ## 1. AI 状態監視を戻さない
 - AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
@@ -109,6 +109,6 @@
 - ズームアウト演出とちらつき対策: 配置（`ArrangeCore`）は最大化/最小化中のウィンドウの復元先 `rcNormalPosition` を目的セルへ事前設定（`SetWindowPlacement`。`WPF_RESTORETOMAXIMIZED` も解除）してから `SW_RESTORE` する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズーム解除はアニメーション付きで目的セルへ直接着地し、「旧位置へ戻ってからセルへジャンプ」する二段移動（ちらつき）は出ない。rcNormalPosition はワークスペース座標（プライマリ作業領域原点基準）なので原点ぶん補正し、残差は直後の `SetWindowPos`（画面座標）が吸収する。
 - アニメを出さない配置: フォーカスイン随伴の背面整列（`ArrangeSlotsExceptOnActiveMonitor`）と settling 補正（`ArrangeSlotsOnActiveMonitorQuietly`）は `animateRestore=false` で、復元が必要なウィンドウにだけ `DWMWA_TRANSITIONS_FORCEDISABLED` を対で適用して無音・即時に行う。A フォーカス中に B を押す即切替は、B のズームイン（`SW_MAXIMIZE`）を前面で演出し、A の解除は遅延後に B の背面でアニメ無しで済ませる。ディスプレイまたぎのフォーカス移動（`EnsureWindowOnMonitor`〜最大化）も遷移アニメを止める。
 - フォーカスイン時の透け対策: 他スロットの背面送り（`SendOtherSlotsToBackOnSameDisplay`）は最大化アニメ完了後（`FocusSwitchArrangeDelay` 経過後）に行う。アニメ開始と同時に HWND_BOTTOM へ送ると、最大化が画面を覆い切るまでタイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
-- フォーカス切替の背景フラッシュ対策（2026-07-05）: `MainWindow.PrepareFocusTransitionBackdrop` でズーム開始前に同じ実効ディスプレイの管理対象ウィンドウを前面へ呼び戻し、最後にフォーカス対象を前面化する。4 面へ戻すときは先に非フォーカスを `ArrangeSlotsExceptOnActiveMonitor(..., animateRestore=false)` 相当で静かにセルへ整えて背後を埋め、フォーカス解除後の `ArrangeSlotsOnActiveMonitor` ではレイヤー再適用を `FocusSwitchArrangeDelay` 後まで遅らせる。縮小アニメ中に背後のタイルを維持するためで、即時の `ApplyManagedWindowLayers` に戻すと壁紙や管理外アプリの白背景が一瞬差し込む。1 面化の最後に旧ウィンドウ復元が見える場合は、後片付けを十分遅らせ、整列中だけ `BringToFront` でフォーカス対象を一時的に保持してから `BringToFrontOnce` で戻す。
+- フォーカス切替の背景フラッシュ対策（2026-07-05/07 追加調整）: `MainWindow.PrepareFocusTransitionBackdrop` でズーム開始前に同じ実効ディスプレイの管理対象ウィンドウを前面へ呼び戻し、最後にフォーカス対象を前面化する。4 面へ戻すときは先に非フォーカスを `ArrangeSlotsExceptOnActiveMonitor(..., animateRestore=false)` 相当で静かにセルへ整えて背後を埋め、フォーカス解除後の `ArrangeSlotsOnActiveMonitor` ではレイヤー再適用を `FocusSwitchArrangeDelay` 後まで遅らせる。縮小アニメ中に背後のタイルを維持するためで、即時の `ApplyManagedWindowLayers` に戻すと壁紙や管理外アプリの白背景が一瞬差し込む。1 面化の最後に旧ウィンドウ復元が見える場合は、後片付けを十分遅らせ、整列中だけフォーカス対象を保持する。ただし `BringToFront`/`BringToFrontOnce` で `TOPMOST` へ上げると WPF のパネル本体や中央タイトルオーバーレイを押しのけてちらつくため、後片付けでは `BringToFrontWithoutTopmost` で必要時だけ `NOTOPMOST` へ戻してから通常 Z 順の先頭に出す。後片付け中に非フォーカスを `HWND_BOTTOM` へ送ると、隣接セルや 3 枚起動時にブラウザ等の白背景が露出しやすいため避ける。`ArrangeExcept(..., keepAboveHandle)` は静かな復元でも `SW_RESTORE` を使い、復元直後と配置完了後だけフォーカス対象を通常 Z 順の先頭へ戻す。これにより旧フォーカス窓の割り込みを抑えつつ、非同期 z-order 要求の多発によるちらつき・重さを避ける。
 - 不可視枠（DWM 拡張フレームと GetWindowRect の差）は「通常状態」のときにだけ計測し、ハンドルごとにキャッシュする（`GetFrameInsetCached`）。最大化中は枠のはみ出し方が異なり、最小化中は座標が無効なため、そのまま測ると 4 面セルより大きい/ずれた配置になる。復元前の事前補正（rcNormalPosition）はキャッシュ値、最終配置（SetWindowPos）は復元後の実測で行う。
 - パネル UI の描画は GPU 既定（`RenderMode.SoftwareOnly` 強制は撤去）。特定環境で描画乱れが出る場合のみ SoftwareOnly へ戻す。
