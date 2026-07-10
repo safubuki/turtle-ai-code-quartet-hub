@@ -73,8 +73,6 @@ public sealed class VscodeLauncher
                 await PrepareDedicatedUserDataAsync(slot, config, resolvedCodeCommand, cancellationToken);
             }
 
-            VscodeLayoutState.TryApplyPreferredLayout(slot, config, slot.PreferredLayout);
-
             var launchPath = GetLaunchPath(slot, config);
             var existingSlotWindow = TryFindExistingSlotWindow(slot, config, launchPath);
             if (existingSlotWindow is not null)
@@ -84,6 +82,12 @@ public sealed class VscodeLauncher
                 assignments.Add(new WindowAssignment(slot, existingSlotWindow));
                 continue;
             }
+
+            // 右側AIチャット欄の幅は、ウィンドウが存在しない起動前に準備する。
+            // フォーカス直前の storage.json 書換えは、4面状態の Electron 再描画と白飛びを招く。
+            var launchLayout = VscodeLayoutState.ExpandAuxiliaryBarForFocus(slot.PreferredLayout, 1920);
+            slot.PreferredLayout = launchLayout;
+            VscodeLayoutState.TryApplyPreferredLayout(slot, config, launchLayout);
 
             var assignment = await LaunchWindowAsync(slot, config, resolvedCodeCommand, launchPath, knownHandles, timeout, cancellationToken);
             if (assignment is null)
@@ -134,7 +138,7 @@ public sealed class VscodeLauncher
             launchPath,
             fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
             cancellationToken);
-        return window is null ? null : new WindowAssignment(slot, window);
+        return window is null ? null : CreateNewWindowAssignment(slot, window);
     }
 
     private async Task<WindowAssignment?> LaunchRemoteWindowWithFallbackAsync(
@@ -170,7 +174,7 @@ public sealed class VscodeLauncher
 
         if (remoteWindow is not null)
         {
-            return new WindowAssignment(slot, remoteWindow);
+            return CreateNewWindowAssignment(slot, remoteWindow);
         }
 
         DiagnosticLog.Write(
@@ -201,7 +205,32 @@ public sealed class VscodeLauncher
             launchPath: null,
             fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, null),
             cancellationToken);
-        return fallbackWindow is null ? null : new WindowAssignment(slot, fallbackWindow);
+        return fallbackWindow is null ? null : CreateNewWindowAssignment(slot, fallbackWindow);
+    }
+
+    private static WindowAssignment CreateNewWindowAssignment(WindowSlot slot, WindowInfo window)
+    {
+        var cloaked = WindowArranger.SetCloaked(window.Handle, true);
+        if (cloaked)
+        {
+            _ = ReleaseLaunchCloakFailsafeAsync(window.Handle);
+        }
+
+        return new WindowAssignment(slot, window, cloaked);
+    }
+
+    private static async Task ReleaseLaunchCloakFailsafeAsync(IntPtr windowHandle)
+    {
+        try
+        {
+            // 配置処理が例外やキャンセルで中断しても、ウィンドウを不可視のまま残さない。
+            await Task.Delay(TimeSpan.FromSeconds(12));
+            WindowArranger.SetCloaked(windowHandle, false);
+        }
+        catch
+        {
+            // Failsafe must never affect launch processing.
+        }
     }
 
     public WindowInfo? TryFindExistingSlotWindow(WindowSlot slot, AppConfig config, string? launchPath = null)
@@ -247,6 +276,9 @@ public sealed class VscodeLauncher
             if (window is not null
                 && IsExpectedNewWindow(slot, config, window, knownHandles, expectedProcessId, launchPath))
             {
+                // Electron の初期白サーフェスを見せない。MainWindow 側で配置と描画猶予を
+                // 完了してからクロークを解除する。可視属性は維持されるので HWND 捕捉は継続できる。
+                WindowArranger.SetCloaked(window.Handle, true);
                 completionSource.TrySetResult(window);
             }
         };
@@ -1242,4 +1274,4 @@ public sealed class VscodeLauncher
     private readonly record struct UriParts(string Scheme, string Authority, string AbsolutePath, string AbsoluteUri);
 }
 
-public sealed record WindowAssignment(WindowSlot Slot, WindowInfo Window);
+public sealed record WindowAssignment(WindowSlot Slot, WindowInfo Window, bool WasCloakedForLaunch = false);

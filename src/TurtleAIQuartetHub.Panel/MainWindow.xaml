@@ -1689,6 +1689,97 @@
       </Button>
     </Grid>
 
+    <Border x:Name="AppExitConfirmOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#B0090D0B"
+            Panel.ZIndex="30">
+      <Grid>
+        <Border Width="372"
+                MaxWidth="420"
+                Padding="18"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource AccentBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <Border Width="36"
+                      Height="36"
+                      CornerRadius="10"
+                      Background="{StaticResource AccentDarkBrush}"
+                      BorderBrush="{StaticResource AccentBrush}"
+                      BorderThickness="1"
+                      Margin="0,0,12,0">
+                <TextBlock Text="×"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource AccentBrush}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+              </Border>
+
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="アプリを終了しますか？"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock Margin="0,5,0,0"
+                           Text="管理中の IDE / CLI ウィンドウは閉じません。"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}" />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Margin="0,14,0,0"
+                    Padding="10,8"
+                    Background="#14231B"
+                    BorderBrush="#315B43"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <TextBlock Text="パネルのみ終了します。作業中のウィンドウはそのまま残ります。"
+                         Foreground="#CDE9D7"
+                         TextWrapping="Wrap" />
+            </Border>
+
+            <StackPanel Grid.Row="2"
+                        Margin="0,16,0,0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+              <Button x:Name="CancelAppExitButton"
+                      Content="キャンセル"
+                      Click="CancelAppExitButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="96"
+                      Margin="0,0,8,0" />
+              <Button x:Name="ConfirmAppExitButton"
+                      Content="終了する"
+                      Click="ConfirmAppExitButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="96"
+                      Foreground="#E9FFF2"
+                      Background="{StaticResource AccentDarkBrush}"
+                      BorderBrush="{StaticResource AccentBrush}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
     <Border x:Name="CloseAllConfirmOverlay"
             Grid.RowSpan="5"
             Visibility="Collapsed"

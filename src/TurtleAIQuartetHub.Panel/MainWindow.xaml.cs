@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private const double CompactWindowMinWidth = 430;
     private const double CompactWindowWidthScale = 0.64;
     private const double MicroWindowSize = 116;
+    private const double ExitConfirmViewportWidth = 430;
+    private const double ExitConfirmViewportHeight = 250;
     // \u7E2E\u5C0F=Tile, \u6975\u5C0F=AppIconDefault(2x2 \u30C9\u30C3\u30C8), \u6A19\u6E96=ShowResults\u3002
     // \u30DC\u30BF\u30F3\u306B\u306F\u300C\u6B21\u306B\u9077\u79FB\u3059\u308B\u30E2\u30FC\u30C9\u300D\u306E\u30A2\u30A4\u30B3\u30F3\u3092\u8868\u793A\u3059\u308B\u3002
     private const string CompactModeGlyph = "\uE73F";
@@ -30,6 +32,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan DragDropFocusSuppressWindow = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan LaunchAllSlotPaceDelay = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan LaunchRevealDelay = TimeSpan.FromMilliseconds(160);
     private static readonly TimeSpan[] ImmediateArrangeSettleDelays =
     [
         TimeSpan.FromMilliseconds(40),
@@ -86,6 +89,11 @@ public partial class MainWindow : Window
     private DateTimeOffset _suppressFocusedSlotReassertUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressSlotFocusFromDragUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
+    private bool _closeConfirmed;
+    private string _closeRequestSource = "Alt+F4 またはシステムメニュー";
+    private WindowArranger.WindowBounds? _boundsBeforeExitConfirm;
+    private double _minWidthBeforeExitConfirm;
+    private double _minHeightBeforeExitConfirm;
 
     public MainWindow()
     {
@@ -240,7 +248,7 @@ public partial class MainWindow : Window
 
             _statusStore.Message = $"未起動スロットを選択アプリで起動しています... {BuildLaunchPlanSummary(launchTargets)}";
             var config = _statusStore.Config;
-            await LaunchTargetsSequentiallyAsync(launchTargets, config);
+            var launchedAssignments = await LaunchTargetsSequentiallyAsync(launchTargets, config);
 
             await RefreshSlotsAsync(allowDuringBusy: true);
 
@@ -248,6 +256,7 @@ public partial class MainWindow : Window
                 ? $" 未検出でスキップ: {string.Join(", ", unavailableSlots)}"
                 : string.Empty;
             var readyLaunchTargetCount = launchTargets.Count(target => target.Slot.WindowStatus == SlotWindowStatus.Ready);
+            var revealTask = RevealLaunchedWindowsAsync(launchedAssignments);
             if (readyLaunchTargetCount > 0)
             {
                 await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
@@ -262,6 +271,8 @@ public partial class MainWindow : Window
                     ? $"{arranged}個の管理中ウィンドウを2x2に配置しました。{skippedMessage}"
                     : $"新しい管理中ウィンドウは見つかりませんでした。{skippedMessage}";
             }
+
+            await revealTask;
         });
     }
 
@@ -296,6 +307,27 @@ public partial class MainWindow : Window
         return assignments;
     }
 
+    private async Task RevealLaunchedWindowsAsync(IReadOnlyList<WindowAssignment> assignments)
+    {
+        var cloakedAssignments = assignments
+            .Where(assignment => assignment.WasCloakedForLaunch)
+            .ToList();
+        if (cloakedAssignments.Count == 0)
+        {
+            return;
+        }
+
+        // SetWindowPos の非同期配置と Electron の初回描画が DWM へ反映されるまで待ち、
+        // 白い初期サーフェスではなく完成した象限を一度だけ表示する。
+        await Task.Delay(LaunchRevealDelay);
+        foreach (var assignment in cloakedAssignments)
+        {
+            WindowArranger.SetCloaked(assignment.Window.Handle, false);
+        }
+
+        BringPanelToFrontImmediate();
+    }
+
     private static string BuildLaunchPlanSummary(IEnumerable<(WindowSlot Slot, LauncherApplication Application)> launchTargets)
     {
         return string.Join(
@@ -321,12 +353,6 @@ public partial class MainWindow : Window
         var message = application?.ToolTip
             ?? $"{appName} が見つかりません。設定で実行ファイルまたはコマンドを指定してください。";
         _statusStore.Message = message;
-        MessageBox.Show(
-            this,
-            message,
-            $"{appName} が見つかりません",
-            MessageBoxButton.OK,
-            MessageBoxImage.Warning);
         return false;
     }
 
@@ -343,6 +369,95 @@ public partial class MainWindow : Window
         CancelScheduledPanelFrontRestore();
         CancelScheduledFocusedSlotReassert();
         CancelScheduledPostLaunchArrange();
+        _closeRequestSource = "タイトルバーの閉じるボタン";
+        ShowAppExitConfirmDialog();
+    }
+
+    private void ShowAppExitConfirmDialog()
+    {
+        DiagnosticLog.Write(LogLevel.Info, $"Panel close requested via {_closeRequestSource}; awaiting confirmation.");
+        EnsureExitConfirmViewport();
+        AppExitConfirmOverlay.Visibility = Visibility.Visible;
+        BringPanelToFrontImmediate();
+        CancelAppExitButton.Focus();
+    }
+
+    private void HideAppExitConfirmDialog()
+    {
+        AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
+        RestoreBoundsAfterExitConfirm();
+        _closeRequestSource = "Alt+F4 またはシステムメニュー";
+    }
+
+    private void EnsureExitConfirmViewport()
+    {
+        if (_boundsBeforeExitConfirm.HasValue)
+        {
+            return;
+        }
+
+        var panelHandle = new WindowInteropHelper(this).Handle;
+        var scale = GetCurrentDpiScale(panelHandle);
+        var currentBounds = GetCurrentWindowBounds();
+        var requiredWidth = ExitConfirmViewportWidth * scale;
+        var requiredHeight = ExitConfirmViewportHeight * scale;
+        if (currentBounds.Width >= requiredWidth && currentBounds.Height >= requiredHeight)
+        {
+            return;
+        }
+
+        _boundsBeforeExitConfirm = currentBounds;
+        _minWidthBeforeExitConfirm = MinWidth;
+        _minHeightBeforeExitConfirm = MinHeight;
+
+        var targetWidth = Math.Max(currentBounds.Width, requiredWidth);
+        var targetHeight = Math.Max(currentBounds.Height, requiredHeight);
+        var targetLeft = currentBounds.Left + (currentBounds.Width - targetWidth) / 2;
+        var targetTop = currentBounds.Top + (currentBounds.Height - targetHeight) / 2;
+
+        if (panelHandle != IntPtr.Zero
+            && _windowArranger.TryGetMonitorWorkAreaForWindow(panelHandle, out var workArea))
+        {
+            targetWidth = Math.Min(targetWidth, workArea.Width);
+            targetHeight = Math.Min(targetHeight, workArea.Height);
+            targetLeft = ClampToWorkArea(targetLeft, workArea.Left, workArea.Width, targetWidth);
+            targetTop = ClampToWorkArea(targetTop, workArea.Top, workArea.Height, targetHeight);
+        }
+
+        MinWidth = Math.Min(ExitConfirmViewportWidth, targetWidth / scale);
+        MinHeight = Math.Min(ExitConfirmViewportHeight, targetHeight / scale);
+        SetWindowBounds(targetLeft, targetTop, targetWidth, targetHeight);
+    }
+
+    private void RestoreBoundsAfterExitConfirm()
+    {
+        if (_boundsBeforeExitConfirm is not { } originalBounds)
+        {
+            return;
+        }
+
+        MinWidth = _minWidthBeforeExitConfirm;
+        MinHeight = _minHeightBeforeExitConfirm;
+        _boundsBeforeExitConfirm = null;
+        SetWindowBounds(
+            originalBounds.Left,
+            originalBounds.Top,
+            originalBounds.Width,
+            originalBounds.Height);
+    }
+
+    private void CancelAppExitButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideAppExitConfirmDialog();
+        DiagnosticLog.Write(LogLevel.Info, "Panel close canceled by user.");
+        ScheduleFocusedSlotReassert();
+    }
+
+    private void ConfirmAppExitButton_Click(object sender, RoutedEventArgs e)
+    {
+        _closeConfirmed = true;
+        AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
+        DiagnosticLog.Write(LogLevel.Info, "Panel close confirmed by user.");
         Close();
     }
 
@@ -1196,6 +1311,7 @@ public partial class MainWindow : Window
             {
                 PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: false);
                 _windowArranger.FocusMaximizedOnMonitor(slot.WindowHandle, monitor);
+                _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
                 BringPanelToFrontImmediate();
                 SchedulePanelToFront();
                 RefreshAuxiliaryUi();
@@ -1258,9 +1374,7 @@ public partial class MainWindow : Window
             // 画面を覆わせておく。ここで他スロットを背面（HWND_BOTTOM）へ送ると、最大化アニメが
             // 画面を覆い切るまでの間、タイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
             // 背面送り・前フォーカスの復元・整列はすべてアニメ完了後に覆いの下で行う。
-            _windowArranger.BringToFrontOnce(slot.WindowHandle);
             SetFocusedSlotForDisplay(slot);
-            BringPanelToFrontImmediate();
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             RefreshAuxiliaryUi();
@@ -1292,14 +1406,13 @@ public partial class MainWindow : Window
                 // 最大化が完全に落ち着いてから、フォーカス対象を通常 Z 順の先頭に保ったまま
                 // 覆いの下で旧フォーカスを quadrant へ静かに戻す。ここで他スロットを HWND_BOTTOM
                 // へ送ると、隣接セルや 3 枚起動時に管理外ウィンドウの白い背景が露出しやすい。
-                _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
                 try
                 {
-                    ArrangeSlotsExceptOnActiveMonitor(slot, false, keepExcludedSlotAbove: true);
+                    ArrangeSlotsExceptOnActiveMonitor(slot, false);
                 }
                 finally
                 {
-                    _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
+                    EnsureFocusedSlotAboveTiles(slot);
                 }
             }
             return;
@@ -1379,26 +1492,14 @@ public partial class MainWindow : Window
         // 次に、フォーカスを持つ各ディスプレイで、フォーカスと同面の前後関係を保ち直す。
         foreach (var focusedSlot in FocusedSlots().ToList())
         {
-            ApplyLayerPreservingFocusedSlotOrder(focusedSlot, layerMode);
+            ApplyLayerPreservingFocusedSlotOrder(focusedSlot);
         }
 
-        BringPanelToFrontImmediate();
     }
 
-    private void ApplyLayerPreservingFocusedSlotOrder(WindowSlot focusedSlot, WindowSlot.SlotWindowLayerMode layerMode)
+    private void ApplyLayerPreservingFocusedSlotOrder(WindowSlot focusedSlot)
     {
-        switch (layerMode)
-        {
-            case WindowSlot.SlotWindowLayerMode.Topmost:
-                SendOtherSlotsToBackOnSameDisplay(focusedSlot);
-                _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
-                break;
-
-            case WindowSlot.SlotWindowLayerMode.Backmost:
-                _windowArranger.SetBackmost(focusedSlot.WindowHandle);
-                SendOtherSlotsToBackOnSameDisplay(focusedSlot);
-                break;
-        }
+        EnsureFocusedSlotAboveTiles(focusedSlot);
     }
 
     private async void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
@@ -1830,7 +1931,9 @@ public partial class MainWindow : Window
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
+            var revealTask = RevealLaunchedWindowsAsync(assignments);
             await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+            await revealTask;
 
             _statusStore.Message = assignments.Count > 0
                 ? $"スロット{slot.Name}の{application.DisplayName}を起動しました。"
@@ -1926,7 +2029,9 @@ public partial class MainWindow : Window
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
+            var revealTask = RevealLaunchedWindowsAsync(assignments);
             await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+            await revealTask;
 
             _statusStore.Message = assignments.Count > 0
                 ? $"スロット{slot.Name}を{application.DisplayName}で開きました。"
@@ -2070,6 +2175,7 @@ public partial class MainWindow : Window
             }
 
             await RefreshSlotsAsync(allowDuringBusy: true);
+            var revealTask = RevealLaunchedWindowsAsync(assignments);
 
             if (_areWindowsHidden)
             {
@@ -2095,6 +2201,8 @@ public partial class MainWindow : Window
                 // 起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
                 await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
             }
+
+            await revealTask;
 
             _statusStore.Message = assignments.Count > 0
                 ? swappedVisiblePanel
@@ -2478,19 +2586,16 @@ public partial class MainWindow : Window
 
     private int ArrangeSlotsExceptOnActiveMonitor(
         WindowSlot excludedSlot,
-        bool refreshAuxiliaryUiAfterArrange = true,
-        bool keepExcludedSlotAbove = false)
+        bool refreshAuxiliaryUiAfterArrange = true)
     {
         // フォーカスイン（ズームイン演出）に随伴する背面整列。前面では新フォーカスの最大化アニメ
         // だけを見せたいので、旧フォーカスの復元などはアニメーションさせず背面で速やかに済ませる。
-        var keepAboveHandle = keepExcludedSlotAbove ? excludedSlot.WindowHandle : IntPtr.Zero;
         var arranged = _windowArranger.ArrangeExcept(
             _statusStore.Slots,
             excludedSlot,
             _statusStore.Config.Gap,
             GetActiveMonitorIndex(),
-            animateRestore: false,
-            keepAboveHandle: keepAboveHandle);
+            animateRestore: false);
         if (refreshAuxiliaryUiAfterArrange)
         {
             RefreshAuxiliaryUi();
@@ -2512,19 +2617,32 @@ public partial class MainWindow : Window
         }
 
         var monitor = GetSlotMonitorIndex(focusSlot);
-        foreach (var slot in _statusStore.Slots)
-        {
-            if (ReferenceEquals(slot, focusSlot)
-                || slot.WindowHandle == IntPtr.Zero
-                || GetSlotMonitorIndex(slot) != monitor)
-            {
-                continue;
-            }
+        var preserveFocusedCover = _statusStore.Slots.Any(slot =>
+            slot.IsFocused
+            && slot.WindowHandle != IntPtr.Zero
+            && GetSlotMonitorIndex(slot) == monitor);
 
-            _windowArranger.BringToFrontOnce(slot.WindowHandle);
+        if (!preserveFocusedCover)
+        {
+            foreach (var slot in _statusStore.Slots)
+            {
+                if (ReferenceEquals(slot, focusSlot)
+                    || slot.WindowHandle == IntPtr.Zero
+                    || GetSlotMonitorIndex(slot) != monitor)
+                {
+                    continue;
+                }
+
+                _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
+            }
         }
 
-        _windowArranger.BringToFrontOnce(focusSlot.WindowHandle);
+        // 旧フォーカス自身は、新しい最大化が覆い切るまで全面の下地として残す。
+        // 新しい対象だけをその上へ置き、旧窓や他タイルの z-order は動かさない。
+        if (!focusSlot.IsFocused)
+        {
+            _windowArranger.BringToFrontWithoutTopmost(focusSlot.WindowHandle);
+        }
     }
 
     private void ApplyManagedWindowLayers(bool bringPanelAfterChange = true)
@@ -2571,7 +2689,7 @@ public partial class MainWindow : Window
 
         var applied = layerMode switch
         {
-            WindowSlot.SlotWindowLayerMode.Topmost => _windowArranger.BringToFrontOnce(slot.WindowHandle),
+            WindowSlot.SlotWindowLayerMode.Topmost => _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle),
             WindowSlot.SlotWindowLayerMode.Backmost => _windowArranger.SetBackmost(slot.WindowHandle),
             _ => false
         };
@@ -3316,8 +3434,7 @@ public partial class MainWindow : Window
             {
                 if (_windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot)))
                 {
-                    SendOtherSlotsToBackOnSameDisplay(focusedSlot);
-                    _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
+                    EnsureFocusedSlotAboveTiles(focusedSlot);
                 }
             }
 
@@ -3431,8 +3548,7 @@ public partial class MainWindow : Window
         {
             _windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot));
             SetFocusedSlotForDisplay(focusedSlot);
-            SendOtherSlotsToBackOnSameDisplay(focusedSlot);
-            if (_windowArranger.BringToFrontOnce(focusedSlot.WindowHandle))
+            if (EnsureFocusedSlotAboveTiles(focusedSlot))
             {
                 anyRestored = true;
                 restoredFocusedSlot = focusedSlot;
@@ -3904,25 +4020,31 @@ public partial class MainWindow : Window
         }
     }
 
-    // フォーカス中スロットと同じ実効ディスプレイにある他スロットだけを背面へ送る。
-    // 別ディスプレイのフォーカスや配置には干渉しない。
-    private void SendOtherSlotsToBackOnSameDisplay(WindowSlot focusedSlot)
+    // 最大化・復元の DWM アニメーションを壊さず、通常 z-order 帯の相対順だけを整える。
+    // パネル本体は topmost 帯、管理対象は通常帯なので、順序は常に
+    // パネル本体 > 1面フォーカス > 同じ面の4面スロットになる。
+    private bool EnsureFocusedSlotAboveTiles(WindowSlot focusedSlot)
     {
         var monitor = GetSlotMonitorIndex(focusedSlot);
+        BringPanelToFrontImmediate();
+        var focusedRaised = _windowArranger.BringToFrontWithoutTopmost(focusedSlot.WindowHandle);
+
+        var orderedAny = false;
         foreach (var slot in _statusStore.Slots)
         {
-            if (ReferenceEquals(slot, focusedSlot) || slot.WindowHandle == IntPtr.Zero)
+            if (!ReferenceEquals(slot, focusedSlot)
+                && slot.WindowHandle != IntPtr.Zero
+                && GetSlotMonitorIndex(slot) == monitor)
             {
-                continue;
+                // HWND_BOTTOM へ送らず、各タイルをフォーカス窓の直後へ置く。
+                // タイルが画面を覆い続けるため、壁紙や白背景が露出しない。
+                _windowArranger.ReleaseTopmostIfNeeded(slot.WindowHandle);
+                orderedAny |= _windowArranger.PlaceDirectlyBehind(slot.WindowHandle, focusedSlot.WindowHandle);
             }
-
-            if (GetSlotMonitorIndex(slot) != monitor)
-            {
-                continue;
-            }
-
-            _windowArranger.SetBackmost(slot.WindowHandle);
         }
+
+        BringPanelToFrontImmediate();
+        return focusedRaised || orderedAny;
     }
 
     // 全ディスプレイのフォーカス中スロットを、各実効ディスプレイで最大化・前面に立て直す。
@@ -3934,13 +4056,21 @@ public partial class MainWindow : Window
         foreach (var focusedSlot in FocusedSlots().ToList())
         {
             _windowArranger.MaximizeOnMonitor(focusedSlot.WindowHandle, GetSlotMonitorIndex(focusedSlot));
-            SendOtherSlotsToBackOnSameDisplay(focusedSlot);
-            _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle);
+            EnsureFocusedSlotAboveTiles(focusedSlot);
         }
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (AppExitConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideAppExitConfirmDialog();
+            DiagnosticLog.Write(LogLevel.Info, "Panel close canceled by user.");
+            ScheduleFocusedSlotReassert();
+            e.Handled = true;
+            return;
+        }
+
         if (CloseAllConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideCloseAllConfirmDialog();
@@ -3998,6 +4128,13 @@ public partial class MainWindow : Window
     {
         CancelScheduledFocusedSlotReassert();
         CancelScheduledPostLaunchArrange();
+
+        if (!App.IsSessionEnding && !_closeConfirmed)
+        {
+            e.Cancel = true;
+            ShowAppExitConfirmDialog();
+            return;
+        }
 
         // 非表示中にアプリが終了される場合、管理中ウィンドウを復元してから閉じる
         if (_areWindowsHidden)

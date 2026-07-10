@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-07-07
+更新日: 2026-07-11
 
 ## 1. AI 状態監視を戻さない
 - AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
@@ -60,6 +60,7 @@
 - 控え Quartet Expander のコンテンツ上マージンは `"0,12,0,0"`。右上の `Windows` 補助アプリボタン行がオーバーレイ配置のため、閉じた状態の隙間に寄せつつ、開いた控えカードと重ならないだけの隙間を確保する。
 - 縮小表示は C/D 行と `Windows` 補助アプリ行が初期状態で隠れない高さを最低値にする。
 - 縮小表示の 4 パネルボタン中央には、極小表示と同じ表示/非表示の円形ボタンを重ねる。4 パネルの空間メタファーを崩さないよう、右側の `前` / `背` 操作列には重ねない。
+- 終了確認は本体内の緑基調オーバーレイを維持する。縮小・極小表示では本体の表示領域が確認UIより小さいため、確認中だけ本体を必要な最小サイズへ一時展開し、キャンセル時に元の位置・サイズ・最小寸法へ復元する。固定幅の確認UIを小さい本体内で単純にクリップさせない。
 - 標準表示の既定高さは、`Launch Quartet` ボタン下に空白が残らない値にする。下端余白が見える場合はウィンドウ既定高さを先に調整する。
 - Windows 補助アプリが 4 つに増えたため、縮小表示の最低幅は Antigravity2 ボタンまで収まる値にする。
 - Windows 補助アプリボタンは 4 つすべて同じ幅を保ちつつ、左の `Windows` ラベルが `indows` のように見切れない幅に収める。
@@ -107,8 +108,13 @@
 - D&D 入替（`SwapSlotContents`）は `MonitorOverride` もワークスペース側と一緒に交換する。入替はカード上の象限位置だけを交換し、各ワークスペースは元のディスプレイ・フォーカス状態・4 面/1 面の見え方を維持する（入替でウィンドウはディスプレイをまたがない）。
 - 入替・単独移動・全体移動後の DPI/解像度差の補正は、フォーカスがあっても走る `SettleArrangementPreservingFocusAsync`（`NeedsArrange` はフォーカス中スロットをスキップ）で行う。`ArrangeSlotsOnActiveMonitorWithSettlingAsync` の settling は `CanReapplyPostLaunchArrangement` によりフォーカス中は走らないため、フォーカスを保つ操作では使わない。
 - ズームアウト演出とちらつき対策: 配置（`ArrangeCore`）は最大化/最小化中のウィンドウの復元先 `rcNormalPosition` を目的セルへ事前設定（`SetWindowPlacement`。`WPF_RESTORETOMAXIMIZED` も解除）してから `SW_RESTORE` する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズーム解除はアニメーション付きで目的セルへ直接着地し、「旧位置へ戻ってからセルへジャンプ」する二段移動（ちらつき）は出ない。rcNormalPosition はワークスペース座標（プライマリ作業領域原点基準）なので原点ぶん補正し、残差は直後の `SetWindowPos`（画面座標）が吸収する。
-- アニメを出さない配置: フォーカスイン随伴の背面整列（`ArrangeSlotsExceptOnActiveMonitor`）と settling 補正（`ArrangeSlotsOnActiveMonitorQuietly`）は `animateRestore=false` で、復元が必要なウィンドウにだけ `DWMWA_TRANSITIONS_FORCEDISABLED` を対で適用して無音・即時に行う。A フォーカス中に B を押す即切替は、B のズームイン（`SW_MAXIMIZE`）を前面で演出し、A の解除は遅延後に B の背面でアニメ無しで済ませる。ディスプレイまたぎのフォーカス移動（`EnsureWindowOnMonitor`〜最大化）も遷移アニメを止める。
+- アニメを出さない配置: フォーカスイン随伴の背面整列（`ArrangeSlotsExceptOnActiveMonitor`）と settling 補正（`ArrangeSlotsOnActiveMonitorQuietly`）は `animateRestore=false` で、復元が必要なウィンドウにだけ `DWMWA_TRANSITIONS_FORCEDISABLED` を対で適用し、`SW_SHOWNOACTIVATE` で非アクティブのまま通常サイズへ戻す。`SW_RESTORE` は非表示アニメを止めてもウィンドウをアクティブ化して z-order を変えるため、旧フォーカスが新フォーカスの前へ一瞬割り込む。A フォーカス中に B を押す即切替は、B を通常Z順の先頭へ非アクティブで準備し、`SW_MAXIMIZE` 開始後にフォアグラウンドを渡す。先にアクティブ化すると通常サイズのElectronサーフェスが白く再描画される。A の解除は遅延後に B の背面で非アクティブ・アニメ無しで済ませる。ディスプレイまたぎのフォーカス移動（`EnsureWindowOnMonitor`〜最大化）も遷移アニメを止める。
 - フォーカスイン時の透け対策: 他スロットの背面送り（`SendOtherSlotsToBackOnSameDisplay`）は最大化アニメ完了後（`FocusSwitchArrangeDelay` 経過後）に行う。アニメ開始と同時に HWND_BOTTOM へ送ると、最大化が画面を覆い切るまでタイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
-- フォーカス切替の背景フラッシュ対策（2026-07-05/07 追加調整）: `MainWindow.PrepareFocusTransitionBackdrop` でズーム開始前に同じ実効ディスプレイの管理対象ウィンドウを前面へ呼び戻し、最後にフォーカス対象を前面化する。4 面へ戻すときは先に非フォーカスを `ArrangeSlotsExceptOnActiveMonitor(..., animateRestore=false)` 相当で静かにセルへ整えて背後を埋め、フォーカス解除後の `ArrangeSlotsOnActiveMonitor` ではレイヤー再適用を `FocusSwitchArrangeDelay` 後まで遅らせる。縮小アニメ中に背後のタイルを維持するためで、即時の `ApplyManagedWindowLayers` に戻すと壁紙や管理外アプリの白背景が一瞬差し込む。1 面化の最後に旧ウィンドウ復元が見える場合は、後片付けを十分遅らせ、整列中だけフォーカス対象を保持する。ただし `BringToFront`/`BringToFrontOnce` で `TOPMOST` へ上げると WPF のパネル本体や中央タイトルオーバーレイを押しのけてちらつくため、後片付けでは `BringToFrontWithoutTopmost` で必要時だけ `NOTOPMOST` へ戻してから通常 Z 順の先頭に出す。後片付け中に非フォーカスを `HWND_BOTTOM` へ送ると、隣接セルや 3 枚起動時にブラウザ等の白背景が露出しやすいため避ける。`ArrangeExcept(..., keepAboveHandle)` は静かな復元でも `SW_RESTORE` を使い、復元直後と配置完了後だけフォーカス対象を通常 Z 順の先頭へ戻す。これにより旧フォーカス窓の割り込みを抑えつつ、非同期 z-order 要求の多発によるちらつき・重さを避ける。
+- フォーカス切替の背景フラッシュ対策（2026-07-05/07/11 追加調整）: `MainWindow.PrepareFocusTransitionBackdrop` は同じ面に旧フォーカスがある間、その旧1面と他タイルの z-order を動かさず、旧1面を全面の覆いとして維持する。新フォーカスだけを `BringToFrontWithoutTopmost` で非アクティブのまま旧1面の上へ準備し、`FocusMaximizedOnMonitor` は `SW_MAXIMIZE` 後に `SetForegroundWindow` する。4 面へ戻すときは先に非フォーカスを静かにセルへ整えて背後を埋め、フォーカス解除後のレイヤー再適用を `FocusSwitchArrangeDelay` 後まで遅らせる。後片付け中に `HWND_BOTTOM`、`SW_RESTORE`、フォーカス対象の反復前面化を使うと、旧窓と新窓の双方で白背景・再描画・z-order の跳ねが発生するため禁止する。
 - 不可視枠（DWM 拡張フレームと GetWindowRect の差）は「通常状態」のときにだけ計測し、ハンドルごとにキャッシュする（`GetFrameInsetCached`）。最大化中は枠のはみ出し方が異なり、最小化中は座標が無効なため、そのまま測ると 4 面セルより大きい/ずれた配置になる。復元前の事前補正（rcNormalPosition）はキャッシュ値、最終配置（SetWindowPos）は復元後の実測で行う。
 - パネル UI の描画は GPU 既定（`RenderMode.SoftwareOnly` 強制は撤去）。特定環境で描画乱れが出る場合のみ SoftwareOnly へ戻す。
+- 1 面フォーカス中の z-order は `EnsureFocusedSlotAboveTiles` に集約し、常に `パネル本体 > 1 面フォーカス > 同面の 4 面スロット` とする。パネル本体だけを topmost 帯に置き、1 面と 4 面は通常帯のまま扱う。最大化開始直後に1面を topmost 帯へ移すと DWM のズームアニメーションが乱れ、白いちらつきや表示のごちゃつきが発生するため禁止する。アニメーション完了後に各4面を `SetWindowPos(tile, focusHandle, ...)` で1面の直後へ相対配置する。4 面は `HWND_BOTTOM` へ送らず、タイル同士の画面の覆いを保つ。
+- パネル本体の終了は確認ダイアログを通し、既定選択を「いいえ」にする。タイトルバーの X や Alt+F4 の誤操作を即終了にしない。OS のシャットダウン/サインアウト時だけ確認を省略し、終了要求・キャンセル・確定を `panel.log` に残す。
+- パネル終了確認を含むユーザー向け確認 UI に WPF 標準 `MessageBox` を使わない。OS 標準の灰色ダイアログは本体の緑基調デザインと統一できないため、`MainWindow.xaml` 内の既存オーバーレイパターン（暗い半透明背景、`SurfaceBrush`、`AccentBrush`）で表示する。
+- 新規VS Codeの起動前は、AIチャット等を表示する右側の `auxiliaryBarWidth` を基準画面幅の約28%（既定538px、420～620pxの範囲）まで必要時だけ広げる。既に広いユーザー設定は縮めない。`auxiliarySideBarWidth` が既に存在する形式では同じ下限を適用するが、未使用環境へ新しい値を勝手に追加しない。フォーカス直前やVS Code以外のウィンドウには適用しない。
+- 新規VS Codeの起動時は、WinEventで新しいHWNDを捕捉した時点で `DWMWA_CLOAK` を設定し、2x2配置と160msの初回描画猶予が完了してから解除する。これによりElectronの白い初期サーフェスや中央の初期位置を見せない。再接続した既存ウィンドウはクロークしない。配置処理が失敗しても12秒後に必ず解除するフェイルセーフを持つ。右側 `auxiliaryBarWidth` の拡張も新規ウィンドウ起動前に済ませ、フォーカス直前に `storage.json` を変更して4面を再描画させない。

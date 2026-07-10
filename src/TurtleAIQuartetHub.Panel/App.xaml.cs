@@ -9,6 +9,8 @@ public partial class App : Application
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
     private UiThreadWatchdog? _uiThreadWatchdog;
 
+    public static bool IsSessionEnding { get; private set; }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         // 描画はGPU既定に任せる（SoftwareOnly強制を撤去）。パネルUIの描画の滑らかさを優先し、
@@ -28,7 +30,10 @@ public partial class App : Application
         // OS のシャットダウン/サインアウトによる終了は OnExit まで完走せず「終了マーカー無し」に
         // なることがある。「勝手に落ちた」と区別できるよう、セッション終了要求そのものを記録する。
         SessionEnding += (_, args) =>
+        {
+            IsSessionEnding = true;
             DiagnosticLog.Write(LogLevel.Info, $"OS session ending ({args.ReasonSessionEnding}); panel will be terminated by the system.");
+        };
 
         _singleInstanceCoordinator = new SingleInstanceCoordinator();
         if (!_singleInstanceCoordinator.IsPrimary)

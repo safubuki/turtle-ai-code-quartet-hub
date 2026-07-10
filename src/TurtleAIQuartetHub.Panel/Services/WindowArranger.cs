@@ -7,6 +7,7 @@ public sealed class WindowArranger
 {
     private const uint WM_CLOSE = 0x0010;
     private const int SW_MAXIMIZE = 3;
+    private const int SW_SHOWNOACTIVATE = 4;
     private const int SW_MINIMIZE = 6;
     private const int SW_RESTORE = 9;
     private const uint SWP_NOSIZE = 0x0001;
@@ -27,6 +28,7 @@ public sealed class WindowArranger
     private const uint MONITORINFOF_PRIMARY = 0x00000001;
     private const int DwmwaExtendedFrameBounds = 9;
     private const int DwmwaTransitionsForceDisabled = 3;
+    private const int DwmwaCloak = 13;
     private const int DwmwaCloaked = 14;
     private const uint GW_HWNDPREV = 3;
     private const int GWL_EXSTYLE = -20;
@@ -113,8 +115,11 @@ public sealed class WindowArranger
                 // 最大化/最小化中は不可視枠を正しく測れないため、通常状態のときに記録した
                 // キャッシュ値で復元先を補正する。
                 PresetRestoreBoundsToCell(CompensateForFrameCached(placement));
-                ShowWindow(placement.Handle, SW_RESTORE);
-                BringToFrontWithoutTopmostIfNeeded(keepAboveHandle);
+                ShowWindow(placement.Handle, animateRestore ? SW_RESTORE : SW_SHOWNOACTIVATE);
+                if (animateRestore)
+                {
+                    BringToFrontWithoutTopmostIfNeeded(keepAboveHandle);
+                }
             }
 
             // 各ウィンドウの不可視枠（DWM 拡張フレームと GetWindowRect の差）を打ち消し、
@@ -145,7 +150,10 @@ public sealed class WindowArranger
                 }
             }
 
-            BringToFrontWithoutTopmostIfNeeded(keepAboveHandle);
+            if (animateRestore)
+            {
+                BringToFrontWithoutTopmostIfNeeded(keepAboveHandle);
+            }
             return arranged;
         }
         finally
@@ -425,6 +433,42 @@ public sealed class WindowArranger
         return SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
     }
 
+    public bool ReleaseTopmostIfNeeded(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle) || !IsTopmost(windowHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, LayerFlags);
+    }
+
+    public static bool SetCloaked(IntPtr windowHandle, bool cloaked)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        var value = cloaked ? 1 : 0;
+        return DwmSetWindowAttribute(windowHandle, DwmwaCloak, ref value, sizeof(int)) == 0;
+    }
+
+    // frontWindowHandle と同じ z-order 帯で、その直後へ windowHandle を置く。
+    // パネル本体（front）> 1面フォーカス（window）の厳密な順序を1回の相対指定で保つ。
+    public bool PlaceDirectlyBehind(IntPtr windowHandle, IntPtr frontWindowHandle)
+    {
+        if (windowHandle == IntPtr.Zero
+            || frontWindowHandle == IntPtr.Zero
+            || !IsWindow(windowHandle)
+            || !IsWindow(frontWindowHandle))
+        {
+            return false;
+        }
+
+        return SetWindowPos(windowHandle, frontWindowHandle, 0, 0, 0, 0, LayerFlags);
+    }
+
     // 指定ウィンドウより z-order が上に、管理外アプリの可視ウィンドウが重なって表示されて
     // いるかを返す。managedHandles（管理中スロットのウィンドウ）と自プロセスのウィンドウは
     // 「身内」として遮蔽とみなさない。TOPMOST ウィンドウも除外する。前面化（NOTOPMOST へ
@@ -582,7 +626,9 @@ public sealed class WindowArranger
         return SetForegroundWindow(windowHandle);
     }
 
-    // 指定ディスプレイで最大化してから前面化する。単独移動したスロットのフォーカス（1 面）を
+    // 対象は直前に通常 z-order の先頭へ配置済み。最大化を開始してからフォアグラウンドを渡し、
+    // 通常サイズの Electron サーフェスをアクティブ化によって白く再描画させない。
+    // 単独移動したスロットのフォーカス（1 面）を
     // その実効ディスプレイで開くために使う。ウィンドウが既にそのディスプレイに居れば移動しない。
     public bool FocusMaximizedOnMonitor(IntPtr windowHandle, int monitorIndex)
     {

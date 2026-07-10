@@ -10,6 +10,9 @@ public static class VscodeLayoutState
     private const int MinimumWideWindowWidth = 1000;
     private const int MinimumSideBarWidth = 120;
     private const int MinimumAuxiliaryBarWidth = 240;
+    private const int FocusedAuxiliaryBarMinimumWidth = 420;
+    private const int FocusedAuxiliaryBarMaximumWidth = 620;
+    private const double FocusedAuxiliaryBarWidthRatio = 0.28;
     private static readonly JsonSerializerOptions JsonWriteOptions = new()
     {
         WriteIndented = true
@@ -111,6 +114,27 @@ public static class VscodeLayoutState
             DiagnosticLog.Write(ex);
             return false;
         }
+    }
+
+    public static VscodeLayoutPreference ExpandAuxiliaryBarForFocus(
+        VscodeLayoutPreference preference,
+        int availableWidth)
+    {
+        var targetWidth = Math.Clamp(
+            (int)Math.Round(Math.Max(0, availableWidth) * FocusedAuxiliaryBarWidthRatio),
+            FocusedAuxiliaryBarMinimumWidth,
+            FocusedAuxiliaryBarMaximumWidth);
+
+        var auxiliaryBarWidth = Math.Max(preference.AuxiliaryBarWidth ?? 0, targetWidth);
+        var auxiliarySideBarWidth = preference.AuxiliarySideBarWidth is > 0
+            ? Math.Max(preference.AuxiliarySideBarWidth.Value, targetWidth)
+            : preference.AuxiliarySideBarWidth;
+
+        return preference with
+        {
+            AuxiliaryBarWidth = auxiliaryBarWidth,
+            AuxiliarySideBarWidth = auxiliarySideBarWidth
+        };
     }
 
     private static bool HasPreferredCaptureValue(VscodeLayoutPreference preference)
