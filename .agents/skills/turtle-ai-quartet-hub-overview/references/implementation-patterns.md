@@ -1,6 +1,6 @@
 ﻿# Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-07-11
+更新日: 2026-07-22
 
 ## 1. AI 状態監視を戻さない
 - AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
@@ -39,7 +39,7 @@
 - メインパネルのクリアアイコンは右上のゴミ箱アイコンで表示する。押下時は削除確認ダイアログを出し、確認後に対象スロットの保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中の IDE / CLI ウィンドウがある場合は close を送ってからパネル情報を削除する。
 - 通常表示のスロット左下にはフォルダアイコンボタンを置き、`WindowSlot.DisplayPath` から Explorer で開けるローカルフォルダを解決する。既存ディレクトリはそのまま、`.code-workspace` など既存ファイルは親フォルダを開く。`vscode-remote://...` や `ssh://...` など non-file URI は Explorer 対象にせず、ボタンをグレーアウトする。
 - スロットの実行中アクションボタン文言は `閉じる` にする。未起動時は `起動` / `新規`。
-- タイトルバー右上は縮小表示、`?` ヘルプ、歯車設定、最小化、閉じるの順に置く。ヘルプには枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを書く。本文とコマンドは選択コピーできるよう `TextBox IsReadOnly=True` で表示する。
+- タイトルバー右上は縮小表示、`?` ヘルプ、歯車設定、最小化、閉じるの順に置く。ヘルプは Codex / GitHub Copilot / Gemini / Claude Code / Grok Build の CLI 別カードで構成し、各カード内を `インストール` と `自律実行の起動オプション` に分ける。方式名とコマンドを別表示にしてコマンドだけを正確にコピーできるようにし、自律実行オプションは警告色と共通の注意書きで通常の導入手順から区別する。IDE / Windows アプリは公式サイト参照とし、Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを書く。本文とコマンドは選択コピーできるよう `TextBox IsReadOnly=True` で表示し、実行操作は持たせない。
 - CLI の導入方法は公式の最新情報を確認して更新し、README と `?` ヘルプで同じ選択肢を示す。Grok Build CLI の Windows 向け手順は Git Bash を経由させず、`irm https://x.ai/cli/install.ps1 | iex` を表示する。Git Bash / WSL 向けには `curl -fsSL https://x.ai/cli/install.sh | bash` を残す。
 - 歯車設定画面では IDE / CLI / Windows アプリの起動コマンドを編集し、`%LOCALAPPDATA%/TurtleAIQuartetHub/config/turtle-ai-quartet-hub.json` へ保存する。VS Code の設定は `CodeCommand` と `applications[].command` を同期させる。
 - 設定画面には表の Quartet と控え Quartet の保存状態を一覧表示する。表は `PanelTitle` / `Path` / `SavedWorkspacePath` / `SavedWorkspaceConfirmed` / `ApplicationId` を編集可能にし、控えは `PanelTitle` / `WorkspacePath` / `ApplicationId` を編集可能にする。空化ボタンと不整合修復ボタンを用意し、過去の重複控えや不完全な控えで再登録できない状態を解消できるようにする。
@@ -115,6 +115,8 @@
 - 不可視枠（DWM 拡張フレームと GetWindowRect の差）は「通常状態」のときにだけ計測し、ハンドルごとにキャッシュする（`GetFrameInsetCached`）。最大化中は枠のはみ出し方が異なり、最小化中は座標が無効なため、そのまま測ると 4 面セルより大きい/ずれた配置になる。復元前の事前補正（rcNormalPosition）はキャッシュ値、最終配置（SetWindowPos）は復元後の実測で行う。
 - パネル UI の描画は GPU 既定（`RenderMode.SoftwareOnly` 強制は撤去）。特定環境で描画乱れが出る場合のみ SoftwareOnly へ戻す。
 - 1 面フォーカス中の z-order は `EnsureFocusedSlotAboveTiles` に集約し、常に `パネル本体 > 1 面フォーカス > 同面の 4 面スロット` とする。パネル本体だけを topmost 帯に置き、1 面と 4 面は通常帯のまま扱う。最大化開始直後に1面を topmost 帯へ移すと DWM のズームアニメーションが乱れ、白いちらつきや表示のごちゃつきが発生するため禁止する。アニメーション完了後に各4面を `SetWindowPos(tile, focusHandle, ...)` で1面の直後へ相対配置する。4 面は `HWND_BOTTOM` へ送らず、タイル同士の画面の覆いを保つ。
+- 2026-07-22 の回帰修正: フォーカス中の `ArrangeCore` で座標・サイズ変更と Z 順変更を同じ `SetWindowPos` 要求へ統合してはならない。Electron / VS Code のサーフェス再描画がズーム中に表へ出て白ちらつきが増える。配置は従来どおり `SWP_NOZORDER` で行い、`PrepareFocusTransitionBackdrop` による旧1面の覆いを維持する。
+- 非同期配置の後勝ち対策は、遷移完了後の読み取り検査で行う。`WindowArranger.IsAbove` で同面の4面が1面より上にあるか確認し、実際に違反した窓だけを `PlaceDirectlyBehind` で非アクティブのまま戻す。正常時は `SetWindowPos` を呼ばず、短い遅延検査と周期更新の両方で `パネル本体 > 1面 > 4面` を回復する。フォーカス窓の反復前面化や topmost 化は行わない。
 - パネル本体の終了は確認ダイアログを通し、既定選択を「いいえ」にする。タイトルバーの X や Alt+F4 の誤操作を即終了にしない。OS のシャットダウン/サインアウト時だけ確認を省略し、終了要求・キャンセル・確定を `panel.log` に残す。
 - パネル終了確認を含むユーザー向け確認 UI に WPF 標準 `MessageBox` を使わない。OS 標準の灰色ダイアログは本体の緑基調デザインと統一できないため、`MainWindow.xaml` 内の既存オーバーレイパターン（暗い半透明背景、`SurfaceBrush`、`AccentBrush`）で表示する。
 - 新規VS Codeの起動前は、AIチャット等を表示する右側の `auxiliaryBarWidth` を基準画面幅の約28%（既定538px、420～620pxの範囲）まで必要時だけ広げる。既に広いユーザー設定は縮めない。`auxiliarySideBarWidth` が既に存在する形式では同じ下限を適用するが、未使用環境へ新しい値を勝手に追加しない。フォーカス直前やVS Code以外のウィンドウには適用しない。

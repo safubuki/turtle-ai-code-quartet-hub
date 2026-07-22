@@ -41,6 +41,15 @@ public partial class MainWindow : Window
         TimeSpan.FromMilliseconds(420),
         TimeSpan.FromMilliseconds(720)
     ];
+    // 最大化アニメーションと背面整列が完了した後だけ Z 順を読み取り確認する。
+    // 正常時は一切 SetWindowPos せず、外部ウィンドウごとの非同期処理が遅れて
+    // 4 面を前へ出した場合だけ補正する。
+    private static readonly TimeSpan[] FocusedZOrderVerificationDelays =
+    [
+        TimeSpan.FromMilliseconds(40),
+        TimeSpan.FromMilliseconds(100),
+        TimeSpan.FromMilliseconds(220)
+    ];
     private static readonly TimeSpan[] PostLaunchArrangeRetryDelays =
     [
         TimeSpan.FromMilliseconds(1500),
@@ -80,6 +89,7 @@ public partial class MainWindow : Window
     private bool _isCardDragDropInProgress;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
     private CancellationTokenSource? _focusSwitchArrangeCancellation;
+    private CancellationTokenSource? _focusedZOrderVerificationCancellation;
     private CancellationTokenSource? _focusedSlotReassertCancellation;
     private CancellationTokenSource? _panelLocateCancellation;
     private CancellationTokenSource? _postLaunchArrangeCancellation;
@@ -1414,6 +1424,8 @@ public partial class MainWindow : Window
                 {
                     EnsureFocusedSlotAboveTiles(slot);
                 }
+
+                ScheduleFocusedZOrderVerification(slot);
             }
             return;
         }
@@ -2398,6 +2410,14 @@ public partial class MainWindow : Window
             {
                 await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
             }
+
+            // 遷移中は既存の背景保持を優先し、Z 順へ触れない。安定後の周期更新では
+            // 実際に 4 面がフォーカス 1 面より上へ出た場合だけ、該当窓を背後へ戻す。
+            if (_focusSwitchArrangeCancellation is null
+                && _focusedZOrderVerificationCancellation is null)
+            {
+                RepairAllFocusedZOrdersIfNeeded();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -3278,9 +3298,65 @@ public partial class MainWindow : Window
 
     private void CancelFocusSwitchArrange()
     {
-        // 実体の破棄は所有側の finally に任せ、ここではキャンセルのみ行う。
+        // 実体の破棄は各所有側の finally に任せ、ここではキャンセルのみ行う。
         // すべて UI スレッド上で逐次実行されるため、二重 Dispose や競合は起きない。
         _focusSwitchArrangeCancellation?.Cancel();
+        _focusedZOrderVerificationCancellation?.Cancel();
+    }
+
+    private void ScheduleFocusedZOrderVerification(WindowSlot focusedSlot)
+    {
+        _focusedZOrderVerificationCancellation?.Cancel();
+        if (_areWindowsHidden
+            || WindowState == WindowState.Minimized
+            || focusedSlot.WindowHandle == IntPtr.Zero
+            || !focusedSlot.IsFocused)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _focusedZOrderVerificationCancellation = cancellation;
+        _ = VerifyFocusedZOrderAfterTransitionAsync(focusedSlot, cancellation);
+    }
+
+    private async Task VerifyFocusedZOrderAfterTransitionAsync(
+        WindowSlot focusedSlot,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            foreach (var delay in FocusedZOrderVerificationDelays)
+            {
+                await Task.Delay(delay, cancellation.Token);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (!cancellation.IsCancellationRequested
+                        && !_areWindowsHidden
+                        && WindowState != WindowState.Minimized
+                        && !_isWindowMoveOrResizeActive
+                        && !_isCardDragDropInProgress
+                        && !IsAnyMouseButtonPressed()
+                        && focusedSlot.IsFocused
+                        && focusedSlot.WindowHandle != IntPtr.Zero)
+                    {
+                        RepairFocusedZOrderIfNeeded(focusedSlot);
+                    }
+                }, DispatcherPriority.Background);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_focusedZOrderVerificationCancellation, cancellation))
+            {
+                _focusedZOrderVerificationCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
     }
 
     private void ScheduleFocusTransitionLayerFinalize()
@@ -4047,6 +4123,57 @@ public partial class MainWindow : Window
         return focusedRaised || orderedAny;
     }
 
+    // フォーカス遷移が落ち着いた後の検査用。正常な Z 順では何も書き込まない。
+    // 4 面側が実際に 1 面より上へ出た場合だけ、その4面を非アクティブのまま直後へ戻す。
+    // フォーカス窓自体を再前面化しないため、Electron の白い再描画や DWM ズームを誘発しない。
+    private bool RepairFocusedZOrderIfNeeded(WindowSlot focusedSlot)
+    {
+        if (!focusedSlot.IsFocused || focusedSlot.WindowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var monitor = GetSlotMonitorIndex(focusedSlot);
+        var repaired = false;
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (ReferenceEquals(slot, focusedSlot)
+                || slot.WindowHandle == IntPtr.Zero
+                || GetSlotMonitorIndex(slot) != monitor
+                || !_windowArranger.IsAbove(slot.WindowHandle, focusedSlot.WindowHandle))
+            {
+                continue;
+            }
+
+            _windowArranger.ReleaseTopmostIfNeeded(slot.WindowHandle);
+            repaired |= _windowArranger.PlaceDirectlyBehind(slot.WindowHandle, focusedSlot.WindowHandle);
+        }
+
+        if (repaired)
+        {
+            BringPanelToFrontImmediate();
+            DiagnosticLog.Write($"Repaired focused z-order for slot {focusedSlot.Name} without activating managed windows.");
+        }
+
+        return repaired;
+    }
+
+    private void RepairAllFocusedZOrdersIfNeeded()
+    {
+        if (_areWindowsHidden
+            || WindowState == WindowState.Minimized
+            || _isWindowMoveOrResizeActive
+            || IsAnyMouseButtonPressed())
+        {
+            return;
+        }
+
+        foreach (var focusedSlot in FocusedSlots().ToList())
+        {
+            RepairFocusedZOrderIfNeeded(focusedSlot);
+        }
+    }
+
     // 全ディスプレイのフォーカス中スロットを、各実効ディスプレイで最大化・前面に立て直す。
     // Arrange（非フォーカスのタイル配置）の後に呼び、各面の 1 面表示を保つ。
     // フォアグラウンド（SetForegroundWindow）は奪わない。複数ウィンドウへ繰り返し奪うと
@@ -4177,6 +4304,7 @@ public partial class MainWindow : Window
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
         _focusSwitchArrangeCancellation?.Cancel();
+        _focusedZOrderVerificationCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Dispose();
         _postLaunchArrangeCancellation?.Cancel();

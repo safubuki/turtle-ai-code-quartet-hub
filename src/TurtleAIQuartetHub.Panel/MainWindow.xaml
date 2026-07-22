@@ -103,6 +103,58 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!-- ヘルプ内の CLI ガイド。コマンドはボタンにせず、選択・コピー専用で表示する。 -->
+    <Style x:Key="HelpCliCardStyle" TargetType="Border">
+      <Setter Property="Margin" Value="0,10,0,0" />
+      <Setter Property="Padding" Value="11" />
+      <Setter Property="Background" Value="#111815" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <Style x:Key="HelpSectionLabelStyle" TargetType="TextBlock">
+      <Setter Property="Margin" Value="0,9,0,4" />
+      <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextTrimming" Value="None" />
+    </Style>
+
+    <Style x:Key="HelpInstallMethodLabelStyle" TargetType="TextBlock">
+      <Setter Property="Margin" Value="0,5,0,3" />
+      <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextTrimming" Value="None" />
+    </Style>
+
+    <Style x:Key="HelpCommandTextBoxStyle" TargetType="TextBox">
+      <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="AcceptsReturn" Value="True" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="Background" Value="#0C1210" />
+      <Setter Property="BorderBrush" Value="#2A3A31" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="FontFamily" Value="Consolas" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="ToolTip" Value="表示専用です。選択して Ctrl+C でコピーできます。" />
+    </Style>
+
+    <Style x:Key="HelpAutonomousCommandTextBoxStyle"
+           TargetType="TextBox"
+           BasedOn="{StaticResource HelpCommandTextBoxStyle}">
+      <Setter Property="Background" Value="#181110" />
+      <Setter Property="BorderBrush" Value="#5E3A32" />
+    </Style>
+
     <Style x:Key="BaseButton" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
       <Setter Property="Background" Value="#202823" />
@@ -2448,62 +2500,162 @@
                           MaxHeight="430"
                           VerticalScrollBarVisibility="Auto">
               <StackPanel>
-                <Border Padding="10"
-                        Background="#111815"
-                        BorderBrush="{StaticResource BorderBrushSoft}"
+                <Border Padding="11"
+                        Background="#102019"
+                        BorderBrush="#315B43"
                         BorderThickness="1"
                         CornerRadius="8">
                   <StackPanel>
-                    <TextBlock Text="CLI のインストール"
+                    <TextBlock Text="CLI セットアップガイド"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource TextBrush}" />
-                    <TextBox Margin="0,6,0,0"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Foreground="{StaticResource MutedTextBrush}"
-                             Text="IDE と Windows アプリは、各製品の公式サイトを参照してください。CLI のインストールコマンドは下記を参照してください。" />
-                    <TextBox Margin="0,8,0,0"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             FontFamily="Consolas"
-                             Foreground="{StaticResource TextBrush}"
-                             Text="Codex CLI（Windows PowerShell・推奨）: powershell -ExecutionPolicy ByPass -c &quot;irm https://chatgpt.com/codex/install.ps1 | iex&quot;&#x0a;Codex CLI（npm）: npm install -g @openai/codex&#x0a;GitHub Copilot CLI（Windows・推奨）: winget install GitHub.Copilot&#x0a;GitHub Copilot CLI（npm）: npm install -g @github/copilot&#x0a;Gemini CLI: npm install -g @google/gemini-cli&#x0a;Claude Code（PowerShell・推奨）: irm https://claude.ai/install.ps1 | iex&#x0a;Claude Code（CMD）: curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd&#x0a;Claude Code（npm）: npm install -g @anthropic-ai/claude-code&#x0a;Grok Build CLI（PowerShell）: irm https://x.ai/cli/install.ps1 | iex&#x0a;Grok Build CLI（Git Bash／WSL）: curl -fsSL https://x.ai/cli/install.sh | bash" />
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Margin="0,5,0,0"
+                               Text="CLI ごとにインストール方法と起動オプションを分けています。コマンドは表示専用で、この画面から実行されることはありません。"
+                               TextWrapping="Wrap"
+                               TextTrimming="None"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                    <TextBlock Margin="0,5,0,0"
+                               Text="IDE と Windows アプリは、各製品の公式サイトを参照してください。"
+                               TextWrapping="Wrap"
+                               TextTrimming="None"
+                               Foreground="{StaticResource MutedTextBrush}" />
                   </StackPanel>
                 </Border>
 
-                <Border Margin="0,12,0,0"
+                <Border Margin="0,10,0,0"
                         Padding="10"
-                        Background="#111815"
-                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        Background="#211715"
+                        BorderBrush="#5E3A32"
                         BorderThickness="1"
                         CornerRadius="8">
+                  <TextBlock Text="注意: 「自律実行の起動オプション」は承認確認を減らす、または権限を広げます。信頼できるワークスペースでのみ使用してください。"
+                             TextWrapping="Wrap"
+                             TextTrimming="None"
+                             Foreground="#F2B7AF" />
+                </Border>
+
+                <Border Style="{StaticResource HelpCliCardStyle}">
                   <StackPanel>
-                    <TextBlock Text="自律実行向けの起動オプション"
+                    <TextBlock Text="Codex CLI"
+                               FontSize="14"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource TextBrush}" />
-                    <TextBox Margin="0,6,0,0"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Foreground="#F2B7AF"
-                             Text="下記は承認確認を減らす、または権限を広げるための例です。信頼できるワークスペースでのみ使い、内容が不明なリポジトリでは使わないでください。" />
-                    <TextBox Margin="0,8,0,0"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             FontFamily="Consolas"
-                             Foreground="{StaticResource TextBrush}"
-                             Text="codex --ask-for-approval never --sandbox workspace-write&#x0a;copilot --allow-all&#x0a;gemini --approval-mode=yolo&#x0a;claude --permission-mode bypassPermissions&#x0a;grok --always-approve" />
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="インストール"
+                               Style="{StaticResource HelpSectionLabelStyle}" />
+                    <TextBlock Text="Windows PowerShell（推奨）"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}"
+                               Margin="0,0,0,3" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="powershell -ExecutionPolicy ByPass -c &quot;irm https://chatgpt.com/codex/install.ps1 | iex&quot;" />
+                    <TextBlock Text="npm"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="npm install -g @openai/codex" />
+                    <TextBlock Text="自律実行の起動オプション"
+                               Style="{StaticResource HelpSectionLabelStyle}"
+                               Foreground="#F2B7AF" />
+                    <TextBox Style="{StaticResource HelpAutonomousCommandTextBoxStyle}"
+                             Text="codex --ask-for-approval never --sandbox workspace-write" />
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HelpCliCardStyle}">
+                  <StackPanel>
+                    <TextBlock Text="GitHub Copilot CLI"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="インストール"
+                               Style="{StaticResource HelpSectionLabelStyle}" />
+                    <TextBlock Text="Windows（推奨）"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}"
+                               Margin="0,0,0,3" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="winget install GitHub.Copilot" />
+                    <TextBlock Text="npm"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="npm install -g @github/copilot" />
+                    <TextBlock Text="自律実行の起動オプション"
+                               Style="{StaticResource HelpSectionLabelStyle}"
+                               Foreground="#F2B7AF" />
+                    <TextBox Style="{StaticResource HelpAutonomousCommandTextBoxStyle}"
+                             Text="copilot --allow-all" />
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HelpCliCardStyle}">
+                  <StackPanel>
+                    <TextBlock Text="Gemini CLI"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="インストール"
+                               Style="{StaticResource HelpSectionLabelStyle}" />
+                    <TextBlock Text="npm"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}"
+                               Margin="0,0,0,3" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="npm install -g @google/gemini-cli" />
+                    <TextBlock Text="自律実行の起動オプション"
+                               Style="{StaticResource HelpSectionLabelStyle}"
+                               Foreground="#F2B7AF" />
+                    <TextBox Style="{StaticResource HelpAutonomousCommandTextBoxStyle}"
+                             Text="gemini --approval-mode=yolo" />
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HelpCliCardStyle}">
+                  <StackPanel>
+                    <TextBlock Text="Claude Code"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="インストール"
+                               Style="{StaticResource HelpSectionLabelStyle}" />
+                    <TextBlock Text="Windows PowerShell（推奨）"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}"
+                               Margin="0,0,0,3" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="irm https://claude.ai/install.ps1 | iex" />
+                    <TextBlock Text="Windows コマンドプロンプト"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd" />
+                    <TextBlock Text="npm"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="npm install -g @anthropic-ai/claude-code" />
+                    <TextBlock Text="自律実行の起動オプション"
+                               Style="{StaticResource HelpSectionLabelStyle}"
+                               Foreground="#F2B7AF" />
+                    <TextBox Style="{StaticResource HelpAutonomousCommandTextBoxStyle}"
+                             Text="claude --permission-mode bypassPermissions" />
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HelpCliCardStyle}">
+                  <StackPanel>
+                    <TextBlock Text="Grok Build CLI"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="インストール"
+                               Style="{StaticResource HelpSectionLabelStyle}" />
+                    <TextBlock Text="Windows PowerShell"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}"
+                               Margin="0,0,0,3" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="irm https://x.ai/cli/install.ps1 | iex" />
+                    <TextBlock Text="Git Bash / WSL"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="curl -fsSL https://x.ai/cli/install.sh | bash" />
+                    <TextBlock Text="自律実行の起動オプション"
+                               Style="{StaticResource HelpSectionLabelStyle}"
+                               Foreground="#F2B7AF" />
+                    <TextBox Style="{StaticResource HelpAutonomousCommandTextBoxStyle}"
+                             Text="grok --always-approve" />
                   </StackPanel>
                 </Border>
               </StackPanel>

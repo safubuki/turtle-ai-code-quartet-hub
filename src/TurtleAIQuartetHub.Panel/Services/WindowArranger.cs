@@ -469,6 +469,32 @@ public sealed class WindowArranger
         return SetWindowPos(windowHandle, frontWindowHandle, 0, 0, 0, 0, LayerFlags);
     }
 
+    // candidateWindowHandle が referenceWindowHandle より現在の Z 順で上にあるかを読み取る。
+    // 状態を変更しないため、フォーカスのズームアニメーションや Electron の再描画へ干渉しない。
+    public bool IsAbove(IntPtr candidateWindowHandle, IntPtr referenceWindowHandle)
+    {
+        if (candidateWindowHandle == IntPtr.Zero
+            || referenceWindowHandle == IntPtr.Zero
+            || candidateWindowHandle == referenceWindowHandle
+            || !IsWindow(candidateWindowHandle)
+            || !IsWindow(referenceWindowHandle))
+        {
+            return false;
+        }
+
+        for (var above = GetWindow(referenceWindowHandle, GW_HWNDPREV);
+             above != IntPtr.Zero;
+             above = GetWindow(above, GW_HWNDPREV))
+        {
+            if (above == candidateWindowHandle)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // 指定ウィンドウより z-order が上に、管理外アプリの可視ウィンドウが重なって表示されて
     // いるかを返す。managedHandles（管理中スロットのウィンドウ）と自プロセスのウィンドウは
     // 「身内」として遮蔽とみなさない。TOPMOST ウィンドウも除外する。前面化（NOTOPMOST へ
