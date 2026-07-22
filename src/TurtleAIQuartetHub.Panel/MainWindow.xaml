@@ -2473,7 +2473,7 @@
                              Background="Transparent"
                              FontFamily="Consolas"
                              Foreground="{StaticResource TextBrush}"
-                             Text="Codex CLI: npm i -g @openai/codex&#x0a;GitHub Copilot CLI: npm install -g @github/copilot&#x0a;Gemini CLI: npm install -g @google/gemini-cli&#x0a;Claude Code PowerShell: irm https://claude.ai/install.ps1 | iex&#x0a;Claude Code CMD: curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd&#x0a;Claude Code npm: npm install -g @anthropic-ai/claude-code&#x0a;Grok Build CLI (Git Bash/WSL): curl -fsSL https://x.ai/cli/install.sh | bash&#x0a;Grok Build CLI (PowerShell + Git Bash): &amp; &quot;C:\Program Files\Git\bin\bash.exe&quot; -c &quot;curl -fsSL https://x.ai/cli/install.sh | bash&quot;" />
+                             Text="Codex CLI（Windows PowerShell・推奨）: powershell -ExecutionPolicy ByPass -c &quot;irm https://chatgpt.com/codex/install.ps1 | iex&quot;&#x0a;Codex CLI（npm）: npm install -g @openai/codex&#x0a;GitHub Copilot CLI（Windows・推奨）: winget install GitHub.Copilot&#x0a;GitHub Copilot CLI（npm）: npm install -g @github/copilot&#x0a;Gemini CLI: npm install -g @google/gemini-cli&#x0a;Claude Code（PowerShell・推奨）: irm https://claude.ai/install.ps1 | iex&#x0a;Claude Code（CMD）: curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd&#x0a;Claude Code（npm）: npm install -g @anthropic-ai/claude-code&#x0a;Grok Build CLI（PowerShell）: irm https://x.ai/cli/install.ps1 | iex&#x0a;Grok Build CLI（Git Bash／WSL）: curl -fsSL https://x.ai/cli/install.sh | bash" />
                   </StackPanel>
                 </Border>
 

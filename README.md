@@ -93,12 +93,64 @@ dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csp
 
 アプリ内の `?` ヘルプにも同じ内容を表示します。IDE と Windows アプリは各製品の公式サイトを参照してください。
 
+Codex CLI（Windows PowerShell・推奨）:
+
 ```powershell
-npm i -g @openai/codex
+powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
+```
+
+Codex CLI（npm）:
+
+```powershell
+npm install -g @openai/codex
+```
+
+GitHub Copilot CLI（Windows・推奨）:
+
+```powershell
+winget install GitHub.Copilot
+```
+
+GitHub Copilot CLI（npm）:
+
+```powershell
 npm install -g @github/copilot
+```
+
+Gemini CLI:
+
+```powershell
 npm install -g @google/gemini-cli
+```
+
+Claude Code（PowerShell・推奨）:
+
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
+
+Claude Code（CMD）:
+
+```cmd
 curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd
+```
+
+Claude Code（npm）:
+
+```powershell
 npm install -g @anthropic-ai/claude-code
+```
+
+Grok Build CLI（PowerShell）:
+
+```powershell
+irm https://x.ai/cli/install.ps1 | iex
+```
+
+Grok Build CLI（Git Bash／WSL）:
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
 ```
 
 自律実行向けの起動オプション例:
