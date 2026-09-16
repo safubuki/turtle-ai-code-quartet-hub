@@ -1,12 +1,12 @@
 ﻿# Turtle AI Code Quartet Hub プロジェクト詳細
 
-更新日: 2026-09-03
+更新日: 2026-09-17
 
 ## 概要
 - 4 つの開発用ウィンドウを A-D スロットとして管理する Windows 向け WPF アプリ。
 - 2x2 配置、集中表示、非表示/再表示、控え Quartet、タスクバー Jump List 操作を提供する。
 - 既定のスロット起動対象は VS Code。
-- VS Code / Antigravity はワークスペース IDE として、Codex / Claude / GitHub Copilot / Grok Build / Gemini はワークスペース CLI として各スロットで起動できる。
+- VS Code / Antigravity はワークスペース IDE として、Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI はワークスペース CLI として各スロットで起動できる。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
 - 通常表示の各スロットにはフォルダボタンがあり、保存済みまたは検出済みのローカルワークスペースを Explorer で開ける。SSH / remote URI のワークスペースではボタンを無効化する。
 - AI 状態表示、AI 状態監視、VS Code 外枠フレーム、AI 状態連動の点滅や色変更は削除済み。
@@ -53,11 +53,12 @@
 
 ## 複数アプリ起動
 - `defaultWorkspaceApplicationId` がスロットの既定アプリ。未設定時は `vscode`。
-- `applications` で VS Code、Antigravity IDE、Codex CLI、Claude CLI、GitHub Copilot CLI、Grok Build CLI、Gemini CLI、Codex / ChatGPT / Claude / Antigravity2 Windows アプリの起動コマンド、引数、検出候補を定義する。
+- `applications` で VS Code、Antigravity IDE、Codex CLI、Claude CLI、GitHub Copilot CLI、Grok Build CLI、Antigravity CLI、Codex / ChatGPT / Claude / Antigravity2 Windows アプリの起動コマンド、引数、検出候補を定義する。
 - `slots[].applicationId` と `slots.json` の `ApplicationId` で、スロット/控えごとの起動対象を保持する。
 - VS Code の既定は標準 user-data の共有。専用 `user-data-dir` は任意設定で、有効時は remote URI フォールバックと `code.lock` 再接続を維持する。
 - Antigravity は汎用 workspace IDE として `%LOCALAPPDATA%/Programs/Antigravity IDE/Antigravity IDE.exe` 相当を優先検出し、ワークスペースパスを渡して起動し、新規ウィンドウを A-D の象限へ配置する。アプリ内でフォルダを開いた場合も `%APPDATA%/Antigravity/User/workspaceStorage` から最新パスを保存する。
-- Codex / Claude / GitHub Copilot / Grok Build / Gemini CLI は、対象スロットの保存済みワークスペースをカレントディレクトリにした `cmd.exe` ウィンドウで起動する。
+- Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI は、対象スロットの保存済みワークスペースをカレントディレクトリにした `cmd.exe` ウィンドウで起動する。Antigravity CLI は公式コマンド `agy` を使い、公式 Windows インストーラーの `%LOCALAPPDATA%\agy\bin` も検出・起動 PATH に含める。
+- 旧 `gemini` アプリ ID は読み込み時に `antigravity-cli` へ移行し、旧 Gemini のコマンドや表示名は引き継がず Antigravity CLI の既定定義へ置き換える。
 - GitHub Copilot CLI の既定は `copilot` コマンドのみ。ワークスペースパスを暗黙引数として渡さない。
 - スロット内 UI は `IDE` 枠と `CLI` 枠に分ける。別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウを閉じてから押したアプリを同じ象限へ開く。
 - Codex / ChatGPT / Claude / Antigravity2 Windows アプリは `Windows` ラベル付きの補助ボタンとして表示し、Antigravity2 は Claude の右側に置く。

@@ -54,7 +54,7 @@ Microsoft は Windows アプリのインストール、更新、Store 配布の�
 Partner Center の説明、プライバシーポリシー、サポート文書では次を明記する。
 
 - Visual Studio Code は既定のスロット起動対象として別途インストールが必要。
-- Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Grok CLI、Claude CLI を使う場合も、それぞれ別途インストールが必要。
+- Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Grok CLI、Claude CLI を使う場合も、それぞれ別途インストールが必要。
 - Codex / ChatGPT / Claude の Windows アプリ版は補助ボタンから起動できるが、このアプリに同梱されない。
 - このアプリは独立したユーティリティであり、Microsoft、Visual Studio Code、GitHub、OpenAI、Anthropic、Google、xAI の公式アプリ、提携アプリ、承認済みアプリではない。
 - Win32 ウィンドウ API を使って管理対象ウィンドウを配置する。

@@ -7,7 +7,7 @@ Microsoft Store 提出時の「このバージョンの新機能」や GitHub Re
 初回公開候補。
 
 - 4つの開発ワークスペースを A-D スロットとして一括起動し、2x2 に配置。
-- 各スロットで IDE（VS Code / Antigravity）と AI CLI（Codex / GitHub Copilot / Gemini / Grok / Claude）を選択。
+- 各スロットで IDE（VS Code / Antigravity）と AI CLI（Codex / GitHub Copilot / Antigravity CLI / Grok / Claude）を選択。
 - 起動中スロットで別アプリを押すと、同じ象限でウィンドウを差し替え。
 - 1面フォーカス表示と4面表示の切り替え、常時最前面の縮小モードに対応。
 - スロット名、ワークスペース、選択アプリ、控え Quartet、レイアウト状態をローカル保存。

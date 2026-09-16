@@ -577,6 +577,8 @@ public sealed class ApplicationDetectionService
             yield return Path.Combine(localAppData, "npm");
             yield return Path.Combine(localAppData, "pnpm");
             yield return Path.Combine(localAppData, "Volta", "bin");
+            // Antigravity CLI の公式 Windows インストーラーは agy をここへ配置する。
+            yield return Path.Combine(localAppData, "agy", "bin");
         }
 
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

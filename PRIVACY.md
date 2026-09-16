@@ -1,6 +1,6 @@
 # プライバシーポリシー草案
 
-Turtle AI Code Quartet Hub は、4つの開発ワークスペースを A-D スロットとして起動し、各スロットに IDE（VS Code / Antigravity）または AI CLI（Codex / GitHub Copilot / Gemini / Grok / Claude）を割り当てて配置・管理するためのローカル Windows デスクトップユーティリティです。
+Turtle AI Code Quartet Hub は、4つの開発ワークスペースを A-D スロットとして起動し、各スロットに IDE（VS Code / Antigravity）または AI CLI（Codex / GitHub Copilot / Antigravity CLI / Grok / Claude）を割り当てて配置・管理するためのローカル Windows デスクトップユーティリティです。
 
 この文書は公開前レビューと Microsoft Store 公開準備のための草案です。公開時には、連絡先、公開者名、サポートURL、正式な公開日を実際の情報に置き換えてください。
 

@@ -1,6 +1,6 @@
 # Turtle AI Code Quartet Hub 実装パターン・注意点
 
-更新日: 2026-05-13
+更新日: 2026-09-17
 
 ## 1. AI状態監視を再導入しない
 
@@ -51,6 +51,7 @@
 - 未検出アプリはボタンを無効化し、`ToolTip` とメッセージで設定パス/コマンド確認へ誘導する。
 - UI は VS Code / Antigravity を各スロット内の等幅ボタン、Codex / Claude を控え Quartet 行の右端補助ボタンとして配置する。Launch 直上にグローバル IDE 選択ボタンは置かない。AI状態の色変えや点滅は追加しない。
 - 各スロットにも VS Code / Antigravity 切替を置く。未起動スロットでは選択状態だけ保存し、起動中スロットで別アプリを選んだ場合は現在のウィンドウを閉じて同じスロット内容を選択アプリで開き直す。
+- Antigravity CLI は `antigravity-cli` ID と `agy` コマンドで定義する。公式 Windows インストーラーが使う `%LOCALAPPDATA%\agy\bin` をコマンド検出と起動 terminal の PATH の両方へ追加する。旧 `gemini` ID は保存済みスロットを壊さないため `antigravity-cli` へ正規化するが、旧 Gemini CLI のコマンド・表示名・検出設定は引き継がない。
 
 ## 8. ディスプレイ移動（全移動＋単独移動, 2026-06-08 追加）
 - 配置先は「ベースディスプレイ（全体）」＋「各スロットの単独 override（`WindowSlot.MonitorOverride`, 非永続）」で表す。実効ディスプレイ＝`override ?? ベース`。フォーカスやレイヤーと同じランタイム状態として扱い、`slots.json` には保存しない。`WindowSlot.ClearWindow` で override も解除する。

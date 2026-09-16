@@ -83,7 +83,7 @@ Microsoft の公開フローは 2025〜2026 年に大きく変わりました。
 
 | # | 優先 | 項目 | 内容・理由 |
 |---|---|---|---|
-| S16 | **高** | 掲載文・手順書の「4面VS Code」前提を実態に更新 | 現在のアプリは VS Code だけでなく **Antigravity / Codex / Copilot / Gemini / Claude CLI など複数アプリ**を各スロットに割り当てられる（README はマルチアプリ前提）。一方 `store-listing-draft.md`・`release-notes-draft.md`・`WindowsAppsStoreリリース手順.md` は「4つの VS Code ウィンドウ」固定の旧表現が残っている。掲載文・審査メモ・スクショ計画を実態に合わせる |
+| S16 | **高** | 掲載文・手順書の「4面VS Code」前提を実態に更新 | 現在のアプリは VS Code だけでなく **Antigravity IDE / Antigravity CLI / Codex / Copilot / Claude CLI など複数アプリ**を各スロットに割り当てられる（README はマルチアプリ前提）。一方 `store-listing-draft.md`・`release-notes-draft.md`・`WindowsAppsStoreリリース手順.md` は「4つの VS Code ウィンドウ」固定の旧表現が残っている。掲載文・審査メモ・スクショ計画を実態に合わせる |
 | S17 | 中 | スクショ計画ファイル名の更新 | `assets/store/README.md` と手順書に残る `desktop-03-status-frame.png`（削除済みの外周フレーム機能名）を `desktop-03-focus.png` 等へ修正 |
 | S18 | 中 | csproj にバージョン番号を明示 | 現状 `Version` 未指定で既定 `1.0.0`。manifest の `Identity Version` と一致させるため `<Version>1.0.0</Version>` 等を `TurtleAIQuartetHub.Panel.csproj` に明示しておくと更新管理が楽 |
 | S19 | 中 | クリーン環境での動作確認手順を整備 | 新規Windowsユーザーで「インストール→初回起動→更新→アンインストール」、および **VS Code 未導入時 / `code` コマンド無し時の案内**が出るかを確認するチェックリスト。審査の動作確認と直結する |

@@ -21,7 +21,7 @@ Microsoft Store 申請前に、ここへ公開用スクリーンショットや�
 ## 撮影前チェック
 
 - サンプル用の空フォルダやダミーリポジトリを開く。
-- 4面のうち少なくとも1面は AI CLI（Codex / Copilot / Gemini / Grok / Claude）を表示し、マルチアプリ対応が伝わる構図にする。
+- 4面のうち少なくとも1面は AI CLI（Codex / Copilot / Antigravity CLI / Grok / Claude）を表示し、マルチアプリ対応が伝わる構図にする。
 - VS Code やターミナルのエディタ、履歴、最近開いた項目に個人情報がないことを確認する。
 - Store掲載文案と矛盾する機能を出さない。
 - Microsoft、Visual Studio Code、GitHub、OpenAI、Anthropic、Google、xAI の公式アプリであるように見える表現を避ける。

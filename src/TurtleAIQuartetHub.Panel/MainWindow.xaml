@@ -2511,7 +2511,7 @@
                                          FontWeight="SemiBold" />
                               <TextBox Grid.Column="1"
                                        Text="{Binding ApplicationId, UpdateSourceTrigger=LostFocus}"
-                                       ToolTip="vscode / antigravity / codex / claude / github-copilot / grok / gemini"
+                                       ToolTip="vscode / antigravity / codex / claude / github-copilot / grok / antigravity-cli"
                                        Style="{StaticResource SettingsTextBoxStyle}" />
                               <Button Grid.Column="2"
                                       Content="空にする"
@@ -2661,7 +2661,7 @@
                                          FontWeight="SemiBold" />
                               <TextBox Grid.Column="1"
                                        Text="{Binding ApplicationId, UpdateSourceTrigger=LostFocus}"
-                                       ToolTip="vscode / antigravity / codex / claude / github-copilot / grok / gemini"
+                                       ToolTip="vscode / antigravity / codex / claude / github-copilot / grok / antigravity-cli"
                                        Style="{StaticResource SettingsTextBoxStyle}" />
                               <Button Grid.Column="2"
                                       Content="空にする"
@@ -2876,22 +2876,26 @@
 
                 <Border Style="{StaticResource HelpCliCardStyle}">
                   <StackPanel>
-                    <TextBlock Text="Gemini CLI"
+                    <TextBlock Text="Antigravity CLI"
                                FontSize="14"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource AccentBrush}" />
                     <TextBlock Text="インストール"
                                Style="{StaticResource HelpSectionLabelStyle}" />
-                    <TextBlock Text="npm"
+                    <TextBlock Text="Windows PowerShell（推奨）"
                                Style="{StaticResource HelpInstallMethodLabelStyle}"
                                Margin="0,0,0,3" />
                     <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
-                             Text="npm install -g @google/gemini-cli" />
+                             Text="irm https://antigravity.google/cli/install.ps1 | iex" />
+                    <TextBlock Text="Windows コマンドプロンプト"
+                               Style="{StaticResource HelpInstallMethodLabelStyle}" />
+                    <TextBox Style="{StaticResource HelpCommandTextBoxStyle}"
+                             Text="curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd" />
                     <TextBlock Text="自律実行の起動オプション"
                                Style="{StaticResource HelpSectionLabelStyle}"
                                Foreground="#F2B7AF" />
                     <TextBox Style="{StaticResource HelpAutonomousCommandTextBoxStyle}"
-                             Text="gemini --approval-mode=yolo" />
+                             Text="agy --dangerously-skip-permissions" />
                   </StackPanel>
                 </Border>
 

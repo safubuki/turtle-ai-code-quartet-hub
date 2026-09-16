@@ -75,15 +75,15 @@
       }
     },
     {
-      "id": "gemini",
-      "displayName": "Gemini CLI",
-      "shortName": "Gemini",
+      "id": "antigravity-cli",
+      "displayName": "Antigravity CLI",
+      "shortName": "Antigravity",
       "kind": "WorkspaceCli",
-      "command": "gemini",
+      "command": "agy",
       "arguments": [],
       "supportsMultipleWindows": false,
       "detection": {
-        "commands": ["gemini"],
+        "commands": ["agy"],
         "processNames": ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
         "startMenuNames": [],
         "appPathNames": []

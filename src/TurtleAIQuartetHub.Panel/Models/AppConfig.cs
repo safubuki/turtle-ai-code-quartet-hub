@@ -7,6 +7,9 @@ namespace TurtleAIQuartetHub.Panel.Models;
 public sealed class AppConfig
 {
     public const string VsCodeApplicationId = "vscode";
+    public const string AntigravityCliApplicationId = "antigravity-cli";
+
+    private const string LegacyGeminiCliApplicationId = "gemini";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -191,9 +194,12 @@ public sealed class AppConfig
 
     public static string NormalizeApplicationId(string? applicationId, string fallback = VsCodeApplicationId)
     {
-        return string.IsNullOrWhiteSpace(applicationId)
+        var normalized = string.IsNullOrWhiteSpace(applicationId)
             ? fallback
             : applicationId.Trim().ToLowerInvariant();
+        return string.Equals(normalized, LegacyGeminiCliApplicationId, StringComparison.OrdinalIgnoreCase)
+            ? AntigravityCliApplicationId
+            : normalized;
     }
 
     private static List<ToolApplicationConfig> NormalizeApplications(
@@ -212,6 +218,13 @@ public sealed class AppConfig
         {
             foreach (var app in configuredApplications.Where(app => app is not null && !string.IsNullOrWhiteSpace(app.Id)))
             {
+                // Gemini CLI から Antigravity CLI への移行時は、旧コマンドや表示名を
+                // 引き継がず、新しい agy の既定定義へ置き換える。
+                if (string.Equals(app.Id.Trim(), LegacyGeminiCliApplicationId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var id = NormalizeApplicationId(app.Id);
                 byId[id] = MergeApplication(byId.TryGetValue(id, out var fallback) ? fallback : null, app);
             }
@@ -336,7 +349,7 @@ public sealed class AppConfig
             "claude" => 3,
             "github-copilot" => 4,
             "grok" => 5,
-            "gemini" => 6,
+            AntigravityCliApplicationId => 6,
             "chatgpt-app" => 7,
             "codex-app" => 8,
             "claude-app" => 9,
@@ -458,16 +471,16 @@ public sealed class AppConfig
             },
             new()
             {
-                Id = "gemini",
-                DisplayName = "Gemini CLI",
-                ShortName = "Gemini",
+                Id = AntigravityCliApplicationId,
+                DisplayName = "Antigravity CLI",
+                ShortName = "Antigravity",
                 Kind = ApplicationKind.WorkspaceCli,
-                Command = "gemini",
+                Command = "agy",
                 Arguments = [],
                 SupportsMultipleWindows = false,
                 Detection = new ApplicationDetectionConfig
                 {
-                    Commands = ["gemini"],
+                    Commands = ["agy"],
                     ProcessNames = ["cmd", "WindowsTerminal", "OpenConsole", "powershell", "pwsh"],
                     StartMenuNames = [],
                     AppPathNames = []

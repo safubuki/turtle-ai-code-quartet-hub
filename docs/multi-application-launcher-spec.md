@@ -4,7 +4,7 @@
 
 ## 概要
 
-Turtle AI Code Quartet Hub は、A-D の 4 スロットそれぞれで起動対象アプリを選べるランチャーです。既定は VS Code ですが、Google Antigravity を workspace IDE として、Codex / GitHub Copilot / Gemini / Claude を workspace CLI として起動できます。
+Turtle AI Code Quartet Hub は、A-D の 4 スロットそれぞれで起動対象アプリを選べるランチャーです。既定は VS Code ですが、Google Antigravity を workspace IDE として、Codex / GitHub Copilot / Antigravity CLI / Claude を workspace CLI として起動できます。
 
 Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別扱いです。これらはワークスペース単位の 2x2 管理対象ではなく、補助アプリボタンとして控え Quartet と同じ行の右端に表示します。
 
@@ -34,7 +34,8 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 対象:
 - Codex CLI
 - GitHub Copilot CLI
-- Gemini CLI
+- Antigravity CLI (`agy`)
+- Grok Build CLI
 - Claude CLI
 
 挙動:
@@ -45,6 +46,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 - `arguments` が明示されている場合だけ追加引数を渡す。
 - 新規 terminal ウィンドウを検出し、A-D の象限へ配置する。
 - CLI の可用性は PATH 上のコマンド検出で判断し、Windows アプリや既存 terminal プロセスの検出ではインストール済み扱いにしない。
+- Antigravity CLI は公式 Windows インストーラーが使う `%LOCALAPPDATA%\agy\bin` も探索し、起動 terminal の PATH に追加する。旧 `gemini` アプリ ID は `antigravity-cli` へ移行し、旧コマンド設定は引き継がない。
 
 ### SingleWindowAgent
 
@@ -70,7 +72,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 - 各スロットカード内に workspace app / CLI 選択ボタンを並べる。
 - スロット内の選択ボタンは `IDE` 枠と `CLI` 枠に分ける。
 - `IDE` 枠は VS Code / Antigravity を縦に並べる。
-- `CLI` 枠は Codex CLI / Claude CLI / Gemini CLI / Copilot CLI を同じ枠内にまとめる。
+- `CLI` 枠は Codex CLI / Claude CLI / Copilot CLI / Grok Build CLI / Antigravity CLI の5つを同じ枠内にまとめる。
 - `IDE` と `CLI` のボタン高さ、隙間、上端位置は同じ基準でそろえる。
 - 選択中アプリは暗めの緑で表示し、ベタ塗りの強いアクセント色にはしない。
 - 未検出アプリはグレーアウトし、ツールチップで理由を表示する。
@@ -78,7 +80,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 - 起動中スロットで別の IDE/CLI ボタンを押すと、現在のウィンドウを閉じてから押したアプリを同じスロット位置へ起動する。
 - スロット右上のゴミ箱アイコンを押すと削除確認ダイアログを表示する。`削除する` で visible slot の保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中ウィンドウは閉じずに管理対象から外す。
 - 実行中スロットのアクションボタンは `閉じる` と表示する。
-- タイトルバーの右上ボタンは、縮小表示、`?` ヘルプ、設定、最小化、閉じるの順に並べる。ヘルプは枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示する。本文とコマンドは選択コピーできるようにする。
+- タイトルバーの右上ボタンは、縮小表示、`?` ヘルプ、設定、最小化、閉じるの順に並べる。ヘルプは枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Antigravity CLI は公式の PowerShell / CMD インストールコマンド、Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示する。本文とコマンドは選択コピーできるようにする。
 - 補助アプリボタンは `Windows` ラベル付きで、控え Quartet と同じ行の右端に表示する。表示順は ChatGPT / Codex / Claude / Antigravity2 とし、Antigravity2 は Claude の右側に置く。
 - 標準表示ではスロット領域をカード実寸に詰め、控え Quartet までの黒い余白を作らない。下部の `Launch Quartet` ボタンも見切れないようにする。
 
@@ -173,7 +175,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 ## 受け入れ条件
 
 - 既定設定で VS Code 4 面起動が従来通り動く。
-- スロットごとに VS Code / Antigravity / Codex CLI / Copilot CLI / Gemini CLI / Claude CLI を選べる。
+- スロットごとに VS Code / Antigravity IDE / Codex CLI / Copilot CLI / Antigravity CLI / Claude CLI を選べる。
 - IDE/CLI の枠分け、選択中ボタンの暗めの緑表示、未検出アプリのグレーアウトが機能する。
 - 別アプリボタンを押したとき、現在のスロットウィンドウを閉じてから選択アプリへ切り替わる。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行する。

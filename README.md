@@ -2,12 +2,12 @@
 
 Turtle AI Code Quartet Hub は、4つの開発ワークスペースを A-D のスロットとしてまとめて起動し、画面上へ 2x2 に整列表示する Windows 向けランチャーアプリです。
 
-VS Code だけを4面で開くためのツールではなく、スロットごとに VS Code / Google Antigravity / Codex CLI / GitHub Copilot CLI / Gemini CLI / Grok CLI / Claude CLI を選び、同じワークスペースを IDE と CLI のどちらでもすばやく開き直せることを重視しています。複数案件、複数AIエージェント、複数ターミナルを行き来する作業を、ひとつの小さな操作パネルに寄せるためのアプリです。
+VS Code だけを4面で開くためのツールではなく、スロットごとに VS Code / Google Antigravity IDE / Codex CLI / GitHub Copilot CLI / Antigravity CLI / Grok CLI / Claude CLI を選び、同じワークスペースを IDE と CLI のどちらでもすばやく開き直せることを重視しています。複数案件、複数AIエージェント、複数ターミナルを行き来する作業を、ひとつの小さな操作パネルに寄せるためのアプリです。
 
 ## 特徴
 
 - **4面ワークスペース起動**: `Launch Quartet（一括起動）` で A-D の各スロットに選択済みアプリを起動し、2x2 に配置します。
-- **IDE / CLI の切り替え**: 各スロットで VS Code / Antigravity と、Codex / Copilot / Gemini / Grok / Claude CLI を選択できます。
+- **IDE / CLI の切り替え**: 各スロットで VS Code / Antigravity IDE と、Codex / Copilot / Antigravity / Grok / Claude CLI を選択できます。
 - **同じ位置でアプリを差し替え**: 起動中スロットで別の IDE / CLI を押すと、現在のウィンドウを閉じて同じ象限へ開き直します。
 - **ワークスペースを覚える**: スロットのタイトル、ワークスペースパス、選択アプリ、控え Quartet を保存します。
 - **CLI をワークスペース直下で起動**: CLI は対象フォルダをカレントディレクトリにした terminal として開きます。
@@ -25,10 +25,10 @@ VS Code だけを4面で開くためのツールではなく、スロットご�
 
 任意で使用するツール:
 
-- Google Antigravity
+- Google Antigravity IDE
 - Codex CLI
 - GitHub Copilot CLI
-- Gemini CLI
+- Antigravity CLI
 - Grok CLI
 - Claude CLI / Claude Code
 - Codex / ChatGPT / Claude の Windows アプリ版
@@ -117,10 +117,16 @@ GitHub Copilot CLI（npm）:
 npm install -g @github/copilot
 ```
 
-Gemini CLI:
+Antigravity CLI（Windows PowerShell・推奨）:
 
 ```powershell
-npm install -g @google/gemini-cli
+irm https://antigravity.google/cli/install.ps1 | iex
+```
+
+Antigravity CLI（Windows CMD）:
+
+```cmd
+curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd
 ```
 
 Claude Code（PowerShell・推奨）:
@@ -158,7 +164,7 @@ curl -fsSL https://x.ai/cli/install.sh | bash
 ```powershell
 codex --ask-for-approval never --sandbox workspace-write
 copilot --allow-all
-gemini --approval-mode=yolo
+agy --dangerously-skip-permissions
 claude --permission-mode bypassPermissions
 ```
 
@@ -191,10 +197,10 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `inheritMainUserState`: 専用 user-data-dir 利用時に、通常 VS Code の設定やスニペットをスロットへ引き継ぐか。`settings.json` は未作成のときだけ種としてコピーし、既存のパネル設定は上書きしない。`globalStorage` や Chromium キャッシュはコピーしない
 - `manageVsCodeUserSettings` / `vsCodeUseHttpProxy` / `vsCodeHttpProxy` / `vsCodeHttpNoProxy`: 歯車設定の「VS Code 共通ユーザー設定」。プロキシはハブ設定へ保存し、VS Code 起動時にプロセス環境変数として渡す。専用プロファイルがある場合だけその `settings.json` のプロキシキーを更新する。標準の `%APPDATA%/Code/User/settings.json` は変更しない
 - `defaultWorkspaceApplicationId`: スロットの既定アプリ。未設定時は `vscode`
-- `applications`: VS Code、Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリなどの起動定義と検出候補
+- `applications`: VS Code、Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリなどの起動定義と検出候補
 - `slots[].applicationId`: スロットごとの起動対象アプリ
 
-`applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場と `~\.local\bin` も探索します。
+`applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場、`%LOCALAPPDATA%\agy\bin`、`~\.local\bin` も探索します。旧設定の `gemini` アプリ ID は読み込み時に `antigravity-cli` へ移行されます。
 
 実行時データは `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。
 

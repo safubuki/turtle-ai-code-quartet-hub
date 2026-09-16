@@ -14,7 +14,7 @@ Turtle AI Code Quartet Hub
 
 Turtle AI Code Quartet Hub は、複数の案件・複数の AI エージェント・複数のターミナルを行き来する開発者向けのローカル Windows ランチャーです。
 
-4つの開発ワークスペースを A-D のスロットとしてまとめて起動し、画面上に 2x2 で整列表示します。各スロットには VS Code / Google Antigravity などの IDE か、Codex / GitHub Copilot / Gemini / Grok / Claude などの AI CLI を割り当てられ、同じワークスペースを IDE と CLI のどちらでもすばやく開き直せます。起動中スロットで別のアプリを選ぶと、同じ象限でウィンドウを差し替えます。
+4つの開発ワークスペースを A-D のスロットとしてまとめて起動し、画面上に 2x2 で整列表示します。各スロットには VS Code / Google Antigravity などの IDE か、Codex / GitHub Copilot / Antigravity CLI / Grok / Claude などの AI CLI を割り当てられ、同じワークスペースを IDE と CLI のどちらでもすばやく開き直せます。起動中スロットで別のアプリを選ぶと、同じ象限でウィンドウを差し替えます。
 
 スロットのタイトル、ワークスペースパス、選択アプリ、控え Quartet を保存し、スロットボタンで1面フォーカス表示と4面表示を切り替えられます。縮小モードでは、常に最前面の小さな操作バーから各スロット操作と Windows 補助アプリの起動をすぐに行えます。
 
@@ -23,7 +23,7 @@ VS Code、Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプ
 ## 主な機能
 
 - 4つの開発ワークスペースを A-D スロットとして一括起動し、2x2 に配置。
-- 各スロットで IDE（VS Code / Antigravity）と AI CLI（Codex / GitHub Copilot / Gemini / Grok / Claude）を選択。
+- 各スロットで IDE（VS Code / Antigravity）と AI CLI（Codex / GitHub Copilot / Antigravity CLI / Grok / Claude）を選択。
 - 起動中スロットで別アプリを押すと、同じ象限でウィンドウを差し替え。
 - スロット名、ワークスペースパス、選択アプリ、控え Quartet をローカル保存。
 - スロットボタンで1面フォーカス表示と4面表示を切り替え。
@@ -37,7 +37,7 @@ VS Code、Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプ
 - Windows 10 / Windows 11。
 - 起動対象のアプリ（このアプリには同梱されません）:
   - VS Code（既定のスロット起動対象。`code` コマンド、または `Code.exe` への設定済みパスが必要）。
-  - 任意で Google Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Grok CLI、Claude CLI。
+  - 任意で Google Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Grok CLI、Claude CLI。
   - 任意で Codex / ChatGPT / Claude の Windows アプリ版。
 - 自己完結版では .NET Desktop Runtime の別途インストールは不要。開発環境では .NET SDK が必要。
 

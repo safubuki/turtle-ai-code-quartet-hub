@@ -1,20 +1,20 @@
 ﻿# 現在の既知課題と QA 方針
 
-更新日: 2026-06-09
+更新日: 2026-09-17
 
 ## 重点 QA
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
 - 低速または標準スペック端末で VS Code の起動が遅れ、ウィンドウが中央付近に出た場合でも、専用 `user-data-dir` の既存 VS Code ウィンドウとして再接続され、C=左下など対象スロットへ戻ること。
 - 標準表示の丸いステータス LED は、停止中=赤、起動中=黄色、起動済み=緑で表示されること。
-- 各スロットで VS Code / Antigravity / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Gemini CLI を選択できること。
-- スロット内アプリ選択が `IDE` 枠と `CLI` 枠に分かれ、IDE は縦並び、CLI は4つを同じ枠内に表示していること。
+- 各スロットで VS Code / Antigravity IDE / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Antigravity CLI を選択できること。
+- スロット内アプリ選択が `IDE` 枠と `CLI` 枠に分かれ、IDE は縦並び、CLI は5つを同じ枠内に表示していること。
 - `IDE` と `CLI` のボタン高さ、上下左右の隙間、上端位置がそろっていること。
 - 選択中アプリのボタンがベタ塗りではなく暗めの緑で表示され、未検出アプリは選択中でもグレーアウトすること。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行し、ワークスペースパスを引数として渡さないこと。
 - GitHub Copilot Chat 拡張の `globalStorage\github.copilot-chat\copilotCli\copilot*` だけが存在する環境では、GitHub Copilot CLI を未検出として扱うこと。
 - VS Code から CLI、CLI から VS Code、CLI から別 CLI へ、現在のスロットウィンドウを閉じてから押したアプリへ切り替えられること。
 - 未起動スロットで IDE / CLI ボタンを押しても自動起動せず、起動対象の選択だけが変わること。
-- 一括起動で Codex / Gemini など複数 CLI 種別が混在しても、それぞれの terminal が対象スロットの象限へ配置されること。
+- 一括起動で Codex / Antigravity CLI など複数 CLI 種別が混在しても、それぞれの terminal が対象スロットの象限へ配置されること。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版ボタンが、`Windows` ラベル付きで控え Quartet と同じ行の右端に表示され、Antigravity2 が Claude の右側にあること。
 - Antigravity は A=左上、B=右上、C=左下、D=右下へ配置され、起動後に中央へ戻っても短い遅延再配置で対象象限へ戻ること。
 - Antigravity IDE は `%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe` 相当から、Antigravity2 は `%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe` 相当から、Windows 10 / Windows 11 のユーザープロファイル差に依存せず検出できること。
@@ -29,7 +29,9 @@
 - 実行中スロットのアクションボタンが `閉じる` と表示されること。
 - タイトルバーの `?` ヘルプに CLI インストールコマンドと承認確認を減らす起動オプション例が表示されること。Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを表示し、Grok Build CLI は Git Bash/WSL と PowerShell + Git Bash のインストールコマンド、および `grok --always-approve` を表示すること。
 - `?` ヘルプの各セクションに枠があり、説明文とコマンドを選択コピーできること。
-- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Claude / Copilot / Grok / Gemini / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
+- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity IDE / Codex / Claude / Copilot / Grok / Antigravity CLI / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
+- 旧 `gemini` が保存済み ApplicationId に残っていても `antigravity-cli` へ移行され、公式コマンド `agy` を起動すること。
+- Antigravity CLI が PATH に反映されていない環境でも、公式インストール先 `%LOCALAPPDATA%\agy\bin` から検出・起動できること。
 - 歯車設定で、表の Quartet と控え Quartet の保存済みタイトル、パス、アプリ ID を一覧確認・編集・空化できること。
 - 歯車設定の不整合修復で、不完全な控えと重複控えを削除し、同じワークスペースを再登録できる状態に戻せること。
 - Claude / Grok などの CLI が PATH に出ていない環境でも、npm / pnpm / Volta の一般的な shim 置き場、Claude Code インストーラが使う `~\.local\bin`、Grok Build インストーラが使う `~\.grok\bin` から検出できること。

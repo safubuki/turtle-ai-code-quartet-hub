@@ -1,6 +1,6 @@
 ﻿# 現在の既知課題と QA 方針
 
-更新日: 2026-09-03
+更新日: 2026-09-17
 
 ## 重点 QA
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
@@ -9,8 +9,8 @@
 - VS Code が起動していないときにパネルを開くと、`%APPDATA%/Code` の再生成キャッシュ（Crashpad、CachedExtensionVSIXs、agent-host、GPUCache 等）が回収されること。`User`、設定、サインイン状態、チャット履歴（`WebStorage` / `globalStorage`）は残ること。VS Code 実行中は重いキャッシュ掃除をスキップすること。
 - 低速または標準スペック端末で VS Code の起動が遅れ、ウィンドウが中央付近に出た場合でも、専用 `user-data-dir` の既存 VS Code ウィンドウとして再接続され、C=左下など対象スロットへ戻ること。
 - 標準表示の丸いステータス LED は、停止中=赤、起動中=黄色、起動済み=緑で表示されること。
-- 各スロットで VS Code / Antigravity / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Gemini CLI を選択できること。
-- スロット内アプリ選択が `IDE` 枠と `CLI` 枠に分かれ、IDE は縦並び、CLI は4つを同じ枠内に表示していること。
+- 各スロットで VS Code / Antigravity IDE / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Antigravity CLI を選択できること。
+- スロット内アプリ選択が `IDE` 枠と `CLI` 枠に分かれ、IDE は縦並び、CLI は5つを同じ枠内に表示していること。
 - `IDE` と `CLI` のボタン高さ、上下左右の隙間、上端位置がそろっていること。
 - 選択中アプリのボタンがベタ塗りではなく暗めの緑で表示され、未検出アプリは選択中でもグレーアウトすること。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行し、ワークスペースパスを引数として渡さないこと。
@@ -19,7 +19,7 @@
 - Antigravity から VS Code へ切り替えるとき、旧 Antigravity の HWND が消滅した後にだけ VS Code を起動し、旧ウィンドウが背後へ残らないこと。
 - 管理ウィンドウが未保存確認等で8秒以内に閉じない場合は、アプリ切替・控え移動・パネル情報削除を中止し、旧ウィンドウを元スロットの管理対象として維持すること。
 - 未起動スロットで IDE / CLI ボタンを押しても自動起動せず、起動対象の選択だけが変わること。
-- 一括起動で Codex / Gemini など複数 CLI 種別が混在しても、それぞれの terminal が対象スロットの象限へ配置されること。
+- 一括起動で Codex / Antigravity CLI など複数 CLI 種別が混在しても、それぞれの terminal が対象スロットの象限へ配置されること。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版ボタンが、`Windows` ラベル付きで控え Quartet と同じ行の右端に表示され、Antigravity2 が Claude の右側にあること。
 - Antigravity は A=左上、B=右上、C=左下、D=右下へ配置され、起動後に中央へ戻っても短い遅延再配置で対象象限へ戻ること。
 - Antigravity IDE は `%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe` 相当から、Antigravity2 は `%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe` 相当から、Windows 10 / Windows 11 のユーザープロファイル差に依存せず検出できること。
@@ -35,9 +35,11 @@
 - 通常表示の各スロット左下にフォルダアイコンボタンが表示され、ローカルワークスペースのフォルダまたは `.code-workspace` の親フォルダを Explorer で開けること。
 - `vscode-remote://ssh-remote+...` や `ssh://...` など SSH / remote ワークスペースでは、フォルダアイコンボタンがグレーアウトし、Explorer 起動を行わないこと。
 - 実行中スロットのアクションボタンが `閉じる` と表示されること。
-- タイトルバーの `?` ヘルプに Codex / GitHub Copilot / Gemini / Claude Code / Grok Build の CLI 別カードが表示され、各カード内で `インストール` と `自律実行の起動オプション` が明確に分かれていること。Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを表示し、Grok Build CLI は Git Bash / WSL と PowerShell のインストールコマンド、および `grok --always-approve` を表示すること。
+- タイトルバーの `?` ヘルプに Codex / GitHub Copilot / Antigravity CLI / Claude Code / Grok Build の CLI 別カードが表示され、各カード内で `インストール` と `自律実行の起動オプション` が明確に分かれていること。Antigravity CLI は公式 Windows PowerShell / CMD インストールコマンドと `agy --dangerously-skip-permissions`、Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンド、Grok Build CLI は Git Bash / WSL と PowerShell のインストールコマンド、および `grok --always-approve` を表示すること。
 - `?` ヘルプの説明文とコマンドを選択コピーできること。コマンド欄は読み取り専用で実行操作を持たず、方式名を含めずコマンドだけをコピーできること。自律実行オプションには共通の注意書きと警告色が表示されること。
-- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity / Codex / Claude / Copilot / Grok / Gemini / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
+- タイトルバーの `?` 左に歯車設定があり、VS Code / Antigravity IDE / Codex / Claude / Copilot / Grok / Antigravity CLI / Codex Windows / ChatGPT Windows / Claude Windows / Antigravity2 Windows の起動コマンドを確認・編集・保存・再検出できること。
+- 旧 `gemini` が `defaultWorkspaceApplicationId`、`slots[].applicationId`、`slots.json` の ApplicationId に残っていても、起動時に `antigravity-cli` へ移行され、`agy` を起動すること。
+- Antigravity CLI が PATH に反映されていない環境でも、公式インストール先 `%LOCALAPPDATA%\agy\bin` から検出でき、起動した terminal の初回コマンドと手入力した `agy` の両方が認識されること。
 - 歯車設定の「VS Code 共通ユーザー設定」で、オープンネットワークとプロキシ環境を切り替えて「全パネルへ適用」すると、ハブ設定へ保存されること。専用プロファイルがある場合は、その `User/settings.json` のプロキシキーだけが更新され、テーマなど他のユーザー設定は消えないこと。標準の `%APPDATA%/Code/User/settings.json` はハブから変更されないこと。サイドバー幅、サインイン、チャット履歴、Cache は変わらないこと。共有プロファイルでは `window.restoreWindows` を書き換えないこと。
 - 専用プロファイルのパネルで Ctrl+Shift+P から `settings.json` を編集して保存した内容は、VS Code をハブから再起動しても消えないこと。標準プロファイルの `settings.json` でパネル側を丸ごと置き換えないこと。
 - 社内プロキシ用のコメント、`http.proxy`、`remote.SSH.httpsProxy`、`remote.SSH.localServerDownload`、`remote.SSH.remotePlatform` は専用プロファイル再起動後も残ること。コメントアウトしたプロキシ行を起動処理が有効化しないこと。

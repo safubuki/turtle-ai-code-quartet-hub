@@ -44,6 +44,7 @@ await VerifyAsync(
 
 VscodeWorkspaceStateTests.Run(failures);
 VscodeUserSettingsTests.Run(failures);
+AppConfigTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -58,6 +59,7 @@ if (failures.Count > 0)
 Console.WriteLine("Managed window close regression checks passed (5/5).");
 Console.WriteLine("VS Code workspace title matching regression checks passed (21/21).");
 Console.WriteLine("VS Code shared user settings regression checks passed (15/15).");
+Console.WriteLine("Application configuration migration regression checks passed (4/4).");
 return 0;
 
 async Task VerifyAsync(

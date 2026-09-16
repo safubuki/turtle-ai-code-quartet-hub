@@ -194,7 +194,7 @@ Thank you.
 `Turtle AI Code Quartet Hub` では次を明記する。
 
 - VS Code は既定のスロット起動対象として別途インストールが必要。
-- Antigravity、Codex CLI、GitHub Copilot CLI、Gemini CLI、Grok CLI、Claude CLI を使う場合も、それぞれ別途インストールが必要。
+- Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Grok CLI、Claude CLI を使う場合も、それぞれ別途インストールが必要。
 - Codex / ChatGPT / Claude の Windows アプリ版は補助ボタンから起動できるが、このアプリに同梱されない。
 - このアプリは Microsoft、Visual Studio Code、GitHub、OpenAI、Anthropic、Google、xAI の公式アプリ、提携アプリ、承認済みアプリではない。
 - 管理対象ウィンドウの配置のために Win32 API を使う。
@@ -348,14 +348,14 @@ appcert.exe test -appxpackagepath ".\path\to\package.msix" -reportoutputpath ".\
 
 ```text
 This app is a packaged WPF desktop utility that runs as a full trust desktop application.
-It uses Win32 window APIs to launch and arrange local developer apps (such as VS Code, Antigravity, and AI CLIs like Codex, GitHub Copilot, Gemini, Grok, and Claude) across four workspace slots, stores user configuration under the user's local app data folder, and reads local window state to position and restore those windows.
+It uses Win32 window APIs to launch and arrange local developer apps (such as VS Code, Antigravity IDE, and AI CLIs like Codex, GitHub Copilot, Antigravity CLI, Grok, and Claude) across four workspace slots, stores user configuration under the user's local app data folder, and reads local window state to position and restore those windows.
 The app does not bundle any of those third-party tools and does not upload source code, prompts, workspace paths, telemetry, or logs to the publisher.
 ```
 
 日本語で補足を書く場合:
 
 ```text
-このアプリは WPF のデスクトップユーティリティであり、ローカルの開発アプリ（VS Code、Antigravity、Codex / Copilot / Gemini / Grok / Claude などの AI CLI）を起動・配置するために Full Trust が必要です。
+このアプリは WPF のデスクトップユーティリティであり、ローカルの開発アプリ（VS Code、Antigravity IDE、Codex / Copilot / Antigravity CLI / Grok / Claude などの AI CLI）を起動・配置するために Full Trust が必要です。
 Win32 ウィンドウ API とローカル設定ファイルを使用します。これらのサードパーティ製ツールは同梱しません。
 アプリ独自にソースコード、プロンプト、ワークスペース情報、ログを公開者へ送信しません。
 ```
@@ -365,7 +365,7 @@ Win32 ウィンドウ API とローカル設定ファイルを使用します。
 認定担当者が確認しやすいように、Submission options の Notes へ次を書く。
 
 - 既定のスロット起動対象として Visual Studio Code が必要であること。
-- Antigravity や各 AI CLI（Codex / Copilot / Gemini / Grok / Claude）は任意で、使う場合は別途インストールが必要なこと。
+- Antigravity IDE や各 AI CLI（Codex / Copilot / Antigravity CLI / Grok / Claude）は任意で、使う場合は別途インストールが必要なこと。
 - VS Code が未インストールの場合の挙動。
 - `codeCommand` に `Code.exe` のパスを設定できること。
 - スロットの起動、配置、復元、IDE / CLI 切替が期待どおり動くこと。
@@ -377,7 +377,7 @@ Win32 ウィンドウ API とローカル設定ファイルを使用します。
 ```text
 To test the main workflow, install Visual Studio Code, launch the app, and select Launch Quartet.
 The app opens up to four workspace slots (A-D) and arranges them in a 2x2 layout.
-Each slot can run an IDE (VS Code or Antigravity) or an AI CLI (Codex, GitHub Copilot, Gemini, Grok, or Claude); those tools are optional and are not bundled with this app.
+Each slot can run an IDE (VS Code or Antigravity) or an AI CLI (Codex, GitHub Copilot, Antigravity CLI, Grok, or Claude); those tools are optional and are not bundled with this app.
 If the code command is not available, set codeCommand to the Code.exe path in the local configuration file.
 The app stores user data under %LOCALAPPDATA%\TurtleAIQuartetHub\ and does not upload telemetry, prompts, source code, workspace paths, or logs to the publisher.
 ```

@@ -1,12 +1,12 @@
 # Turtle AI Code Quartet Hub プロジェクト詳細
 
-更新日: 2026-05-13
+更新日: 2026-09-17
 
 ## 概要
 
 - 4つの開発用ウィンドウを A-D スロットとして管理する Windows 向け WPF アプリ。既定の各スロット起動対象は VS Code。
 - 2x2 配置、集中表示、非表示/再表示、控え Quartet、タスクバー Jump List 操作を提供する。
-- VS Code / Antigravity はワークスペース IDE としてスロット起動でき、Codex / Claude は補助アプリとして起動できる。
+- VS Code / Antigravity はワークスペース IDE として、Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI はワークスペース CLI としてスロット起動できる。
 - AI状態表示、AI状態監視、VS Code外周フレーム、AI状態連動の点滅/色変えは削除済み。
 
 ## 技術スタック
@@ -54,11 +54,11 @@
 ## 複数アプリ起動
 
 - `defaultWorkspaceApplicationId` がスロットの既定アプリ。未設定時は `vscode`。
-- `applications` で VS Code、Antigravity、Codex、Claude の起動コマンド、引数、検出候補を定義する。
+- `applications` で VS Code、Antigravity IDE、Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI、Windows 補助アプリの起動コマンド、引数、検出候補を定義する。
 - `slots[].applicationId` と `slots.json` の `ApplicationId` で、スロット/控えごとの起動対象を保持する。
 - VS Code は既存の専用 user-data-dir とリモート URI フォールバックを維持する。
 - Antigravity は汎用 workspace IDE としてワークスペースパスを渡して起動する。
-- Codex / Claude は `SingleWindowAgent` として、既存ウィンドウ探索や待機をせず起動コマンドだけ送信する。
+- Workspace CLI は対象スロットの保存済みワークスペースをカレントディレクトリにした `cmd.exe` で起動する。Antigravity CLI は `antigravity-cli` ID と公式コマンド `agy` を使い、`%LOCALAPPDATA%\agy\bin` も探索する。旧 `gemini` ID は `antigravity-cli` へ移行する。
 
 ## 確認コマンド
 
