@@ -62,11 +62,13 @@
 - GitHub Copilot CLI の既定は `copilot` コマンドのみ。ワークスペースパスを暗黙引数として渡さない。
 - スロット内 UI は `IDE` 枠と `CLI` 枠に分ける。別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウを閉じてから押したアプリを同じ象限へ開く。
 - Codex / ChatGPT / Claude / Antigravity2 Windows アプリは `Windows` ラベル付きの補助ボタンとして表示し、Antigravity2 は Claude の右側に置く。
+- 縮小表示の各スロットには 1 個の IDE トグルを置き、選択中の VS Code / Antigravity IDE を V / A で示してもう一方へ切り替える。補助アプリ行の左側には丸い矢印と「控え」を置き、同じ幅のまま小型の控えカードを 2x2 で表示する。
 - 起動確認または periodic refresh でワークスペースを確認できたスロットは `SavedWorkspacePath` とタイトルを自動保存し、ワークスペース読み取りに失敗しても保存済みパスを消さない。
 - 歯車設定では、表の Quartet と控え Quartet のタイトル、パス、保存済みパス、アプリ ID を一覧で確認・編集・空化できる。不完全な控えや重複控えは修復ボタンで整理できる。
 - 歯車設定の「VS Code 共通ユーザー設定」はプロキシをハブ設定へ保存する。`User/settings.json`（プロキシ・テーマ・SSH プロキシ）は通常起動とハブ起動で同じ Roaming ファイルを使う。サイドバー幅、サインイン、チャット履歴、Cache は対象外。
 
 ## 確認コマンド
+- 配布用の自己完結・単一ファイル win-x64 exe: ルートの `publish.bat` を実行する。出力は `dist/turtle-ai-quartet-hub/`。
 - 通常ビルド: `dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj`
 - 終了確認、ワークスペースタイトル照合、VS Code 共通ユーザー設定の回帰テスト: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj`
 - 通常実行: `dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj`

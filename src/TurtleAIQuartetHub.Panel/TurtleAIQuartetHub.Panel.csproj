@@ -22,4 +22,14 @@
     <Content Include="..\..\config\turtle-ai-quartet-hub.example.json" Link="config\turtle-ai-quartet-hub.example.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE.txt" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Single-file publish removes bundled content from PublishDir. Keep the files
+       required alongside the exe as physical files after every publish. -->
+  <Target Name="CopyDistributionFilesAfterPublish" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)config" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\LICENSE.txt"
+          DestinationFiles="$(PublishDir)LICENSE.txt" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\config\turtle-ai-quartet-hub.example.json"
+          DestinationFiles="$(PublishDir)config\turtle-ai-quartet-hub.example.json" />
+  </Target>
 </Project>

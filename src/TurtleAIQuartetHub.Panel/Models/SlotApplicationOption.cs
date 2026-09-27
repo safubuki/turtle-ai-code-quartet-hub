@@ -23,5 +23,13 @@ public sealed class SlotApplicationOption
 
     public bool IsSelected { get; }
 
+    public bool IsVsCodeSelected => IsSelected
+        && string.Equals(ApplicationId, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsAntigravitySelected => IsSelected
+        && string.Equals(ApplicationId, "antigravity", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsOtherIdeSelected => IsSelected && !IsVsCodeSelected && !IsAntigravitySelected;
+
     public string ToolTip => Application.ToolTip;
 }

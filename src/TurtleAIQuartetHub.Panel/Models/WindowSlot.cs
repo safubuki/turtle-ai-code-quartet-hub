@@ -105,6 +105,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ApplicationBadgeText));
                 OnPropertyChanged(nameof(IsVsCodeApplication));
                 OnPropertyChanged(nameof(IsAntigravityApplication));
+                NotifyCompactIdeToggleChanged();
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -158,16 +159,59 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public bool IsAntigravityApplication => string.Equals(ApplicationId, "antigravity", StringComparison.OrdinalIgnoreCase);
 
+    public string CompactIdeToggleLabel => IsVsCodeApplication ? "V" : IsAntigravityApplication ? "A" : "·";
+
+    public string CompactIdeToggleTargetApplicationId => IsVsCodeApplication
+        ? "antigravity"
+        : IsAntigravityApplication || IsVsCodeAvailable
+            ? AppConfig.VsCodeApplicationId
+            : "antigravity";
+
+    public bool IsCompactIdeSelected => IsVsCodeApplication || IsAntigravityApplication;
+
+    public bool CanToggleCompactIde => CompactIdeToggleTargetApplicationId == AppConfig.VsCodeApplicationId
+        ? IsVsCodeAvailable
+        : IsAntigravityAvailable;
+
+    public string CompactIdeToggleToolTip
+    {
+        get
+        {
+            var target = CompactIdeToggleTargetApplicationId == AppConfig.VsCodeApplicationId ? "VS Code" : "Antigravity IDE";
+            var selected = IsVsCodeApplication ? "VS Code" : IsAntigravityApplication ? "Antigravity IDE" : "IDE 以外";
+            if (!CanToggleCompactIde)
+            {
+                return $"{target} が未検出のため切り替えできません";
+            }
+
+            return WindowStatus == SlotWindowStatus.Missing
+                ? $"{selected} を選択中。クリックで起動対象を {target} に変更"
+                : $"{selected} を選択中。クリックで {target} に切り替え";
+        }
+    }
+
     public bool IsVsCodeAvailable
     {
         get => _isVsCodeAvailable;
-        set => SetField(ref _isVsCodeAvailable, value);
+        set
+        {
+            if (SetField(ref _isVsCodeAvailable, value))
+            {
+                NotifyCompactIdeToggleChanged();
+            }
+        }
     }
 
     public bool IsAntigravityAvailable
     {
         get => _isAntigravityAvailable;
-        set => SetField(ref _isAntigravityAvailable, value);
+        set
+        {
+            if (SetField(ref _isAntigravityAvailable, value))
+            {
+                NotifyCompactIdeToggleChanged();
+            }
+        }
     }
 
     public string VsCodeApplicationToolTip
@@ -481,6 +525,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
             if (SetField(ref _windowStatus, value))
             {
                 OnPropertyChanged(nameof(WindowStatusText));
+                OnPropertyChanged(nameof(CompactIdeToggleToolTip));
             }
         }
     }
@@ -718,6 +763,15 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         var normalized = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? "slot" : normalized;
+    }
+
+    private void NotifyCompactIdeToggleChanged()
+    {
+        OnPropertyChanged(nameof(CompactIdeToggleLabel));
+        OnPropertyChanged(nameof(CompactIdeToggleTargetApplicationId));
+        OnPropertyChanged(nameof(IsCompactIdeSelected));
+        OnPropertyChanged(nameof(CanToggleCompactIde));
+        OnPropertyChanged(nameof(CompactIdeToggleToolTip));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

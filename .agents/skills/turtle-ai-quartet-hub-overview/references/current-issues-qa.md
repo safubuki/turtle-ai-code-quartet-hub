@@ -3,6 +3,13 @@
 更新日: 2026-09-17
 
 ## 重点 QA
+- 極小表示は 116×116 DIP の正方形を維持し、上部の拡大アイコンから標準表示、タイルアイコンから縮小表示へそれぞれ 1 回で遷移すること。4 ボタン合計 92 DIP が緑枠内の有効幅（通常約 96.5 DIP、強調中約 95.5 DIP）に収まり、最小化・閉じるも押せること。縮小表示と標準表示へ戻した後は各ボタン幅と保存済み標準サイズが従来どおりであること。
+- 縮小表示の IDE トグルは VS Code 選択中に V、Antigravity IDE 選択中に A を 1 ボタンで表示し、押すと反対の IDE へ切り替わること。停止中は選択だけ変更し、IDE 以外は中立記号を表示すること。細枠と 430 DIP の最小幅でタイトル・ボタンが収まること。
+- 縮小表示の状態ボタンは管理対象ウィンドウが開いていれば緑の「起」、停止していれば赤の「停」となり、クリックでそれぞれ終了・起動できること。アプリ内でウィンドウを閉じても周期更新で「停」に戻ること。
+- 縮小表示の最小幅 430 DIP で、補助アプリ行の左端に丸い矢印＋「控え」が欠けず外枠寄りに表示されること。開いてもラベルは「控え」のまま、矢印は上向きになり、クリックで閉じられること。
+- `publish.bat --no-pause` を連続 2 回実行しても、Release / win-x64 の自己完結・単一 exe を生成でき、`dist/turtle-ai-quartet-hub/` に `TurtleAIQuartetHub.exe`、`LICENSE.txt`、設定例がそろうこと。
+- 未署名の通常発行では Smart App Control にブロックされ得る警告を出し、`publish.bat --sign --no-pause` では認証局発行の有効なコード署名証明書がない場合に署名成功を装わず失敗すること。署名付き発行後は SignTool と Authenticode の検証が通ること。
+- NuGet 脆弱性データへ接続できない場合は `NU1900` をエラーとして発行を止め、公式 HTTPS ソースへ正常接続できる場合は警告なく発行できること。監査や TLS 検証を無効化しないこと。
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
 - 既定では VS Code の標準プロファイルを共有し、`%LOCALAPPDATA%/TurtleAIQuartetHub/user-data` にスロット別 Cache / WebStorage を作らないこと。過去の専用プロファイルが残っていれば起動後に回収されること。
 - 共有プロファイルでも、スロットのワークスペースパスとサイドバー幅は `slots.json` と実際の VS Code workspaceStorage から復元できること。チャットのモデル選択やサインイン状態が `storage.json` の書き換えで巻き戻らないこと。
@@ -12,7 +19,7 @@
 - 各スロットで VS Code / Antigravity IDE / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Antigravity CLI を選択できること。
 - スロット内アプリ選択が `IDE` 枠と `CLI` 枠に分かれ、IDE は縦並び、CLI は5つを同じ枠内に表示していること。
 - `IDE` と `CLI` のボタン高さ、上下左右の隙間、上端位置がそろっていること。
-- 選択中アプリのボタンがベタ塗りではなく暗めの緑で表示され、未検出アプリは選択中でもグレーアウトすること。
+- VS Code の IDE 選択色が標準・縮小表示ともロゴに近い青、Antigravity IDE が多色グラデーション枠で一致すること。18 DIP の縮小 A ボタンでも枠色の変化が見え、CLI は暗めの緑のままで、未検出アプリは選択中でもグレーアウトすること。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行し、ワークスペースパスを引数として渡さないこと。
 - GitHub Copilot Chat 拡張の `globalStorage\github.copilot-chat\copilotCli\copilot*` だけが存在する環境では、GitHub Copilot CLI を未検出として扱うこと。
 - VS Code から CLI、CLI から VS Code、CLI から別 CLI へ、現在のスロットウィンドウを閉じてから押したアプリへ切り替えられること。

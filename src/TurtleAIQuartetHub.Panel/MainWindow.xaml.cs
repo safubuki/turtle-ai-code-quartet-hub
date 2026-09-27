@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
@@ -75,6 +76,7 @@ public partial class MainWindow : Window
     private bool _isRefreshInFlight;
     private bool _areWindowsHidden;
     private DisplayMode _displayMode = DisplayMode.Standard;
+    private bool _isCompactStoredPanelsOpen;
     private double _collapsedWindowHeight;
     private double _collapsedWindowMinHeight;
     private double _standardWindowWidth;
@@ -569,6 +571,13 @@ public partial class MainWindow : Window
         ActivatePanelWindow();
     }
 
+    private void CompactJumpButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        SetDisplayMode(DisplayMode.Compact);
+        ActivatePanelWindow();
+    }
+
     private static DisplayMode GetNextDisplayMode(DisplayMode current)
     {
         return current switch
@@ -861,6 +870,49 @@ public partial class MainWindow : Window
         }
 
         SlotMainActionButton_Click(sender, e);
+    }
+
+    private async void CompactSlotIdeToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+
+        if (_isBusy || sender is not Button { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        await SelectSlotWorkspaceApplicationAsync(slot, slot.CompactIdeToggleTargetApplicationId);
+    }
+
+    private void CompactStoredPanelsToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displayMode != DisplayMode.Compact)
+        {
+            return;
+        }
+
+        _isCompactStoredPanelsOpen = !_isCompactStoredPanelsOpen;
+        UpdateCompactStoredPanelsVisibility();
+
+        var currentBounds = GetCurrentWindowBounds();
+        var scale = GetCurrentDpiScale(new WindowInteropHelper(this).Handle);
+        var compactHeight = GetCompactModeHeight(currentBounds.Width / scale);
+        var targetBounds = GetCompactModeBounds(currentBounds, currentBounds.Width, compactHeight * scale);
+        MinHeight = CompactWindowMinHeight;
+        SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+        MinHeight = compactHeight;
+    }
+
+    private void UpdateCompactStoredPanelsVisibility()
+    {
+        CompactStoredPanelsArea.Visibility = _displayMode == DisplayMode.Compact && _isCompactStoredPanelsOpen
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CompactStoredPanelsChevron.RenderTransform = new RotateTransform(_isCompactStoredPanelsOpen ? 180 : 0);
+        AutomationProperties.SetName(CompactStoredPanelsToggleButton, _isCompactStoredPanelsOpen ? "控えを閉じる" : "控えを開く");
+        CompactStoredPanelsToggleButton.ToolTip = _isCompactStoredPanelsOpen
+            ? "縮小表示の控えを閉じる"
+            : "控えを縮小表示で開く";
     }
 
     private void MicroSlotButton_Click(object sender, RoutedEventArgs e)
@@ -2131,8 +2183,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        var slot = option.Slot;
-        var application = _statusStore.FindApplication(option.ApplicationId);
+        await SelectSlotWorkspaceApplicationAsync(option.Slot, option.ApplicationId);
+    }
+
+    private async Task SelectSlotWorkspaceApplicationAsync(WindowSlot slot, string applicationId)
+    {
+        var application = _statusStore.FindApplication(applicationId);
         if (application is null || !application.IsWorkspaceApplication)
         {
             return;
@@ -3025,13 +3081,17 @@ public partial class MainWindow : Window
         StandardSlotsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         CompactBarPanel.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         MicroPanel.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
+        CompactStoredPanelsToggleButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCompactStoredPanelsVisibility();
         StoredPanelsExpander.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         SettingsButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         HelpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        StandardJumpButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        StandardJumpButton.Visibility = isCompact || isMicro ? Visibility.Visible : Visibility.Collapsed;
+        CompactJumpButton.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
         WindowTitleText.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
+        UpdateDisplayModeChrome();
 
         // モードのサイズ計算はすべて論理サイズ(DIP)で行い（定数や記憶値・WPF Measure はみな DIP）、
         // 位置計算と SetWindowPos は物理pxで行うため、ここで現在ディスプレイの DPI を一度だけ取り、
@@ -3079,7 +3139,6 @@ public partial class MainWindow : Window
             }
         }
 
-        UpdateDisplayModeChrome();
         UpdateCompactPanelFrame();
         RefreshAuxiliaryUi();
 
@@ -3096,6 +3155,14 @@ public partial class MainWindow : Window
 
     private void UpdateDisplayModeChrome()
     {
+        var isMicro = _displayMode == DisplayMode.Micro;
+        DisplayModeButton.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
+        StandardJumpButton.Width = isMicro ? 23 : 26;
+        MinimizeButton.Width = isMicro ? 23 : 32;
+        CloseButton.Width = isMicro ? 23 : 32;
+        MinimizeButton.Margin = isMicro ? new Thickness(0) : new Thickness(2, 0, 0, 0);
+        CloseButton.Margin = isMicro ? new Thickness(0) : new Thickness(2, 0, 0, 0);
+
         (DisplayModeButton.Content, DisplayModeButton.ToolTip) = _displayMode switch
         {
             DisplayMode.Standard => (CompactModeGlyph, "縮小表示へ切り替え"),
@@ -3171,9 +3238,18 @@ public partial class MainWindow : Window
         var auxiliaryRowHeight = StoredPanelsRowGrid.DesiredSize.Height
             + StoredPanelsRowGrid.Margin.Top
             + StoredPanelsRowGrid.Margin.Bottom;
+        var storedRowHeight = 0d;
+        if (CompactStoredPanelsArea.Visibility == Visibility.Visible)
+        {
+            CompactStoredPanelsArea.Measure(new Size(compactContentWidth, double.PositiveInfinity));
+            storedRowHeight = CompactStoredPanelsArea.DesiredSize.Height
+                + CompactStoredPanelsArea.Margin.Top
+                + CompactStoredPanelsArea.Margin.Bottom;
+        }
         var desiredHeight = titleRowHeight
             + compactPanelHeight
             + auxiliaryRowHeight
+            + storedRowHeight
             + RootLayoutGrid.Margin.Top
             + RootLayoutGrid.Margin.Bottom
             + edgePadding;
@@ -4769,9 +4845,12 @@ public partial class MainWindow : Window
         HelpButton.IsEnabled = !busy;
         DisplayModeButton.IsEnabled = !busy;
         StandardJumpButton.IsEnabled = !busy;
+        CompactJumpButton.IsEnabled = !busy;
         CompactVisibilityButton.IsEnabled = !busy;
         MicroVisibilityButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
+        CompactStoredPanelsArea.IsEnabled = !busy;
+        CompactStoredPanelsToggleButton.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
         SettingsOverlay.IsEnabled = !busy;
         AuxiliaryApplicationPanel.IsEnabled = !busy;

@@ -40,6 +40,19 @@
     <SolidColorBrush x:Key="MutedTextBrush" Color="#9AA59E" />
     <SolidColorBrush x:Key="AccentBrush" Color="#45D483" />
     <SolidColorBrush x:Key="AccentDarkBrush" Color="#123222" />
+    <SolidColorBrush x:Key="VsCodeSelectedBackgroundBrush" Color="#102D3F" />
+    <SolidColorBrush x:Key="VsCodeSelectedBorderBrush" Color="#168FD6" />
+    <SolidColorBrush x:Key="VsCodeSelectedForegroundBrush" Color="#9EDAF5" />
+    <SolidColorBrush x:Key="AntigravitySelectedBackgroundBrush" Color="#2A2136" />
+    <LinearGradientBrush x:Key="AntigravitySelectedBorderBrush" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#AA644B" Offset="0" />
+      <GradientStop Color="#A1844C" Offset="0.18" />
+      <GradientStop Color="#6E945A" Offset="0.38" />
+      <GradientStop Color="#4A8C8A" Offset="0.58" />
+      <GradientStop Color="#457AA2" Offset="0.78" />
+      <GradientStop Color="#77649E" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="AntigravitySelectedForegroundBrush" Color="#D9CCE2" />
     <!-- 非ベースディスプレイの色。ベース（作業ベース）は AccentBrush の緑、単独移動先は番号順に青→紫→金。 -->
     <SolidColorBrush x:Key="DisplayAccent2Brush" Color="#4FB4E8" />
     <SolidColorBrush x:Key="DisplayAccent3Brush" Color="#B488E8" />
@@ -252,7 +265,7 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
 
-    <Style x:Key="ApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+    <Style x:Key="ApplicationSelectorBaseButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="24" />
       <Setter Property="Height" Value="24" />
@@ -262,6 +275,9 @@
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
       <Setter Property="Background" Value="#17201B" />
       <Setter Property="BorderBrush" Value="#344A3E" />
+    </Style>
+
+    <Style x:Key="ApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource ApplicationSelectorBaseButtonStyle}">
       <Style.Triggers>
         <DataTrigger Binding="{Binding IsSelected}" Value="True">
           <Setter Property="Foreground" Value="#E9FFF2" />
@@ -310,10 +326,11 @@
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
-      <Setter Property="MinWidth" Value="82" />
-      <Setter Property="Width" Value="82" />
+      <Setter Property="MinWidth" Value="68" />
+      <Setter Property="Width" Value="68" />
       <Setter Property="Height" Value="24" />
-      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontSize" Value="9.5" />
+      <Setter Property="Padding" Value="2,0" />
       <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="ToolTip" Value="{Binding ToolTip}" />
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
@@ -656,9 +673,8 @@
       </Style.Triggers>
     </Style>
 
-    <!-- 縮小モードのカード内に置く起動/終了トグル。領域が狭いので正方形 1 文字（起 / 終）で表す。
-         カード本体が Button なのでクリックは内側で握りつぶす（CompactSlotPowerButton_Click）。 -->
-    <Style x:Key="CompactSlotPowerButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <!-- 縮小カード内の操作ボタンは寸法と細い枠だけを共有し、選択色と状態色は別々に指定する。 -->
+    <Style x:Key="CompactSlotInnerButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
       <Setter Property="Width" Value="18" />
       <Setter Property="Height" Value="18" />
       <Setter Property="MinWidth" Value="0" />
@@ -669,29 +685,101 @@
       <Setter Property="FontSize" Value="10" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Focusable" Value="False" />
-      <!-- 既定は起動中（Ready）の姿＝終了ボタン。赤系で停止操作だと分かるようにする。 -->
-      <Setter Property="Content" Value="終" />
-      <Setter Property="ToolTip" Value="このスロットのウィンドウを終了" />
-      <Setter Property="Background" Value="#2A1A18" />
-      <Setter Property="BorderBrush" Value="#6A3832" />
-      <Setter Property="Foreground" Value="#F2B7AF" />
+      <Setter Property="Background" Value="#17201B" />
+      <Setter Property="BorderBrush" Value="#385345" />
+      <Setter Property="Foreground" Value="#A9BFB0" />
+      <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="PowerButtonBorder"
+            <Border x:Name="CompactInnerButtonBorder"
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="1"
+                    BorderThickness="{TemplateBinding BorderThickness}"
                     CornerRadius="4">
               <ContentPresenter HorizontalAlignment="Center"
                                 VerticalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="PowerButtonBorder" Property="Opacity" Value="0.78" />
+                <Setter TargetName="CompactInnerButtonBorder" Property="Opacity" Value="0.78" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="PowerButtonBorder" Property="Opacity" Value="0.55" />
+                <Setter TargetName="CompactInnerButtonBorder" Property="Opacity" Value="0.55" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 起 / 停 はボタンの操作ではなく現在のウィンドウ状態を示す。クリック操作はツールチップで補う。 -->
+    <Style x:Key="CompactSlotPowerButtonStyle" TargetType="Button" BasedOn="{StaticResource CompactSlotInnerButtonStyle}">
+      <!-- 既定はウィンドウが開いている（Ready）状態。 -->
+      <Setter Property="Content" Value="起" />
+      <Setter Property="ToolTip" Value="起動中：クリックでこのスロットのウィンドウを終了" />
+      <Setter Property="Background" Value="#162D20" />
+      <Setter Property="BorderBrush" Value="#3B865A" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
+          <Setter Property="Content" Value="停" />
+          <Setter Property="ToolTip" Value="停止中：クリックでこのスロットのアプリを起動" />
+          <Setter Property="Background" Value="#2A1A18" />
+          <Setter Property="BorderBrush" Value="#6A3832" />
+          <Setter Property="Foreground" Value="#F2B7AF" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+          <Setter Property="Content" Value="…" />
+          <Setter Property="ToolTip" Value="起動中" />
+          <Setter Property="Background" Value="#2C2414" />
+          <Setter Property="BorderBrush" Value="#C49B38" />
+          <Setter Property="Foreground" Value="#E4C173" />
+          <Setter Property="IsEnabled" Value="False" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CompactSlotIdeToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource CompactSlotInnerButtonStyle}">
+      <Setter Property="Margin" Value="4,0,0,0" />
+      <Setter Property="BorderThickness" Value="0.8" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsVsCodeApplication}" Value="True">
+          <Setter Property="Background" Value="{StaticResource VsCodeSelectedBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource VsCodeSelectedBorderBrush}" />
+          <Setter Property="Foreground" Value="{StaticResource VsCodeSelectedForegroundBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsAntigravityApplication}" Value="True">
+          <Setter Property="Background" Value="{StaticResource AntigravitySelectedBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AntigravitySelectedBorderBrush}" />
+          <Setter Property="BorderThickness" Value="1.2" />
+          <Setter Property="Foreground" Value="{StaticResource AntigravitySelectedForegroundBrush}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="IdeApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource ApplicationSelectorBaseButtonStyle}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="IdeButtonBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="8">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="IdeButtonBorder" Property="Opacity" Value="0.86" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="IdeButtonBorder" Property="Opacity" Value="0.65" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
@@ -701,20 +789,29 @@
         </Setter.Value>
       </Setter>
       <Style.Triggers>
-        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
-          <Setter Property="Content" Value="起" />
-          <Setter Property="ToolTip" Value="このスロットのアプリを起動" />
-          <Setter Property="Background" Value="#16241C" />
-          <Setter Property="BorderBrush" Value="#335A43" />
-          <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        <DataTrigger Binding="{Binding IsOtherIdeSelected}" Value="True">
+          <Setter Property="Foreground" Value="#E9FFF2" />
+          <Setter Property="Background" Value="#263F31" />
+          <Setter Property="BorderBrush" Value="#59D58E" />
+          <Setter Property="FontWeight" Value="SemiBold" />
         </DataTrigger>
-        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
-          <Setter Property="Content" Value="…" />
-          <Setter Property="ToolTip" Value="起動中" />
-          <Setter Property="Background" Value="#2C2414" />
-          <Setter Property="BorderBrush" Value="#C49B38" />
-          <Setter Property="Foreground" Value="#E4C173" />
-          <Setter Property="IsEnabled" Value="False" />
+        <DataTrigger Binding="{Binding IsVsCodeSelected}" Value="True">
+          <Setter Property="Foreground" Value="{StaticResource VsCodeSelectedForegroundBrush}" />
+          <Setter Property="Background" Value="{StaticResource VsCodeSelectedBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource VsCodeSelectedBorderBrush}" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsAntigravitySelected}" Value="True">
+          <Setter Property="Foreground" Value="{StaticResource AntigravitySelectedForegroundBrush}" />
+          <Setter Property="Background" Value="{StaticResource AntigravitySelectedBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AntigravitySelectedBorderBrush}" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+          <Setter Property="Foreground" Value="#66716A" />
+          <Setter Property="Background" Value="#121816" />
+          <Setter Property="BorderBrush" Value="#27322C" />
+          <Setter Property="FontWeight" Value="Normal" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -986,6 +1083,17 @@
       </Setter>
     </Style>
 
+    <Style x:Key="CompactStoredTabStyle" TargetType="Button" BasedOn="{StaticResource StoredPageTabButtonStyle}">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Width" Value="54" />
+      <Setter Property="MaxWidth" Value="54" />
+      <Setter Property="Height" Value="21" />
+      <Setter Property="MinHeight" Value="21" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Padding" Value="3,0" />
+      <Setter Property="FontSize" Value="10" />
+    </Style>
+
     <Style x:Key="LedIndicatorStyle" TargetType="Ellipse">
       <Setter Property="Width" Value="10" />
       <Setter Property="Height" Value="10" />
@@ -1109,7 +1217,7 @@
                                 Click="SlotApplicationSwitchButton_Click"
                                 ToolTip="{Binding ToolTip}"
                                 ToolTipService.ShowOnDisabled="True"
-                                Style="{StaticResource ApplicationSelectorButtonStyle}">
+                                Style="{StaticResource IdeApplicationSelectorButtonStyle}">
                           <TextBlock Text="{Binding ShortName}"
                                      TextTrimming="CharacterEllipsis"
                                      TextAlignment="Center" />
@@ -1324,6 +1432,7 @@
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
           <Border Style="{StaticResource CompactSlotBadgeStyle}">
@@ -1342,10 +1451,98 @@
 
           <Button Grid.Column="2"
                   Tag="{Binding}"
+                  Content="{Binding CompactIdeToggleLabel}"
+                  ToolTip="{Binding CompactIdeToggleToolTip}"
+                  AutomationProperties.Name="{Binding CompactIdeToggleToolTip}"
+                  ToolTipService.ShowOnDisabled="True"
+                  IsEnabled="{Binding CanToggleCompactIde}"
+                  Click="CompactSlotIdeToggleButton_Click"
+                  Style="{StaticResource CompactSlotIdeToggleButtonStyle}" />
+          <Button Grid.Column="3"
+                  Tag="{Binding}"
                   Click="CompactSlotPowerButton_Click"
                   Style="{StaticResource CompactSlotPowerButtonStyle}" />
         </Grid>
       </Button>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CompactStoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
+      <Border Background="{StaticResource SurfaceAltBrush}"
+              BorderBrush="{StaticResource BorderBrushSoft}"
+              BorderThickness="1"
+              CornerRadius="6"
+              Padding="5"
+              Tag="{Binding}"
+              PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
+              PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
+              AllowDrop="True"
+              DragEnter="StoredPanelCard_DragEnter"
+              DragLeave="StoredPanelCard_DragLeave"
+              DragOver="StoredPanelCard_DragOver"
+              Drop="StoredPanelCard_Drop">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="21" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="24" />
+          </Grid.RowDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel Orientation="Horizontal">
+            <Border Width="20" Height="18" CornerRadius="4" Background="#223027"
+                    BorderBrush="#335A43" BorderThickness="1" Margin="0,0,5,0">
+              <TextBlock Text="{Binding Label}" Foreground="{StaticResource AccentBrush}"
+                         HorizontalAlignment="Center" FontWeight="SemiBold" FontSize="10" />
+            </Border>
+            <TextBlock Text="{Binding DisplayTitle}" ToolTip="{Binding DisplayTitle}"
+                       Width="115" FontSize="10" FontWeight="SemiBold" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <Button Content="&#xED25;" Tag="{Binding}"
+                    Click="RegisterStoredPanelFolderButton_Click"
+                    Style="{StaticResource StoredRegisterFolderButton}"
+                    Width="20" Height="20" MinWidth="0" MinHeight="0" Padding="0"
+                    ToolTip="フォルダを控えに登録" />
+            <Button Content="&#xE74D;" Tag="{Binding}"
+                    Click="DeleteStoredPanelButton_Click"
+                    Style="{StaticResource StoredDeleteButton}"
+                    Width="20" Height="20" MinWidth="0" MinHeight="0" Padding="0"
+                    IsEnabled="{Binding HasContent}" ToolTip="控えを削除" />
+          </StackPanel>
+          <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ShortPath}"
+                     ToolTip="{Binding WorkspacePath}" Foreground="{StaticResource MutedTextBrush}"
+                     FontSize="9" />
+          <UniformGrid Grid.Row="2" Grid.ColumnSpan="2" Columns="4">
+            <Button Content="A" Tag="{Binding}" CommandParameter="A" Click="ShowStoredPanelButton_Click"
+                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
+                    Padding="0" Margin="0,0,3,0" IsEnabled="{Binding HasContent}" />
+            <Button Content="B" Tag="{Binding}" CommandParameter="B" Click="ShowStoredPanelButton_Click"
+                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
+                    Padding="0" Margin="0,0,3,0" IsEnabled="{Binding HasContent}" />
+            <Button Content="C" Tag="{Binding}" CommandParameter="C" Click="ShowStoredPanelButton_Click"
+                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
+                    Padding="0" Margin="0,0,3,0" IsEnabled="{Binding HasContent}" />
+            <Button Content="D" Tag="{Binding}" CommandParameter="D" Click="ShowStoredPanelButton_Click"
+                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
+                    Padding="0" IsEnabled="{Binding HasContent}" />
+          </UniformGrid>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CompactStoredPageTemplate" DataType="{x:Type models:StoredPanelPage}">
+      <ItemsControl ItemsSource="{Binding Slots}" ItemTemplate="{StaticResource CompactStoredPanelTemplate}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemContainerStyle>
+          <Style TargetType="ContentPresenter">
+            <Setter Property="Margin" Value="2" />
+          </Style>
+        </ItemsControl.ItemContainerStyle>
+      </ItemsControl>
     </DataTemplate>
 
     <DataTemplate x:Key="StoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
@@ -1537,7 +1734,19 @@
                 FontWeight="SemiBold"
                 Visibility="Collapsed"
                 ToolTip="標準表示へ戻す"
+                 AutomationProperties.Name="標準表示へ戻す"
                 Click="StandardJumpButton_Click"
+                Style="{StaticResource ChromeButton}" />
+        <Button x:Name="CompactJumpButton"
+                Content="&#xE73F;"
+                Width="23"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="12"
+                FontWeight="SemiBold"
+                Visibility="Collapsed"
+                ToolTip="縮小表示へ切り替え"
+                AutomationProperties.Name="縮小表示へ切り替え"
+                Click="CompactJumpButton_Click"
                 Style="{StaticResource ChromeButton}" />
         <Button x:Name="DisplayModeButton"
                 Content="&#xE73F;"
@@ -1548,12 +1757,14 @@
                 ToolTip="縮小表示へ切り替え"
                 Click="DisplayModeButton_Click"
                 Style="{StaticResource ChromeButton}" />
-        <Button Content="_"
+        <Button x:Name="MinimizeButton"
+                Content="_"
                 ToolTip="最小化"
                 Click="MinimizeButton_Click"
                 Style="{StaticResource ChromeButton}"
                 Margin="2,0,0,0" />
-        <Button Content="X"
+        <Button x:Name="CloseButton"
+                Content="X"
                 ToolTip="パネルを閉じる"
                 Click="CloseButton_Click"
                 Style="{StaticResource ChromeButton}"
@@ -1803,9 +2014,45 @@
                   VerticalAlignment="Top"
                   Margin="0,4,4,0"
                   Panel.ZIndex="2">
+        <Button x:Name="CompactStoredPanelsToggleButton"
+                Width="60"
+                Height="24"
+                MinHeight="24"
+                MinWidth="0"
+                Padding="4,0"
+                Margin="-6,0,10,0"
+                Background="Transparent"
+                BorderThickness="0"
+                Visibility="Collapsed"
+                ToolTip="控えを縮小表示で開く"
+                AutomationProperties.Name="控えを開く"
+                Click="CompactStoredPanelsToggleButton_Click"
+                Style="{StaticResource BarButton}">
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+            <Grid Width="16" Height="16" Margin="0,0,4,0">
+              <Ellipse Fill="#F4F7F5" />
+              <Path x:Name="CompactStoredPanelsChevron"
+                    Width="16" Height="16"
+                    Data="M 4,6.5 L 8,10 L 12,6.5"
+                    Stroke="#152019"
+                    StrokeThickness="1.6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    StrokeLineJoin="Round"
+                    RenderTransformOrigin="0.5,0.5" />
+            </Grid>
+            <TextBlock Text="控え"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource TextBrush}"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <TextBlock Text="Windows"
                    Foreground="{StaticResource MutedTextBrush}"
-                   FontSize="10"
+                   FontSize="9"
                    FontWeight="SemiBold"
                    Margin="0,0,4,0" />
         <ItemsControl x:Name="AuxiliaryApplicationPanel"
@@ -1817,7 +2064,7 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemContainerStyle>
             <Style TargetType="ContentPresenter">
-              <Setter Property="Margin" Value="4,0,0,0" />
+              <Setter Property="Margin" Value="3,0,0,0" />
             </Style>
           </ItemsControl.ItemContainerStyle>
           <ItemsControl.ItemTemplate>
@@ -1831,6 +2078,69 @@
         </ItemsControl>
       </StackPanel>
     </Grid>
+
+    <Border x:Name="CompactStoredPanelsArea"
+            Grid.Row="3"
+            Visibility="Collapsed"
+            Margin="5,2,5,4"
+            Padding="5"
+            Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="1"
+            CornerRadius="8">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="23" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <ItemsControl ItemsSource="{Binding StoredPanelPages}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="{x:Type models:StoredPanelPage}">
+                <Grid>
+                  <Button Content="{Binding Header}" Tag="{Binding}"
+                          Click="StoredPanelPageTab_Click"
+                          MouseDoubleClick="StoredPanelPageTab_MouseDoubleClick"
+                          Style="{StaticResource CompactStoredTabStyle}"
+                          ToolTip="{Binding Header}" />
+                  <TextBox x:Name="PageHeaderEditBox"
+                           Tag="{Binding}"
+                           Visibility="Collapsed"
+                           Text="{Binding Header, Mode=OneWay}"
+                           MaxLength="20"
+                           Width="54" Height="21"
+                           Padding="2,0" FontSize="10"
+                           Foreground="{StaticResource TextBrush}"
+                           Background="#223027"
+                           CaretBrush="{StaticResource TextBrush}"
+                           SelectionBrush="{StaticResource AccentBrush}"
+                           BorderBrush="{StaticResource AccentBrush}"
+                           BorderThickness="1"
+                           KeyDown="StoredPanelPageHeaderEditBox_KeyDown"
+                           LostFocus="StoredPanelPageHeaderEditBox_LostFocus" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Grid.Column="1" Content="整列"
+                  Click="CompactStoredPanelsButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Width="38" Height="21" MinHeight="21" MinWidth="0"
+                  Padding="2,0" FontSize="10"
+                  ToolTip="控えの空きを前に詰める" />
+        </Grid>
+        <ContentControl Grid.Row="1"
+                        Content="{Binding SelectedStoredPanelPage}"
+                        ContentTemplate="{StaticResource CompactStoredPageTemplate}" />
+      </Grid>
+    </Border>
 
     <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,2,5,3">
       <Grid.ColumnDefinitions>

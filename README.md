@@ -13,7 +13,8 @@ VS Code だけを4面で開くためのツールではなく、スロットご�
 - **CLI をワークスペース直下で起動**: CLI は対象フォルダをカレントディレクトリにした terminal として開きます。
 - **Codex / ChatGPT / Claude Windows アプリも起動**: CLI とは別に、Windows アプリ版を補助ボタンから開けます。
 - **フォーカス表示と4面表示**: スロットボタンで1面フォーカス表示と4面表示を切り替えます。
-- **縮小モード**: 小さな操作バーとして常駐し、A-D スロット操作と Windows 補助アプリ起動をすぐ使えます。
+- **縮小モード**: 小さな操作バーとして常駐し、各スロットの 1 個の V / A ボタンで VS Code と Antigravity IDE を切り替えられます。V は VS Code ロゴに近い青、A は多色グラデーションの枠で表示します。ウィンドウ状態（緑の「起」／赤の「停」）、控え、Windows 補助アプリ起動も使えます。状態ボタンを押すと、起動中のウィンドウは終了、停止中は起動します。
+- **極小モード**: 116 DIP 四方の 2x2 パネルです。上部の拡大アイコンで標準表示、タイルアイコンで縮小表示へ直接切り替えられます。
 - **タスクバー連携**: Jump List からスロット切替、表示モード切替、前面/背面操作を実行できます。
 
 ## 必要環境
@@ -225,13 +226,38 @@ Store 公開準備の確認:
 
 ## 配布ビルド
 
-自己完結型の win-x64 exe を作る場合:
+Windows で自己完結型の win-x64 exe を作る場合は、リポジトリ直下の `publish.bat` をダブルクリックします。コマンドからも実行できます。
 
 ```powershell
-dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\dist\turtle-ai-quartet-hub
+.\publish.bat
 ```
 
-配布物には `LICENSE.txt` も同梱してください。
+生成先は `dist\turtle-ai-quartet-hub\TurtleAIQuartetHub.exe` です。配布するときは、同じフォルダの `LICENSE.txt` と設定例を含め、フォルダの中身をまとめて渡してください。
+
+`publish.bat` は NuGet の脆弱性監査を有効にし、脆弱性データを取得できない場合の `NU1900` をエラーとして扱います。NuGet の公式 HTTPS ソースに接続できる環境で発行してください。TLS 検証や監査の無効化は不要です。
+
+### Smart App Control とコード署名
+
+通常の `publish.bat` が作る exe は未署名です。Windows の Smart App Control はクラウドで安全と判断できた exe は通しますが、判断できない未署名 exe はブロックします。コードや発行内容が変わって exe のハッシュが変わると、以前の exe が起動できても新しい exe の起動は保証されません。バッチは署名状態を確認して警告します。ローカル MSIX 用の開発用自己署名証明書も、この問題の解決には使えません。
+
+配布用 exe を署名するには、Microsoft Trusted Root Program に含まれる認証局が発行したコード署名証明書を Windows の `CurrentUser/My` または `LocalMachine/My` に用意し、証明書の秘密鍵へアクセスできる状態にします。証明書の拇印と、発行元が指定する RFC 3161 タイムスタンプ URL を環境変数に設定して発行します。秘密鍵や証明書のパスワードはリポジトリに保存しません。
+
+```powershell
+$env:TURTLE_CODE_SIGN_THUMBPRINT = '<証明書の40文字の拇印>'
+$env:TURTLE_CODE_SIGN_TIMESTAMP_URL = '<発行元指定のRFC 3161タイムスタンプURL>'
+.\publish.bat --sign
+Get-AuthenticodeSignature .\dist\turtle-ai-quartet-hub\TurtleAIQuartetHub.exe
+```
+
+`--sign` は証明書の用途、有効期限、信頼チェーン、失効状態を確認し、SHA-256 で署名・タイムスタンプ後に署名を検証します。証明書がない場合や署名に失敗した場合は配布成功と表示しません。署名後に exe を変更すると署名が無効になるため、ファイルの加工は署名前に済ませてください。署名済みでも別のセキュリティ判定が行われる可能性があるため、配布前には Smart App Control が有効な端末で起動を確認します。
+
+Microsoft Store の MSIX として公開する場合は Store 側で署名されます。Store 用の準備は [MSIX パッケージング手順](docs/msix-packaging-guide.md) を参照してください。
+
+手動で発行する場合は次のコマンドも使えます。
+
+```powershell
+dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:NuGetAudit=true -p:WarningsAsErrors=NU1900 -o .\dist\turtle-ai-quartet-hub
+```
 
 ## 関連ドキュメント
 

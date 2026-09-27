@@ -36,7 +36,7 @@
 
 ## 4. UI とフォーカス
 - UI は各スロット内に `IDE` 枠と `CLI` 枠を持つ。IDE 枠は VS Code / Antigravity を縦並び、CLI 枠は上段 `Codex` / `Claude`、下段 `Copilot` / `Grok` / `Antigravity` で表示する。
-- 選択中アプリのボタンはベタ塗りではなく、暗めの半透明に近い緑で表示する。ただし未検出アプリは選択中でも `IsAvailable=false` のグレーアウト表示を優先し、インストール済みと誤認させない。
+- CLI 選択中のボタンはベタ塗りではなく、暗めの半透明に近い緑で表示する。VS Code 選択中はロゴに近い青、Antigravity IDE 選択中は多色グラデーションの枠を使う。ただし未検出アプリは選択中でも `IsAvailable=false` のグレーアウト表示を優先し、インストール済みと誤認させない。
 - 未起動スロットの IDE / CLI 選択ボタンは起動対象を変更するだけで、アプリを自動起動しない。起動は個別スロットの起動ボタンか `Launch Quartet` のみで行う。
 - メインパネルのクリアアイコンは右上のゴミ箱アイコンで表示する。押下時は削除確認ダイアログを出し、確認後に対象スロットの保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中の IDE / CLI ウィンドウがある場合は close を送ってからパネル情報を削除する。
 - 通常表示のスロット左下にはフォルダアイコンボタンを置き、`WindowSlot.DisplayPath` から Explorer で開けるローカルフォルダを解決する。既存ディレクトリはそのまま、`.code-workspace` など既存ファイルは親フォルダを開く。`vscode-remote://...` や `ssh://...` など non-file URI は Explorer 対象にせず、ボタンをグレーアウトする。
@@ -171,3 +171,29 @@
 - **問題**: 専用 user-data の各パネルで Ctrl+Shift+P から `settings.json` を編集して保存しても、次回起動がファイル全体を JSON として読み直して書き戻していた。社内プロキシ切替用のコメント、`remote.SSH.httpsProxy`、`remote.SSH.remotePlatform` が消えて「設定が戻った」ように見える。SSH 接続中の別 PC（例: `%LOCALAPPDATA%/TurtleAIQuartetHub/user-data/A/User/settings.json`）で再現する。
 - **対策**: 専用プロファイルでも `User/settings.json` は `%APPDATA%/Code/User/settings.json`（Roaming）と同じ実体へハードリンクする。通常起動の VS Code で保存したプロキシが、ハブ起動窓でもそのまま使われる。リンクできた場合は Roaming へ `window.restoreWindows` を書かない。リンク前の専用ファイルは `settings.json.quartet-bak` に退避する。リンクできないときだけ専用ファイルを JSONC パッチし、コメントと `remote.SSH.*` を残す。
 - **注意**: ハードリンクは Roaming の内容を書き換えない。JsonNode で読み書きするとコメントが落ちるため、専用プロファイルの既存ファイルには使わない。ワークスペースの `.vscode/settings.json` は触らない。
+
+## 16. 縮小表示の IDE 切り替えと控え（2026-09-27 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **IDE 切り替え**: 縮小スロットの単一トグルは `WindowSlot.CompactIdeToggleLabel` で選択中の V / A を表示し、`CompactIdeToggleTargetApplicationId` で反対側を選ぶ。IDE 以外の選択中は中立記号を示し、利用可能な IDE を選ぶ。通常表示と同じ `SelectSlotWorkspaceApplicationAsync` を通し、未起動時は選択だけ変更、起動中は `CloseSlotWindowForReplacementAsync` の終了確認後に起動する。内側のボタンの Click は `Handled` にして、外側カードのフォーカス切り替えへ伝播させない。
+- **控え**: 縮小表示では通常表示と同じ `StoredPanelPages` / `SelectedStoredPanelPage` を使い、控えの選択・登録・削除・A-D への表示・整列・ドラッグ移動・タブ名編集を小型の 2x2 カードで提供する。開閉は縮小表示の幅を変えず、高さだけを `GetCompactModeHeight` で再計算する。通常表示の Expander 状態と標準サイズの記憶は分けて維持する。
+- **注意**: Windows 補助アプリボタン行は縮小表示の幅に合わせている。ボタンやタブの固定幅を増やす場合は、縮小表示の最小幅 430 DIP での収まりと DPI 変換後の高さを確認する。
+- **選択表示と状態表示**: 以前の二つの V / A ボタンは Style 継承により同時点灯した。現在は単一トグルと状態ボタンが寸法と細枠の共通 Style だけを継承し、IDE 選択色と起／停の `WindowStatus` 色を独立させる。`Ready` は管理対象 HWND を確認した緑の「起」、`Missing` は赤の「停」、起動遷移中は「…」とする。状態ボタンの終了／起動操作は維持し、ツールチップに明示する。
+- **控えトグルの幅**: 最小幅 430 DIP ではフレームと行の余白を引いた補助アプリ行が数 DIP しか余らない。控えボタンは 60 DIP の透明なヒット領域に丸い矢印アイコンと「控え」だけを置き、閉じる／開くの長文を `Content` に再設定しない。負の左マージンと増やした右マージンでボタンだけを外枠側へ 6 DIP 寄せ、後続の Windows アプリの位置は維持する。開閉は矢印の向き、ツールチップ、Automation 名で示す。
+- **IDE 選択色**: `MainWindow.xaml` の `VsCodeSelected*Brush` / `AntigravitySelected*Brush` を標準表示の IDE 専用スタイルと縮小表示の単一トグルで共有する。VS Code は暗い青背景＋ロゴに近い青の枠（`#102D3F` / `#168FD6`）と明るい青文字、Antigravity は暗い紫背景＋暖色→緑→水色→青紫の中間的な明度の `LinearGradientBrush` 枠と少し落ち着かせた文字色を使う。縮小 A の枠は 1.2 DIP にして多色の変化を視認できるようにする。CLI は従来の緑を維持する。標準 IDE 専用テンプレートはホバー中も選択色を保つ。未検出時の灰色を優先し、ディスプレイ位置を示すフォーカス枠色とは独立させる。
+
+## 17. 配布用 exe の発行（2026-09-27 追加）
+- **ファイル**: `publish.bat`, `README.md`, `TurtleAIQuartetHub.Panel.csproj`
+- **手順**: リポジトリ直下の `publish.bat` は自身の場所へ移動してから `dotnet publish` を実行する。Release / win-x64 / self-contained / single-file を指定し、`dist/turtle-ai-quartet-hub/` に `TurtleAIQuartetHub.exe` を生成する。ダブルクリック時は結果を読めるように待機し、自動確認には `--no-pause` を使う。
+- **配布**: exe に加えて `LICENSE.txt` と `config/turtle-ai-quartet-hub.example.json` を出力フォルダごと渡す。単一ファイル publish を繰り返すと内容ファイルが配布先から消えるため、プロジェクトの `AfterTargets="Publish"` で 2 ファイルを物理ファイルとして再コピーする。バッチでも publish 後に毎回コピーして存在を確認する。`CopyToPublishDirectory=IfDifferent` / `Always` だけでは連続発行時の欠落を防げなかった。
+- **NuGet 監査**: `publish.bat` は `NuGetAudit=true` と `WarningsAsErrors=NU1900` を指定する。脆弱性データ取得に失敗した発行はエラーにし、公式 HTTPS ソースへ正常接続できる環境で再実行する。監査・TLS 検証・証明書検証を無効化しない。
+
+## 18. Smart App Control 向け配布署名（2026-09-27 追加）
+- **現象と原因**: `dist/turtle-ai-quartet-hub/TurtleAIQuartetHub.exe` は通常の `dotnet publish` では未署名となり、この PC の CodeIntegrity Operational ログに ID 3033 / 3077 の署名要件違反として記録された。Zone.Identifier はなくても Smart App Control はブロックする。開発用 `AIUsageChecker Dev` 証明書は自己署名で、配布の信頼には使わない。
+- **発生時期の調査**: Smart App Control の強制ポリシーは少なくとも 2026-08-25 に別の未署名バイナリをブロックしていた。今回の `dist` の単一ファイル exe は 2026-09-27 16:13 に更新され、同じパスがブロックされた最初の記録は 16:28。ユーザーは以前も同じ `dist` のパスから起動できていたため、パスの違いは原因ではない。旧ファイルは上書き済みでハッシュを比較できないが、Smart App Control はクラウド判定で未署名 exe を許可する場合があり、新しいビルドの評価が変わった可能性がある。
+- **手順**: `publish.bat` の通常発行では `scripts/Sign-Release.ps1 -Mode Inspect` が署名状態を表示する。認証局発行のコード署名証明書がある場合だけ、`TURTLE_CODE_SIGN_THUMBPRINT` と `TURTLE_CODE_SIGN_TIMESTAMP_URL` を指定し `publish.bat --sign` を実行する。発行前に証明書の EKU・秘密鍵・有効期限・チェーン・失効を検査し、発行後に SignTool の署名・検証と Authenticode の状態確認を行う。
+- **注意**: 自己署名や Windows 全体の保護解除を解決手段として扱わない。CA 署名でも実機上の Smart App Control 判定を確認する。Store の MSIX 配布は Store 側の署名が必要で、ローカル MSIX の自己署名とは別物。
+
+## 19. 極小表示からの直接切り替え（2026-09-27 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **操作**: 極小表示の上部には標準表示アイコンと縮小表示アイコンを別々に置く。それぞれ `SetDisplayMode` を通して切り替え、フォーカス再前面化の抑制とパネルのアクティブ化を従来の切替ボタンとそろえる。
+- **寸法**: 極小表示は 116×116 DIP のまま。左右 8 DIP の内側余白と両側 1.75 DIP の緑枠を引くとタイトル行の有効幅は 96.5 DIP。表示切替・最小化・閉じるの 4 ボタンを各 23 DIP、合計 92 DIP にして収める。強調枠 2.25 DIP のときも収まる。標準・縮小表示のボタン幅と左右マージンは従来値に戻す。
