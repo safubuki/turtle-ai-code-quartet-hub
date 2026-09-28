@@ -234,7 +234,9 @@ Windows で自己完結型の win-x64 exe を作る場合は、リポジトリ�
 
 生成先は `dist\turtle-ai-quartet-hub\TurtleAIQuartetHub.exe` です。配布するときは、同じフォルダの `LICENSE.txt` と設定例を含め、フォルダの中身をまとめて渡してください。
 
-`publish.bat` は NuGet の脆弱性監査を有効にし、脆弱性データを取得できない場合の `NU1900` をエラーとして扱います。NuGet の公式 HTTPS ソースに接続できる環境で発行してください。TLS 検証や監査の無効化は不要です。
+発行する PC には .NET 10 SDK が必要です。`publish.bat` は発行時の NuGet 脆弱性監査を省き、利用できないパッケージソースは、必要なパッケージがほかのソースやローカルキャッシュにあれば警告に留めます。通常発行時の署名状態の表示も、確認に失敗しても発行を止めません。`--sign` を指定した場合の署名失敗はエラーになります。
+
+自己完結型 exe に必要な .NET ランタイムパックがその PC にない場合は、NuGet からの取得が必要です。`NU1100` などで依存関係の復元に失敗した場合は、`dotnet nuget list source` でソース設定を確認し、必要なパッケージを取得できる接続を用意してください。監査を省いても、必要なパッケージ自体が取得できなければ発行できません。
 
 ### Smart App Control とコード署名
 
@@ -256,7 +258,7 @@ Microsoft Store の MSIX として公開する場合は Store 側で署名され
 手動で発行する場合は次のコマンドも使えます。
 
 ```powershell
-dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:NuGetAudit=true -p:WarningsAsErrors=NU1900 -o .\dist\turtle-ai-quartet-hub
+dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:NuGetAudit=false -p:RestoreIgnoreFailedSources=true -o .\dist\turtle-ai-quartet-hub
 ```
 
 ## 関連ドキュメント

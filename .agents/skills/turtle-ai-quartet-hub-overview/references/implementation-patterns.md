@@ -185,12 +185,13 @@
 - **ファイル**: `publish.bat`, `README.md`, `TurtleAIQuartetHub.Panel.csproj`
 - **手順**: リポジトリ直下の `publish.bat` は自身の場所へ移動してから `dotnet publish` を実行する。Release / win-x64 / self-contained / single-file を指定し、`dist/turtle-ai-quartet-hub/` に `TurtleAIQuartetHub.exe` を生成する。ダブルクリック時は結果を読めるように待機し、自動確認には `--no-pause` を使う。
 - **配布**: exe に加えて `LICENSE.txt` と `config/turtle-ai-quartet-hub.example.json` を出力フォルダごと渡す。単一ファイル publish を繰り返すと内容ファイルが配布先から消えるため、プロジェクトの `AfterTargets="Publish"` で 2 ファイルを物理ファイルとして再コピーする。バッチでも publish 後に毎回コピーして存在を確認する。`CopyToPublishDirectory=IfDifferent` / `Always` だけでは連続発行時の欠落を防げなかった。
-- **NuGet 監査**: `publish.bat` は `NuGetAudit=true` と `WarningsAsErrors=NU1900` を指定する。脆弱性データ取得に失敗した発行はエラーにし、公式 HTTPS ソースへ正常接続できる環境で再実行する。監査・TLS 検証・証明書検証を無効化しない。
+- **NuGet 復元**: `publish.bat` は `NuGetAudit=false` で発行時の監査用通信を省き、`RestoreIgnoreFailedSources=true` で、必要なパッケージが別ソースやキャッシュにある場合は利用できないソースを警告に留める。自己完結型の .NET ランタイムパックを取得できない `NU1100` などは実際の依存関係不足なので失敗を維持する。TLS 検証は無効化しない。
 
 ## 18. Smart App Control 向け配布署名（2026-09-27 追加）
 - **現象と原因**: `dist/turtle-ai-quartet-hub/TurtleAIQuartetHub.exe` は通常の `dotnet publish` では未署名となり、この PC の CodeIntegrity Operational ログに ID 3033 / 3077 の署名要件違反として記録された。Zone.Identifier はなくても Smart App Control はブロックする。開発用 `AIUsageChecker Dev` 証明書は自己署名で、配布の信頼には使わない。
 - **発生時期の調査**: Smart App Control の強制ポリシーは少なくとも 2026-08-25 に別の未署名バイナリをブロックしていた。今回の `dist` の単一ファイル exe は 2026-09-27 16:13 に更新され、同じパスがブロックされた最初の記録は 16:28。ユーザーは以前も同じ `dist` のパスから起動できていたため、パスの違いは原因ではない。旧ファイルは上書き済みでハッシュを比較できないが、Smart App Control はクラウド判定で未署名 exe を許可する場合があり、新しいビルドの評価が変わった可能性がある。
 - **手順**: `publish.bat` の通常発行では `scripts/Sign-Release.ps1 -Mode Inspect` が署名状態を表示する。認証局発行のコード署名証明書がある場合だけ、`TURTLE_CODE_SIGN_THUMBPRINT` と `TURTLE_CODE_SIGN_TIMESTAMP_URL` を指定し `publish.bat --sign` を実行する。発行前に証明書の EKU・秘密鍵・有効期限・チェーン・失効を検査し、発行後に SignTool の署名・検証と Authenticode の状態確認を行う。
+- **通常発行の確認**: 署名状態の表示に失敗しても発行済みファイルは成功として扱い、配布前の手動確認を促す警告を出す。`--sign` では署名・検証の失敗をエラーとして維持する。
 - **注意**: 自己署名や Windows 全体の保護解除を解決手段として扱わない。CA 署名でも実機上の Smart App Control 判定を確認する。Store の MSIX 配布は Store 側の署名が必要で、ローカル MSIX の自己署名とは別物。
 
 ## 19. 極小表示からの直接切り替え（2026-09-27 追加）
