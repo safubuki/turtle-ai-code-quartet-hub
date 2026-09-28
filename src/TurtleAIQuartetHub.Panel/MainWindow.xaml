@@ -1492,21 +1492,27 @@
           <Grid.RowDefinitions>
             <RowDefinition Height="21" />
             <RowDefinition Height="18" />
-            <RowDefinition Height="24" />
+            <RowDefinition Height="46" />
           </Grid.RowDefinitions>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <StackPanel Orientation="Horizontal">
+          <Grid Grid.Column="0" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <Border Width="20" Height="18" CornerRadius="4" Background="#223027"
                     BorderBrush="#335A43" BorderThickness="1" Margin="0,0,5,0">
               <TextBlock Text="{Binding Label}" Foreground="{StaticResource AccentBrush}"
-                         HorizontalAlignment="Center" FontWeight="SemiBold" FontSize="10" />
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         FontWeight="SemiBold" FontSize="11" />
             </Border>
-            <TextBlock Text="{Binding DisplayTitle}" ToolTip="{Binding DisplayTitle}"
-                       Width="115" FontSize="10" FontWeight="SemiBold" />
-          </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" ToolTip="{Binding DisplayTitle}"
+                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+          </Grid>
           <StackPanel Grid.Column="1" Orientation="Horizontal">
             <Button Content="&#xED25;" Tag="{Binding}"
                     Click="RegisterStoredPanelFolderButton_Click"
@@ -1521,20 +1527,20 @@
           </StackPanel>
           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ShortPath}"
                      ToolTip="{Binding WorkspacePath}" Foreground="{StaticResource MutedTextBrush}"
-                     FontSize="9" />
-          <UniformGrid Grid.Row="2" Grid.ColumnSpan="2" Columns="4">
+                     FontSize="10.5" TextTrimming="CharacterEllipsis" />
+          <UniformGrid Grid.Row="2" Grid.ColumnSpan="2" Columns="2">
             <Button Content="A" Tag="{Binding}" CommandParameter="A" Click="ShowStoredPanelButton_Click"
                     Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="0,0,3,0" IsEnabled="{Binding HasContent}" />
+                    Padding="0" Margin="0,0,3,2" IsEnabled="{Binding HasContent}" />
             <Button Content="B" Tag="{Binding}" CommandParameter="B" Click="ShowStoredPanelButton_Click"
                     Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="0,0,3,0" IsEnabled="{Binding HasContent}" />
+                    Padding="0" Margin="3,0,0,2" IsEnabled="{Binding HasContent}" />
             <Button Content="C" Tag="{Binding}" CommandParameter="C" Click="ShowStoredPanelButton_Click"
                     Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="0,0,3,0" IsEnabled="{Binding HasContent}" />
+                    Padding="0" Margin="0,2,3,0" IsEnabled="{Binding HasContent}" />
             <Button Content="D" Tag="{Binding}" CommandParameter="D" Click="ShowStoredPanelButton_Click"
                     Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" IsEnabled="{Binding HasContent}" />
+                    Padding="0" Margin="3,2,0,0" IsEnabled="{Binding HasContent}" />
           </UniformGrid>
         </Grid>
       </Border>
@@ -2050,7 +2056,7 @@
                     RenderTransformOrigin="0.5,0.5" />
             </Grid>
             <TextBlock Text="控え"
-                       FontSize="10"
+                       FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource TextBrush}"
                        VerticalAlignment="Center" />

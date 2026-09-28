@@ -213,3 +213,9 @@
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
 - **対策**: `AuxiliaryApplicationPanel.Tag` に表示モード名を渡し、共通ボタンスタイルの `DataTrigger` で `Compact` のときだけ幅 78 DIP・高さ 25 DIP・文字 10.5 DIP にする。標準表示は 86×28 DIP・文字 11.5 DIP のまま。
 - **注意**: 幅と `MinWidth` を同時に変更しないと、継承した最小幅で縮まない。モード切替時は高さの測定前に `Tag` を更新する。
+
+## 23. 縮小表示の控えカードの割り当てボタン（2026-09-29 追加）
+- **ファイル**: `MainWindow.xaml`
+- **配置**: `CompactStoredPanelTemplate` の A-D ボタンは `UniformGrid Columns="2"` で上段 A/B、下段 C/D とする。カード幅を変えず、各ボタンの横幅を確保する。
+- **高さ**: ボタン行は 46 DIP、各ボタンは高さ 21 DIP とし、縮小表示の控えを開いたときは既存の `GetCompactModeHeight` による実測でウィンドウを縦に広げる。
+- **文字**: 控えトグルとカード番号は 11 DIP、タイトルは 11 DIP、フォルダ名は 10.5 DIP。タイトルは番号の横で縦中央に揃え、利用可能な幅に応じて省略表示する。標準表示の控えカードと割り当て処理は変更しない。
