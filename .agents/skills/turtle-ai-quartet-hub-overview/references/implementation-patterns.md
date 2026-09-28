@@ -197,3 +197,19 @@
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
 - **操作**: 極小表示の上部には標準表示アイコンと縮小表示アイコンを別々に置く。それぞれ `SetDisplayMode` を通して切り替え、フォーカス再前面化の抑制とパネルのアクティブ化を従来の切替ボタンとそろえる。
 - **寸法**: 極小表示は 116×116 DIP のまま。左右 8 DIP の内側余白と両側 1.75 DIP の緑枠を引くとタイトル行の有効幅は 96.5 DIP。表示切替・最小化・閉じるの 4 ボタンを各 23 DIP、合計 92 DIP にして収める。強調枠 2.25 DIP のときも収まる。標準・縮小表示のボタン幅と左右マージンは従来値に戻す。
+
+## 20. Windows 補助アプリの表示選別（2026-09-28 追加）
+- **ファイル**: `Models/LauncherApplication.cs`, `Models/AppConfig.cs`, `Services/StatusStore.cs`
+- **対策**: `ShowInAuxiliaryLauncher` で `chatgpt-app` だけを表示対象から外す。`StatusStore` の初期生成時と設定再読み込み時の両方に同じ条件を使い、標準・縮小表示と Jump List を同期する。旧 ChatGPT 設定は破棄しない。
+- **Codex 表記**: `codex-app` の既定 `ShortName` は `GPT/Codex`。旧設定の `ShortName=Codex` は正規化時に移行し、ID・検出条件・起動処理は維持する。
+- **注意**: 2026-09-28 より前の「4 ボタン」の記述は変更前の仕様。縮小表示の幅 430 DIP で新しい 3 ボタン行が収まることを確認する。
+
+## 21. 控えと AI アプリボタンの左右配置（2026-09-28 追加）
+- **ファイル**: `MainWindow.xaml`
+- **対策**: 縮小表示の `CompactStoredPanelsToggleButton` を右側 StackPanel から独立させ、`StoredPanelsRowGrid` の左端へ配置する。標準表示の控え Expander は既存どおり左に置く。共用の `AIアプリ` ラベルと起動ボタンは右揃えにする。
+- **寸法**: 3 ボタンは `AuxiliaryApplicationButtonStyle` で幅 86 DIP・高さ 28 DIP・文字 11.5 DIP に統一し、`AIアプリ` ラベルは文字 11 DIP にする。最小幅 430 DIP の縮小表示で左右の操作が重ならないことを確認する。
+
+## 22. 縮小表示の AI アプリボタン寸法（2026-09-28 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **対策**: `AuxiliaryApplicationPanel.Tag` に表示モード名を渡し、共通ボタンスタイルの `DataTrigger` で `Compact` のときだけ幅 78 DIP・高さ 25 DIP・文字 10.5 DIP にする。標準表示は 86×28 DIP・文字 11.5 DIP のまま。
+- **注意**: 幅と `MinWidth` を同時に変更しないと、継承した最小幅で縮まない。モード切替時は高さの測定前に `Tag` を更新する。

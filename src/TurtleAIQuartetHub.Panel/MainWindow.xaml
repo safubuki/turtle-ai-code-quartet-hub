@@ -326,16 +326,24 @@
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
-      <Setter Property="MinWidth" Value="68" />
-      <Setter Property="Width" Value="68" />
-      <Setter Property="Height" Value="24" />
-      <Setter Property="FontSize" Value="9.5" />
-      <Setter Property="Padding" Value="2,0" />
+      <Setter Property="MinWidth" Value="86" />
+      <Setter Property="Width" Value="86" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="4,0" />
       <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="ToolTip" Value="{Binding ToolTip}" />
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
       <Setter Property="Background" Value="#0E2030" />
       <Setter Property="BorderBrush" Value="#2C6888" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}" Value="Compact">
+          <Setter Property="MinWidth" Value="78" />
+          <Setter Property="Width" Value="78" />
+          <Setter Property="Height" Value="25" />
+          <Setter Property="FontSize" Value="10.5" />
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
 
     <Style x:Key="VisibilityRestoreButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -2009,18 +2017,16 @@
       </Border>
       </Expander>
 
-      <StackPanel Orientation="Horizontal"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Top"
-                  Margin="0,4,4,0"
-                  Panel.ZIndex="2">
-        <Button x:Name="CompactStoredPanelsToggleButton"
+      <Button x:Name="CompactStoredPanelsToggleButton"
                 Width="60"
                 Height="24"
                 MinHeight="24"
                 MinWidth="0"
                 Padding="4,0"
-                Margin="-6,0,10,0"
+                Margin="0,6,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Panel.ZIndex="2"
                 Background="Transparent"
                 BorderThickness="0"
                 Visibility="Collapsed"
@@ -2049,12 +2055,17 @@
                        Foreground="{StaticResource TextBrush}"
                        VerticalAlignment="Center" />
           </StackPanel>
-        </Button>
-        <TextBlock Text="Windows"
+      </Button>
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Top"
+                  Margin="0,4,4,0"
+                  Panel.ZIndex="2">
+        <TextBlock Text="AIアプリ"
                    Foreground="{StaticResource MutedTextBrush}"
-                   FontSize="9"
+                   FontSize="11"
                    FontWeight="SemiBold"
-                   Margin="0,0,4,0" />
+                   Margin="0,0,6,0" />
         <ItemsControl x:Name="AuxiliaryApplicationPanel"
                       ItemsSource="{Binding AuxiliaryApplications}">
           <ItemsControl.ItemsPanel>

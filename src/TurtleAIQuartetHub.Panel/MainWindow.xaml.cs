@@ -3082,6 +3082,7 @@ public partial class MainWindow : Window
         CompactBarPanel.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         MicroPanel.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
         CompactStoredPanelsToggleButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        AuxiliaryApplicationPanel.Tag = mode.ToString();
         UpdateCompactStoredPanelsVisibility();
         StoredPanelsExpander.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;

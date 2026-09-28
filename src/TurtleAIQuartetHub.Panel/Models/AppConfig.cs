@@ -300,6 +300,11 @@ public sealed class AppConfig
         app.Id = NormalizeApplicationId(app.Id);
         app.DisplayName = string.IsNullOrWhiteSpace(app.DisplayName) ? app.Id : app.DisplayName.Trim();
         app.ShortName = string.IsNullOrWhiteSpace(app.ShortName) ? app.DisplayName : app.ShortName.Trim();
+        if (string.Equals(app.Id, "codex-app", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(app.ShortName, "Codex", StringComparison.OrdinalIgnoreCase))
+        {
+            app.ShortName = "GPT/Codex";
+        }
         app.Command = Environment.ExpandEnvironmentVariables(app.Command?.Trim() ?? string.Empty);
         app.Arguments ??= [];
         app.Arguments = app.Arguments
@@ -541,7 +546,7 @@ public sealed class AppConfig
             {
                 Id = "codex-app",
                 DisplayName = "Codex",
-                ShortName = "Codex",
+                ShortName = "GPT/Codex",
                 Kind = ApplicationKind.SingleWindowAgent,
                 Command = string.Empty,
                 Arguments = [],

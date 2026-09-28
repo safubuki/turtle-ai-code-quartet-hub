@@ -6,7 +6,7 @@
 
 Turtle AI Code Quartet Hub は、A-D の 4 スロットそれぞれで起動対象アプリを選べるランチャーです。既定は VS Code ですが、Google Antigravity を workspace IDE として、Codex / GitHub Copilot / Antigravity CLI / Claude を workspace CLI として起動できます。
 
-Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別扱いです。これらはワークスペース単位の 2x2 管理対象ではなく、補助アプリボタンとして控え Quartet と同じ行の右端に表示します。
+Codex / Claude / Antigravity2 の Windows アプリ版は CLI とは別扱いです。これらはワークスペース単位の 2x2 管理対象ではなく、補助アプリボタンとして控え Quartet と同じ行の右端に表示します。旧 ChatGPT Classic アプリの起動定義は既存設定との互換性のため残しますが、ボタンは表示しません。
 
 ## アプリ種別
 
@@ -54,7 +54,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 
 対象:
 - Codex Windows アプリ (`codex-app`)
-- ChatGPT Windows アプリ (`chatgpt-app`)
+- ChatGPT Classic Windows アプリ (`chatgpt-app`、旧設定互換用・ボタン非表示)
 - Claude Windows アプリ (`claude-app`)
 - Antigravity2 Windows アプリ (`antigravity-app`)
 - ユーザー設定で追加された単一ウィンドウ型アプリ
@@ -81,7 +81,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 - スロット右上のゴミ箱アイコンを押すと削除確認ダイアログを表示する。`削除する` で visible slot の保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中ウィンドウは閉じずに管理対象から外す。
 - 実行中スロットのアクションボタンは `閉じる` と表示する。
 - タイトルバーの右上ボタンは、縮小表示、`?` ヘルプ、設定、最小化、閉じるの順に並べる。ヘルプは枠付きセクションで CLI インストールコマンド、IDE / Windows アプリは公式サイト参照、承認確認を減らす起動オプション例と注意書きを表示する。Antigravity CLI は公式の PowerShell / CMD インストールコマンド、Claude Code は公式インストーラの curl コマンドと npm コマンドの両方を表示する。本文とコマンドは選択コピーできるようにする。
-- 補助アプリボタンは `Windows` ラベル付きで、控え Quartet と同じ行の右端に表示する。表示順は ChatGPT / Codex / Claude / Antigravity2 とし、Antigravity2 は Claude の右側に置く。
+- 補助アプリボタンは `AIアプリ` ラベル付きで、控え Quartet と同じ行の右端に表示する。標準表示と縮小表示の両方で `GPT/Codex` / Claude / Antigravity2 の順に置く。標準表示は幅 86 DIP・高さ 28 DIP・文字 11.5 DIP、縮小表示は幅 78 DIP・高さ 25 DIP・文字 10.5 DIP とし、各表示モード内で 3 ボタンを同寸にする。ChatGPT Classic ボタンは表示しない。
 - 標準表示ではスロット領域をカード実寸に詰め、控え Quartet までの黒い余白を作らない。下部の `Launch Quartet` ボタンも見切れないようにする。
 
 ### 縮小表示
@@ -90,7 +90,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 - 初期表示時から C/D のスロット行と `Windows` 補助アプリボタンが見える高さを確保する。
 - 各スロットに 1 個の IDE トグルを置き、VS Code 選択中は青の V、Antigravity IDE 選択中は多色グラデーション枠の A を表示する。標準表示の IDE 選択色も同じ配色とする。押すともう一方へ切り替える。未起動時は選択だけ変更し、IDE 以外の選択中は中立記号を表示して、利用可能な IDE を選ぶ。
 - スロットのウィンドウが開いているときは緑の「起」、停止中は赤の「停」を表示する。状態ボタンはクリックで終了・起動でき、ツールチップに操作を示す。
-- 控えの開閉は補助アプリ行の左端に丸い矢印アイコンと「控え」だけで表示する。開いているときは矢印を上向きにし、外枠へ寄せて最小幅でも欠けない寸法にする。
+- 控えの開閉は補助アプリ行の左端に丸い矢印アイコンと「控え」だけで表示する。開いているときは矢印を上向きにし、外枠へ寄せて最小幅でも欠けない寸法にする。`AIアプリ` と 3 つの起動ボタンは同じ行の右端へそろえる。
 - AI 状態に由来する色変更、点滅、状態ピルは表示しない。
 
 ### 集中表示
@@ -143,7 +143,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
     {
       "id": "codex-app",
       "displayName": "Codex",
-      "shortName": "Codex",
+      "shortName": "GPT/Codex",
       "kind": "SingleWindowAgent",
       "command": "",
       "arguments": [],
@@ -182,7 +182,7 @@ Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは�
 - 別アプリボタンを押したとき、現在のスロットウィンドウを閉じてから選択アプリへ切り替わる。
 - GitHub Copilot CLI は対象ワークスペースで `copilot` だけを実行する。
 - Antigravity は対象スロットの象限へ配置され、起動直後に中央へ戻っても遅延再配置で戻る。
-- Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版ボタンが `Windows` ラベル付きで補助ボタン行に表示され、Antigravity2 が Claude の右側に表示される。
+- 標準表示と縮小表示で `GPT/Codex` / Claude / Antigravity2 の Windows アプリ版ボタンが `AIアプリ` ラベル付きで右揃えの補助ボタン行に表示され、ChatGPT Classic ボタンは表示されない。3 ボタンは同寸で、縮小表示の「控え」は左揃えとする。
 - 未検出アプリは起動できず、理由が表示される。
 - 右上のゴミ箱アイコンから visible slot の保存情報をクリアできる。
 - 右上ボタンが縮小表示、ヘルプ、設定、最小化、閉じるの順で表示される。

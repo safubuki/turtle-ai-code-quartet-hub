@@ -44,7 +44,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         var applicationDetectionService = new ApplicationDetectionService();
         Applications = new ObservableCollection<LauncherApplication>(applicationDetectionService.Detect(config));
         WorkspaceApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsWorkspaceApplication));
-        AuxiliaryApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.IsSingleWindowAgent));
+        AuxiliaryApplications = new ObservableCollection<LauncherApplication>(Applications.Where(app => app.ShowInAuxiliaryLauncher));
         ApplicationPathSettings = new ObservableCollection<ApplicationPathSetting>(
             Applications.Select(app => new ApplicationPathSetting(app)));
         Slots = new ObservableCollection<WindowSlot>(config.Slots.Select(slot => new WindowSlot(slot)));
@@ -347,7 +347,7 @@ public sealed class StatusStore : INotifyPropertyChanged
             {
                 WorkspaceApplications.Add(application);
             }
-            else if (application.IsSingleWindowAgent)
+            else if (application.ShowInAuxiliaryLauncher)
             {
                 AuxiliaryApplications.Add(application);
             }

@@ -76,3 +76,9 @@
 - 開発実行: `.\scripts\Build-Panel.ps1 -Run`
 - Store readiness: `.\scripts\Test-StoreReadiness.ps1`
 - ローカル MSIX: `.\scripts\New-LocalMsixPackage.ps1`
+
+## Windows 補助アプリボタン（2026-09-28 更新）
+- 標準表示と縮小表示では同じ `AuxiliaryApplications` を使用する。表示する既定ボタンは `GPT/Codex`、Claude、Antigravity2 の順で、ChatGPT Classic の `chatgpt-app` ボタンは表示しない。
+- `chatgpt-app` の設定定義は既存ユーザー設定との互換性のため維持する。Codex Windows アプリの ID と検出条件は変えず、旧 `ShortName=Codex` を読み込んだときは `GPT/Codex` に移行する。
+- 2026-09-28 のレイアウト調整では、縮小表示の「控え」を左端へ分離し、共用行の `AIアプリ` ラベルと 3 ボタンを右揃えにした。ボタンは同寸の 86×28 DIP、文字 11.5 DIP。
+- その後の縮小表示調整では、標準表示の寸法を維持したまま、縮小表示の 3 ボタンだけを 78×25 DIP・文字 10.5 DIP にした。

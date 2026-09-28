@@ -50,6 +50,9 @@ public sealed class LauncherApplication : INotifyPropertyChanged
 
     public bool IsSingleWindowAgent => Kind == ApplicationKind.SingleWindowAgent;
 
+    public bool ShowInAuxiliaryLauncher => IsSingleWindowAgent
+        && !string.Equals(Id, "chatgpt-app", StringComparison.OrdinalIgnoreCase);
+
     public IReadOnlyList<string> ProcessNames => Detection.ProcessNames;
 
     public ApplicationAvailabilityStatus AvailabilityStatus
