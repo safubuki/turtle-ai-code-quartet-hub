@@ -220,3 +220,9 @@
 - **配置**: `CompactStoredPanelTemplate` の A-D ボタンは `UniformGrid Columns="2"` で上段 A/B、下段 C/D とする。カード幅を変えず、各ボタンの横幅を確保する。
 - **高さ**: ボタン行は 46 DIP、各ボタンは高さ 21 DIP とし、縮小表示の控えを開いたときは既存の `GetCompactModeHeight` による実測でウィンドウを縦に広げる。
 - **文字**: 控えトグルとカード番号は 11 DIP、タイトルは 11 DIP、フォルダ名は 10.5 DIP。タイトルは番号の横で縦中央に揃え、利用可能な幅に応じて省略表示する。標準表示の控えカードと割り当て処理は変更しない。
+
+## 24. 縮小・極小表示のスロットカード入替（2026-09-29 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **操作**: `CompactSlotTemplate` と `MicroSlotTemplate` の外側 Button を標準カードと同じ `SlotCard_*` ドラッグ処理へ接続する。ドロップ後は `SwapSlotContents` と `ArrangeSlotsAfterPanelStateChangeWithSettlingAsync` を共用し、カードと管理ウィンドウの位置を同期する。
+- **誤操作防止**: 外側 Button はドラッグ開始対象、縮小カード内側の IDE / 起動ボタンは対象外。押し始めた要素を記憶し、内側ボタンからポインタが外れても入替を開始しない。ドラッグ終了直後の外側 Button の Click はフォーカス切替に使わない。
+- **表示**: ドロップ先の光彩は DragLeave / Drop で解除する。標準カードの `FocusFrameBrush` Binding を維持する。

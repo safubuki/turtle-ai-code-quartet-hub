@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using TurtleAIQuartetHub.Panel.Models;
 using TurtleAIQuartetHub.Panel.Services;
@@ -89,6 +90,7 @@ public partial class MainWindow : Window
     // 非表示（一括最小化）に入る直前のフォーカス（ディスプレイごとに 1 つ）を覚え、表示時に復帰する。
     private readonly List<WindowSlot> _hiddenFocusedSlots = [];
     private Point _dragStartPoint;
+    private bool _slotCardDragStartedOnInteractiveChild;
     private bool _isCardDragDropInProgress;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
     private CancellationTokenSource? _focusSwitchArrangeCancellation;
@@ -847,7 +849,7 @@ public partial class MainWindow : Window
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        if (_isBusy || IsSlotFocusSuppressedByDrag() || sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
         }
@@ -917,7 +919,7 @@ public partial class MainWindow : Window
 
     private void MicroSlotButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        if (_isBusy || IsSlotFocusSuppressedByDrag() || sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
         }
@@ -1071,7 +1073,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (IsInteractiveCardChild(e.OriginalSource as DependencyObject))
+        if (IsInteractiveCardChild(e.OriginalSource as DependencyObject, sender as DependencyObject))
         {
             return;
         }
@@ -1082,16 +1084,20 @@ public partial class MainWindow : Window
     private void SlotCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStartPoint = e.GetPosition(null);
+        _slotCardDragStartedOnInteractiveChild = IsInteractiveCardChild(
+            e.OriginalSource as DependencyObject,
+            sender as DependencyObject);
     }
 
     private void SlotCard_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || IsSlotFocusSuppressedByDrag())
+        if (_isBusy || e.LeftButton != MouseButtonState.Pressed || IsSlotFocusSuppressedByDrag())
         {
             return;
         }
 
-        if (IsInteractiveCardChild(e.OriginalSource as DependencyObject))
+        if (_slotCardDragStartedOnInteractiveChild
+            || IsInteractiveCardChild(e.OriginalSource as DependencyObject, sender as DependencyObject))
         {
             return;
         }
@@ -1124,43 +1130,40 @@ public partial class MainWindow : Window
 
     private void SlotCard_DragEnter(object sender, DragEventArgs e)
     {
-        if (sender is not Border border || !e.Data.GetDataPresent("WindowSlot"))
+        var sourceSlot = e.Data.GetData("WindowSlot") as WindowSlot;
+        var targetSlot = (sender as FrameworkElement)?.Tag as WindowSlot;
+        if (_isBusy || sourceSlot is null || targetSlot is null || ReferenceEquals(sourceSlot, targetSlot))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
             return;
         }
 
-        var sourceSlot = e.Data.GetData("WindowSlot") as WindowSlot;
-        var targetSlot = border.Tag as WindowSlot;
-        if (sourceSlot is not null && targetSlot is not null && !ReferenceEquals(sourceSlot, targetSlot))
-        {
-            border.BorderBrush = (SolidColorBrush)FindResource("AccentBrush");
-        }
+        SetSlotCardDropHighlight(sender, true);
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
     }
 
     private void SlotCard_DragLeave(object sender, DragEventArgs e)
     {
-        if (sender is Border border)
-        {
-            border.ClearValue(Border.BorderBrushProperty);
-        }
+        SetSlotCardDropHighlight(sender, false);
     }
 
     private void SlotCard_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent("WindowSlot") ? DragDropEffects.Move : DragDropEffects.None;
+        var sourceSlot = e.Data.GetData("WindowSlot") as WindowSlot;
+        var targetSlot = (sender as FrameworkElement)?.Tag as WindowSlot;
+        e.Effects = !_isBusy && sourceSlot is not null && targetSlot is not null && !ReferenceEquals(sourceSlot, targetSlot)
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
         e.Handled = true;
     }
 
     private async void SlotCard_Drop(object sender, DragEventArgs e)
     {
-        if (sender is Border border)
-        {
-            border.ClearValue(Border.BorderBrushProperty);
-        }
+        SetSlotCardDropHighlight(sender, false);
 
-        if (!e.Data.GetDataPresent("WindowSlot"))
+        if (_isBusy || !e.Data.GetDataPresent("WindowSlot"))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -1172,6 +1175,8 @@ public partial class MainWindow : Window
 
         if (sourceSlot is null || targetSlot is null || ReferenceEquals(sourceSlot, targetSlot))
         {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
 
@@ -1193,6 +1198,36 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             DiagnosticLog.Write(ex);
+        }
+    }
+
+    private void SetSlotCardDropHighlight(object sender, bool isHighlighted)
+    {
+        if (sender is Border border)
+        {
+            // フォーカス枠の Binding を維持したまま、ドラッグ中だけ色を変える。
+            var brush = isHighlighted
+                ? (Brush)FindResource("AccentBrush")
+                : (border.Tag as WindowSlot)?.FocusFrameBrush ?? Brushes.Transparent;
+            border.SetCurrentValue(Border.BorderBrushProperty, brush);
+        }
+        else if (sender is Button button)
+        {
+            // 縮小・極小カードは Button テンプレート内部に枠があるため、外側に光彩を出す。
+            if (isHighlighted)
+            {
+                button.Effect = new DropShadowEffect
+                {
+                    Color = Color.FromRgb(69, 212, 131),
+                    BlurRadius = 14,
+                    ShadowDepth = 0,
+                    Opacity = 0.8
+                };
+            }
+            else
+            {
+                button.ClearValue(UIElement.EffectProperty);
+            }
         }
     }
 
@@ -4146,10 +4181,15 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private static bool IsInteractiveCardChild(DependencyObject? source)
+    private static bool IsInteractiveCardChild(DependencyObject? source, DependencyObject? cardRoot = null)
     {
         while (source is not null)
         {
+            if (ReferenceEquals(source, cardRoot))
+            {
+                return false;
+            }
+
             if (source is ButtonBase)
             {
                 return true;

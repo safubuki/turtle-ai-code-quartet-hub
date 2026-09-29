@@ -1408,6 +1408,13 @@
     <DataTemplate x:Key="MicroSlotTemplate" DataType="{x:Type models:WindowSlot}">
       <Button Tag="{Binding}"
               Click="MicroSlotButton_Click"
+              PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
+              PreviewMouseMove="SlotCard_PreviewMouseMove"
+              AllowDrop="True"
+              DragEnter="SlotCard_DragEnter"
+              DragLeave="SlotCard_DragLeave"
+              DragOver="SlotCard_DragOver"
+              Drop="SlotCard_Drop"
               ToolTip="{Binding DisplayTitle}"
               Style="{StaticResource MicroSlotButtonStyle}">
         <!-- ラベルはタイトル先頭 1〜2 文字（MicroLabel）。全角 2 文字だとセル幅を超えうるので
@@ -1434,6 +1441,13 @@
     <DataTemplate x:Key="CompactSlotTemplate" DataType="{x:Type models:WindowSlot}">
       <Button Tag="{Binding}"
               Click="CompactSlotButton_Click"
+              PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
+              PreviewMouseMove="SlotCard_PreviewMouseMove"
+              AllowDrop="True"
+              DragEnter="SlotCard_DragEnter"
+              DragLeave="SlotCard_DragLeave"
+              DragOver="SlotCard_DragOver"
+              Drop="SlotCard_Drop"
               Style="{StaticResource CompactSlotButtonStyle}">
         <Grid VerticalAlignment="Center">
           <Grid.ColumnDefinitions>
