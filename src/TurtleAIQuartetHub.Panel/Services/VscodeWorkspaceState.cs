@@ -296,14 +296,18 @@ public static class VscodeWorkspaceState
         var roamingAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         if (!string.IsNullOrWhiteSpace(roamingAppData))
         {
+            yield return Path.Combine(roamingAppData, "Antigravity IDE");
             yield return Path.Combine(roamingAppData, "Antigravity");
+            yield return Path.Combine(roamingAppData, "Google", "Antigravity IDE");
             yield return Path.Combine(roamingAppData, "Google", "Antigravity");
         }
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (!string.IsNullOrWhiteSpace(localAppData))
         {
+            yield return Path.Combine(localAppData, "Antigravity IDE");
             yield return Path.Combine(localAppData, "Antigravity");
+            yield return Path.Combine(localAppData, "Google", "Antigravity IDE");
             yield return Path.Combine(localAppData, "Google", "Antigravity");
         }
     }

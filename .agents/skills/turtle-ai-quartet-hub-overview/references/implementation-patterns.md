@@ -19,7 +19,7 @@
 - 既定のスロットアプリは VS Code (`vscode`)。一括起動はスロットごとの `ApplicationId` に従う。
 - VS Code は `VscodeLauncher` に残し、remote URI と workspaceStorage 読み取りの既存挙動を壊さない。既定は標準プロファイル共有（`useDedicatedUserDataDirs=false`）。専用 user-data-dir は任意で、有効時だけ `code.lock` 再接続を使う。
 - VS Code の workspaceStorage は `GetEffectiveUserDataDirectory` を読む。共有プロファイル時にスロット別フォルダを見ると、保存済みワークスペースやレイアウトが空に見える。
-- Antigravity のワークスペース推定は VS Code 互換の `workspaceStorage` 形式を使い、`%APPDATA%/Antigravity/User/workspaceStorage` などの実アプリデータ候補を新しい順に見て、ウィンドウタイトルにワークスペース名が含まれるパスだけを採用する。
+- Antigravity のワークスペース推定は VS Code 互換の `workspaceStorage` 形式を使い、`%APPDATA%/Antigravity IDE/User/workspaceStorage` を含む実アプリデータ候補を見て、ウィンドウタイトルにワークスペース名が含まれるパスだけを採用する。`Antigravity IDE` は workspace IDE の実際のデータフォルダ名で、`Antigravity` は別の Windows アプリにも使われるため、IDE 名の候補を優先しつつ旧候補を残す。
 - Antigravity など VS Code 以外の workspace IDE は `ApplicationLauncher` の汎用起動で扱う。起動プロセスと表示ウィンドウのプロセス ID がずれるため、新規ウィンドウハンドルで割り当てる。
 - Antigravity IDE は `%LOCALAPPDATA%/Programs/Antigravity IDE/Antigravity IDE.exe` 相当を優先検出する。過去設定の bare `antigravity` は新しい Antigravity Windows アプリと衝突しやすいため、既定検出へ戻して IDE 側を開く。
 - Antigravity や terminal が起動完了後に中央へ戻ることがあるため、起動確認直後の配置に加えて短い遅延再配置を複数回行う。標準またはやや低性能な PC に備えて 8 秒、12 秒後の再配置も行い、ユーザーが集中表示に入った後は再配置しない。

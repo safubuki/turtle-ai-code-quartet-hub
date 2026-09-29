@@ -32,7 +32,7 @@
 - Antigravity IDE は `%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe` 相当から、Antigravity2 は `%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe` 相当から、Windows 10 / Windows 11 のユーザープロファイル差に依存せず検出できること。
 - 未検出アプリはグレーアウトし、理由がツールチップまたはメッセージで分かること。
 - VS Code / Antigravity の workspaceStorage 読み取りに失敗しても、保存済みワークスペースパスが消えないこと。
-- Antigravity でウィンドウ起動後にアプリ内から対象フォルダを開いた場合も、`%APPDATA%/Antigravity/User/workspaceStorage` とウィンドウタイトルから最新ワークスペースパスを保存できること。
+- Antigravity でウィンドウ起動後にアプリ内から対象フォルダを開いた場合も、`%APPDATA%/Antigravity IDE/User/workspaceStorage` とウィンドウタイトルから最新ワークスペースパスを保存できること。旧 `Antigravity` 保存先も読み取れること。
 - 正しく開けたワークスペースは、タイトルと保存済みパスに反映されること。
 - VS Code で `zenn-contents` を開き、編集中ファイル名に `2025` などが含まれていても、保存済みパスとパネルタイトルは `2025` フォルダではなく実際のワークスペースになること。閉じて再起動しても同じフォルダが開くこと。
 - `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が、管理ウィンドウ終了確認に加えてワークスペースタイトル照合の回帰も通ること。
