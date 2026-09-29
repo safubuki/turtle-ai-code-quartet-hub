@@ -48,13 +48,40 @@ if defined SIGN_RELEASE (
     )
 )
 
-echo Publishing a self-contained, single-file win-x64 executable...
-dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained true ^
+echo Restoring packages for a self-contained win-x64 publish...
+dotnet restore "%PROJECT%" -r win-x64 ^
+    -p:Configuration=Release ^
+    -p:SelfContained=true ^
     -p:PublishSingleFile=true ^
     -p:IncludeNativeLibrariesForSelfExtract=true ^
     -p:DebugType=None ^
     -p:NuGetAudit=false ^
-    -p:RestoreIgnoreFailedSources=true ^
+    -p:RestoreIgnoreFailedSources=true
+if errorlevel 1 (
+    echo [WARN] Restore with configured NuGet sources failed. Retrying with official nuget.org...
+    dotnet restore "%PROJECT%" -r win-x64 ^
+        --source https://api.nuget.org/v3/index.json ^
+        -p:Configuration=Release ^
+        -p:SelfContained=true ^
+        -p:PublishSingleFile=true ^
+        -p:IncludeNativeLibrariesForSelfExtract=true ^
+        -p:DebugType=None ^
+        -p:NuGetAudit=false
+    if errorlevel 1 (
+        echo [ERROR] Required .NET publish packs could not be restored.
+        echo [INFO] Check the .NET 10 SDK, NuGet sources, and access to https://api.nuget.org/v3/index.json.
+        echo [INFO] Configured NuGet sources:
+        dotnet nuget list source
+        goto :failed
+    )
+)
+
+echo Publishing a self-contained, single-file win-x64 executable...
+dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained true --no-restore ^
+    -p:PublishSingleFile=true ^
+    -p:IncludeNativeLibrariesForSelfExtract=true ^
+    -p:DebugType=None ^
+    -p:NuGetAudit=false ^
     -o "%OUTPUT%"
 if errorlevel 1 (
     echo [ERROR] Publish failed.

@@ -185,7 +185,7 @@
 - **ファイル**: `publish.bat`, `README.md`, `TurtleAIQuartetHub.Panel.csproj`
 - **手順**: リポジトリ直下の `publish.bat` は自身の場所へ移動してから `dotnet publish` を実行する。Release / win-x64 / self-contained / single-file を指定し、`dist/turtle-ai-quartet-hub/` に `TurtleAIQuartetHub.exe` を生成する。ダブルクリック時は結果を読めるように待機し、自動確認には `--no-pause` を使う。
 - **配布**: exe に加えて `LICENSE.txt` と `config/turtle-ai-quartet-hub.example.json` を出力フォルダごと渡す。単一ファイル publish を繰り返すと内容ファイルが配布先から消えるため、プロジェクトの `AfterTargets="Publish"` で 2 ファイルを物理ファイルとして再コピーする。バッチでも publish 後に毎回コピーして存在を確認する。`CopyToPublishDirectory=IfDifferent` / `Always` だけでは連続発行時の欠落を防げなかった。
-- **NuGet 復元**: `publish.bat` は `NuGetAudit=false` で発行時の監査用通信を省き、`RestoreIgnoreFailedSources=true` で、必要なパッケージが別ソースやキャッシュにある場合は利用できないソースを警告に留める。自己完結型の .NET ランタイムパックを取得できない `NU1100` などは実際の依存関係不足なので失敗を維持する。TLS 検証は無効化しない。
+- **NuGet 復元**: `publish.bat` は `win-x64` / `SelfContained=true` / `PublishSingleFile=true` の条件で明示的に restore してから `publish --no-restore` を行う。通常の設定で復元できなければ公式 `https://api.nuget.org/v3/index.json` を指定して一度再試行する。`NuGetAudit=false` で発行時の監査用通信を省き、通常ソースの `RestoreIgnoreFailedSources=true` で利用できないソースを警告に留める。自己完結型の .NET ランタイムパックを取得できない `NU1100` などは失敗を維持し、ソース一覧と接続確認先を表示する。TLS 検証は無効化しない。
 
 ## 18. Smart App Control 向け配布署名（2026-09-27 追加）
 - **現象と原因**: `dist/turtle-ai-quartet-hub/TurtleAIQuartetHub.exe` は通常の `dotnet publish` では未署名となり、この PC の CodeIntegrity Operational ログに ID 3033 / 3077 の署名要件違反として記録された。Zone.Identifier はなくても Smart App Control はブロックする。開発用 `AIUsageChecker Dev` 証明書は自己署名で、配布の信頼には使わない。

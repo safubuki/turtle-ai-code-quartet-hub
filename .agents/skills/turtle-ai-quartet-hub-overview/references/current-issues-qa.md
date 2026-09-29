@@ -10,6 +10,7 @@
 - `publish.bat --no-pause` を連続 2 回実行しても、Release / win-x64 の自己完結・単一 exe を生成でき、`dist/turtle-ai-quartet-hub/` に `TurtleAIQuartetHub.exe`、`LICENSE.txt`、設定例がそろうこと。
 - 未署名の通常発行では Smart App Control にブロックされ得る警告を出し、`publish.bat --sign --no-pause` では認証局発行の有効なコード署名証明書がない場合に署名成功を装わず失敗すること。署名付き発行後は SignTool と Authenticode の検証が通ること。
 - NuGet 脆弱性データへ接続できなくても発行時の監査で止まらないこと。利用できないソースがあっても、必要なパッケージが別ソースやキャッシュにあれば発行できること。必要なランタイムパックがどこにもなければ `NU1100` などの復元失敗を成功と表示しないこと。TLS 検証を無効化しないこと。
+- 別 PC で通常の NuGet ソースに .NET ランタイムパックがない場合、`publish.bat` は公式 nuget.org で一度だけ復元を再試行すること。取得できない場合はソース一覧と確認先を示して失敗し、不完全な exe を成功として報告しないこと。
 - 既定状態で 4 つの VS Code を起動し、2x2 に配置できること。
 - 既定では VS Code の標準プロファイルを共有し、`%LOCALAPPDATA%/TurtleAIQuartetHub/user-data` にスロット別 Cache / WebStorage を作らないこと。過去の専用プロファイルが残っていれば起動後に回収されること。
 - 共有プロファイルでも、スロットのワークスペースパスとサイドバー幅は `slots.json` と実際の VS Code workspaceStorage から復元できること。チャットのモデル選択やサインイン状態が `storage.json` の書き換えで巻き戻らないこと。
