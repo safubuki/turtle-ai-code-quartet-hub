@@ -226,3 +226,7 @@
 - **操作**: `CompactSlotTemplate` と `MicroSlotTemplate` の外側 Button を標準カードと同じ `SlotCard_*` ドラッグ処理へ接続する。ドロップ後は `SwapSlotContents` と `ArrangeSlotsAfterPanelStateChangeWithSettlingAsync` を共用し、カードと管理ウィンドウの位置を同期する。
 - **誤操作防止**: 外側 Button はドラッグ開始対象、縮小カード内側の IDE / 起動ボタンは対象外。押し始めた要素を記憶し、内側ボタンからポインタが外れても入替を開始しない。ドラッグ終了直後の外側 Button の Click はフォーカス切替に使わない。
 - **表示**: ドロップ先の光彩は DragLeave / Drop で解除する。標準カードの `FocusFrameBrush` Binding を維持する。
+
+## 25. 標準表示の通知メッセージ（2026-09-30 追加）
+- **ファイル**: `MainWindow.xaml`
+- **表示**: `FooterControlsGrid` の `Message` は文字サイズ 14 DIP、上下中央揃え、`TextWrapping="Wrap"` で表示する。幅に収まらない場合は複数行にし、親の Auto 行で高さを確保する。固定高さや省略表示を追加しない。
