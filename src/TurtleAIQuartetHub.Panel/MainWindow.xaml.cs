@@ -16,9 +16,10 @@ namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow : Window
 {
-    private const double CompactWindowMinHeight = 146;
+    private const double CompactWindowMinHeight = 136;
     private const double CompactWindowMinWidth = 430;
     private const double CompactWindowWidthScale = 0.64;
+    private const double CompactPanelBorderThickness = 1.75;
     private const double MicroWindowSize = 116;
     private const double ExitConfirmViewportWidth = 430;
     private const double ExitConfirmViewportHeight = 250;
@@ -3192,6 +3193,14 @@ public partial class MainWindow : Window
     private void UpdateDisplayModeChrome()
     {
         var isMicro = _displayMode == DisplayMode.Micro;
+        RootLayoutGrid.Margin = IsCompactMode ? new Thickness(8, 8, 8, 6) : new Thickness(8);
+        // 控えの開閉で操作行が伸縮しないよう、縮小時は行の高さと上端を固定する。
+        StoredPanelsRowGrid.Height = IsCompactMode ? 26 : double.NaN;
+        StoredPanelsRowGrid.MinHeight = IsCompactMode ? 26 : 0;
+        StoredPanelsRowGrid.VerticalAlignment = IsCompactMode ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        StoredPanelsRowGrid.Margin = IsCompactMode ? new Thickness(5, 2, 5, 2) : new Thickness(5, 2, 5, 3);
+        AuxiliaryApplicationsRow.VerticalAlignment = IsCompactMode ? VerticalAlignment.Center : VerticalAlignment.Top;
+        AuxiliaryApplicationsRow.Margin = IsCompactMode ? new Thickness(0, 0, 4, 0) : new Thickness(0, 4, 4, 0);
         DisplayModeButton.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
         StandardJumpButton.Width = isMicro ? 23 : 26;
         MinimizeButton.Width = isMicro ? 23 : 32;
@@ -3252,35 +3261,23 @@ public partial class MainWindow : Window
     private double GetCompactModeHeight(double targetWindowWidth)
     {
         const double titleRowHeight = 26;
-        const double edgePadding = 1;
         var compactContentWidth = Math.Max(
             0,
             targetWindowWidth
             - RootLayoutGrid.Margin.Left
             - RootLayoutGrid.Margin.Right
-            - CompactBarPanel.Margin.Left
-            - CompactBarPanel.Margin.Right);
+            - CompactPanelBorderThickness * 2);
 
+        // DesiredSize は各行の Margin を含む。Measure に渡す幅からも余白を二重に引かない。
         CompactBarPanel.Measure(new Size(compactContentWidth, double.PositiveInfinity));
-        var compactPanelHeight = CompactBarPanel.DesiredSize.Height + CompactBarPanel.Margin.Top + CompactBarPanel.Margin.Bottom;
-        var auxiliaryContentWidth = Math.Max(
-            0,
-            targetWindowWidth
-            - RootLayoutGrid.Margin.Left
-            - RootLayoutGrid.Margin.Right
-            - StoredPanelsRowGrid.Margin.Left
-            - StoredPanelsRowGrid.Margin.Right);
-        StoredPanelsRowGrid.Measure(new Size(auxiliaryContentWidth, double.PositiveInfinity));
-        var auxiliaryRowHeight = StoredPanelsRowGrid.DesiredSize.Height
-            + StoredPanelsRowGrid.Margin.Top
-            + StoredPanelsRowGrid.Margin.Bottom;
+        var compactPanelHeight = CompactBarPanel.DesiredSize.Height;
+        StoredPanelsRowGrid.Measure(new Size(compactContentWidth, double.PositiveInfinity));
+        var auxiliaryRowHeight = StoredPanelsRowGrid.DesiredSize.Height;
         var storedRowHeight = 0d;
         if (CompactStoredPanelsArea.Visibility == Visibility.Visible)
         {
             CompactStoredPanelsArea.Measure(new Size(compactContentWidth, double.PositiveInfinity));
-            storedRowHeight = CompactStoredPanelsArea.DesiredSize.Height
-                + CompactStoredPanelsArea.Margin.Top
-                + CompactStoredPanelsArea.Margin.Bottom;
+            storedRowHeight = CompactStoredPanelsArea.DesiredSize.Height;
         }
         var desiredHeight = titleRowHeight
             + compactPanelHeight
@@ -3288,7 +3285,7 @@ public partial class MainWindow : Window
             + storedRowHeight
             + RootLayoutGrid.Margin.Top
             + RootLayoutGrid.Margin.Bottom
-            + edgePadding;
+            + CompactPanelBorderThickness * 2;
         return Math.Max(CompactWindowMinHeight, Math.Ceiling(desiredHeight));
     }
 
@@ -3414,7 +3411,7 @@ public partial class MainWindow : Window
             _ => 0.82
         };
 
-        var borderThickness = visual == PanelFrameVisual.Emphasis ? 2.25 : 1.75;
+        var borderThickness = visual == PanelFrameVisual.Emphasis ? 2.25 : CompactPanelBorderThickness;
         PanelFrameBorder.BorderBrush = new SolidColorBrush(color) { Opacity = borderOpacity };
         PanelFrameBorder.BorderThickness = new Thickness(borderThickness);
         PanelFrameBorder.Effect = null;

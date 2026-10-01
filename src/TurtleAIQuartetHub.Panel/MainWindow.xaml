@@ -340,7 +340,8 @@
         <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}" Value="Compact">
           <Setter Property="MinWidth" Value="78" />
           <Setter Property="Width" Value="78" />
-          <Setter Property="Height" Value="25" />
+          <Setter Property="MinHeight" Value="22" />
+          <Setter Property="Height" Value="22" />
           <Setter Property="FontSize" Value="10.5" />
         </DataTrigger>
       </Style.Triggers>
@@ -354,10 +355,13 @@
     </Style>
 
     <Style x:Key="CompactBarActionButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
-      <Setter Property="MinHeight" Value="18" />
-      <Setter Property="MinWidth" Value="28" />
-      <Setter Property="Padding" Value="4,0" />
-      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
@@ -1831,7 +1835,8 @@
     <Border x:Name="CompactBarPanel"
             Grid.Row="1"
             Visibility="Collapsed"
-            Margin="5,3,5,0"
+            VerticalAlignment="Top"
+            Margin="5,0,5,0"
             Padding="3"
             Background="{StaticResource SurfaceBrush}"
             BorderBrush="{StaticResource BorderBrushSoft}"
@@ -1887,12 +1892,16 @@
         <Button Grid.Row="0"
                 Grid.Column="2"
                 Content="前"
+                ToolTip="管理中ウィンドウを最前面にする"
+                AutomationProperties.Name="管理中ウィンドウを最前面にする"
                 Click="PinAllTopButton_Click"
                 Style="{StaticResource CompactBarActionButtonStyle}"
                 Margin="0,0,0,3" />
         <Button Grid.Row="1"
                 Grid.Column="2"
                 Content="背"
+                ToolTip="管理中ウィンドウを最背面にする"
+                AutomationProperties.Name="管理中ウィンドウを最背面にする"
                 Click="SendAllBackButton_Click"
                 Style="{StaticResource CompactBarActionButtonStyle}" />
       </Grid>
@@ -2043,9 +2052,9 @@
                 MinHeight="24"
                 MinWidth="0"
                 Padding="4,0"
-                Margin="0,6,0,0"
+                Margin="0"
                 HorizontalAlignment="Left"
-                VerticalAlignment="Top"
+                VerticalAlignment="Center"
                 Panel.ZIndex="2"
                 Background="Transparent"
                 BorderThickness="0"
@@ -2076,7 +2085,8 @@
                        VerticalAlignment="Center" />
           </StackPanel>
       </Button>
-      <StackPanel Orientation="Horizontal"
+      <StackPanel x:Name="AuxiliaryApplicationsRow"
+                  Orientation="Horizontal"
                   HorizontalAlignment="Right"
                   VerticalAlignment="Top"
                   Margin="0,4,4,0"
