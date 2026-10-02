@@ -66,3 +66,8 @@
 - 開発実行: `dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj`
 - Store readiness: `.\scripts\Test-StoreReadiness.ps1`
 - ローカル MSIX: `.\scripts\New-LocalMsixPackage.ps1`
+
+## カードのタイトル編集と設定画面の並び替え（2026-10-02 追加）
+- 標準・縮小表示の表カードと控えカードはタイトルのダブルクリックで編集できる。Enter・欄外クリック・フォーカス移動で確定し、Escで取消。表示時は空き・既定タイトルなどの DisplayTitle を保つ。
+- 標準表示のAIアプリ行は控えの見出しと同じ高さへ揃える。縮小表示のボタン寸法と開閉時の位置固定は維持する。
+- 設定の表・控え一覧に上下ボタンとドラッグつまみを置く。つまみ選択中は上下キーでも移動でき、カードの並びと保存状態へ即時反映する。控えはページをまたいで移動できる。

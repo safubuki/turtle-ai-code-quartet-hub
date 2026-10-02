@@ -92,6 +92,8 @@ public partial class MainWindow : Window
     private readonly List<WindowSlot> _hiddenFocusedSlots = [];
     private Point _dragStartPoint;
     private bool _slotCardDragStartedOnInteractiveChild;
+    private Point _settingsPanelDragStartPoint;
+    private FrameworkElement? _settingsPanelDragGrip;
     private bool _isCardDragDropInProgress;
     private CancellationTokenSource? _panelFrontRestoreCancellation;
     private CancellationTokenSource? _focusSwitchArrangeCancellation;
@@ -2597,6 +2599,212 @@ public partial class MainWindow : Window
         HideDeleteStoredPanelDialog();
     }
 
+    private async void SettingsMovePanelButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is Button { Tag: { } source, CommandParameter: string direction }
+            && int.TryParse(direction, out var offset)
+            && GetAdjacentSettingsPanel(source, offset) is { } target)
+        {
+            await MoveSettingsPanelAsync(source, target);
+        }
+    }
+
+    private async void SettingsPanelOrder_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Up or Key.Down) || sender is not FrameworkElement { Tag: { } source })
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (GetAdjacentSettingsPanel(source, e.Key == Key.Up ? -1 : 1) is { } target)
+        {
+            await MoveSettingsPanelAsync(source, target);
+        }
+    }
+
+    private object? GetAdjacentSettingsPanel(object source, int offset)
+    {
+        if (source is WindowSlot slot)
+        {
+            var index = _statusStore.Slots.IndexOf(slot) + offset;
+            return index >= 0 && index < _statusStore.Slots.Count ? _statusStore.Slots[index] : null;
+        }
+
+        if (source is StoredPanelSlot storedPanel)
+        {
+            var index = _statusStore.StoredPanels.IndexOf(storedPanel) + offset;
+            return index >= 0 && index < _statusStore.StoredPanels.Count ? _statusStore.StoredPanels[index] : null;
+        }
+
+        return null;
+    }
+
+    private void SettingsPanelGrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _settingsPanelDragStartPoint = e.GetPosition(this);
+        _settingsPanelDragGrip = sender as FrameworkElement;
+    }
+
+    private void SettingsPanelGrip_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_isBusy || e.LeftButton != MouseButtonState.Pressed || !ReferenceEquals(sender, _settingsPanelDragGrip))
+        {
+            return;
+        }
+
+        var delta = e.GetPosition(this) - _settingsPanelDragStartPoint;
+        if (Math.Abs(delta.X) <= SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(delta.Y) <= SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var grip = _settingsPanelDragGrip!;
+        BeginCardDragDrop();
+        try
+        {
+            DragDrop.DoDragDrop(grip, new DataObject("SettingsPanel", grip.Tag), DragDropEffects.Move);
+        }
+        finally
+        {
+            _settingsPanelDragGrip = null;
+            EndCardDragDrop();
+        }
+
+        e.Handled = true;
+    }
+
+    private static bool CanMoveSettingsPanel(object? source, object? target)
+    {
+        return !ReferenceEquals(source, target)
+            && (source is WindowSlot && target is WindowSlot
+                || source is StoredPanelSlot && target is StoredPanelSlot);
+    }
+
+    private void SettingsPanelRow_DragOver(object sender, DragEventArgs e)
+    {
+        if (sender is not Border row)
+        {
+            return;
+        }
+
+        var canMove = !_isBusy && CanMoveSettingsPanel(e.Data.GetData("SettingsPanel"), row.Tag);
+        e.Effects = canMove ? DragDropEffects.Move : DragDropEffects.None;
+        if (canMove)
+        {
+            row.SetCurrentValue(Border.BorderBrushProperty, FindResource("AccentBrush"));
+            // 長い控え一覧でも、スクロール領域の端までドラッグすればページを越えて移動できる。
+            DependencyObject? parent = row;
+            while (parent is not null && parent is not ScrollViewer)
+            {
+                parent = GetUiParent(parent);
+            }
+
+            if (parent is ScrollViewer scrollViewer)
+            {
+                var y = e.GetPosition(scrollViewer).Y;
+                if (y < 28)
+                    scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - 18);
+                else if (y > scrollViewer.ActualHeight - 28)
+                    scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + 18);
+            }
+        }
+        else
+        {
+            row.ClearValue(Border.BorderBrushProperty);
+        }
+
+        e.Handled = true;
+    }
+
+    private void SettingsPanelRow_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is Border row)
+        {
+            row.ClearValue(Border.BorderBrushProperty);
+        }
+    }
+
+    private async void SettingsPanelRow_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        SettingsPanelRow_DragLeave(sender, e);
+        if (!_isBusy && sender is Border row
+            && e.Data.GetData("SettingsPanel") is { } source
+            && CanMoveSettingsPanel(source, row.Tag))
+        {
+            e.Effects = DragDropEffects.Move;
+            await MoveSettingsPanelAsync(source, row.Tag);
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+    }
+
+    private async Task MoveSettingsPanelAsync(object source, object target)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        if (source is StoredPanelSlot storedSource && target is StoredPanelSlot storedTarget)
+        {
+            if (!_statusStore.MoveStoredPanelContents(storedSource, storedTarget))
+                return;
+            _statusStore.Message = $"控え{storedSource.Label}のカードを控え{storedTarget.Label}へ移動しました。";
+        }
+        else if (source is WindowSlot slotSource && target is WindowSlot slotTarget)
+        {
+            var hiddenFocusedProfiles = _hiddenFocusedSlots.Select(slot => slot.RuntimeSlotName).ToArray();
+            if (!_statusStore.MoveSlotContents(slotSource, slotTarget))
+                return;
+            _hiddenFocusedSlots.Clear();
+            _hiddenFocusedSlots.AddRange(_statusStore.Slots.Where(slot => hiddenFocusedProfiles.Contains(slot.RuntimeSlotName)));
+            _statusStore.Message = $"スロット{slotSource.Name}のカードをスロット{slotTarget.Name}へ移動しました。";
+        }
+        else
+        {
+            return;
+        }
+
+        RefreshAuxiliaryUi();
+        FocusSettingsPanelGrip(SettingsOverlay, target);
+        if (source is WindowSlot && !_areWindowsHidden)
+        {
+            try
+            {
+                await ArrangeSlotsAfterPanelStateChangeWithSettlingAsync();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+            }
+        }
+    }
+
+    private static bool FocusSettingsPanelGrip(DependencyObject parent, object panel)
+    {
+        if (parent is Button { Cursor: { } cursor } grip && cursor == Cursors.SizeAll && ReferenceEquals(grip.Tag, panel))
+        {
+            grip.BringIntoView();
+            grip.Focus();
+            return true;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            if (FocusSettingsPanelGrip(VisualTreeHelper.GetChild(parent, index), panel))
+                return true;
+        }
+
+        return false;
+    }
+
     private async void SettingsClearVisibleSlotButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot } || !slot.HasPanelContent)
@@ -3200,7 +3408,7 @@ public partial class MainWindow : Window
         StoredPanelsRowGrid.VerticalAlignment = IsCompactMode ? VerticalAlignment.Top : VerticalAlignment.Stretch;
         StoredPanelsRowGrid.Margin = IsCompactMode ? new Thickness(5, 2, 5, 2) : new Thickness(5, 2, 5, 3);
         AuxiliaryApplicationsRow.VerticalAlignment = IsCompactMode ? VerticalAlignment.Center : VerticalAlignment.Top;
-        AuxiliaryApplicationsRow.Margin = IsCompactMode ? new Thickness(0, 0, 4, 0) : new Thickness(0, 4, 4, 0);
+        AuxiliaryApplicationsRow.Margin = new Thickness(0, 0, 4, 0);
         DisplayModeButton.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
         StandardJumpButton.Width = isMicro ? 23 : 26;
         MinimizeButton.Width = isMicro ? 23 : 32;
@@ -4128,8 +4336,10 @@ public partial class MainWindow : Window
             textBox.Cursor = Cursors.IBeam;
             textBox.Focus();
             textBox.SelectAll();
-            e.Handled = true;
         }
+
+        // タイトルの最初のクリックも外側カードへ渡さず、編集開始でフォーカス切替を起こさない。
+        e.Handled = true;
     }
 
     private void InlineTitleTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)

@@ -265,3 +265,11 @@
 - **対策**: `CompactBarPanel` は上揃えにし、縮小時の `StoredPanelsRowGrid` は Height / MinHeight を 26 DIP に固定して上揃えにする。行内の控えと AI アプリは従来どおり縦中央へ置く。`RootLayoutGrid` の縮小時下 Margin は 2→6 DIP とし、下端に 4 DIP の余白を追加する。100% の閉じた表示は 430×141 DIP、控え表示は現在の保存内容で 430×384 DIP。
 - **維持**: AI アプリの 78×22 DIP・文字 10.5 DIP、前/背の 24 DIP 正方形、横幅と左右余白を維持する。標準表示へ戻したときは操作行の Height を Auto、MinHeight を 0、縦配置を Stretch に戻す。第29節の下 Margin=2 DIP と本体高さ 137 DIP は今回の依頼で置き換える。
 - **確認**: 100% で実際の控え開閉ハンドラを3往復実行し、既存23ボタンの座標・寸法変化と見切れが0件。WPF 自体の DPI を125%にした開閉描画でも同じ23ボタンの座標・寸法が一致する。標準・極小の125%描画は修正前と同一。画面下端付近のウィンドウ全体の作業領域補正は既存の挙動を維持する。
+
+## 31. タイトル編集と設定一覧の挿入移動（2026-10-02 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/StatusStore.cs`, `TurtleAIQuartetHub.Panel.Tests/PanelOrderTests.cs`
+- **タイトル**: `InlineTitleTextBox` は読み取り時に `DisplayTitle`、編集時に `PanelTitle` を表示する。Binding は `UpdateSourceTrigger=Explicit` とし、確定時だけ保存する。Esc は UpdateTarget で元の値を戻す。タイトルの最初のクリックも Handled にして外側カードの起動・フォーカス切替を防ぐ。設定用の通常TextBoxへインライン編集の終了処理を適用しない。
+- **並び替え**: メインカードの既存D&Dは交換のまま維持する。設定一覧の上下操作とD&Dは `MoveSlotContents` / `MoveStoredPanelContents` を通す挿入移動とし、移動区間の他カードの順序を保つ。位置番号・コレクション・控えページの参照は固定し、内容の隣接交換中は保存を抑制、完成後に一度だけ保存する。
+- **実行情報**: `SwapSlotContentsCore` はタイトル・パス・アプリだけでなくHWND、`RuntimeSlotName`、フォーカス、非表示、ディスプレイ割当、レイヤー、レイアウト、ワークスペース読取時刻を一緒に移す。設定の移動後は非表示からのフォーカス復帰リストも RuntimeSlotName で追従させ、既存のフォーカスを保つ配置処理を共用する。
+- **UI**: 設定のドラッグ開始は専用つまみだけに限定し、入力欄の文字選択・上下キーを妨げない。移動後は移動先のつまみへフォーカスして連続キー移動を可能にする。表と控えの間のドロップは受け付けない。控え一覧の端でドラッグ中にスクロールする。設定ダイアログの内側Gridを本体高さから78 DIP引いた範囲に制限し、下部操作が見切れないようにする。
+- **配置**: 標準の控え見出し領域は28 DIP。AIアプリ行の上Marginを0にして見出しと同じラインにする。AIアプリは標準86×28 DIP・縮小78×22 DIPのまま。

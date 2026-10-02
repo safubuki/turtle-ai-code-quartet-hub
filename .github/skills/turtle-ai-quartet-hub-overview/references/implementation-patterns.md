@@ -91,3 +91,11 @@
 - **問題**: 異なる SSH 接続先で同名フォルダを開くと、フォルダ名の一致スコアが同点になり、`workspaceStorage` で先に並んだ古い `vscode-remote://ssh-remote+...` URI を現在値として保存することがあった。次回起動でも古い SSH 接続名を再利用するため、廃止済み接続先では接続に失敗する。
 - **対策**: VS Code タイトルに `[SSH: 接続名]` が見える場合は、URI authority の `ssh-remote+接続名` と一致しない候補を除外し、一致する候補へ最優先スコアを与える。選択された現在 URI は既存の `StatusStore` 経路で `Path` / `SavedWorkspacePath` / `slots.json` へ保存する。
 - **注意**: フォルダ名・ファイル名の誤判定防止を維持し、単純な `Contains` へ戻さない。カスタム `window.title` で `[SSH: ...]` が出ない場合はフォルダ名照合へフォールバックし、候補を根拠なく破棄しない。Remote-SSH の履歴や認証情報、`workspaceStorage` 自体は削除しない。
+
+## 11. タイトル編集と設定一覧の挿入移動（2026-10-02 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/StatusStore.cs`, `TurtleAIQuartetHub.Panel.Tests/PanelOrderTests.cs`
+- **タイトル**: `InlineTitleTextBox` は読み取り時に `DisplayTitle`、編集時に `PanelTitle` を表示する。Binding は `UpdateSourceTrigger=Explicit` とし、確定時だけ保存する。Esc は UpdateTarget で元の値を戻す。タイトルの最初のクリックも Handled にして外側カードの起動・フォーカス切替を防ぐ。設定用の通常TextBoxへインライン編集の終了処理を適用しない。
+- **並び替え**: メインカードの既存D&Dは交換のまま維持する。設定一覧の上下操作とD&Dは `MoveSlotContents` / `MoveStoredPanelContents` を通す挿入移動とし、移動区間の他カードの順序を保つ。位置番号・コレクション・控えページの参照は固定し、内容の隣接交換中は保存を抑制、完成後に一度だけ保存する。
+- **実行情報**: `SwapSlotContentsCore` はタイトル・パス・アプリだけでなくHWND、`RuntimeSlotName`、フォーカス、非表示、ディスプレイ割当、レイヤー、レイアウト、ワークスペース読取時刻を一緒に移す。設定の移動後は非表示からのフォーカス復帰リストも RuntimeSlotName で追従させ、既存のフォーカスを保つ配置処理を共用する。
+- **UI**: 設定のドラッグ開始は専用つまみだけに限定し、入力欄の文字選択・上下キーを妨げない。移動後は移動先のつまみへフォーカスして連続キー移動を可能にする。表と控えの間のドロップは受け付けない。控え一覧の端でドラッグ中にスクロールする。設定ダイアログの内側Gridを本体高さから78 DIP引いた範囲に制限し、下部操作が見切れないようにする。
+- **配置**: 標準の控え見出し領域は28 DIP。AIアプリ行の上Marginを0にして見出しと同じラインにする。AIアプリは標準86×28 DIP・縮小78×22 DIPのまま。

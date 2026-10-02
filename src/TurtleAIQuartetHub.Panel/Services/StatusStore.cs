@@ -804,11 +804,7 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         try
         {
-            (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
-            (source.WorkspacePath, target.WorkspacePath) = (target.WorkspacePath, source.WorkspacePath);
-            (source.ApplicationId, target.ApplicationId) = (target.ApplicationId, source.ApplicationId);
-            ApplyApplicationMetadata(source);
-            ApplyApplicationMetadata(target);
+            SwapStoredPanelContentsCore(source, target);
         }
         finally
         {
@@ -816,6 +812,55 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
 
         SavePanelStates();
+    }
+
+    private void SwapStoredPanelContentsCore(StoredPanelSlot source, StoredPanelSlot target)
+    {
+        (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
+        (source.WorkspacePath, target.WorkspacePath) = (target.WorkspacePath, source.WorkspacePath);
+        (source.ApplicationId, target.ApplicationId) = (target.ApplicationId, source.ApplicationId);
+        ApplyApplicationMetadata(source);
+        ApplyApplicationMetadata(target);
+    }
+
+    public bool MoveStoredPanelContents(StoredPanelSlot source, StoredPanelSlot target)
+    {
+        return MovePanelContents(StoredPanels, source, target, SwapStoredPanelContentsCore);
+    }
+
+    public bool MoveSlotContents(WindowSlot source, WindowSlot target)
+    {
+        return MovePanelContents(Slots, source, target, SwapSlotContentsCore);
+    }
+
+    // 位置の番号とコレクションは固定し、内容を隣接交換して挿入先まで移す。
+    // 移動途中の不完全な並びは永続化せず、完成した並びを一度だけ保存する。
+    private bool MovePanelContents<T>(IList<T> panels, T source, T target, Action<T, T> swap)
+    {
+        var sourceIndex = panels.IndexOf(source);
+        var targetIndex = panels.IndexOf(target);
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex)
+        {
+            return false;
+        }
+
+        var previousSuppression = _suppressPersistence;
+        _suppressPersistence = true;
+        try
+        {
+            var step = sourceIndex < targetIndex ? 1 : -1;
+            for (var index = sourceIndex; index != targetIndex; index += step)
+            {
+                swap(panels[index], panels[index + step]);
+            }
+        }
+        finally
+        {
+            _suppressPersistence = previousSuppression;
+        }
+
+        SavePanelStates();
+        return true;
     }
 
     /// <summary>
@@ -913,33 +958,39 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         try
         {
-            (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
-            (source.Path, target.Path) = (target.Path, source.Path);
-            (source.ApplicationId, target.ApplicationId) = (target.ApplicationId, source.ApplicationId);
-            (source.SavedWorkspacePath, target.SavedWorkspacePath) = (target.SavedWorkspacePath, source.SavedWorkspacePath);
-            (source.SavedWorkspaceConfirmed, target.SavedWorkspaceConfirmed) = (target.SavedWorkspaceConfirmed, source.SavedWorkspaceConfirmed);
-            (source.CurrentWorkspacePath, target.CurrentWorkspacePath) = (target.CurrentWorkspacePath, source.CurrentWorkspacePath);
-            (source.RuntimeSlotName, target.RuntimeSlotName) = (target.RuntimeSlotName, source.RuntimeSlotName);
-            (source.WindowHandle, target.WindowHandle) = (target.WindowHandle, source.WindowHandle);
-            (source.WindowTitle, target.WindowTitle) = (target.WindowTitle, source.WindowTitle);
-            (source.WindowStatus, target.WindowStatus) = (target.WindowStatus, source.WindowStatus);
-            (source.IsFocused, target.IsFocused) = (target.IsFocused, source.IsFocused);
-            // ディスプレイ割当はワークスペース側に付いて行く。これにより入替はカード上の象限だけを
-            // 交換し、各ワークスペースは元のディスプレイ（とフォーカス/4 面の見え方）を維持する。
-            (source.MonitorOverride, target.MonitorOverride) = (target.MonitorOverride, source.MonitorOverride);
-            (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
-            (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
-            (source.PreferredLayout, target.PreferredLayout) = (target.PreferredLayout, source.PreferredLayout);
-            ApplyApplicationMetadata(source);
-            ApplyApplicationMetadata(target);
+            SwapSlotContentsCore(source, target);
         }
         finally
         {
             _suppressPersistence = false;
         }
 
-        SwapDictEntry(_workspaceRefreshTimestamps, source.Name, target.Name);
         SavePanelStates();
+    }
+
+    private void SwapSlotContentsCore(WindowSlot source, WindowSlot target)
+    {
+        (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
+        (source.Path, target.Path) = (target.Path, source.Path);
+        (source.ApplicationId, target.ApplicationId) = (target.ApplicationId, source.ApplicationId);
+        (source.SavedWorkspacePath, target.SavedWorkspacePath) = (target.SavedWorkspacePath, source.SavedWorkspacePath);
+        (source.SavedWorkspaceConfirmed, target.SavedWorkspaceConfirmed) = (target.SavedWorkspaceConfirmed, source.SavedWorkspaceConfirmed);
+        (source.CurrentWorkspacePath, target.CurrentWorkspacePath) = (target.CurrentWorkspacePath, source.CurrentWorkspacePath);
+        (source.RuntimeSlotName, target.RuntimeSlotName) = (target.RuntimeSlotName, source.RuntimeSlotName);
+        (source.WindowHandle, target.WindowHandle) = (target.WindowHandle, source.WindowHandle);
+        (source.WindowTitle, target.WindowTitle) = (target.WindowTitle, source.WindowTitle);
+        (source.WindowStatus, target.WindowStatus) = (target.WindowStatus, source.WindowStatus);
+        (source.IsFocused, target.IsFocused) = (target.IsFocused, source.IsFocused);
+        // ディスプレイ割当はワークスペース側に付いて行く。これにより入替はカード上の象限だけを
+        // 交換し、各ワークスペースは元のディスプレイ（とフォーカス/4 面の見え方）を維持する。
+        (source.MonitorOverride, target.MonitorOverride) = (target.MonitorOverride, source.MonitorOverride);
+        (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
+        (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
+        (source.PreferredLayout, target.PreferredLayout) = (target.PreferredLayout, source.PreferredLayout);
+        ApplyApplicationMetadata(source);
+        ApplyApplicationMetadata(target);
+
+        SwapDictEntry(_workspaceRefreshTimestamps, source.Name, target.Name);
     }
 
     public async Task RefreshWindowStatusesAsync(
