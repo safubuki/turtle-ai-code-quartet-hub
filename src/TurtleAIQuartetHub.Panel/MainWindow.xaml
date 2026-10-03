@@ -112,9 +112,23 @@
       <Setter Property="IsReadOnly" Value="True" />
       <Setter Property="Focusable" Value="False" />
       <Setter Property="Cursor" Value="Arrow" />
-      <Setter Property="ToolTip" Value="ダブルクリックでタイトルを変更（Enterで確定、Escで取消）" />
+      <Setter Property="ToolTip">
+        <Setter.Value>
+          <ToolTip Content="{Binding PlacementTarget.DataContext.DisplayTitle, RelativeSource={RelativeSource Self}}">
+            <ToolTip.ContentTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" MaxWidth="420"
+                           TextWrapping="Wrap" TextTrimming="None" />
+              </DataTemplate>
+            </ToolTip.ContentTemplate>
+          </ToolTip>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="ToolTipService.IsEnabled" Value="{Binding IsReadOnly, RelativeSource={RelativeSource Self}}" />
+      <Setter Property="ToolTipService.ShowDuration" Value="30000" />
       <EventSetter Event="PreviewKeyDown" Handler="InlineTitleTextBox_PreviewKeyDown" />
       <EventSetter Event="PreviewMouseLeftButtonDown" Handler="InlineTitleTextBox_PreviewMouseLeftButtonDown" />
+      <EventSetter Event="PreviewMouseLeftButtonUp" Handler="InlineTitleTextBox_PreviewMouseLeftButtonUp" />
       <EventSetter Event="LostKeyboardFocus" Handler="InlineTitleTextBox_LostKeyboardFocus" />
     </Style>
 
@@ -1428,7 +1442,6 @@
               <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
               <StackPanel Grid.Column="2">
                 <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
-                         ToolTip="ダブルクリックで名前を編集"
                          Style="{StaticResource InlineTitleTextBox}"
                          MaxLength="40" />
                 <TextBlock Text="{Binding ShortPath}"

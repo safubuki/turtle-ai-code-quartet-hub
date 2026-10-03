@@ -91,6 +91,8 @@ public partial class MainWindow : Window
     // 非表示（一括最小化）に入る直前のフォーカス（ディスプレイごとに 1 つ）を覚え、表示時に復帰する。
     private readonly List<WindowSlot> _hiddenFocusedSlots = [];
     private Point _dragStartPoint;
+    private TextBox? _pressedInlineTitle;
+    private DispatcherTimer? _inlineTitleClickTimer;
     private bool _slotCardDragStartedOnInteractiveChild;
     private Point _settingsPanelDragStartPoint;
     private FrameworkElement? _settingsPanelDragGrip;
@@ -1279,6 +1281,7 @@ public partial class MainWindow : Window
 
     private void BeginCardDragDrop()
     {
+        CancelInlineTitleClick();
         _isCardDragDropInProgress = true;
         _suppressSlotFocusFromDragUntil = DateTimeOffset.UtcNow + DragDropFocusSuppressWindow;
         SuppressFocusedSlotReassertForPanelInput();
@@ -3285,6 +3288,7 @@ public partial class MainWindow : Window
 
     private void SetDisplayMode(DisplayMode mode, bool updateMessage = true)
     {
+        CancelInlineTitleClick();
         if (_displayMode == mode)
         {
             UpdateDisplayModeChrome();
@@ -4282,6 +4286,7 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        CancelInlineTitleClick();
         SuppressFocusedSlotReassertForPanelInput();
 
         if (Keyboard.FocusedElement is not TextBox textBox || textBox.IsReadOnly)
@@ -4329,6 +4334,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        CancelInlineTitleClick();
         if (e.ClickCount >= 2)
         {
             textBox.IsReadOnly = false;
@@ -4337,10 +4343,60 @@ public partial class MainWindow : Window
             textBox.Focus();
             textBox.SelectAll();
         }
+        else
+        {
+            _pressedInlineTitle = textBox;
+        }
 
-        // タイトルの最初のクリックも外側カードへ渡さず、編集開始でフォーカス切替を起こさない。
+        // 外側カードへ伝播させず、単クリックは解放後にダブルクリックと区別する。
         e.Handled = true;
     }
+
+    private void InlineTitleTextBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TextBox textBox || !textBox.IsReadOnly)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var wasPressed = ReferenceEquals(_pressedInlineTitle, textBox);
+        CancelInlineTitleClick();
+        if (!wasPressed || _isBusy || IsSlotFocusSuppressedByDrag()
+            || !new Rect(textBox.RenderSize).Contains(e.GetPosition(textBox))
+            || textBox.DataContext is not WindowSlot slot)
+        {
+            return;
+        }
+
+        // Windows のダブルクリック判定時間内はフォーカスを保留し、編集時のズームを防ぐ。
+        var windowHandle = slot.WindowHandle;
+        var timer = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(GetDoubleClickTime())
+        };
+        timer.Tick += (_, _) =>
+        {
+            CancelInlineTitleClick();
+            if (!_isBusy && !IsSlotFocusSuppressedByDrag() && textBox.IsVisible && textBox.IsReadOnly
+                && ReferenceEquals(textBox.DataContext, slot) && slot.WindowHandle == windowHandle)
+            {
+                ToggleSlotFocus(slot);
+            }
+        };
+        _inlineTitleClickTimer = timer;
+        timer.Start();
+    }
+
+    private void CancelInlineTitleClick()
+    {
+        _inlineTitleClickTimer?.Stop();
+        _inlineTitleClickTimer = null;
+        _pressedInlineTitle = null;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
 
     private void InlineTitleTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
@@ -4874,6 +4930,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        CancelInlineTitleClick();
         // パネルのクローズ要求が来たことを記録。App.OnExit の正常終了マーカーと突き合わせると、
         // 「閉じ操作は届いたのに終了処理が完走しなかった（＝終了直前のハング）」も切り分けられる。
         DiagnosticLog.Write(LogLevel.Info, "Main panel window closed; requesting application shutdown.");
