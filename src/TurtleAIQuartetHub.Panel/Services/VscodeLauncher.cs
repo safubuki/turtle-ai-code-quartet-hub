@@ -606,7 +606,7 @@ public sealed class VscodeLauncher
         };
 
         AddLaunchArguments(startInfo.ArgumentList, slot, config, launchPath);
-        VscodeUserSettings.ApplyManagedProxyEnvironment(startInfo, config);
+        VscodeUserSettings.ApplyManagedProxyEnvironment(startInfo, config, SlotUserDataPaths.GetEffectiveUserDataDirectory(slot, config));
         return startInfo;
     }
 
@@ -629,7 +629,7 @@ public sealed class VscodeLauncher
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden
         };
-        VscodeUserSettings.ApplyManagedProxyEnvironment(startInfo, config);
+        VscodeUserSettings.ApplyManagedProxyEnvironment(startInfo, config, SlotUserDataPaths.GetEffectiveUserDataDirectory(slot, config));
         return startInfo;
     }
 

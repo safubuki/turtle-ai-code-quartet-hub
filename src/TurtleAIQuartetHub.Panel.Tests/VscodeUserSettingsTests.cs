@@ -326,7 +326,7 @@ internal static class VscodeUserSettingsTests
 
         Verify(
             failures,
-            "専用プロファイルの settings.json は Roaming と同じ実体になり restoreWindows を書かない",
+            "専用プロファイルの settings.json が無い初回は Roaming へリンクし restoreWindows を書かない",
             () =>
             {
                 using var installed = new TempWorkspace();
@@ -336,12 +336,6 @@ internal static class VscodeUserSettingsTests
                     {
                       "http.proxy": "http://proxy.mei.co.jp:8080",
                       "remote.SSH.httpsProxy": "http://proxy.mei.co.jp:8080"
-                    }
-                    """);
-                slot.WriteSettings(
-                    """
-                    {
-                      "editor.fontSize": 99
                     }
                     """);
 
@@ -360,17 +354,11 @@ internal static class VscodeUserSettingsTests
 
                 var installedRoot = installed.ReadSettings();
                 var slotRoot = slot.ReadSettings();
-                var backupPath = Path.Combine(
-                    slot.UserDataDirectory,
-                    "User",
-                    VscodeUserSettings.QuartetSettingsBackupFileName);
                 return shared
                     && VscodeUserSettings.SharesInstalledSettingsFile(slot.UserDataDirectory, installed.UserDataDirectory)
                     && slotRoot[VscodeUserSettings.HttpProxyKey]?.GetValue<string>() == "http://proxy.mei.co.jp:8080"
                     && installedRoot[VscodeUserSettings.RestoreWindowsKey] is null
-                    && slotRoot[VscodeUserSettings.RestoreWindowsKey] is null
-                    && File.Exists(backupPath)
-                    && File.ReadAllText(backupPath).Contains("editor.fontSize", StringComparison.Ordinal);
+                    && slotRoot[VscodeUserSettings.RestoreWindowsKey] is null;
             });
 
         Verify(
@@ -423,6 +411,114 @@ internal static class VscodeUserSettingsTests
                     && root[VscodeUserSettings.HttpProxyKey] is null
                     && root["editor.fontSize"]?.GetValue<int>() == 14;
             });
+
+        Verify(
+            failures,
+            "再起動時に Roaming のコメントアウト状態でパネルの有効なプロキシを置き換えない",
+            () => VerifySavedProxySurvivesRestart(replaceLinkedFile: false));
+
+        Verify(
+            failures,
+            "リンクがファイル置換保存で外れた後もパネルの変更を再リンクで巻き戻さない",
+            () => VerifySavedProxySurvivesRestart(replaceLinkedFile: true));
+
+        foreach (var enableProxy in new[] { false, true })
+        {
+            Verify(
+                failures,
+                $"ハブ管理有効でも再起動時はパネルで保存したプロキシ状態を優先する (有効={enableProxy})",
+                () =>
+                {
+                    using var slot = new TempWorkspace();
+                    var proxyLine = "\"http.proxy\": \"http://panel-proxy:3128\",";
+                    slot.WriteSettings("{\n  " + (enableProxy ? "" : "// ") + proxyLine
+                        + "\n  \"editor.fontSize\": 14,\n  \"window.restoreWindows\": \"none\"\n}");
+                    var saved = slot.ReadRawSettings();
+                    var config = new AppConfig
+                    {
+                        ManageVsCodeUserSettings = true,
+                        VsCodeUseHttpProxy = !enableProxy,
+                        VsCodeHttpProxy = "http://hub-proxy:8080"
+                    };
+
+                    VscodeUserSettings.MergeDedicatedSlotSettings(slot.UserDataDirectory, config, null);
+                    VscodeUserSettings.MergeDedicatedSlotSettings(slot.UserDataDirectory, config, null);
+
+                    return slot.ReadRawSettings() == saved;
+                });
+
+            Verify(
+                failures,
+                $"起動プロセスのプロキシ環境変数も保存済みパネル設定を優先する (有効={enableProxy})",
+                () =>
+                {
+                    using var slot = new TempWorkspace();
+                    slot.WriteSettings("{\n  " + (enableProxy ? "" : "// ")
+                        + "\"http.proxy\": \"http://panel-proxy:3128\",\n  \"http.noProxy\": \"localhost\"\n}");
+                    var config = new AppConfig
+                    {
+                        UseDedicatedUserDataDirs = true,
+                        ManageVsCodeUserSettings = true,
+                        VsCodeUseHttpProxy = !enableProxy,
+                        VsCodeHttpProxy = "http://hub-proxy:8080"
+                    };
+                    var startInfo = new ProcessStartInfo { UseShellExecute = false };
+
+                    VscodeUserSettings.ApplyManagedProxyEnvironment(startInfo, config, slot.UserDataDirectory);
+
+                    return startInfo.Environment["HTTP_PROXY"] == (enableProxy ? "http://panel-proxy:3128" : "")
+                        && startInfo.Environment["HTTPS_PROXY"] == startInfo.Environment["HTTP_PROXY"]
+                        && startInfo.Environment["NO_PROXY"] == (enableProxy ? "localhost" : "*");
+                });
+        }
+
+        Verify(
+            failures,
+            "設定ファイルが無い初回はハブの管理プロキシを初期値として適用する",
+            () =>
+            {
+                using var slot = new TempWorkspace();
+                var config = new AppConfig
+                {
+                    ManageVsCodeUserSettings = true,
+                    VsCodeUseHttpProxy = true,
+                    VsCodeHttpProxy = "http://hub-proxy:8080"
+                };
+
+                VscodeUserSettings.MergeDedicatedSlotSettings(slot.UserDataDirectory, config, null);
+                return slot.ReadSettings()[VscodeUserSettings.HttpProxyKey]?.GetValue<string>() == config.VsCodeHttpProxy;
+            });
+    }
+
+    private static bool VerifySavedProxySurvivesRestart(bool replaceLinkedFile)
+    {
+        using var installed = new TempWorkspace();
+        using var slot = new TempWorkspace();
+        const string commented = "{\n  // \"http.proxy\": \"http://panel-proxy:3128\",\n  \"editor.fontSize\": 14\n}";
+        var installedPath = installed.WriteSettings(commented);
+        var settingsPath = VscodeUserSettings.GetSettingsFilePath(slot.UserDataDirectory);
+        if (replaceLinkedFile
+            && !VscodeUserSettings.TryShareInstalledSettingsFile(slot.UserDataDirectory, installed.UserDataDirectory))
+        {
+            return false;
+        }
+
+        var enabled = commented.Replace("// \"http.proxy\"", "\"http.proxy\"", StringComparison.Ordinal);
+        var savedPath = settingsPath + ".saved";
+        File.WriteAllText(savedPath, enabled);
+        File.Move(savedPath, settingsPath, overwrite: true);
+
+        var config = new AppConfig { ManageVsCodeUserSettings = false };
+        for (var restart = 0; restart < 2; restart++)
+        {
+            VscodeUserSettings.TryShareInstalledSettingsFile(slot.UserDataDirectory, installed.UserDataDirectory);
+            VscodeUserSettings.MergeDedicatedSlotSettings(slot.UserDataDirectory, config, installed.UserDataDirectory);
+        }
+
+        return slot.ReadSettings()[VscodeUserSettings.HttpProxyKey]?.GetValue<string>() == "http://panel-proxy:3128"
+            && !VscodeUserSettings.SharesInstalledSettingsFile(slot.UserDataDirectory, installed.UserDataDirectory)
+            && File.ReadAllText(installedPath) == commented
+            && !File.Exists(Path.Combine(slot.UserDataDirectory, "User", VscodeUserSettings.QuartetSettingsBackupFileName));
     }
 
     private static void Verify(List<string> failures, string name, Func<bool> assertion)

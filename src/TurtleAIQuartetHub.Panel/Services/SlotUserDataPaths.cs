@@ -120,9 +120,9 @@ public static class SlotUserDataPaths
             DiagnosticLog.Write(ex);
         }
 
-        // 専用プロファイルでも User/settings.json は Roaming の通常 VS Code と同じ実体にする。
-        // プロキシ等は通常起動の VS Code で保存した内容を、ハブ起動窓でもそのまま使う。
-        // リンクできた場合は Roaming 側へ restoreWindows を書かない。
+        // settings.json が無い初回だけ Roaming の通常 VS Code と共有する。
+        // 既存ファイルはその窓で保存した変更を優先し、再リンク・上書きしない。
+        // リンクを共有したままの場合は Roaming 側へ restoreWindows を書かない。
         // storage.json / Cache / WebStorage はここでは触らない。
         try
         {

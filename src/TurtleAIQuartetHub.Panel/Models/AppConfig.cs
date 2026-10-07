@@ -34,7 +34,8 @@ public sealed class AppConfig
     public bool InheritMainUserState { get; set; }
 
     // 歯車設定からネットワーク設定をハブ側で管理するか。
-    // false の間は専用プロファイルの既存 settings.json を起動時に上書きしない。
+    // 専用プロファイルの既存 settings.json は起動時に上書きしない。
+    // 専用窓で保存した設定を優先し、全パネルへの変更は明示的な適用時だけ行う。
     // true でも標準の %APPDATA%/Code/User/settings.json は書き換えない。
     public bool ManageVsCodeUserSettings { get; set; }
 

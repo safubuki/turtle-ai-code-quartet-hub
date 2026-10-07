@@ -60,7 +60,7 @@ if (failures.Count > 0)
 
 Console.WriteLine("Managed window close regression checks passed (5/5).");
 Console.WriteLine("VS Code workspace title matching regression checks passed (21/21).");
-Console.WriteLine("VS Code shared user settings regression checks passed (15/15).");
+Console.WriteLine("VS Code 設定保持の回帰チェックに合格しました (22/22)。");
 Console.WriteLine("Application configuration migration regression checks passed (4/4).");
 Console.WriteLine("Compact IDE toggle regression checks passed (4/4).");
 Console.WriteLine("Panel ordering and persistence regression checks passed (6/6).");

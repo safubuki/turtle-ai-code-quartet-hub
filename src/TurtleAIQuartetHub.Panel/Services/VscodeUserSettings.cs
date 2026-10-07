@@ -231,21 +231,16 @@ public static class VscodeUserSettings
         var targetSettingsPath = GetSettingsPath(targetUserDataDirectory);
         Directory.CreateDirectory(Path.GetDirectoryName(targetSettingsPath)!);
 
-        if (AreSameFile(targetSettingsPath, installedSettingsPath))
+        // VS Code での保存はファイル置換によってリンクを外すことがある。
+        // 既存ファイルを再リンクすると、その窓で保存した変更を Roaming の内容で失う。
+        // 初回だけ共有し、以後はその窓のファイルを優先する。
+        if (File.Exists(targetSettingsPath))
         {
-            return true;
+            return AreSameFile(targetSettingsPath, installedSettingsPath);
         }
 
-        string? backupPath = null;
         try
         {
-            if (File.Exists(targetSettingsPath))
-            {
-                backupPath = Path.Combine(Path.GetDirectoryName(targetSettingsPath)!, QuartetSettingsBackupFileName);
-                File.Copy(targetSettingsPath, backupPath, overwrite: true);
-                File.Delete(targetSettingsPath);
-            }
-
             if (NativeMethods.CreateHardLink(targetSettingsPath, installedSettingsPath, IntPtr.Zero))
             {
                 return true;
@@ -258,11 +253,6 @@ public static class VscodeUserSettings
         catch (Exception ex)
         {
             DiagnosticLog.Write(ex);
-        }
-
-        if (!string.IsNullOrWhiteSpace(backupPath) && File.Exists(backupPath) && !File.Exists(targetSettingsPath))
-        {
-            File.Copy(backupPath, targetSettingsPath, overwrite: false);
         }
 
         return false;
@@ -281,12 +271,15 @@ public static class VscodeUserSettings
         }
 
         var targetSettingsPath = GetSettingsPath(targetUserDataDirectory);
+        var isNewSettingsFile = !File.Exists(targetSettingsPath);
         EnsureSettingsFileSeeded(targetSettingsPath, installedUserDataDirectory);
 
         var text = File.ReadAllText(targetSettingsPath);
         var original = text;
         SetJsoncStringValue(ref text, RestoreWindowsKey, RestoreWindowsNone);
-        if (config.ManageVsCodeUserSettings)
+        // 起動時のハブ設定は初期値にだけ使う。既存の設定は VS Code での編集を優先し、
+        // ハブからの変更は ApplyNetworkSettings の明示的な適用時に限る。
+        if (isNewSettingsFile && config.ManageVsCodeUserSettings)
         {
             ApplyNetworkSettingsToJsonc(ref text, NetworkSettings.FromConfig(config));
         }
@@ -325,14 +318,34 @@ public static class VscodeUserSettings
         return false;
     }
 
-    public static void ApplyManagedProxyEnvironment(ProcessStartInfo startInfo, AppConfig config)
+    public static void ApplyManagedProxyEnvironment(
+        ProcessStartInfo startInfo,
+        AppConfig config,
+        string? userDataDirectory = null)
     {
         if (!config.ManageVsCodeUserSettings)
         {
             return;
         }
 
-        ApplyManagedProxyEnvironment(startInfo, NetworkSettings.FromConfig(config));
+        var settings = NetworkSettings.FromConfig(config);
+        if (config.UseDedicatedUserDataDirs && !string.IsNullOrWhiteSpace(userDataDirectory))
+        {
+            var settingsPath = GetSettingsPath(userDataDirectory);
+            if (File.Exists(settingsPath))
+            {
+                try
+                {
+                    settings = ReadNetworkSettings(ReadSettingsObject(settingsPath));
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Write(ex);
+                }
+            }
+        }
+
+        ApplyManagedProxyEnvironment(startInfo, settings);
     }
 
     public static void ApplyManagedProxyEnvironment(ProcessStartInfo startInfo, NetworkSettings settings)

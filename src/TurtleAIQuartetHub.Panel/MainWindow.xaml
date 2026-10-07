@@ -2989,7 +2989,7 @@
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" />
                     <TextBlock Margin="0,4,0,8"
-                               Text="ハブから起動した VS Code も、通常起動と同じ %APPDATA%\Code\User\settings.json（Roaming）を使います。専用プロファイルでもこのファイルへリンクし、プロキシは通常の VS Code で保存した内容が残ります。このアプリは Roaming の settings.json を書き換えません。サイドバー幅はパネル別に残し、サインインやチャット状態、Cache も触りません。"
+                               Text="通常は VS Code の共通ユーザー設定を使います。専用プロファイルでは、その窓で保存したプロキシの有効・無効を再起動後も保持します。ここで全パネルへ適用すると専用プロファイルのプロキシ設定を更新します。通常の VS Code で保存した設定は、このアプリから書き換えません。"
                                Foreground="{StaticResource MutedTextBrush}"
                                TextWrapping="Wrap" />
                     <UniformGrid Columns="2" Margin="0,0,0,8">
