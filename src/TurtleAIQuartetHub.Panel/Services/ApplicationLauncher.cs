@@ -493,6 +493,8 @@ public sealed class ApplicationLauncher
         {
             yield return Path.Combine(userProfile, ".local", "bin");
             yield return Path.Combine(userProfile, ".grok", "bin");
+            // 検出と同じ既存 Antigravity CLI 配置先を、手入力用の PATH にも含める。
+            yield return Path.Combine(userProfile, ".gemini", "bin");
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);

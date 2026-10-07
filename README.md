@@ -201,7 +201,7 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `applications`: VS Code、Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリなどの起動定義と検出候補
 - `slots[].applicationId`: スロットごとの起動対象アプリ
 
-`applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場、`%LOCALAPPDATA%\agy\bin`、`~\.local\bin` も探索します。旧設定の `gemini` アプリ ID は読み込み時に `antigravity-cli` へ移行されます。
+`applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場、`%LOCALAPPDATA%\agy\bin`、`~\.gemini\bin`、`~\.local\bin` も探索します。旧設定の `gemini` アプリ ID は読み込み時に `antigravity-cli` へ移行されます。
 
 実行時データは `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。
 

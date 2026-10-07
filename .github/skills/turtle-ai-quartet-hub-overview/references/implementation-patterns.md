@@ -113,6 +113,14 @@
 - **対策**: 一時WPFツールのSTAエントリーポイントを `WpfCheckGuard.Run` で囲む。同期・Dispatcher・バックグラウンドの例外を標準エラーへ記録し、終了コード1で終了する。エラーダイアログの抑制は検証プロセスだけに適用する。
 - **注意**: 本体アプリへ組み込んだり、Windows全体のエラー報告設定を無効化したりしない。検証時は保存先を隔離し、終了コードとプロセス終了を確認する。詳細は `docs/wpf-ui-validation.md` を参照。
 
+## 14. Antigravity IDE と CLI の導入状態を区別する（2026-10-03 追加）
+- **ファイル**: `Services/ApplicationDetectionService.cs`, `Services/ApplicationLauncher.cs`, `Models/AppConfig.cs`, `docs/antigravity-cli-detection-analysis-2026-10-03.md`
+<!-- 2026-10-04: ~/.gemini/bin/agy.exe の実在を確認したため、初回の未導入判定と承認待ちの記録を訂正。 -->
+- **原因・修正（2026-10-04）**: CLI は `~\.gemini\bin\agy.exe` に導入済みだったが、ハブの探索対象外かつ PATH 未登録だった。検出・起動 PATH の両方へ `~\.gemini\bin` を追加した。既存 PATH と明示設定の優先順位は維持する。
+- **別ツールとの比較**: `ai-usage-checker` は `~\.gemini\bin` も探索し、CLI 取得失敗時には IDE 言語サーバーへのフォールバックも持つ。利用量取得結果だけでハブの起動可否を有効化せず、実体を検出する。
+- **注意**: `antigravity` や `antigravity-ide` を CLI の代替候補へ追加しない。sandbox の .NET UserProfile は実ユーザーと異なるため、ユーザー単位の配置先は実ユーザーで確認する。
+- **確認**: PATH 未登録・`Command=agy` で `Installed` と既存ファイルのフルパスへ解決されること、CLI バージョン1.2.16、本体ビルド警告・エラー0、既存55テスト合格。起動中の旧バイナリは設定へフルパスを保存し、4スロットすべての有効化を確認した。追加インストール・OS PATH 変更は不要。
+
 ## 15. VS Code で保存したプロキシの有効・無効を保持する（2026-10-07 追加）
 - **ファイル**: `Services/VscodeUserSettings.cs`, `Services/VscodeLauncher.cs`, `Services/SlotUserDataPaths.cs`, `TurtleAIQuartetHub.Panel.Tests/VscodeUserSettingsTests.cs`
 - **問題**: 専用 user-data の既存 `settings.json` を起動時に Roaming へ再リンクし、コメントアウト解除したプロキシを元の状態へ戻す。ハブ管理有効時は、保存したプロキシ状態を古いハブ設定で上書きする経路もあった。

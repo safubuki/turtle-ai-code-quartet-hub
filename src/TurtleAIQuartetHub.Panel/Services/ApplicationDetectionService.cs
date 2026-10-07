@@ -588,6 +588,8 @@ public sealed class ApplicationDetectionService
             yield return Path.Combine(userProfile, ".local", "bin");
             // Grok Build's installer places the Windows launcher here when installed through Git Bash.
             yield return Path.Combine(userProfile, ".grok", "bin");
+            // Antigravity CLI は既存環境で ~/.gemini/bin に配置されている場合もある。
+            yield return Path.Combine(userProfile, ".gemini", "bin");
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
