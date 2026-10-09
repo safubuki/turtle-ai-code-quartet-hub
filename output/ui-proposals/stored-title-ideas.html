@@ -1,0 +1,216 @@
+<style>
+  #stored-title-ideas .proposal-stage { min-height: 405px; padding: 14px 0 20px; }
+  #stored-title-ideas .hub {
+    --hub-bg: light-dark(#f3f6f3, #141917);
+    --hub-card: light-dark(#ffffff, #1c251f);
+    --hub-text: light-dark(#18291f, #eef4ef);
+    --hub-muted: light-dark(#53675b, #a3b8aa);
+    --hub-border: light-dark(#c5d6cb, #354b3d);
+    --hub-green: light-dark(#23623f, #80cc99);
+    --hub-chip: light-dark(#e5efe8, #223027);
+    --hub-hover: light-dark(#edf4ef, #26362c);
+    --hub-danger: light-dark(#a33832, #edaaa3);
+    --title-size: 14px;
+    max-width: 654px; margin: 0 auto; padding: 12px;
+    border: 1px solid var(--hub-border); border-radius: 9px;
+    background: var(--hub-bg); color: var(--hub-text);
+    font: 13px/1.45 "Segoe UI", "Yu Gothic UI", sans-serif;
+  }
+  #stored-title-ideas .hub * { box-sizing: border-box; }
+  #stored-title-ideas .hub-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  #stored-title-ideas .hub-heading strong { font-size: 13px; font-weight: 600; }
+  #stored-title-ideas .sample-label { color: var(--hub-muted); font-size: 11px; }
+  #stored-title-ideas .hub-toolbar { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+  #stored-title-ideas .hub-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; flex: 1; min-width: 0; }
+  #stored-title-ideas .hub button { font-family: inherit; color: inherit; }
+  #stored-title-ideas .hub-tab, #stored-title-ideas .hub-sort, #stored-title-ideas .hub-assign {
+    border: 1px solid var(--hub-border); border-radius: 6px; background: var(--hub-card); padding: 3px 5px; font-size: 11px;
+  }
+  #stored-title-ideas .hub-tab[aria-pressed="true"] { background: var(--hub-chip); border-color: var(--hub-green); }
+  #stored-title-ideas .hub-sort { padding-inline: 12px; }
+  #stored-title-ideas .hub button:hover { background: var(--hub-hover); }
+  #stored-title-ideas .hub-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  #stored-title-ideas .hub-card { position: relative; min-width: 0; padding: 6px; background: var(--hub-card); border: 1px solid var(--hub-border); border-radius: 7px; }
+  #stored-title-ideas .card-meta { display: flex; justify-content: space-between; align-items: center; height: 22px; margin-bottom: 4px; }
+  #stored-title-ideas .card-number { display: inline-grid; place-items: center; min-width: 24px; height: 20px; padding-inline: 5px; border-radius: 5px; background: var(--hub-chip); color: var(--hub-green); font-size: 11px; font-weight: 600; }
+  #stored-title-ideas .card-more { display: grid; place-items: center; width: 24px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: var(--hub-muted); font-size: 18px; line-height: 1; }
+  #stored-title-ideas .card-title { display: -webkit-box; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; align-content: start; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; min-height: 42px; font-size: var(--title-size); line-height: 1.5; font-weight: 600; }
+  #stored-title-ideas .card-title[hidden] { display: none; }
+  #stored-title-ideas .card-title:hover { background: transparent !important; }
+  #stored-title-ideas .card-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 3px 0 6px; color: var(--hub-muted); font-size: 11px; line-height: 1.3; }
+  #stored-title-ideas .card-assignments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  #stored-title-ideas .hub-assign { min-height: 22px; color: var(--hub-green); }
+  #stored-title-ideas .card-menu { position: absolute; top: 32px; right: 7px; width: 126px; padding: 5px; background: var(--hub-card); border: 1px solid var(--hub-border); border-radius: 6px; z-index: 3; box-shadow: 0 3px 12px #0002; }
+  #stored-title-ideas .card-menu[hidden] { display: none; }
+  #stored-title-ideas .card-menu button { display: block; width: 100%; padding: 7px 5px; border: 0; background: transparent; text-align: left; font-size: 12px; border-radius: 3px; }
+  #stored-title-ideas .card-menu button[data-action="delete"] { color: var(--hub-danger); }
+  #stored-title-ideas .hub-status { min-height: 18px; margin-top: 9px; color: var(--hub-muted); font-size: 11px; overflow-wrap: anywhere; }
+  #stored-title-ideas .title-editor { width: 100%; min-width: 0; font: inherit; color: var(--hub-text); background: var(--hub-bg); border: 1px solid var(--hub-green); border-radius: 4px; padding: 4px; }
+  #stored-title-ideas .hub[data-layout="list"] .hub-cards { grid-template-columns: 1fr; }
+  #stored-title-ideas .hub[data-layout="list"] .hub-card { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto 22px; align-items: center; gap: 10px; padding: 9px; }
+  #stored-title-ideas .hub[data-layout="list"] .card-meta { display: contents; }
+  #stored-title-ideas .hub[data-layout="list"] .card-number { grid-column: 1; grid-row: 1 / 3; }
+  #stored-title-ideas .hub[data-layout="list"] .card-more { grid-column: 4; grid-row: 1 / 3; }
+  #stored-title-ideas .hub[data-layout="list"] .card-title { grid-column: 2; grid-row: 1; min-height: 0; -webkit-line-clamp: 2; }
+  #stored-title-ideas .hub[data-layout="list"] .title-editor { grid-column: 2; grid-row: 1; }
+  #stored-title-ideas .hub[data-layout="list"] .card-path { grid-column: 2; grid-row: 2; margin: 0; }
+  #stored-title-ideas .hub[data-layout="list"] .card-assignments { grid-column: 3; grid-row: 1 / 3; grid-template-columns: repeat(4, 30px); }
+  #stored-title-ideas .hub[data-layout="list"] .hub-card { row-gap: 2px; }
+  #stored-title-ideas .hub[data-layout="preview"] .card-title { min-height: 21px; -webkit-line-clamp: 1; }
+  #stored-title-ideas .hub[data-layout="preview"] .hub-card.is-reading { border-color: var(--hub-green); }
+  #stored-title-ideas .reading-bar { display: flex; align-items: flex-start; gap: 9px; margin-top: 8px; padding: 9px 10px; border: 1px solid var(--hub-border); border-radius: 6px; background: var(--hub-card); }
+  #stored-title-ideas .reading-content { min-width: 0; }
+  #stored-title-ideas .reading-title { font-size: var(--title-size); font-weight: 600; overflow-wrap: anywhere; }
+  #stored-title-ideas .reading-path { font-size: 11px; color: var(--hub-muted); overflow-wrap: anywhere; }
+  #stored-title-ideas .hub[data-layout="compact"] .card-assignments { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+  #stored-title-ideas .hub[data-layout="compact"] .hub-card { padding: 7px; }
+  #stored-title-ideas .hub[data-layout="compact"] .hub-assign { padding-inline: 0; }
+  #stored-title-ideas .hub[data-layout="compact"] .card-meta { margin-bottom: 3px; }
+  #stored-title-ideas .hub[data-layout="compact"] .card-path { margin: 3px 0 6px; }
+  #stored-title-ideas .hub.hide-paths .card-path { display: none; }
+  @media (max-width: 540px) {
+    #stored-title-ideas .proposal-stage { min-height: 580px; }
+    #stored-title-ideas .hub-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #stored-title-ideas .hub-toolbar { flex-wrap: wrap; }
+    #stored-title-ideas .hub-tabs { flex-basis: 100%; }
+    #stored-title-ideas .hub-sort { margin-left: auto; }
+    #stored-title-ideas .hub[data-layout="list"] .hub-card { grid-template-columns: 24px minmax(0, 1fr) 22px; gap: 3px 8px; }
+    #stored-title-ideas .hub[data-layout="list"] .card-more { grid-column: 3; }
+    #stored-title-ideas .hub[data-layout="list"] .card-assignments { grid-column: 2; grid-row: 3; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @media (pointer: coarse) {
+    #stored-title-ideas .hub-tab, #stored-title-ideas .hub-sort, #stored-title-ideas .hub-assign { min-height: 44px; }
+    #stored-title-ideas .card-meta { height: 44px; }
+    #stored-title-ideas .card-more { width: 44px; height: 44px; }
+    #stored-title-ideas .hub[data-layout="compact"] .card-assignments { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #stored-title-ideas .hub[data-layout="list"] .hub-card { grid-template-columns: 24px minmax(0, 1fr) 44px; }
+    #stored-title-ideas .hub[data-layout="list"] .card-more { grid-column: 3; }
+    #stored-title-ideas .hub[data-layout="list"] .card-assignments { grid-column: 1 / -1; grid-row: 3; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #stored-title-ideas .proposal-stage { min-height: 760px; }
+  }
+</style>
+<div id="stored-title-ideas" class="viz-carousel viz-dotted-background" aria-label="控えタイトルの改善案" data-previous-label="前の案" data-next-label="次の案">
+  <section class="proposal-stage" data-variant="見出しカード" aria-label="見出しカード案">
+    <div class="hub" data-layout="heading" aria-label="見出しカードの見た目"></div>
+  </section>
+  <section class="proposal-stage" data-variant="横長リスト" aria-label="横長リスト案" hidden>
+    <div class="hub" data-layout="list" aria-label="横長リストの見た目"></div>
+  </section>
+  <section class="proposal-stage" data-variant="全文プレビュー" aria-label="全文プレビュー案" hidden>
+    <div class="hub" data-layout="preview" aria-label="全文プレビューの見た目"></div>
+  </section>
+  <section class="proposal-stage" data-variant="省スペースカード" aria-label="省スペースカード案" hidden>
+    <div class="hub" data-layout="compact" aria-label="省スペースカードの見た目"></div>
+  </section>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('stored-title-ideas');
+  const samples = [
+    { title: 'Turtle AI 動画制作アシスタント', path: 'kling-movie-creator' },
+    { title: 'Codex CLI 画像生成', path: 'turtle-codex-image-gen' },
+    { title: 'マインドマップ作成支援', path: 'mind_map' },
+    { title: 'タートルブレイン', path: 'turtle-brain' }
+  ];
+  const escape = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  root.querySelectorAll('.hub').forEach(hub => {
+    const state = { titleSize: 14, showPath: true };
+    const items = samples.map(item => ({ ...item }));
+    const isPreview = hub.dataset.layout === 'preview';
+    const layoutName = hub.closest('[data-variant]').dataset.variant;
+    hub.innerHTML = `<div class="hub-heading"><strong>控え Quartet</strong><span class="sample-label">名称・操作は表示例</span></div>
+      <div class="hub-toolbar"><div class="hub-tabs" aria-label="控えページ">${[1,2,3,4,5,6].map(page => `<button type="button" class="hub-tab cursor-interaction" data-page="${page}" aria-pressed="${page === 1}">控え${page}</button>`).join('')}</div><button type="button" class="hub-sort cursor-interaction">整列</button></div>
+      <div class="hub-cards">${items.map((item, index) => `<div class="hub-card" data-item="${index}">
+        <div class="card-meta"><span class="card-number">${index + 1}</span><button type="button" class="card-more cursor-interaction" aria-label="控え${index + 1}の操作" aria-expanded="false">⋯</button></div>
+        <button type="button" class="card-title cursor-interaction" data-tooltip="${escape(item.title)}" aria-label="${escape(item.title)}の全文を確認">${escape(item.title)}</button>
+        <div class="card-path">${escape(item.path)}</div>
+        <div class="card-assignments" aria-label="表示先">${['A','B','C','D'].map(slot => `<button type="button" class="hub-assign cursor-interaction" data-slot="${slot}" aria-label="控え${index + 1}をスロット${slot}に表示">${slot}</button>`).join('')}</div>
+        <div class="card-menu" hidden><button type="button" class="cursor-interaction" data-action="rename">名前を編集</button><button type="button" class="cursor-interaction" data-action="delete">削除</button></div>
+      </div>`).join('')}</div>
+      ${isPreview ? '<div class="reading-bar" aria-label="タイトルの全文"><span class="card-number reading-number">1</span><div class="reading-content"><div class="reading-title"></div><div class="reading-path"></div></div></div>' : ''}
+      <div class="hub-status" role="status" aria-live="polite"></div>`;
+    const status = hub.querySelector('.hub-status');
+    function read(index, announce = false) {
+      const item = items[index];
+      if (isPreview) {
+        hub.querySelectorAll('.hub-card').forEach(card => card.classList.toggle('is-reading', Number(card.dataset.item) === index));
+        hub.querySelector('.reading-number').textContent = index + 1;
+        hub.querySelector('.reading-title').textContent = item.title;
+        hub.querySelector('.reading-path').textContent = item.path;
+        if (announce) status.textContent = `控え${index + 1}の全文を表示`;
+      } else if (announce) {
+        status.textContent = `控え${index + 1}：${item.title}`;
+      }
+    }
+    if (isPreview) read(0);
+    hub.querySelectorAll('.hub-card').forEach(card => {
+      const index = Number(card.dataset.item);
+      const title = card.querySelector('.card-title');
+      const more = card.querySelector('.card-more');
+      const menu = card.querySelector('.card-menu');
+      if (isPreview) {
+        card.addEventListener('pointerenter', () => read(index));
+        card.addEventListener('focusin', () => read(index));
+      }
+      title.addEventListener('click', () => read(index, true));
+      more.addEventListener('click', () => {
+        menu.hidden = !menu.hidden;
+        more.setAttribute('aria-expanded', String(!menu.hidden));
+      });
+      card.querySelectorAll('[data-slot]').forEach(button => button.addEventListener('click', () => {
+        status.textContent = `表示例：控え${index + 1}「${items[index].title}」 → スロット${button.dataset.slot}`;
+      }));
+      card.querySelector('[data-action="rename"]').addEventListener('click', () => {
+        menu.hidden = true;
+        more.setAttribute('aria-expanded', 'false');
+        if (card.querySelector('.title-editor')) return;
+        const editor = document.createElement('input');
+        editor.className = 'title-editor';
+        editor.setAttribute('aria-label', `控え${index + 1}の名前`);
+        editor.value = items[index].title;
+        title.hidden = true;
+        title.insertAdjacentElement('afterend', editor);
+        const commit = () => {
+          if (!editor.isConnected) return;
+          items[index].title = editor.value.trim() || items[index].title;
+          title.textContent = items[index].title;
+          title.dataset.tooltip = items[index].title;
+          title.setAttribute('aria-label', `${items[index].title}の全文を確認`);
+          editor.remove();
+          title.hidden = false;
+          read(index, true);
+        };
+        editor.addEventListener('blur', commit);
+        editor.addEventListener('keydown', event => {
+          if (event.key === 'Enter') { commit(); title.focus(); }
+          if (event.key === 'Escape') { editor.value = items[index].title; commit(); title.focus(); }
+        });
+        editor.focus(); editor.select();
+      });
+      card.querySelector('[data-action="delete"]').addEventListener('click', () => {
+        items[index] = { title: '空き', path: '未登録' };
+        title.textContent = '空き'; title.dataset.tooltip = '空き'; title.setAttribute('aria-label', `控え${index + 1}は空き`);
+        card.querySelector('.card-path').textContent = '未登録';
+        card.querySelectorAll('[data-slot]').forEach(button => { button.disabled = true; });
+        menu.hidden = true; more.setAttribute('aria-expanded', 'false');
+        read(index); status.textContent = `表示例：控え${index + 1}を空きにしました`;
+      });
+    });
+    hub.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => {
+      hub.querySelectorAll('[data-page]').forEach(tab => tab.setAttribute('aria-pressed', String(tab === button)));
+      status.textContent = `控え${button.dataset.page}を選択（内容は共通の表示例）`;
+    }));
+    hub.querySelector('.hub-sort').addEventListener('click', () => { status.textContent = '表示例：控えは整列済みです'; });
+    function renderAppearance() {
+      hub.style.setProperty('--title-size', `${state.titleSize}px`);
+      hub.classList.toggle('hide-paths', !state.showPath);
+    }
+    renderAppearance();
+    if (globalThis.Tweak) {
+      const tweak = new Tweak({ container: hub, onChange: renderAppearance });
+      tweak.addSlider(state, 'titleSize', { label: `${layoutName}：文字サイズ`, min: 13, max: 16, step: 1, unit: 'px' });
+      tweak.addToggle(state, 'showPath', { label: 'フォルダ名を表示' });
+    }
+  });
+})();
+</script>

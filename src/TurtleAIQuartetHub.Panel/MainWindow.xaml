@@ -1848,106 +1848,75 @@
             <RowDefinition Height="62" />
           </Grid.RowDefinitions>
 
-          <Grid>
+          <TextBox x:Name="StoredPanelTitle"
+                   Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
+                   Style="{StaticResource InlineTitleTextBox}"
+                   VerticalAlignment="Center" />
+
+          <Grid Grid.Row="1" Margin="0,3,0,0">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="20" />
               <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-
-            <Border Width="28"
-                    Height="20"
-                    CornerRadius="6"
-                    Background="#223027"
-                    BorderBrush="#335A43"
-                    BorderThickness="1"
-                    Margin="0,0,8,0">
-              <TextBlock Text="{Binding Label}"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center"
-                         FontSize="10"
-                         FontWeight="SemiBold"
-                         Foreground="{StaticResource AccentBrush}" />
-            </Border>
-
-            <TextBox Grid.Column="1"
-                     Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
-                     Style="{StaticResource InlineTitleTextBox}"
-                     Margin="0,0,6,0"
-                     VerticalAlignment="Center" />
-
-                <Button Grid.Column="2"
-                  Content="&#xED25;"
-                  Tag="{Binding}"
-                  Click="RegisterStoredPanelFolderButton_Click"
-                  Style="{StaticResource StoredRegisterFolderButton}"
-                  AutomationProperties.Name="フォルダを選んでこの控えに登録"
-                  VerticalAlignment="Top" />
-
-                <Button Grid.Column="2"
-                  Content="&#xE74D;"
-                  Tag="{Binding}"
-                  Click="DeleteStoredPanelButton_Click"
-                  Style="{StaticResource StoredDeleteButton}"
-                  VerticalAlignment="Top"
-                  IsEnabled="{Binding HasContent}" />
+            <TextBlock Text="{Binding Label}"
+                       Margin="0,0,6,0"
+                       TextAlignment="Right"
+                       Typography.NumeralAlignment="Tabular"
+                       Foreground="{StaticResource AccentBrush}"
+                       FontSize="10" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="1" Text="{Binding ShortPath}"
+                       ToolTip="{Binding WorkspacePath}"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       FontSize="10" TextTrimming="CharacterEllipsis" />
           </Grid>
 
-          <TextBlock Grid.Row="1"
-                     Text="{Binding ShortPath}"
-                     Margin="0,3,0,0"
-                     Foreground="{StaticResource MutedTextBrush}"
-                     FontSize="10" />
-
-              <Grid Grid.Row="2" Margin="0,6,0,0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+          <Grid Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Top">
             <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="30" />
             </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
 
-                <Button Grid.Row="0"
-                  Grid.Column="0"
-                    Content="A"
-                    Tag="{Binding}"
-                    CommandParameter="A"
-                    Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}"
-                  HorizontalAlignment="Stretch"
-                  Margin="0,0,4,4"
-                    IsEnabled="{Binding HasContent}" />
-                <Button Grid.Row="0"
-                  Grid.Column="1"
-                    Content="B"
-                    Tag="{Binding}"
-                    CommandParameter="B"
-                    Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}"
-                  HorizontalAlignment="Stretch"
-                  Margin="4,0,0,4"
-                    IsEnabled="{Binding HasContent}" />
-                <Button Grid.Row="1"
-                  Grid.Column="0"
-                    Content="C"
-                    Tag="{Binding}"
-                    CommandParameter="C"
-                    Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}"
-                  HorizontalAlignment="Stretch"
-                  Margin="0,4,4,0"
-                    IsEnabled="{Binding HasContent}" />
-                <Button Grid.Row="1"
-                  Grid.Column="1"
-                    Content="D"
-                    Tag="{Binding}"
-                    CommandParameter="D"
-                    Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}"
-                  HorizontalAlignment="Stretch"
-                  Margin="4,4,0,0"
+              <Button Grid.Row="0" Grid.Column="0" Content="A" Tag="{Binding}"
+                      CommandParameter="A" Click="ShowStoredPanelButton_Click"
+                      Style="{StaticResource StoredAssignButton}"
+                      HorizontalAlignment="Stretch" Margin="0,0,4,4"
+                      IsEnabled="{Binding HasContent}" />
+              <Button Grid.Row="0" Grid.Column="1" Content="B" Tag="{Binding}"
+                      CommandParameter="B" Click="ShowStoredPanelButton_Click"
+                      Style="{StaticResource StoredAssignButton}"
+                      HorizontalAlignment="Stretch" Margin="4,0,0,4"
+                      IsEnabled="{Binding HasContent}" />
+              <Button Grid.Row="1" Grid.Column="0" Content="C" Tag="{Binding}"
+                      CommandParameter="C" Click="ShowStoredPanelButton_Click"
+                      Style="{StaticResource StoredAssignButton}"
+                      HorizontalAlignment="Stretch" Margin="0,4,4,0"
+                      IsEnabled="{Binding HasContent}" />
+              <Button Grid.Row="1" Grid.Column="1" Content="D" Tag="{Binding}"
+                      CommandParameter="D" Click="ShowStoredPanelButton_Click"
+                      Style="{StaticResource StoredAssignButton}"
+                      HorizontalAlignment="Stretch" Margin="4,4,0,0"
+                      IsEnabled="{Binding HasContent}" />
+            </Grid>
+
+            <Button Grid.Column="1" Content="&#xED25;" Tag="{Binding}"
+                    Click="RegisterStoredPanelFolderButton_Click"
+                    Style="{StaticResource StoredRegisterFolderButton}"
+                    AutomationProperties.Name="フォルダを選んでこの控えに登録"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+            <Button Grid.Column="1" Content="&#xE74D;" Tag="{Binding}"
+                    Click="DeleteStoredPanelButton_Click"
+                    Style="{StaticResource StoredDeleteButton}"
+                    AutomationProperties.Name="この控えを削除"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
                     IsEnabled="{Binding HasContent}" />
           </Grid>
         </Grid>
