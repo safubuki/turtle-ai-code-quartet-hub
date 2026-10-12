@@ -47,6 +47,7 @@ VscodeUserSettingsTests.Run(failures);
 AppConfigTests.Run(failures);
 WindowSlotCompactIdeToggleTests.Run(failures);
 PanelOrderTests.Run(failures);
+WindowFocusSynchronizerTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -64,6 +65,7 @@ Console.WriteLine("VS Code 設定保持の回帰チェックに合格しまし�
 Console.WriteLine("Application configuration migration regression checks passed (4/4).");
 Console.WriteLine("Compact IDE toggle regression checks passed (4/4).");
 Console.WriteLine("Panel ordering and persistence regression checks passed (6/6).");
+Console.WriteLine("ウィンドウ直接操作のフォーカス同期チェックに合格しました (12/12)。");
 return 0;
 
 async Task VerifyAsync(

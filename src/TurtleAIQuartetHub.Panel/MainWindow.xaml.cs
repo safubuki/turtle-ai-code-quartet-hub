@@ -65,6 +65,10 @@ public partial class MainWindow : Window
     ];
     private readonly WindowEnumerator _windowEnumerator = new();
     private readonly WindowArranger _windowArranger = new();
+    private readonly WindowFocusSynchronizer _windowFocusSynchronizer;
+    private readonly HashSet<IntPtr> _externalFocusTileHandles = [];
+    private readonly HashSet<int> _externalFocusChangedMonitors = [];
+    private int _panelFocusRequestsInFlight;
     private readonly ManagedWindowCloseService _managedWindowCloseService;
     private readonly FocusNameOverlay _focusNameOverlay;
     private readonly VscodeLauncher _vscodeLauncher;
@@ -122,6 +126,8 @@ public partial class MainWindow : Window
 
         var config = AppConfig.Load();
         _statusStore = new StatusStore(config);
+        _windowFocusSynchronizer = new WindowFocusSynchronizer(
+            _windowArranger.GetWindowState, GetSlotMonitorIndex, _windowArranger.IsAbove);
         _managedWindowCloseService = new ManagedWindowCloseService(_windowEnumerator, _windowArranger);
         _vscodeLauncher = new VscodeLauncher(_windowEnumerator);
         _applicationLauncher = new ApplicationLauncher(_windowEnumerator, _vscodeLauncher);
@@ -1555,6 +1561,10 @@ public partial class MainWindow : Window
 
     private async void ToggleSlotFocus(WindowSlot slot)
     {
+        ReconcileExternalWindowFocus();
+        _windowFocusSynchronizer.Observe(_statusStore.Slots);
+        _externalFocusTileHandles.Clear();
+        _externalFocusChangedMonitors.Clear();
         // 直前のフォーカス切替が予約した遅延整列を破棄してから新しい操作を始める。
         // 破棄しないと、古い整列が新フォーカスの 1 面表示を 4 面へ戻し、別スロットの 1 面だけが
         // 背面に残る不整合表示（1 面が背面・4 面が前面）になる。
@@ -1576,7 +1586,7 @@ public partial class MainWindow : Window
                 && _windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, GetManagedWindowHandles()))
             {
                 PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: false);
-                await _windowArranger.FocusMaximizedOnMonitorAsync(slot.WindowHandle, monitor);
+                await FocusFromPanelAsync(slot.WindowHandle, monitor);
                 if (focusTransitionVersion != _focusTransitionVersion)
                 {
                     return;
@@ -1638,7 +1648,7 @@ public partial class MainWindow : Window
         SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
         PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: false);
         // 単独移動中ならその実効ディスプレイで最大化する。未移動なら従来どおりベース面で最大化。
-        var focusActivated = await _windowArranger.FocusMaximizedOnMonitorAsync(slot.WindowHandle, monitor);
+        var focusActivated = await FocusFromPanelAsync(slot.WindowHandle, monitor);
         if (focusTransitionVersion != _focusTransitionVersion)
         {
             return;
@@ -1651,6 +1661,7 @@ public partial class MainWindow : Window
             // 画面を覆い切るまでの間、タイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
             // 背面送り・前フォーカスの復元・整列はすべてアニメ完了後に覆いの下で行う。
             SetFocusedSlotForDisplay(slot);
+            _windowFocusSynchronizer.ObserveWindow(slot.WindowHandle);
             SchedulePanelToFront();
             _statusStore.Message = $"スロット{slot.Name}をフォーカス表示しました。";
             RefreshAuxiliaryUi();
@@ -1677,7 +1688,7 @@ public partial class MainWindow : Window
             }
 
             // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
-            if (slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
+            if (!ReconcileExternalWindowFocus() && slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
             {
                 // 最大化が完全に落ち着いてから、フォーカス対象を通常 Z 順の先頭に保ったまま
                 // 覆いの下で旧フォーカスを quadrant へ静かに戻す。ここで他スロットを HWND_BOTTOM
@@ -1698,6 +1709,19 @@ public partial class MainWindow : Window
 
         _statusStore.Message = $"スロット{slot.Name}の{slot.ApplicationDisplayName}ウィンドウが見つかりません。";
         RefreshAuxiliaryUi();
+    }
+
+    private async Task<bool> FocusFromPanelAsync(IntPtr handle, int monitor)
+    {
+        _panelFocusRequestsInFlight++;
+        try
+        {
+            return await _windowArranger.FocusMaximizedOnMonitorAsync(handle, monitor);
+        }
+        finally
+        {
+            _panelFocusRequestsInFlight--;
+        }
     }
 
     private void PinAllTopButton_Click(object sender, RoutedEventArgs e)
@@ -2921,14 +2945,18 @@ public partial class MainWindow : Window
         {
             await _statusStore.RefreshWindowStatusesAsync(_windowEnumerator, _refreshCancellation.Token);
 
-            // フォーカス中（1 面）ウィンドウをアプリ外で直接最小化したケースを実体に合わせて回復する。
-            // 回復したらこの周回の再接続・再配置は行わない（4 面へ戻した直後なのでズレ判定が不要）。
-            if (ReconcileExternallyMinimizedFocusedSlot())
+            // 直接の最大化・復元・最小化を、自動補正より先にパネルへ反映する。
+            if (ReconcileExternalWindowFocus())
             {
                 return;
             }
 
             var reattachedCount = ReattachExistingVsCodeWindowsToMissingSlots();
+            if (reattachedCount > 0 && ReconcileExternalWindowFocus())
+            {
+                return;
+            }
+
             if (reattachedCount > 0
                 && CanReapplyPostLaunchArrangement()
                 && _windowArranger.NeedsArrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex()))
@@ -2960,6 +2988,7 @@ public partial class MainWindow : Window
         {
             return 0;
         }
+
 
         var assignedHandles = _statusStore.Slots
             .Where(slot => slot.WindowHandle != IntPtr.Zero && _windowEnumerator.IsLiveWindow(slot.WindowHandle))
@@ -3004,6 +3033,11 @@ public partial class MainWindow : Window
 
     private int ArrangeSlotsOnActiveMonitorQuietly()
     {
+        if (ReconcileExternalWindowFocus() || _focusSwitchArrangeCancellation is not null
+            || IsAnyMouseButtonPressed() || _panelFocusRequestsInFlight > 0)
+        {
+            return 0;
+        }
         // settling 補正は演出ではないので、復元が必要でもアニメーションさせず無音で整える。
         return _windowArranger.Arrange(_statusStore.Slots, _statusStore.Config.Gap, GetActiveMonitorIndex(), animateRestore: false);
     }
@@ -4050,23 +4084,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        var focusedSlots = FocusedSlots().ToList();
-        if (focusedSlots.Count == 0)
+        if (ReconcileExternalWindowFocus() || _focusSwitchArrangeCancellation is not null)
         {
             return;
         }
 
-        // ユーザーがフォーカス中ウィンドウをアプリ外で直接最小化していたら、再最大化で抵抗せず
-        // そのディスプレイのフォーカスだけ解除し、最小化のまま残す。最小化に逆らうと勝手に 1 面へ
-        // 戻り不整合表示になる。複数フォーカスのうち最小化された面だけを対象にする。
-        if (focusedSlots.Any(slot => _windowArranger.IsMinimized(slot.WindowHandle)))
+        var focusedSlots = FocusedSlots().ToList();
+        if (focusedSlots.Count == 0)
         {
-            ReconcileExternallyMinimizedFocusedSlot();
-            focusedSlots = FocusedSlots().Where(slot => !_windowArranger.IsMinimized(slot.WindowHandle)).ToList();
-            if (focusedSlots.Count == 0)
-            {
-                return;
-            }
+            return;
         }
 
         _isReassertingFocusedSlot = true;
@@ -4092,48 +4118,145 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// フォーカス中（1 面表示）のウィンドウを、アプリを介さず OS 側で直接最小化したケースを実体に合わせる。
-    /// アプリのフォーカス状態が実体とずれたまま再アサートや遅延整列が走ると、最小化したはずの
-    /// ウィンドウが勝手に 1 面へ戻り、別スロットの 4 面が前面へ重なる不整合表示になる。
-    /// ユーザーの手動最小化を尊重し、フォーカスだけ解除する。ウィンドウは最小化のまま、
-    /// 他スロットは現在の象限のまま残し、再最大化や再配置で勝手に復帰させない。
-    /// アプリ主導の非表示（一括最小化）中やビジー中、パネル最小化中は対象外。
+    /// 直接の最大化・復元・最小化を、配置補正や再前面化より先に取り込む。
+    /// アプリ自身の最大化要求中は判定せず、復元判定はディスプレイ移動の短い猶予後に行う。
     /// </summary>
-    private bool ReconcileExternallyMinimizedFocusedSlot()
+    private bool ReconcileExternalWindowFocus()
     {
         if (_areWindowsHidden
             || _isBusy
             || _isReassertingFocusedSlot
+            || _panelFocusRequestsInFlight > 0
+            || _isWindowMoveOrResizeActive
+            || _isCardDragDropInProgress
+            || IsAnyMouseButtonPressed()
             || WindowState == WindowState.Minimized)
         {
             return false;
         }
 
-        var minimizedFocusedSlots = _statusStore.Slots
-            .Where(slot => slot.IsFocused
-                && slot.WindowHandle != IntPtr.Zero
-                && _windowArranger.IsMinimized(slot.WindowHandle))
-            .ToList();
-        if (minimizedFocusedSlots.Count == 0)
+        var changes = _windowFocusSynchronizer.Reconcile(_statusStore.Slots,
+            detectRestores: DateTimeOffset.UtcNow >= _suppressFocusedSlotReassertUntil);
+        if (!changes.HasChanges)
         {
+            if (_externalFocusTileHandles.Count > 0 && _focusSwitchArrangeCancellation is null)
+            {
+                ScheduleExternalFocusCompletion();
+            }
+
             return false;
         }
 
-        // 手動最小化された面のフォーカスだけ解除する。最小化中ウィンドウの復元も、他スロットの
-        // 再配置も行わない。他ディスプレイのフォーカスはそのまま維持する。
+        ++_focusTransitionVersion;
         CancelFocusSwitchArrange();
         CancelScheduledFocusedSlotReassert();
-        foreach (var slot in minimizedFocusedSlots)
+        CancelScheduledPostLaunchArrange();
+        foreach (var slot in changes.Released)
         {
-            slot.IsFocused = false;
+            CapturePreferredLayout(slot);
         }
 
-        var name = minimizedFocusedSlots[0].Name;
-        _statusStore.Message = minimizedFocusedSlots.Count == 1
-            ? $"スロット{name}の手動最小化を検出したためフォーカスを解除しました。"
-            : $"{minimizedFocusedSlots.Count}個の手動最小化を検出したためフォーカスを解除しました。";
+        foreach (var slot in changes.Tile)
+        {
+            _externalFocusTileHandles.Add(slot.WindowHandle);
+        }
+
+        foreach (var slot in changes.Focused.Concat(changes.Released))
+        {
+            _externalFocusChangedMonitors.Add(GetSlotMonitorIndex(slot));
+        }
+
+        if (changes.Focused.Count > 0)
+        {
+            SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
+        }
+
+        if (_externalFocusTileHandles.Count > 0 || changes.Focused.Count > 0)
+        {
+            ScheduleExternalFocusCompletion();
+        }
+        else
+        {
+            _externalFocusChangedMonitors.Clear();
+        }
+
+        _statusStore.Message = changes.Focused.Count > 0
+            ? $"スロット{string.Join("、", changes.Focused.Select(slot => slot.Name))}の手動最大化をフォーカス表示に反映しました。"
+            : "ウィンドウの手動復元・最小化に合わせてフォーカスを解除しました。";
         RefreshAuxiliaryUi();
         return true;
+    }
+
+    private void ScheduleExternalFocusCompletion()
+    {
+        var cancellation = new CancellationTokenSource();
+        _focusSwitchArrangeCancellation = cancellation;
+        _ = CompleteExternalFocusChangeAsync(cancellation);
+    }
+
+    private async Task CompleteExternalFocusChangeAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            // 新しい窓の最大化アニメーションが覆い切ってから旧フォーカスだけを戻す。
+            await Task.Delay(FocusSwitchArrangeDelay, cancellation.Token);
+            while (_isBusy || _isWindowMoveOrResizeActive || _isCardDragDropInProgress || IsAnyMouseButtonPressed())
+            {
+                await Task.Delay(100, cancellation.Token);
+            }
+
+            if (cancellation.IsCancellationRequested || _areWindowsHidden
+                || WindowState == WindowState.Minimized || ReconcileExternalWindowFocus())
+            {
+                return;
+            }
+
+            foreach (var group in _statusStore.Slots.Where(slot =>
+                         _externalFocusTileHandles.Contains(slot.WindowHandle) && !slot.IsFocused)
+                         .GroupBy(GetSlotMonitorIndex))
+            {
+                var focus = GetFocusedSlotOnMonitor(group.Key);
+                _windowArranger.ArrangeOnly(_statusStore.Slots,
+                    group.Select(slot => slot.WindowHandle).ToArray(),
+                    _statusStore.Config.Gap, GetActiveMonitorIndex(), focus?.WindowHandle ?? IntPtr.Zero);
+                if (focus is null)
+                {
+                    foreach (var slot in group.Where(slot => !_windowArranger.IsMinimized(slot.WindowHandle)))
+                    {
+                        ApplyLayerToSlot(slot, _managedWindowLayerMode, false);
+                    }
+                }
+            }
+
+            _externalFocusTileHandles.Clear();
+            foreach (var focus in FocusedSlots().Where(slot =>
+                         _externalFocusChangedMonitors.Contains(GetSlotMonitorIndex(slot))
+                         && _windowArranger.GetWindowState(slot.WindowHandle) == ManagedWindowState.Maximized).ToList())
+            {
+                EnsureFocusedSlotAboveTiles(focus);
+            }
+
+            _externalFocusChangedMonitors.Clear();
+
+            BringPanelToFrontImmediate();
+            RefreshAuxiliaryUi();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(_focusSwitchArrangeCancellation, cancellation))
+            {
+                _focusSwitchArrangeCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
     }
 
     private void HideCloseAllConfirmDialog()
@@ -4763,7 +4886,8 @@ public partial class MainWindow : Window
     // フォーカス窓自体を再前面化しないため、Electron の白い再描画や DWM ズームを誘発しない。
     private bool RepairFocusedZOrderIfNeeded(WindowSlot focusedSlot)
     {
-        if (!focusedSlot.IsFocused || focusedSlot.WindowHandle == IntPtr.Zero)
+        if (ReconcileExternalWindowFocus() || _focusSwitchArrangeCancellation is not null
+            || !focusedSlot.IsFocused || focusedSlot.WindowHandle == IntPtr.Zero)
         {
             return false;
         }

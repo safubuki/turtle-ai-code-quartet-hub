@@ -59,6 +59,17 @@ public sealed class WindowArranger
         return ArrangeCore(slots, gap, monitorIndex, excludedSlot, animateRestore, keepAboveHandle);
     }
 
+    public int ArrangeOnly(
+        IReadOnlyList<WindowSlot> slots,
+        IReadOnlyCollection<IntPtr> handles,
+        int gap,
+        int monitorIndex,
+        IntPtr keepAboveHandle = default)
+    {
+        return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null,
+            animateRestore: false, keepAboveHandle, includedHandles: handles);
+    }
+
     public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
     {
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot: null);
@@ -85,9 +96,15 @@ public sealed class WindowArranger
         int monitorIndex,
         WindowSlot? excludedSlot,
         bool animateRestore,
-        IntPtr keepAboveHandle)
+        IntPtr keepAboveHandle,
+        IReadOnlyCollection<IntPtr>? includedHandles = null)
     {
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot);
+        if (includedHandles is not null)
+        {
+            placements.RemoveAll(placement => !includedHandles.Contains(placement.Handle)
+                || IsIconic(placement.Handle));
+        }
 
         if (placements.Count == 0)
         {
@@ -802,6 +819,18 @@ public sealed class WindowArranger
     public bool IsMinimized(IntPtr windowHandle)
     {
         return windowHandle != IntPtr.Zero && IsWindow(windowHandle) && IsIconic(windowHandle);
+    }
+
+    public ManagedWindowState GetWindowState(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return ManagedWindowState.Missing;
+        }
+
+        return IsIconic(windowHandle) ? ManagedWindowState.Minimized
+            : IsZoomed(windowHandle) ? ManagedWindowState.Maximized
+            : ManagedWindowState.Normal;
     }
 
     public bool TryGetWindowBounds(IntPtr windowHandle, out WindowBounds bounds)
