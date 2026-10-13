@@ -215,6 +215,11 @@ public sealed class WindowArranger
         return (GetWindowLong(windowHandle, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
     }
 
+    public bool IsInTopmostLayer(IntPtr windowHandle)
+    {
+        return windowHandle != IntPtr.Zero && IsWindow(windowHandle) && IsTopmost(windowHandle);
+    }
+
     private static void BringToFrontWithoutTopmostIfNeeded(IntPtr windowHandle)
     {
         _ = BringToFrontWithoutTopmostCore(windowHandle);

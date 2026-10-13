@@ -1737,7 +1737,7 @@ public partial class MainWindow : Window
         // フォーカスモード中: フォーカスを維持したまま全スロットのレイヤーだけ変更。
         // FocusMaximized (SetForegroundWindow) は呼ばない。呼ぶとパネルと管理中ウィンドウの
         // アクティベーション争奪で無限ループしてハングする。
-        ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Topmost);
+        ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Topmost, bringToFrontOnce: true);
         _statusStore.Message = "管理中ウィンドウを最前面にしました。";
     }
 
@@ -1770,12 +1770,14 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// フォーカスモード中でも安全にレイヤーを変更する。
-    /// フォーカス中は対象スロットを最後に前面化し、非フォーカススロットを背面に保つ。
+    /// 指定した前後位置へ移し、フォーカス中の対象を同面のタイルより手前に保つ。
     /// FocusMaximized (SetForegroundWindow) を呼ばないため、パネルと管理中ウィンドウ間の
     /// アクティベーション争奪による無限ループが発生しない。
     /// 4面表示・1面フォーカス表示のどちらでも動作する。
     /// </summary>
-    private void ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode layerMode)
+    private void ApplyLayerPreservingFocusMode(
+        WindowSlot.SlotWindowLayerMode layerMode,
+        bool bringToFrontOnce = false)
     {
         SetManagedWindowLayerState(layerMode);
 
@@ -1788,20 +1790,20 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            ApplyLayerToSlot(slot, layerMode, false);
+            ApplyLayerToSlot(slot, layerMode, false, bringToFrontOnce);
         }
 
         // 次に、フォーカスを持つ各ディスプレイで、フォーカスと同面の前後関係を保ち直す。
         foreach (var focusedSlot in FocusedSlots().ToList())
         {
-            ApplyLayerPreservingFocusedSlotOrder(focusedSlot);
+            EnsureFocusedSlotAboveTiles(focusedSlot, bringToFrontOnce);
         }
 
-    }
-
-    private void ApplyLayerPreservingFocusedSlotOrder(WindowSlot focusedSlot)
-    {
-        EnsureFocusedSlotAboveTiles(focusedSlot);
+        BringPanelToFrontImmediate();
+        if (FocusedSlots().Any())
+        {
+            ScheduleFocusedZOrderVerification();
+        }
     }
 
     private async void ToggleVisibilityButton_Click(object sender, RoutedEventArgs e)
@@ -3259,7 +3261,11 @@ public partial class MainWindow : Window
         return appliedAny;
     }
 
-    private bool ApplyLayerToSlot(WindowSlot slot, WindowSlot.SlotWindowLayerMode layerMode, bool bringPanelAfterChange = true)
+    private bool ApplyLayerToSlot(
+        WindowSlot slot,
+        WindowSlot.SlotWindowLayerMode layerMode,
+        bool bringPanelAfterChange = true,
+        bool bringToFrontOnce = false)
     {
         if (slot.WindowHandle == IntPtr.Zero)
         {
@@ -3269,7 +3275,9 @@ public partial class MainWindow : Window
 
         var applied = layerMode switch
         {
-            WindowSlot.SlotWindowLayerMode.Topmost => _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle),
+            WindowSlot.SlotWindowLayerMode.Topmost => bringToFrontOnce
+                ? _windowArranger.BringToFrontOnce(slot.WindowHandle)
+                : _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle),
             WindowSlot.SlotWindowLayerMode.Backmost => _windowArranger.SetBackmost(slot.WindowHandle),
             _ => false
         };
@@ -3907,13 +3915,12 @@ public partial class MainWindow : Window
         _focusedZOrderVerificationCancellation?.Cancel();
     }
 
-    private void ScheduleFocusedZOrderVerification(WindowSlot focusedSlot)
+    private void ScheduleFocusedZOrderVerification(WindowSlot? focusedSlot = null)
     {
         _focusedZOrderVerificationCancellation?.Cancel();
         if (_areWindowsHidden
             || WindowState == WindowState.Minimized
-            || focusedSlot.WindowHandle == IntPtr.Zero
-            || !focusedSlot.IsFocused)
+            || focusedSlot is not null && (focusedSlot.WindowHandle == IntPtr.Zero || !focusedSlot.IsFocused))
         {
             return;
         }
@@ -3924,7 +3931,7 @@ public partial class MainWindow : Window
     }
 
     private async Task VerifyFocusedZOrderAfterTransitionAsync(
-        WindowSlot focusedSlot,
+        WindowSlot? focusedSlot,
         CancellationTokenSource cancellation)
     {
         try
@@ -3939,11 +3946,13 @@ public partial class MainWindow : Window
                         && WindowState != WindowState.Minimized
                         && !_isWindowMoveOrResizeActive
                         && !_isCardDragDropInProgress
-                        && !IsAnyMouseButtonPressed()
-                        && focusedSlot.IsFocused
-                        && focusedSlot.WindowHandle != IntPtr.Zero)
+                        && !IsAnyMouseButtonPressed())
                     {
-                        RepairFocusedZOrderIfNeeded(focusedSlot);
+                        var targets = focusedSlot is null ? FocusedSlots().ToList() : [focusedSlot];
+                        foreach (var target in targets.Where(slot => slot.IsFocused && slot.WindowHandle != IntPtr.Zero))
+                        {
+                            RepairFocusedZOrderIfNeeded(target);
+                        }
                     }
                 }, DispatcherPriority.Background);
             }
@@ -4857,11 +4866,24 @@ public partial class MainWindow : Window
     // 最大化・復元の DWM アニメーションを壊さず、通常 z-order 帯の相対順だけを整える。
     // パネル本体は topmost 帯、管理対象は通常帯なので、順序は常に
     // パネル本体 > 1面フォーカス > 同じ面の4面スロットになる。
-    private bool EnsureFocusedSlotAboveTiles(WindowSlot focusedSlot)
+    // 最背面指定時は管理窓のまとまりを通常帯の末尾へ置き、他アプリより前へ戻さない。
+    private bool EnsureFocusedSlotAboveTiles(WindowSlot focusedSlot, bool bringToFrontOnce = false)
     {
         var monitor = GetSlotMonitorIndex(focusedSlot);
         BringPanelToFrontImmediate();
-        var focusedRaised = _windowArranger.BringToFrontWithoutTopmost(focusedSlot.WindowHandle);
+        var focusedLayerApplied = _managedWindowLayerMode == WindowSlot.SlotWindowLayerMode.Backmost
+            ? _windowArranger.SetBackmost(focusedSlot.WindowHandle)
+            : bringToFrontOnce
+                ? _windowArranger.BringToFrontOnce(focusedSlot.WindowHandle)
+                : _windowArranger.BringToFrontWithoutTopmost(focusedSlot.WindowHandle);
+
+        if (bringToFrontOnce)
+        {
+            // 他スレッドの一時topmost解除が未反映の間に相対配置すると、タイルまでtopmostになる。
+            // 前面ボタンの後は遅延した読み取り検査で、通常帯へ戻った窓だけの順序を補正する。
+            BringPanelToFrontImmediate();
+            return focusedLayerApplied;
+        }
 
         var orderedAny = false;
         foreach (var slot in _statusStore.Slots)
@@ -4870,15 +4892,22 @@ public partial class MainWindow : Window
                 && slot.WindowHandle != IntPtr.Zero
                 && GetSlotMonitorIndex(slot) == monitor)
             {
-                // HWND_BOTTOM へ送らず、各タイルをフォーカス窓の直後へ置く。
-                // タイルが画面を覆い続けるため、壁紙や白背景が露出しない。
-                _windowArranger.ReleaseTopmostIfNeeded(slot.WindowHandle);
-                orderedAny |= _windowArranger.PlaceDirectlyBehind(slot.WindowHandle, focusedSlot.WindowHandle);
+                if (_managedWindowLayerMode == WindowSlot.SlotWindowLayerMode.Backmost)
+                {
+                    // フォーカスを末尾へ送った後にタイルを送ると、他アプリ > 1面 > 4面となる。
+                    orderedAny |= _windowArranger.SetBackmost(slot.WindowHandle);
+                }
+                else
+                {
+                    // 通常のフォーカス遷移では各タイルを直後へ置き、画面の覆いを維持する。
+                    _windowArranger.ReleaseTopmostIfNeeded(slot.WindowHandle);
+                    orderedAny |= _windowArranger.PlaceDirectlyBehind(slot.WindowHandle, focusedSlot.WindowHandle);
+                }
             }
         }
 
         BringPanelToFrontImmediate();
-        return focusedRaised || orderedAny;
+        return focusedLayerApplied || orderedAny;
     }
 
     // フォーカス遷移が落ち着いた後の検査用。正常な Z 順では何も書き込まない。
@@ -4887,7 +4916,8 @@ public partial class MainWindow : Window
     private bool RepairFocusedZOrderIfNeeded(WindowSlot focusedSlot)
     {
         if (ReconcileExternalWindowFocus() || _focusSwitchArrangeCancellation is not null
-            || !focusedSlot.IsFocused || focusedSlot.WindowHandle == IntPtr.Zero)
+            || !focusedSlot.IsFocused || focusedSlot.WindowHandle == IntPtr.Zero
+            || _windowArranger.IsInTopmostLayer(focusedSlot.WindowHandle))
         {
             return false;
         }
