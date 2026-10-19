@@ -44,6 +44,8 @@
 - `src/TurtleAIQuartetHub.Panel/Services/VscodeWorkspaceState.cs`: VS Code / Antigravity の workspaceStorage とウィンドウタイトルからワークスペースを推定。タイトルはフォルダ名の部分文字列ではなく、ワークスペース段として照合する。
 - `src/TurtleAIQuartetHub.Panel/Services/VscodeLayoutState.cs`: VS Code storage.json からレイアウト保存/復元。
 - `src/TurtleAIQuartetHub.Panel/Services/TaskbarJumpListService.cs`: Jump List 更新。
+- `src/TurtleAIQuartetHub.Panel/Models/SystemMonitorModels.cs`: システムモニタの表示モデル（`SystemResourceSnapshot`、`DriveUsageItem`、`FolderUsageItem`）。
+- `src/TurtleAIQuartetHub.Panel/Services/SystemMonitorService.cs`: メモリ使用量（`GlobalMemoryStatusEx`）、CPU使用率（`GetSystemTimes` 差分計測）、各ドライブ使用状況（`DriveInfo`）、各フォルダ（A〜Dワークスペース、控えワークスペース、Hubデータ、VS Code / Antigravity IDEデータ）の使用量計測サービス。
 
 ## 実行時データ
 - `%LOCALAPPDATA%/TurtleAIQuartetHub/slots.json`: visible slot と stored panel の保存状態。
@@ -97,3 +99,8 @@
 - 標準表示のAIアプリ行は控えの見出しと同じ高さへ揃える。縮小表示のボタン寸法と開閉時の位置固定は維持する。
 - 設定の表・控え一覧に上下ボタンとドラッグつまみを置く。つまみ選択中は上下キーでも移動でき、カードの並びと保存状態へ即時反映する。控えはページをまたいで移動できる。
 - 2026-10-02 UI改修: 並び替えボタンをアプリのダークグリーン＆ネオングリーンに調和した縦型スプリットステッパーへ刷新。上部に ChevronUp、中央にモダンな6ドットグリッパー（ドラッグ＋キー操作対応、フォーカス時アクセント発光）、下部に ChevronDown を一体型コンテナ内に配置し、左端列幅を44 DIPに最適化して入力領域を拡大。
+
+## メイン4カードのタイトル視認性向上とシステムモニタ（2026-10-19 追加）
+- 高解像度PC画面での視認性向上のため、標準表示のメイン4カード（`SlotCardTemplate`）のタイトル文字を太字（`FontWeight="Bold"`）・`FontSize="15.5"`・高コントラスト色（`#F8FCF9`）へ拡大。カード高さ（169 DIP）やアプリ全体のウィンドウサイズ（650×535 DIP）を一切圧迫しないよう、ヘッダ内の `ShortPath` 上マージン調整と `InlineTitleTextBox` テンプレートの `TemplateBinding` 対応により既存の40 DIP高ヘッダ枠内に収めた。
+- タイトルバーの歯車設定ボタン（`SettingsButton`）のすぐ左にシステムモニタボタン（`SystemMonitorButton`、アイコン `&#xE9D9;`）を追加。
+- クリックするとウィンドウ内モーダル（`SystemMonitorOverlay`）が開き、物理メモリ使用量、CPU使用率、各ドライブの使用状況（1.5秒周期の自動更新＋エクスプローラー起動ボタン付き）、および各フォルダ（スロットA〜D、控えパネル、Hubデータ、VS Code / Antigravity IDEデータ）の使用量（バックグラウンド非同期計測・再計測ボタン・エクスプローラー起動ボタン付き）を表示する。

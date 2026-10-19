@@ -84,6 +84,9 @@
               <Grid>
                 <TextBlock x:Name="TitleDisplay"
                            Text="{Binding DisplayTitle}"
+                           FontSize="{TemplateBinding FontSize}"
+                           FontWeight="{TemplateBinding FontWeight}"
+                           Foreground="{TemplateBinding Foreground}"
                            TextTrimming="CharacterEllipsis"
                            VerticalAlignment="Center"
                            Margin="{TemplateBinding Padding}" />
@@ -130,6 +133,33 @@
       <EventSetter Event="PreviewMouseLeftButtonDown" Handler="InlineTitleTextBox_PreviewMouseLeftButtonDown" />
       <EventSetter Event="PreviewMouseLeftButtonUp" Handler="InlineTitleTextBox_PreviewMouseLeftButtonUp" />
       <EventSetter Event="LostKeyboardFocus" Handler="InlineTitleTextBox_LostKeyboardFocus" />
+    </Style>
+
+    <Style x:Key="SystemMonitorProgressBarStyle" TargetType="ProgressBar">
+      <Setter Property="Minimum" Value="0" />
+      <Setter Property="Maximum" Value="100" />
+      <Setter Property="Height" Value="7" />
+      <Setter Property="Background" Value="#0C1210" />
+      <Setter Property="BorderBrush" Value="#24332B" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Border x:Name="PART_Track"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="3.5"
+                    ClipToBounds="True">
+              <Border x:Name="PART_Indicator"
+                      HorizontalAlignment="Left"
+                      Background="{TemplateBinding Foreground}"
+                      CornerRadius="2.5" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style x:Key="SettingsTextBoxStyle" TargetType="TextBox">
@@ -1440,12 +1470,20 @@
                            Foreground="{StaticResource AccentBrush}" />
               </Border>
               <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
-              <StackPanel Grid.Column="2">
+              <StackPanel Grid.Column="2"
+                          VerticalAlignment="Center">
                 <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
                          Style="{StaticResource InlineTitleTextBox}"
+                         FontSize="15.5"
+                         FontWeight="Bold"
+                         Foreground="#F8FCF9"
+                         Padding="2,0"
+                         MinHeight="22"
+                         TextOptions.TextFormattingMode="Ideal"
+                         TextOptions.TextRenderingMode="Auto"
                          MaxLength="40" />
                 <TextBlock Text="{Binding ShortPath}"
-                           Margin="0,2,0,0"
+                           Margin="2,0,0,0"
                            Foreground="{StaticResource MutedTextBrush}" />
               </StackPanel>
               <Button Grid.Column="3"
@@ -1962,6 +2000,16 @@
       <StackPanel x:Name="TitleBarButtonsPanel"
                   HorizontalAlignment="Right"
                   Orientation="Horizontal">
+        <Button x:Name="SystemMonitorButton"
+                Content="&#xE9D9;"
+                Width="26"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="12"
+                FontWeight="SemiBold"
+                ToolTip="システムモニタ"
+                AutomationProperties.Name="システムモニタ"
+                Click="SystemMonitorButton_Click"
+                Style="{StaticResource ChromeButton}" />
         <Button x:Name="SettingsButton"
                 Content="&#xE713;"
                 Width="26"
@@ -3716,6 +3764,399 @@
                       Style="{StaticResource BaseButton}"
                       MinWidth="86" />
             </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="SystemMonitorOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="23">
+      <Grid>
+        <Border Width="590"
+                MaxHeight="490"
+                Padding="16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1"
+                CornerRadius="12">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Orientation="Vertical">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE9D9;"
+                             FontFamily="Segoe MDL2 Assets"
+                             FontSize="15"
+                             VerticalAlignment="Center"
+                             Margin="0,0,8,0"
+                             Foreground="{StaticResource AccentBrush}" />
+                  <TextBlock Text="システムモニタ"
+                             FontSize="16"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource TextBrush}" />
+                </StackPanel>
+                <TextBlock x:Name="SystemMonitorStatusText"
+                           Margin="0,2,0,0"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="メモリ・CPU・ドライブ・各フォルダの使用状況" />
+              </StackPanel>
+              <Button x:Name="RefreshSystemMonitorButton"
+                      Grid.Column="1"
+                      Content="再計測"
+                      Click="RefreshSystemMonitorButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      Padding="10,4"
+                      Margin="0,0,8,0"
+                      VerticalAlignment="Top" />
+              <Button x:Name="CloseSystemMonitorHeaderButton"
+                      Grid.Column="2"
+                      Content="X"
+                      ToolTip="システムモニタを閉じる"
+                      Click="CloseSystemMonitorButton_Click"
+                      Style="{StaticResource ChromeButton}"
+                      VerticalAlignment="Top" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,12,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Margin="0,0,4,0">
+                <UniformGrid Columns="2">
+                  <Border Margin="0,0,5,0"
+                          Padding="12,10"
+                          Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="10">
+                    <StackPanel>
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                          <TextBlock Text="&#xE950;"
+                                     FontFamily="Segoe MDL2 Assets"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,6,0"
+                                     Foreground="{StaticResource AccentBrush}" />
+                          <TextBlock Text="メモリ使用量"
+                                     FontSize="12.5"
+                                     FontWeight="SemiBold"
+                                     Foreground="{StaticResource TextBrush}" />
+                        </StackPanel>
+                        <TextBlock x:Name="SystemMonitorMemoryPercentText"
+                                   Grid.Column="1"
+                                   Text="0.0%"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource AccentBrush}" />
+                      </Grid>
+                      <ProgressBar x:Name="SystemMonitorMemoryProgressBar"
+                                   Margin="0,8,0,6"
+                                   Style="{StaticResource SystemMonitorProgressBarStyle}"
+                                   Value="0" />
+                      <TextBlock x:Name="SystemMonitorMemorySummaryText"
+                                 FontSize="11"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 TextWrapping="Wrap"
+                                 Text="使用中 -- / --" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Margin="5,0,0,0"
+                          Padding="12,10"
+                          Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="10">
+                    <StackPanel>
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                          <TextBlock Text="&#xE7F4;"
+                                     FontFamily="Segoe MDL2 Assets"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,6,0"
+                                     Foreground="{StaticResource AccentBrush}" />
+                          <TextBlock Text="CPU使用率"
+                                     FontSize="12.5"
+                                     FontWeight="SemiBold"
+                                     Foreground="{StaticResource TextBrush}" />
+                        </StackPanel>
+                        <TextBlock x:Name="SystemMonitorCpuPercentText"
+                                   Grid.Column="1"
+                                   Text="0.0%"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource AccentBrush}" />
+                      </Grid>
+                      <ProgressBar x:Name="SystemMonitorCpuProgressBar"
+                                   Margin="0,8,0,6"
+                                   Style="{StaticResource SystemMonitorProgressBarStyle}"
+                                   Value="0" />
+                      <TextBlock x:Name="SystemMonitorCpuSummaryText"
+                                 FontSize="11"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 TextWrapping="Wrap"
+                                 Text="論理コア: --" />
+                    </StackPanel>
+                  </Border>
+                </UniformGrid>
+
+                <Border Margin="0,10,0,0"
+                        Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                      <TextBlock Text="&#xEDA2;"
+                                 FontFamily="Segoe MDL2 Assets"
+                                 FontSize="13"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,6,0"
+                                 Foreground="{StaticResource AccentBrush}" />
+                      <TextBlock Text="各ドライブの使用状況"
+                                 FontSize="13"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextBrush}" />
+                    </StackPanel>
+                    <ItemsControl x:Name="SystemMonitorDrivesItemsControl">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Margin="0,0,0,6"
+                                  Padding="10,8"
+                                  Background="#1B221E"
+                                  BorderBrush="{StaticResource BorderBrushSoft}"
+                                  BorderThickness="1"
+                                  CornerRadius="8">
+                            <StackPanel>
+                              <Grid>
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Padding="6,2"
+                                        Margin="0,0,8,0"
+                                        CornerRadius="5"
+                                        Background="#223027"
+                                        BorderBrush="#335A43"
+                                        BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding DriveTypeLabel}"
+                                             FontSize="10.5"
+                                             FontWeight="SemiBold"
+                                             Foreground="{StaticResource AccentBrush}" />
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding DisplayTitle}"
+                                           FontSize="12.5"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource TextBrush}" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding UsagePercentText}"
+                                           FontSize="13"
+                                           FontWeight="Bold"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,8,0"
+                                           Foreground="{Binding BarBrush}" />
+                                <Button Grid.Column="3"
+                                        Content="&#xE8DA;"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="11"
+                                        Padding="6,3"
+                                        Tag="{Binding RootPath}"
+                                        ToolTip="{Binding OpenFolderToolTip}"
+                                        Click="SystemMonitorOpenFolderButton_Click"
+                                        Style="{StaticResource BaseButton}" />
+                              </Grid>
+                              <ProgressBar Margin="0,6,0,5"
+                                           Style="{StaticResource SystemMonitorProgressBarStyle}"
+                                           Foreground="{Binding BarBrush}"
+                                           Value="{Binding UsagePercent, Mode=OneWay}" />
+                              <Grid>
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding CapacityDetailText}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding FreeSpaceText}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextBrush}" />
+                              </Grid>
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+
+                <Border Margin="0,10,0,0"
+                        Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                  <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8B7;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="13"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"
+                                   Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="各フォルダの使用量"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}" />
+                      </StackPanel>
+                      <TextBlock x:Name="SystemMonitorFolderStatusText"
+                                 Grid.Column="1"
+                                 FontSize="11"
+                                 VerticalAlignment="Center"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 Text="" />
+                    </Grid>
+
+                    <ItemsControl x:Name="SystemMonitorFoldersItemsControl">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Margin="0,0,0,6"
+                                  Padding="10,8"
+                                  Background="#1B221E"
+                                  BorderBrush="{StaticResource BorderBrushSoft}"
+                                  BorderThickness="1"
+                                  CornerRadius="8">
+                            <StackPanel>
+                              <Grid>
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border MinWidth="36"
+                                        Padding="6,2"
+                                        Margin="0,0,8,0"
+                                        CornerRadius="5"
+                                        Background="{Binding BadgeBackgroundBrush}"
+                                        BorderBrush="{Binding BadgeBorderBrush}"
+                                        BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding BadgeText}"
+                                             FontSize="10.5"
+                                             FontWeight="SemiBold"
+                                             HorizontalAlignment="Center"
+                                             Foreground="{Binding BadgeForegroundBrush}" />
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Title}"
+                                           FontSize="12.5"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource TextBrush}" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding SubDetailText}"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,8,0"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{Binding SizeText}"
+                                           FontSize="13"
+                                           FontWeight="Bold"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0"
+                                           Foreground="{StaticResource AccentBrush}" />
+                                <Button Grid.Column="4"
+                                        Content="&#xE8DA;"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="11"
+                                        Padding="6,3"
+                                        Tag="{Binding FolderPath}"
+                                        IsEnabled="{Binding CanOpenFolder}"
+                                        ToolTip="{Binding OpenFolderToolTip}"
+                                        Click="SystemMonitorOpenFolderButton_Click"
+                                        Style="{StaticResource BaseButton}" />
+                              </Grid>
+                              <ProgressBar Margin="0,6,0,5"
+                                           Height="5"
+                                           Style="{StaticResource SystemMonitorProgressBarStyle}"
+                                           Foreground="{Binding BarBrush}"
+                                           Value="{Binding UsageRatio, Mode=OneWay}" />
+                              <TextBlock Text="{Binding DisplayPath}"
+                                         FontSize="10.5"
+                                         TextTrimming="CharacterEllipsis"
+                                         ToolTip="{Binding DisplayPath}"
+                                         Foreground="{StaticResource MutedTextBrush}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <Grid Grid.Row="2"
+                  Margin="0,12,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock VerticalAlignment="Center"
+                         FontSize="11"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         Text="※ メモリ・CPU・ドライブは1.5秒ごとに自動更新されます" />
+              <Button x:Name="CloseSystemMonitorDialogButton"
+                      Grid.Column="1"
+                      Content="閉じる"
+                      Click="CloseSystemMonitorButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="88" />
+            </Grid>
           </Grid>
         </Border>
       </Grid>

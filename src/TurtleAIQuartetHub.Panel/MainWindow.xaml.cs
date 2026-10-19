@@ -74,8 +74,12 @@ public partial class MainWindow : Window
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly ApplicationLauncher _applicationLauncher;
     private readonly StatusStore _statusStore;
+    private readonly SystemMonitorService _systemMonitorService = new();
     private readonly DispatcherTimer _refreshTimer;
+    private readonly DispatcherTimer _systemMonitorTimer;
     private readonly CancellationTokenSource _refreshCancellation = new();
+    private CancellationTokenSource? _folderSizeCalculationCancellation;
+    private IReadOnlyList<FolderUsageItem> _currentFolderUsageItems = [];
     private WindowSlot.SlotWindowLayerMode _managedWindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
     private int? _activeMonitorIndex;
     private bool _isBusy;
@@ -148,6 +152,12 @@ public partial class MainWindow : Window
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
         _refreshTimer.Start();
+
+        _systemMonitorTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(1500)
+        };
+        _systemMonitorTimer.Tick += SystemMonitorTimer_Tick;
         Activated += MainWindow_Activated;
         StateChanged += MainWindow_StateChanged;
         SizeChanged += MainWindow_SizeChanged;
@@ -856,6 +866,193 @@ public partial class MainWindow : Window
     private void HideSettingsDialog()
     {
         SettingsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void SystemMonitorButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        OpenSystemMonitorDialog();
+    }
+
+    private void RefreshSystemMonitorButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        RefreshSystemMonitorAll(forceFolderRecalculation: true);
+    }
+
+    private void CloseSystemMonitorButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideSystemMonitorDialog();
+    }
+
+    private void SystemMonitorOpenFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { Tag: string targetPath } || string.IsNullOrWhiteSpace(targetPath))
+        {
+            return;
+        }
+
+        if (!System.IO.Directory.Exists(targetPath))
+        {
+            _statusStore.Message = $"フォルダが見つかりません: {targetPath}";
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = QuoteExplorerArgument(targetPath),
+                UseShellExecute = false
+            });
+            _statusStore.Message = $"フォルダを開きました: {targetPath}";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            DiagnosticLog.Write(ex);
+            _statusStore.Message = $"フォルダを開けませんでした: {targetPath}";
+        }
+    }
+
+    private void SystemMonitorTimer_Tick(object? sender, EventArgs e)
+    {
+        if (SystemMonitorOverlay.Visibility != Visibility.Visible)
+        {
+            _systemMonitorTimer.Stop();
+            return;
+        }
+
+        UpdateSystemMonitorFastMetrics();
+    }
+
+    private void OpenSystemMonitorDialog()
+    {
+        SystemMonitorOverlay.Visibility = Visibility.Visible;
+        RefreshSystemMonitorAll(forceFolderRecalculation: true);
+        _systemMonitorTimer.Start();
+        CloseSystemMonitorDialogButton.Focus();
+    }
+
+    private void HideSystemMonitorDialog()
+    {
+        _systemMonitorTimer.Stop();
+        CancelFolderSizeCalculation();
+        SystemMonitorOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void CancelFolderSizeCalculation()
+    {
+        _folderSizeCalculationCancellation?.Cancel();
+        _folderSizeCalculationCancellation?.Dispose();
+        _folderSizeCalculationCancellation = null;
+    }
+
+    private void RefreshSystemMonitorAll(bool forceFolderRecalculation)
+    {
+        UpdateSystemMonitorFastMetrics();
+        if (forceFolderRecalculation)
+        {
+            StartFolderUsageCalculation();
+        }
+    }
+
+    private void UpdateSystemMonitorFastMetrics()
+    {
+        try
+        {
+            var activeWindowCount = _statusStore.Slots.Count(slot => slot.WindowHandle != IntPtr.Zero);
+            var snapshot = _systemMonitorService.CaptureSystemResources(activeWindowCount);
+            SystemMonitorMemoryPercentText.Text = snapshot.MemoryUsagePercentText;
+            SystemMonitorMemoryPercentText.Foreground = snapshot.MemoryBarBrush;
+            SystemMonitorMemoryProgressBar.Value = snapshot.MemoryUsagePercent;
+            SystemMonitorMemoryProgressBar.Foreground = snapshot.MemoryBarBrush;
+            SystemMonitorMemorySummaryText.Text = $"{snapshot.MemoryDetailText}（{snapshot.MemoryAvailableText}）";
+
+            SystemMonitorCpuPercentText.Text = snapshot.CpuUsageText;
+            SystemMonitorCpuPercentText.Foreground = snapshot.CpuBarBrush;
+            SystemMonitorCpuProgressBar.Value = snapshot.CpuUsagePercent;
+            SystemMonitorCpuProgressBar.Foreground = snapshot.CpuBarBrush;
+            SystemMonitorCpuSummaryText.Text = snapshot.CpuDetailText;
+
+            SystemMonitorDrivesItemsControl.ItemsSource = _systemMonitorService.GetDriveUsages();
+            SystemMonitorStatusText.Text = $"メモリ・CPU・各ドライブ・各フォルダの使用状況（更新: {DateTime.Now:HH:mm:ss}）";
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+        }
+    }
+
+    private void StartFolderUsageCalculation()
+    {
+        CancelFolderSizeCalculation();
+
+        var items = _systemMonitorService.BuildFolderUsageItems(
+            _statusStore.Slots,
+            _statusStore.StoredPanels,
+            _statusStore.Config);
+        _currentFolderUsageItems = items;
+        SystemMonitorFoldersItemsControl.ItemsSource = items;
+
+        var targets = items.Where(item => item.CanOpenFolder).ToList();
+        if (targets.Count == 0)
+        {
+            SystemMonitorFolderStatusText.Text = "計測対象のフォルダはありません";
+            return;
+        }
+
+        SystemMonitorFolderStatusText.Text = $"計測中 (0/{targets.Count})...";
+        var cancellation = new CancellationTokenSource();
+        _folderSizeCalculationCancellation = cancellation;
+        var token = cancellation.Token;
+
+        _ = Task.Run(async () =>
+        {
+            var completed = 0;
+            foreach (var item in targets)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var (sizeBytes, fileCount) = SystemMonitorService.CalculateDirectorySize(item.FolderPath, token);
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                completed++;
+                var currentCompleted = completed;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    item.ApplyMeasuredSize(sizeBytes, fileCount, SystemMonitorService.FormatBytes(sizeBytes));
+                    SystemMonitorService.UpdateRelativeFolderRatios(items);
+
+                    if (currentCompleted < targets.Count)
+                    {
+                        SystemMonitorFolderStatusText.Text = $"計測中 ({currentCompleted}/{targets.Count})...";
+                    }
+                    else
+                    {
+                        var totalBytes = items.Where(x => x.SizeBytes.HasValue).Sum(x => x.SizeBytes!.Value);
+                        SystemMonitorFolderStatusText.Text = $"全 {targets.Count} フォルダ計測完了（合計 {SystemMonitorService.FormatBytes(totalBytes)}）";
+                    }
+                }, DispatcherPriority.Background);
+            }
+        }, token);
     }
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
@@ -3377,8 +3574,13 @@ public partial class MainWindow : Window
         StoredPanelsExpander.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        SystemMonitorButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         SettingsButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         HelpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        if (!isStandard && SystemMonitorOverlay.Visibility == Visibility.Visible)
+        {
+            HideSystemMonitorDialog();
+        }
         StandardJumpButton.Visibility = isCompact || isMicro ? Visibility.Visible : Visibility.Collapsed;
         CompactJumpButton.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
         WindowTitleText.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
@@ -5037,6 +5239,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (SystemMonitorOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideSystemMonitorDialog();
+            e.Handled = true;
+            return;
+        }
+
         base.OnPreviewKeyDown(e);
     }
 
@@ -5090,7 +5299,9 @@ public partial class MainWindow : Window
         DiagnosticLog.Write(LogLevel.Info, "Main panel window closed; requesting application shutdown.");
 
         _refreshTimer.Stop();
+        _systemMonitorTimer.Stop();
         _refreshCancellation.Cancel();
+        CancelFolderSizeCalculation();
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
         _focusSwitchArrangeCancellation?.Cancel();
@@ -5300,6 +5511,7 @@ public partial class MainWindow : Window
         SaveSettingsButton.IsEnabled = !busy;
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;
+        SystemMonitorButton.IsEnabled = !busy;
         SettingsButton.IsEnabled = !busy;
         HelpButton.IsEnabled = !busy;
         DisplayModeButton.IsEnabled = !busy;
@@ -5312,6 +5524,7 @@ public partial class MainWindow : Window
         CompactStoredPanelsToggleButton.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
         SettingsOverlay.IsEnabled = !busy;
+        SystemMonitorOverlay.IsEnabled = !busy;
         AuxiliaryApplicationPanel.IsEnabled = !busy;
     }
 

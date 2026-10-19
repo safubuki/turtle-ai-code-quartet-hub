@@ -48,6 +48,7 @@ AppConfigTests.Run(failures);
 WindowSlotCompactIdeToggleTests.Run(failures);
 PanelOrderTests.Run(failures);
 WindowFocusSynchronizerTests.Run(failures);
+SystemMonitorAndCardTitleTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -66,6 +67,7 @@ Console.WriteLine("Application configuration migration regression checks passed 
 Console.WriteLine("Compact IDE toggle regression checks passed (4/4).");
 Console.WriteLine("Panel ordering and persistence regression checks passed (6/6).");
 Console.WriteLine("ウィンドウ直接操作のフォーカス同期チェックに合格しました (12/12)。");
+Console.WriteLine("メインカードタイトル視認性＆システムモニタ回帰チェックに合格しました (17/17)。");
 return 0;
 
 async Task VerifyAsync(

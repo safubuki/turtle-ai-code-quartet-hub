@@ -2,56 +2,86 @@
 
 更新日: 2026-09-17
 
-## 1. AI状態監視を再導入しない
-
-- AI状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code外周オーバーレイは削除済み。
-- `StatusStore.RefreshWindowStatusesAsync` は HWND/タイトル/ワークスペース更新の軽量処理として維持する。
-- AI状態のためにパネルカード色、縮小ボタン色、点滅アニメーション、Jump List 文言を変えない。
-- focused/selected の枠表示は AI 状態と無関係な操作フィードバックなので維持する。
+## 1. AI 状態監視を戻さない
+- AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
+- `StatusStore.RefreshWindowStatusesAsync` は HWND、タイトル、ワークスペース表示更新の軽量処理として維持する。
+- AI 状態に由来するカード色、縮小ボタン色、点滅、Jump List 文言を復活させない。
 
 ## 2. スロット状態と保存
-
 - `slots.json` は visible slot と stored panel を同じドキュメントで保持する。
-- legacy 読み込み互換は壊さない。
 - `WindowSlot` は管理対象ウィンドウ、タイトル、ワークスペース、フォーカス、表示/非表示、レイヤー状態だけを持つ。
-- AI状態、最終AIイベント時刻、AI状態詳細は持たない。
+- パネルカードを A-D 間でドラッグ移動するときは、表示位置の `Name` と VS Code user-data / workspaceStorage / code.lock 用の `RuntimeSlotName` を分けて扱う。実行中ウィンドウを B から D に移した場合、D は B の runtime profile を持ち続け、空いた B は D の runtime profile で新規起動することで、同じ user-data を二重に再利用しない。
+- VS Code / Antigravity の workspaceStorage 読み取りに失敗しても `SavedWorkspacePath` は消さない。強制終了後や中途半端な user-data 状態でも、次回起動に使える保存済みパスを残す。
+- 起動確認または periodic refresh で正しいワークスペースが読めた場合は、`Path` / `SavedWorkspacePath` / `SavedWorkspaceConfirmed` と自動タイトルを保存する。タイトル照合はフォルダ名の部分文字列ではなく、VS Code タイトルのワークスペース段を使う。ファイル名に `2025` などが含まれても `2025` フォルダへ保存をすり替えてはならない。
+- 控え Quartet から表示スロットへ復帰するときは、旧ウィンドウへ close を送っただけで次の起動へ進めない。置換用の close 待ち処理を通し、VS Code の再接続では起動予定の `SavedWorkspacePath` / `Path` とタイトルが一致しない既存 slot-owned window を採用しない。旧 workspace のウィンドウを新しいパネル表示へ誤接続すると、パネル名と実ワークスペースが永続的にずれる。
 
-## 3. 定期更新
+## 3. 複数アプリ起動
+- 既定のスロットアプリは VS Code (`vscode`)。一括起動はスロットごとの `ApplicationId` に従う。
+- VS Code は `VscodeLauncher` に残し、remote URI と workspaceStorage 読み取りの既存挙動を壊さない。既定は標準プロファイル共有（`useDedicatedUserDataDirs=false`）。専用 user-data-dir は任意で、有効時だけ `code.lock` 再接続を使う。
+- VS Code の workspaceStorage は `GetEffectiveUserDataDirectory` を読む。共有プロファイル時にスロット別フォルダを見ると、保存済みワークスペースやレイアウトが空に見える。
+- Antigravity のワークスペース推定は VS Code 互換の `workspaceStorage` 形式を使い、`%APPDATA%/Antigravity IDE/User/workspaceStorage` を含む実アプリデータ候補を見て、ウィンドウタイトルにワークスペース名が含まれるパスだけを採用する。`Antigravity IDE` は workspace IDE の実際のデータフォルダ名で、`Antigravity` は別の Windows アプリにも使われるため、IDE 名の候補を優先しつつ旧候補を残す。
+- Antigravity など VS Code 以外の workspace IDE は `ApplicationLauncher` の汎用起動で扱う。起動プロセスと表示ウィンドウのプロセス ID がずれるため、新規ウィンドウハンドルで割り当てる。
+- Antigravity IDE は `%LOCALAPPDATA%/Programs/Antigravity IDE/Antigravity IDE.exe` 相当を優先検出する。過去設定の bare `antigravity` は新しい Antigravity Windows アプリと衝突しやすいため、既定検出へ戻して IDE 側を開く。
+- Antigravity や terminal が起動完了後に中央へ戻ることがあるため、起動確認直後の配置に加えて短い遅延再配置を複数回行う。標準またはやや低性能な PC に備えて 8 秒、12 秒後の再配置も行い、ユーザーが集中表示に入った後は再配置しない。
+- Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI は `WorkspaceCli`。対象スロットの保存済みワークスペースを working directory にした `cmd.exe /k` で CLI を起動し、terminal 系の新規ウィンドウをスロットに割り当てる。
+- 一括起動では CLI 種別同士を並列捕捉しない。VS Code / Antigravity などの非 CLI は並列のまま、CLI グループだけ順次起動して terminal 系プロセス名の競合を避ける。
+- Workspace CLI は同一 CLI 種別の複数スロットでも、まず各 `cmd.exe` を先に起動し、`Turtle {slot} - {shortName}` のタイトルで後から捕捉する。タイトルが Windows Terminal 側で反映されない場合は、新規 terminal ウィンドウを起動順で割り当てる。
+- Workspace CLI はコマンド検出で可用性を判断する。PATH に加えて npm / pnpm / Volta の一般的な shim 置き場、Claude Code の公式インストーラが使うユーザー単位の `~\.local\bin`、Grok Build の Git Bash インストーラが使う `~\.grok\bin` も探索する。terminal プロセスが起動済みであることや Windows アプリ検出だけで CLI インストール済み扱いにしない。
+- GitHub Copilot Chat 拡張が作る `globalStorage\github.copilot-chat\copilotCli\copilot*` は、実体が未インストール時のインストール案内ブートストラップなので、GitHub Copilot CLI インストール済み判定には使わない。
+- Workspace CLI の実行コマンドは `ResolvedCommand` を優先し、短い `claude` などの設定コマンドだけに依存しない。起動した `cmd.exe` には検出済みコマンドのフォルダと一般的な shim 置き場を PATH 先頭へ一時追加する。
+- Antigravity CLI は `antigravity-cli` ID と `agy` コマンドで定義する。公式 Windows インストーラーが使う `%LOCALAPPDATA%\agy\bin` をコマンド検出と起動 terminal の PATH の両方へ追加する。旧 `gemini` ID は保存済みスロットを壊さないため `antigravity-cli` へ正規化するが、旧 Gemini CLI のコマンド・表示名・検出設定は新定義へ引き継がない。
+- GitHub Copilot CLI の既定起動は、対象ワークスペースへ `cd /d` して `copilot` だけを実行する。`workspacePath` は暗黙の引数として渡さない。
+- Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に `codex-app` / `chatgpt-app` / `claude-app` / `antigravity-app` の `SingleWindowAgent` として補助ボタン行に残す。Antigravity2 は `%LOCALAPPDATA%/Programs/Antigravity/Antigravity.exe` 相当を優先検出し、Claude の右側に表示する。
+- スロット内で別の IDE/CLI ボタンを押した場合は、現在のスロットウィンドウへ close を送り、短く待ってからスロット状態をクリアし、押されたアプリを同じスロット位置へ起動する。
 
-- 更新対象は管理対象ウィンドウの存在、タイトル、ワークスペース表示のみ。ワークスペース読み取りは VS Code スロットに限定する。
-- ワークスペース取得は `WorkspaceRefreshInterval` を使い、毎 tick で重い読み取りをしない。
-- 操作中のレイアウト変更では `_suppressPeriodicRefreshUntil` で短時間抑止し、UI操作を優先する。
+## 4. UI とフォーカス
+- UI は各スロット内に `IDE` 枠と `CLI` 枠を持つ。IDE 枠は VS Code / Antigravity を縦並び、CLI 枠は上段 `Codex` / `Claude`、下段 `Copilot` / `Grok` / `Antigravity` で表示する。
+- CLI 選択中のボタンはベタ塗りではなく、暗めの半透明に近い緑で表示する。VS Code 選択中はロゴに近い青、Antigravity IDE 選択中は多色グラデーションの枠を使う。ただし未検出アプリは選択中でも `IsAvailable=false` のグレーアウト表示を優先し、インストール済みと誤認させない。
+- 未起動スロットの IDE / CLI 選択ボタンは起動対象を変更するだけで、アプリを自動起動しない。起動は個別スロットの起動ボタンか `Launch Quartet` のみで行う。
+- メインパネルのクリアアイコンは右上のゴミ箱アイコンで表示する。押下時は削除確認ダイアログを出し、確認後に対象スロットの保存済みタイトル、パス、選択アプリ、ウィンドウ割り当てを削除する。起動中の IDE / CLI ウィンドウがある場合は close を送ってからパネル情報を削除する。
+- 通常表示のスロット左下にはフォルダアイコンボタンを置き、`WindowSlot.DisplayPath` から Explorer で開けるローカルフォルダを解決する。既存ディレクトリはそのまま、`.code-workspace` など既存ファイルは親フォルダを開く。`vscode-remote://...` や `ssh://...` など non-file URI は Explorer 対象にせず、ボタンをグレーアウトする。
+- スロットの実行中アクションボタン文言は `閉じる` にする。未起動時は `起動` / `新規`。
+- タイトルバー右上は縮小表示、`?` ヘルプ、歯車設定、最小化、閉じるの順に置く。ヘルプは Codex / GitHub Copilot / Antigravity CLI / Claude Code / Grok Build の CLI 別カードで構成し、各カード内を `インストール` と `自律実行の起動オプション` に分ける。方式名とコマンドを別表示にしてコマンドだけを正確にコピーできるようにし、自律実行オプションは警告色と共通の注意書きで通常の導入手順から区別する。IDE / Windows アプリは公式サイト参照とし、Antigravity CLI は公式 Windows PowerShell / CMD インストーラーと `agy --dangerously-skip-permissions`、Claude Code は公式インストーラの PowerShell / CMD コマンドと npm コマンドを書く。本文とコマンドは選択コピーできるよう `TextBox IsReadOnly=True` で表示し、実行操作は持たせない。
+- CLI の導入方法は公式の最新情報を確認して更新し、README と `?` ヘルプで同じ選択肢を示す。Grok Build CLI の Windows 向け手順は Git Bash を経由させず、`irm https://x.ai/cli/install.ps1 | iex` を表示する。Git Bash / WSL 向けには `curl -fsSL https://x.ai/cli/install.sh | bash` を残す。
+- 歯車設定画面では IDE / CLI / Windows アプリの起動コマンドを編集し、`%LOCALAPPDATA%/TurtleAIQuartetHub/config/turtle-ai-quartet-hub.json` へ保存する。VS Code の設定は `CodeCommand` と `applications[].command` を同期させる。同じ画面の「VS Code 共通ユーザー設定」から、オープンネットワーク / プロキシ環境をハブ設定へ保存できる。専用プロファイルがある場合だけその `User/settings.json` を更新し、標準の `%APPDATA%/Code/User/settings.json` は書き換えない。
+- 設定画面には表の Quartet と控え Quartet の保存状態を一覧表示する。表は `PanelTitle` / `Path` / `SavedWorkspacePath` / `SavedWorkspaceConfirmed` / `ApplicationId` を編集可能にし、控えは `PanelTitle` / `WorkspacePath` / `ApplicationId` を編集可能にする。空化ボタンと不整合修復ボタンを用意し、過去の重複控えや不完全な控えで再登録できない状態を解消できるようにする。
+- Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は、補助ボタン行の左に `Windows` ラベルを置いて CLI と区別する。Antigravity2 の文言が収まる固定幅にそろえ、縮小表示でも行全体が隠れない幅を確保する。
+- 標準表示ではスロット領域をカード実寸の高さに詰め、控え Quartet までの黒い余白を作らない。下部の `Launch Quartet` ボタンも見切れないようにする。
+- 集中表示中に同じスロットボタンを押したとき、対象ウィンドウの上に他アプリの可視ウィンドウが重なっている場合は 4 面表示へ戻さず、集中表示を維持して前面復帰する。
+- 2026-05-14 時点では、CLI / Antigravity でも操作を予測しやすくするため、同じスロットボタンは常に 1 面フォーカス表示と 4 面表示のトグルとして扱う。上に他アプリが重なっているかどうかでは分岐しない。
+- パネルカードや外部ウィンドウのドラッグ操作中は、フォーカス中スロットの再前面化を抑制する。カードのドラッグアンドドロップ中と直後はスロットクリックによる 1 面フォーカストグルも一時抑止し、ドラッグ中のマウス移動やボタン解放が集中表示へ化けないようにする。1 面表示中にカード入れ替えや状態クリアが発生した場合は、全スロットを 4 面再配置せず、フォーカス対象以外だけを背面へ整える。
 
-## 4. フォーカス/集中表示
-
-- focused slot は `StatusStore.SetFocusedSlot` で UI 状態を保持する。
-- 対象 VS Code は `FocusMaximized`、他スロットは `ArrangeExcept` と `SendOtherSlotsToBack` で制御する。
-- パネルクリック直後に `SetForegroundWindow` が走るとクリックがキャンセルされるため、遅延 reassert と入力抑止を維持する。
-
-## 5. UI 表現
-
-- 標準カードと縮小ボタンは常に安定したサイズを持つ。
-- 選択中スロットの外枠は残す。
-- AI状態に由来する色変え、発光、点滅、状態ピルは追加しない。
-- テキストがはみ出る場合は `TextTrimming` と固定寸法で吸収する。
-
-## 6. ビルド
-
+## 5. ビルド
 - 実行中の本体が既定の `bin\Debug` 出力をロックする場合がある。
 - 反復確認では `scripts/Build-Panel.ps1` または `--artifacts-path` を使う。
 
-## 7. 複数アプリ起動
+## 6. UI レイアウト細部（2026-05-14 修正済み）
+- `ApplicationGroupLabelStyle` の Margin は `"8,-5,0,0"` で境界線上に浮かせる（負のtopマージンで境界線に重ねる）。正にするとボタンと被る。
+- IDE / CLI ボタンはどちらも高さ 24、`ItemContainerStyle Margin="2,0,2,4"` で統一する。IDE StackPanel と CLI UniformGrid の上端・隙間をそろえる。
+- CLI ボタン配列は上段 `Codex` / `Claude`、下段 `Copilot` / `Grok` / `Antigravity`。下段は Copilot と Antigravity を同じ可変幅、Grok を短い固定幅にし、5 ボタン化してもカード内に収める。
+- `SlotCardTemplate` 内から `StaticResource` で参照する DataTemplate / Style は、必ず `SlotCardTemplate` より前に定義する。後方定義にするとビルドは通っても起動時に `XamlParseException` で終了する。
+- 控え Quartet Expander のコンテンツ上マージンは `"0,12,0,0"`。右上の `Windows` 補助アプリボタン行がオーバーレイ配置のため、閉じた状態の隙間に寄せつつ、開いた控えカードと重ならないだけの隙間を確保する。
+- 縮小表示は C/D 行と `Windows` 補助アプリ行が初期状態で隠れない高さを最低値にする。
+- 縮小表示の 4 パネルボタン中央には、極小表示と同じ表示/非表示の円形ボタンを重ねる。4 パネルの空間メタファーを崩さないよう、右側の `前` / `背` 操作列には重ねない。
+- 終了確認は本体内の緑基調オーバーレイを維持する。縮小・極小表示では本体の表示領域が確認UIより小さいため、確認中だけ本体を必要な最小サイズへ一時展開し、キャンセル時に元の位置・サイズ・最小寸法へ復元する。固定幅の確認UIを小さい本体内で単純にクリップさせない。
+- 標準表示の既定高さは、`Launch Quartet` ボタン下に空白が残らない値にする。下端余白が見える場合はウィンドウ既定高さを先に調整する。
+- Windows 補助アプリが 4 つに増えたため、縮小表示の最低幅は Antigravity2 ボタンまで収まる値にする。
+- Windows 補助アプリボタンは 4 つすべて同じ幅を保ちつつ、左の `Windows` ラベルが `indows` のように見切れない幅に収める。
 
-- 各スロットの既定アプリは VS Code (`vscode`) とし、一括起動はスロットごとの `ApplicationId` に従う。
-- VS Code は `VscodeLauncher` に残し、専用 user-data-dir、リモート URI、workspaceStorage 読み取りの既存挙動を壊さない。
-- Antigravity など VS Code 以外の workspace IDE は `ApplicationLauncher` の汎用起動で扱う。
-- Codex / Claude は `SingleWindowAgent` として、既存ウィンドウ探索やウィンドウ検出待ちをせず起動コマンドを送信する。閉じる/切り替えるトグル動作にしない。
-- Claude / Codex の Windows Store 版は通常の PATH やスタートメニュー `.lnk` で検出できない場合があるため、AppModel Repository から AppUserModelID を解決し、`shell:AppsFolder` 経由で起動する。起動済みプロセスと `PackageRootFolder` も補助的に見る。
-- `WindowEnumerator` はスロットの `ApplicationId` に対応する process names で確認する。VS Code 以外に `VscodeWorkspaceState` を適用しない。
-- 未検出アプリはボタンを無効化し、`ToolTip` とメッセージで設定パス/コマンド確認へ誘導する。
-- UI は VS Code / Antigravity を各スロット内の等幅ボタン、Codex / Claude を控え Quartet 行の右端補助ボタンとして配置する。Launch 直上にグローバル IDE 選択ボタンは置かない。AI状態の色変えや点滅は追加しない。
-- 各スロットにも VS Code / Antigravity 切替を置く。未起動スロットでは選択状態だけ保存し、起動中スロットで別アプリを選んだ場合は現在のウィンドウを閉じて同じスロット内容を選択アプリで開き直す。
-- Antigravity CLI は `antigravity-cli` ID と `agy` コマンドで定義する。公式 Windows インストーラーが使う `%LOCALAPPDATA%\agy\bin` をコマンド検出と起動 terminal の PATH の両方へ追加する。旧 `gemini` ID は保存済みスロットを壊さないため `antigravity-cli` へ正規化するが、旧 Gemini CLI のコマンド・表示名・検出設定は引き継がない。
+## 7. 一括起動の逐次化（2026-06-04 修正済み）
+- `LaunchAllMissingAsync` では A-D の対象スロットを 1 つずつ順番に起動する。非 CLI も `Task.WhenAll` で並列起動しない。VS Code / Antigravity / terminal の新規ウィンドウ捕捉が競合し、4 つ起動しきれない、または別スロットの遅延ウィンドウを拾って 2x2 配置がずれる問題を避けるため。
+- 各スロットの起動結果は捕捉できた時点で `StatusStore.AssignWindow` へ反映し、短い間隔を置いて次スロットへ進む。最後に `RefreshSlotsAsync` と `ArrangeSlotsOnActiveMonitorWithSettlingAsync` を実行し、遅れて再接続されたウィンドウも 2x2 配置対象に含める。
+- 起動スロット間の待ちは短めに保ち、テンポよく進める。起動後の 260ms / 720ms 付近の即時補正と 30 秒までの遅延補正は、`WindowArranger.NeedsArrange` で位置ずれがある場合だけ実行する。追加補正ではレイヤー再適用やパネル前面化を繰り返さず、`ArrangeSlotsOnActiveMonitorQuietly` で静かに座標だけ戻す。
+- VS Code の新規ウィンドウ捕捉では、専用 `user-data-dir` 有効時は `code.lock` PID に一致するウィンドウを採用する。専用 user-data を使わない設定では対象ワークスペース名がタイトルに出たウィンドウを補助的に採用する。単に「最初に見えた VS Code ウィンドウ」を採用すると、直前スロットの遅延表示を次スロットへ誤割り当てするため避ける。
+- CLI (cmd.exe) は `UseShellExecute = true` で起動する。`WindowStyle = Normal` が適用されウィンドウが即時表示される。`UseShellExecute = false` + `CreateNoWindow = false` の組み合わせより表示が速い。
+- VS Code など IDE の同一アプリタイプ内スロットは引き続きシーケンシャル起動。Workspace CLI も一括起動ではスロット単位で順次起動し、terminal 系プロセス名の競合を避ける。
+- VS Code は起動プロセス ID と実際のウィンドウプロセス ID がずれる場合があるため、新規 VS Code ウィンドウの HWND を優先して捕捉する。
+- VS Code が低速端末で新規 HWND 捕捉前に既存スロット用ウィンドウとして残った場合は、専用 `user-data-dir` の `code.lock` に記録された PID と VS Code のトップレベル HWND を照合して再接続する。これにより、ウィンドウ自体は開いているがスロットが赤表示のままになる状態を次回起動・再起動時にも回復する。
+- 起動後の遅延再配置は 30 秒まで確認するが、`WindowArranger.NeedsArrange` で現在位置が期待 2x2 配置から大きく外れている場合だけ静かに再配置する。高速端末で既に正しい位置にあるウィンドウは触らない。
+- ディスプレイ切替（`ToggleMonitorButton_Click`）と非表示からの復帰（`ToggleVisibilityButton_Click`）も単発の `ArrangeSlotsOnActiveMonitor` ではなく `ArrangeSlotsOnActiveMonitorWithSettlingAsync` を使う。DPI/解像度が異なるディスプレイへ移すと、移動直後に対象ウィンドウへ `WM_DPICHANGED` が届いてこちらの指定サイズを上書きするため、遅延付きの `NeedsArrange` 補正で移動先の作業領域に合わせて再補正する。
+- 移動直後の「小さく出てから直る」フラッシュを抑えるため、即時補正 `ImmediateArrangeSettleDelays` は前倒しの密な間隔（40/110/220/420/720ms）にする。`WM_DPICHANGED` のサイズ上書きはクロスプロセスで非同期に届くため、単発の同期再適用では防げない。短い間隔で `NeedsArrange` を見て静かに補正することで、上書き後のずれを素早く戻す。
+- 2x2 配置はウィンドウの不可視リサイズ枠（`DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` と `GetWindowRect` の差）を打ち消して配置する。`WindowArranger.BuildPlacements` のセルは可視枠の目標矩形とし、`CompensateForFrame` で各辺の不可視枠ぶん外側へ広げて `SetWindowPos` する。これをしないと上端は不可視枠 0、左右下は約 7px(DPI で増減) のぶん見た目の隙間が偏る。`NeedsArrange` の現在値比較も可視枠（`TryGetVisibleBounds`）で行う。
+- セル計算（`BuildPlacements`）は `gap` を内側の隙間と外周マージンの両方に使う（縦横とも 3 枠ぶん）。不可視枠を補正済みなので `gap` がそのまま見た目の均等な隙間になる。隙間を詰めるときは `gap` を下げる。既定は `6`（密着させず均等に詰める値）。
 
 ## 8. ディスプレイ移動（全移動＋単独移動, 2026-06-08 追加）
 - 配置先は「ベースディスプレイ（全体）」＋「各スロットの単独 override（`WindowSlot.MonitorOverride`, 非永続）」で表す。実効ディスプレイ＝`override ?? ベース`。フォーカスやレイヤーと同じランタイム状態として扱い、`slots.json` には保存しない。`WindowSlot.ClearWindow` で override も解除する。
@@ -81,18 +111,162 @@
 - D&D 入替（`SwapSlotContents`）は `MonitorOverride` もワークスペース側と一緒に交換する。入替はカード上の象限位置だけを交換し、各ワークスペースは元のディスプレイ・フォーカス状態・4 面/1 面の見え方を維持する（入替でウィンドウはディスプレイをまたがない）。
 - 入替・単独移動・全体移動後の DPI/解像度差の補正は、フォーカスがあっても走る `SettleArrangementPreservingFocusAsync`（`NeedsArrange` はフォーカス中スロットをスキップ）で行う。`ArrangeSlotsOnActiveMonitorWithSettlingAsync` の settling は `CanReapplyPostLaunchArrangement` によりフォーカス中は走らないため、フォーカスを保つ操作では使わない。
 - ズームアウト演出とちらつき対策: 配置（`ArrangeCore`）は最大化/最小化中のウィンドウの復元先 `rcNormalPosition` を目的セルへ事前設定（`SetWindowPlacement`。`WPF_RESTORETOMAXIMIZED` も解除）してから `SW_RESTORE` する。DWM の復元アニメは復元先矩形へ向かって再生されるため、ズーム解除はアニメーション付きで目的セルへ直接着地し、「旧位置へ戻ってからセルへジャンプ」する二段移動（ちらつき）は出ない。rcNormalPosition はワークスペース座標（プライマリ作業領域原点基準）なので原点ぶん補正し、残差は直後の `SetWindowPos`（画面座標）が吸収する。
-- アニメを出さない配置: フォーカスイン随伴の背面整列（`ArrangeSlotsExceptOnActiveMonitor`）と settling 補正（`ArrangeSlotsOnActiveMonitorQuietly`）は `animateRestore=false` で、復元が必要なウィンドウにだけ `DWMWA_TRANSITIONS_FORCEDISABLED` を対で適用して無音・即時に行う。A フォーカス中に B を押す即切替は、B のズームイン（`SW_MAXIMIZE`）を前面で演出し、A の解除は遅延後に B の背面でアニメ無しで済ませる。ディスプレイまたぎのフォーカス移動（`EnsureWindowOnMonitor`〜最大化）も遷移アニメを止める。
+- アニメを出さない配置: フォーカスイン随伴の背面整列（`ArrangeSlotsExceptOnActiveMonitor`）と settling 補正（`ArrangeSlotsOnActiveMonitorQuietly`）は `animateRestore=false` で、復元が必要なウィンドウにだけ `DWMWA_TRANSITIONS_FORCEDISABLED` を対で適用し、`SW_SHOWNOACTIVATE` で非アクティブのまま通常サイズへ戻す。`SW_RESTORE` は非表示アニメを止めてもウィンドウをアクティブ化して z-order を変えるため、旧フォーカスが新フォーカスの前へ一瞬割り込む。A フォーカス中に B を押す即切替は、B を通常Z順の先頭へ非アクティブで準備し、`SW_MAXIMIZE` 開始後にフォアグラウンドを渡す。先にアクティブ化すると通常サイズのElectronサーフェスが白く再描画される。A の解除は遅延後に B の背面で非アクティブ・アニメ無しで済ませる。ディスプレイまたぎのフォーカス移動（`EnsureWindowOnMonitor`〜最大化）も遷移アニメを止める。
 - フォーカスイン時の透け対策: 他スロットの背面送り（`SendOtherSlotsToBackOnSameDisplay`）は最大化アニメ完了後（`FocusSwitchArrangeDelay` 経過後）に行う。アニメ開始と同時に HWND_BOTTOM へ送ると、最大化が画面を覆い切るまでタイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
+- フォーカス切替の背景フラッシュ対策（2026-07-05/07/11 追加調整）: `MainWindow.PrepareFocusTransitionBackdrop` は同じ面に旧フォーカスがある間、その旧1面と他タイルの z-order を動かさず、旧1面を全面の覆いとして維持する。新フォーカスだけを `BringToFrontWithoutTopmost` で非アクティブのまま旧1面の上へ準備し、`FocusMaximizedOnMonitorAsync` は `SW_MAXIMIZE` の反映後に `SetForegroundWindow` する。4 面へ戻すときは先に非フォーカスを静かにセルへ整えて背後を埋め、フォーカス解除後のレイヤー再適用を `FocusSwitchArrangeDelay` 後まで遅らせる。後片付け中に `HWND_BOTTOM`、`SW_RESTORE`、フォーカス対象の反復前面化を使うと、旧窓と新窓の双方で白背景・再描画・z-order の跳ねが発生するため禁止する。
+- 2026-07-23 のズーム面白化対策: `WindowArranger` の `ShowWindow` はハング防止のため実体が `ShowWindowAsync` であり、呼び出しから戻っただけでは `SW_MAXIMIZE` が対象スレッドで処理済みとは限らない。直後に `SetForegroundWindow` すると通常サイズの Electron を先にアクティブ化し、白いサーフェスがDWMの拡大アニメーション素材になる。初回フォーカスは `FocusMaximizedOnMonitorAsync` で最大化要求後に `IsZoomed` を8ms間隔・最大160msで確認し、反映後に一度だけ前景化する。タイムアウトを持たせ、応答しない管理窓でパネルを停止させない。
+- 2026-07-23 の即時切替補強: A の1面から B の1面へ切り替えるとき、`SW_SHOWNOACTIVATE` でAを復元しても、復元要求より前にZ順が確定していないとAの縮小がBより前へ一瞬出る環境がある。Bの最大化完了待ち後、`ArrangeExcept` へBのハンドルを `keepAboveHandle` として渡し、旧AをBの直後へ相対配置してからアニメ無しで4面セルへ戻す。`SetWindowPos(SWP_ASYNCWINDOWPOS)` と既存の `ShowWindowAsync` を同じ対象スレッドの非同期キューへ順番に積み、復元中もBを覆いとして維持する。DWMクロークは管理スロットの下地を消して白背景を露出させるため、フォーカス切替では使わない。
 - 不可視枠（DWM 拡張フレームと GetWindowRect の差）は「通常状態」のときにだけ計測し、ハンドルごとにキャッシュする（`GetFrameInsetCached`）。最大化中は枠のはみ出し方が異なり、最小化中は座標が無効なため、そのまま測ると 4 面セルより大きい/ずれた配置になる。復元前の事前補正（rcNormalPosition）はキャッシュ値、最終配置（SetWindowPos）は復元後の実測で行う。
 - パネル UI の描画は GPU 既定（`RenderMode.SoftwareOnly` 強制は撤去）。特定環境で描画乱れが出る場合のみ SoftwareOnly へ戻す。
+- 1 面フォーカス中の z-order は `EnsureFocusedSlotAboveTiles` に集約し、常に `パネル本体 > 1 面フォーカス > 同面の 4 面スロット` とする。パネル本体だけを topmost 帯に置き、1 面と 4 面は通常帯のまま扱う。最大化開始直後に1面を topmost 帯へ移すと DWM のズームアニメーションが乱れ、白いちらつきや表示のごちゃつきが発生するため禁止する。アニメーション完了後に各4面を `SetWindowPos(tile, focusHandle, ...)` で1面の直後へ相対配置する。4 面は `HWND_BOTTOM` へ送らず、タイル同士の画面の覆いを保つ。
+- 2026-07-22 の回帰修正: フォーカス中の `ArrangeCore` で座標・サイズ変更と Z 順変更を同じ `SetWindowPos` 要求へ統合してはならない。Electron / VS Code のサーフェス再描画がズーム中に表へ出て白ちらつきが増える。配置は従来どおり `SWP_NOZORDER` で行い、`PrepareFocusTransitionBackdrop` による旧1面の覆いを維持する。
+- 非同期配置の後勝ち対策は、遷移完了後の読み取り検査で行う。`WindowArranger.IsAbove` で同面の4面が1面より上にあるか確認し、実際に違反した窓だけを `PlaceDirectlyBehind` で非アクティブのまま戻す。正常時は `SetWindowPos` を呼ばず、短い遅延検査と周期更新の両方で `パネル本体 > 1面 > 4面` を回復する。フォーカス窓の反復前面化や topmost 化は行わない。
+- パネル本体の終了は確認ダイアログを通し、既定選択を「いいえ」にする。タイトルバーの X や Alt+F4 の誤操作を即終了にしない。OS のシャットダウン/サインアウト時だけ確認を省略し、終了要求・キャンセル・確定を `panel.log` に残す。
+- パネル終了確認を含むユーザー向け確認 UI に WPF 標準 `MessageBox` を使わない。OS 標準の灰色ダイアログは本体の緑基調デザインと統一できないため、`MainWindow.xaml` 内の既存オーバーレイパターン（暗い半透明背景、`SurfaceBrush`、`AccentBrush`）で表示する。
+- 新規VS Codeの起動前は、AIチャット等を表示する右側の `auxiliaryBarWidth` を基準画面幅の約28%（既定538px、420～620pxの範囲）まで必要時だけ広げる。既に広いユーザー設定は縮めない。`auxiliarySideBarWidth` が既に存在する形式では同じ下限を適用するが、未使用環境へ新しい値を勝手に追加しない。フォーカス直前やVS Code以外のウィンドウには適用しない。
+- 新規VS Codeの起動時は、WinEventで新しいHWNDを捕捉した時点で `DWMWA_CLOAK` を設定し、2x2配置と160msの初回描画猶予が完了してから解除する。これによりElectronの白い初期サーフェスや中央の初期位置を見せない。再接続した既存ウィンドウはクロークしない。配置処理が失敗しても12秒後に必ず解除するフェイルセーフを持つ。右側 `auxiliaryBarWidth` の拡張も新規ウィンドウ起動前に済ませ、フォーカス直前に `storage.json` を変更して4面を再描画させない。
 
-## 10. SSH 接続名を含むワークスペース照合（2026-09-01 追加）
+## 10. VS Code プロファイルとディスク消費（2026-08-21 追加）
+- **問題**: スロット別に `--user-data-dir` を切ると、設定だけでなく Cache / WebStorage / CachedExtensionVSIXs / agent-host まで 4 コピーになり数 GB を消費する。逆に標準プロファイルを共有するとディスクは 1 倍だが、`storage.json` を稼働中に書き換えるとチャットモデル選択やサインイン状態が巻き戻る。
+- **対策**: 既定は `UseDedicatedUserDataDirs=false` と `InheritMainUserState=false`。ウィンドウ別レイアウトは `slots.json` の `PreferredLayout` に保存する。`storage.json` は対象キーだけを触り、共有プロファイルでは VS Code が生きている間は書かない。専用プロファイルでも稼働中スロット自身の `storage.json` は書かない（白飛びと巻き戻し防止）。
+- **ファイル**: `AppConfig.cs`, `SlotUserDataPaths.cs`, `VscodeLayoutState.cs`, `VscodeWorkspaceState.cs`
+- **inherit**: 専用プロファイルへ引き継ぐのは settings / keybindings / snippets / prompts / mcp.json のみ。`globalStorage` と Chromium ストレージはコピーしない。
+- **回収**: 共有プロファイル運用では `%LOCALAPPDATA%/TurtleAIQuartetHub/user-data` の残存専用プロファイルを起動時に削除する。専用運用でも各スロット起動前に消すのは再生成キャッシュだけ。
+- **必ず残すもの**: `User`（settings / keybindings / globalStorage / workspaceStorage）、`WebStorage`、`Partitions`、`Local Storage`、`Session Storage`。サインイン状態とチャット履歴は消さない。毎回の再ログインを発生させない。
+- **消してよいもの**: `Crashpad`（実行中でも可）、Cache / CachedData / CachedExtensionVSIXs / logs / agent-host / GPUCache など再生成できるキャッシュのみ。VS Code プロセスが一つも無いときだけ重いキャッシュを削除する。初回起動はキャッシュ再生成のため少し遅くなることがある。
+- **注意**: 専用 user-data-dir を再有効化するとディスクが増える。ウィンドウ識別のため必要でも、キャッシュのコピーや `globalStorage` 丸ごとコピーは戻さない。フォーカス切替中に `storage.json` を書かない。VS Code 実行中は共有プロファイルのキャッシュを触らない。
+
+## 11. 管理ウィンドウの終了確認とメモリ安全性（2026-08-25 追加）
+- `PostMessage(WM_CLOSE)` の成功は終了完了ではない。個別閉じる、一括閉じる、アプリ切替、控え移動、パネル情報削除は `ManagedWindowCloseService.CloseAndWaitAsync` を通し、HWND の消滅確認後だけ `StatusStore.ClearWindow` を行う。
+- 外部 IDE が未保存確認や終了処理で8秒以内に閉じなかった場合は、対象 HWND を管理したまま操作を中止する。旧 Antigravity が残った状態で VS Code を追加起動したり、パネルだけ未起動表示へ変えたりしない。
+- 一括閉じるは全対象へ並列に close 要求と終了確認を行う。終了確認できたスロットだけをクリアし、未終了スロットは管理を継続する。
+- メモリ削減目的で外部 IDE へ `EmptyWorkingSet`、`--disable-gpu`、`--disable-extensions`、プロセス強制 kill を既定適用しない。一時的な working set 減少より、ページフォルト増加、描画回帰、AI拡張停止、未保存データ消失のリスクが大きい。
+- 4ウィンドウ時の安全な基本策は、不要な管理ウィンドウを確実に閉じることと、既定の `UseDedicatedUserDataDirs=false` を維持してプロファイルを共有すること。後者は主にディスク重複を防ぐもので、Electron renderer / extension host の実メモリは各IDEの利用内容に依存する。
+
+## 12. ワークスペースタイトル照合（2026-08-27 追加）
+- **ファイル**: `VscodeWorkspaceState.cs`, `TurtleAIQuartetHub.Panel.Tests/VscodeWorkspaceStateTests.cs`
+- **問題**: 共有プロファイルの `workspaceStorage` 候補を `windowTitle.Contains(フォルダ名)` で採用していた。`turtle-20250502-gem.md - zenn-contents - Visual Studio Code` のようなタイトルだと、ファイル名中の `2025` が別フォルダ `2025` に先にマッチし、開いている `zenn-contents` ではなく `2025` が `SavedWorkspacePath` へ保存された。再起動すると間違ったフォルダが開く。
+- **対策**: タイトルからアプリ名接尾辞を除き、` - ` 区切りの段と照合する。完全一致、SSH などの ` [..]` / ` (..)` 接尾辞、パス末尾を優先し、部分文字列ではマッチさせない。複数候補がある場合はより具体的なフォルダ名を選ぶ。`.code-workspace` は二重拡張子として名前から取り除く。
+- **注意**: `Contains` によるタイトル照合を戻さない。短いフォルダ名（`hub`, `Code`, `2025`）は長いワークスペース名やファイル名の一部に現れやすい。回帰テストは `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` に含める。
+
+## 13. VS Code ユーザー設定の共有（2026-08-31 追加）
+- **ファイル**: `VscodeUserSettings.cs`, `SlotUserDataPaths.cs`, `AppConfig.cs`, `MainWindow.xaml`
+- **経緯**: 以前はスロット別 `--user-data-dir` が既定で、ウィンドウ識別（`code.lock`）と `window.restoreWindows=none`（余分な窓の復元防止）のためにプロファイルを分けていた。副作用として `User/settings.json` もパネルごとに分かれ、プロキシ切替を 4 回する必要があった。2026-08-21 にディスク消費対策で共有プロファイルが既定になったが、専用プロファイルを再有効化すると設定が再分裂する。
+- **今回の判断**: ユーザー向け設定（プロキシ、テーマ等の `settings.json`）は一つにまとめる。過去問題の再現を避けるため、次は分けたままにする。
+  - ウィンドウ別レイアウト（サイドバー幅）は `slots.json` の `PreferredLayout`。`storage.json` を稼働中に書かない。
+  - サインイン / チャット履歴は `globalStorage` と WebStorage をコピーしない、消さない。
+  - Cache / CachedExtensionVSIXs の 4 複製は戻さない。専用 user-data の既定も `false` のまま。
+  - `window.restoreWindows=none` は専用プロファイルにだけ書く。共有の `%APPDATA%/Code/User/settings.json` には書かない（通常 VS Code の窓復元を壊すため）。
+- **対策**: 歯車設定の「全パネルへ適用」はハブ設定へ保存する。専用プロファイルがある場合だけ、その `http.proxy` / `http.proxySupport` / `http.noProxy` を更新する。オープンネットワークは専用プロファイル側で `http.proxy=""` と `http.proxySupport=off`。プロキシ環境は指定 URL と `override`。標準の `%APPDATA%/Code/User/settings.json` は読んでも書かない。起動時は `ManageVsCodeUserSettings` が true のときだけ VS Code プロセスへ `HTTP_PROXY` / `NO_PROXY` を渡す。
+- **注意**: `storage.json` の一括上書き、Cache のコピー、共有プロファイルへの `restoreWindows=none` 強制は戻さない。既に開いている VS Code ではプロキシ反映にウィンドウ再起動が必要な場合がある。ワークスペースの `.vscode/settings.json` は触らない。標準の VS Code `settings.json` をハブから書き換えない。2026-09-03 以降、専用プロファイルでも `settings.json` だけを Roaming へハードリンクする。これは「ユーザー設定は一つにまとめる」判断に沿う。`User` フォルダ全体・`storage.json`・`globalStorage`・Cache の共有やコピーは戻さない。
+
+## 14. SSH 接続名を含むワークスペース照合（2026-09-01 追加）
 - **ファイル**: `VscodeWorkspaceState.cs`, `TurtleAIQuartetHub.Panel.Tests/VscodeWorkspaceStateTests.cs`
 - **問題**: 異なる SSH 接続先で同名フォルダを開くと、フォルダ名の一致スコアが同点になり、`workspaceStorage` で先に並んだ古い `vscode-remote://ssh-remote+...` URI を現在値として保存することがあった。次回起動でも古い SSH 接続名を再利用するため、廃止済み接続先では接続に失敗する。
 - **対策**: VS Code タイトルに `[SSH: 接続名]` が見える場合は、URI authority の `ssh-remote+接続名` と一致しない候補を除外し、一致する候補へ最優先スコアを与える。選択された現在 URI は既存の `StatusStore` 経路で `Path` / `SavedWorkspacePath` / `slots.json` へ保存する。
-- **注意**: フォルダ名・ファイル名の誤判定防止を維持し、単純な `Contains` へ戻さない。カスタム `window.title` で `[SSH: ...]` が出ない場合はフォルダ名照合へフォールバックし、候補を根拠なく破棄しない。Remote-SSH の履歴や認証情報、`workspaceStorage` 自体は削除しない。
+- **注意**: 2026-08-27 のフォルダ名・ファイル名誤判定防止を維持し、単純な `Contains` へ戻さない。カスタム `window.title` で `[SSH: ...]` が出ない場合はフォルダ名照合へフォールバックし、候補を根拠なく破棄しない。Remote-SSH の履歴や認証情報、`workspaceStorage` 自体は削除しない。
 
-## 11. タイトル編集と設定一覧の挿入移動（2026-10-02 追加）
+## 15. パネル別 settings.json の保持（2026-09-03 追加）
+- **ファイル**: `VscodeUserSettings.cs`, `SlotUserDataPaths.cs`, `VscodeLauncher.cs`, `TurtleAIQuartetHub.Panel.Tests/VscodeUserSettingsTests.cs`
+- **問題**: 専用 user-data の各パネルで Ctrl+Shift+P から `settings.json` を編集して保存しても、次回起動がファイル全体を JSON として読み直して書き戻していた。社内プロキシ切替用のコメント、`remote.SSH.httpsProxy`、`remote.SSH.remotePlatform` が消えて「設定が戻った」ように見える。SSH 接続中の別 PC（例: `%LOCALAPPDATA%/TurtleAIQuartetHub/user-data/A/User/settings.json`）で再現する。
+- **対策**: 専用プロファイルでも `User/settings.json` は `%APPDATA%/Code/User/settings.json`（Roaming）と同じ実体へハードリンクする。通常起動の VS Code で保存したプロキシが、ハブ起動窓でもそのまま使われる。リンクできた場合は Roaming へ `window.restoreWindows` を書かない。リンク前の専用ファイルは `settings.json.quartet-bak` に退避する。リンクできないときだけ専用ファイルを JSONC パッチし、コメントと `remote.SSH.*` を残す。
+- **注意**: ハードリンクは Roaming の内容を書き換えない。JsonNode で読み書きするとコメントが落ちるため、専用プロファイルの既存ファイルには使わない。ワークスペースの `.vscode/settings.json` は触らない。
+
+## 16. 縮小表示の IDE 切り替えと控え（2026-09-27 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **IDE 切り替え**: 縮小スロットの単一トグルは `WindowSlot.CompactIdeToggleLabel` で選択中の V / A を表示し、`CompactIdeToggleTargetApplicationId` で反対側を選ぶ。IDE 以外の選択中は中立記号を示し、利用可能な IDE を選ぶ。通常表示と同じ `SelectSlotWorkspaceApplicationAsync` を通し、未起動時は選択だけ変更、起動中は `CloseSlotWindowForReplacementAsync` の終了確認後に起動する。内側のボタンの Click は `Handled` にして、外側カードのフォーカス切り替えへ伝播させない。
+- **控え**: 縮小表示では通常表示と同じ `StoredPanelPages` / `SelectedStoredPanelPage` を使い、控えの選択・登録・削除・A-D への表示・整列・ドラッグ移動・タブ名編集を小型の 2x2 カードで提供する。開閉は縮小表示の幅を変えず、高さだけを `GetCompactModeHeight` で再計算する。通常表示の Expander 状態と標準サイズの記憶は分けて維持する。
+- **注意**: Windows 補助アプリボタン行は縮小表示の幅に合わせている。ボタンやタブの固定幅を増やす場合は、縮小表示の最小幅 430 DIP での収まりと DPI 変換後の高さを確認する。
+- **選択表示と状態表示**: 以前の二つの V / A ボタンは Style 継承により同時点灯した。現在は単一トグルと状態ボタンが寸法と細枠の共通 Style だけを継承し、IDE 選択色と起／停の `WindowStatus` 色を独立させる。`Ready` は管理対象 HWND を確認した緑の「起」、`Missing` は赤の「停」、起動遷移中は「…」とする。状態ボタンの終了／起動操作は維持し、ツールチップに明示する。
+- **控えトグルの幅**: 最小幅 430 DIP ではフレームと行の余白を引いた補助アプリ行が数 DIP しか余らない。控えボタンは 60 DIP の透明なヒット領域に丸い矢印アイコンと「控え」だけを置き、閉じる／開くの長文を `Content` に再設定しない。負の左マージンと増やした右マージンでボタンだけを外枠側へ 6 DIP 寄せ、後続の Windows アプリの位置は維持する。開閉は矢印の向き、ツールチップ、Automation 名で示す。
+- **IDE 選択色**: `MainWindow.xaml` の `VsCodeSelected*Brush` / `AntigravitySelected*Brush` を標準表示の IDE 専用スタイルと縮小表示の単一トグルで共有する。VS Code は暗い青背景＋ロゴに近い青の枠（`#102D3F` / `#168FD6`）と明るい青文字、Antigravity は暗い紫背景＋暖色→緑→水色→青紫の中間的な明度の `LinearGradientBrush` 枠と少し落ち着かせた文字色を使う。縮小 A の枠は 1.2 DIP にして多色の変化を視認できるようにする。CLI は従来の緑を維持する。標準 IDE 専用テンプレートはホバー中も選択色を保つ。未検出時の灰色を優先し、ディスプレイ位置を示すフォーカス枠色とは独立させる。
+
+## 17. 配布用 exe の発行（2026-09-27 追加）
+- **ファイル**: `publish.bat`, `README.md`, `TurtleAIQuartetHub.Panel.csproj`
+- **手順**: リポジトリ直下の `publish.bat` は自身の場所へ移動してから `dotnet publish` を実行する。Release / win-x64 / self-contained / single-file を指定し、`dist/turtle-ai-quartet-hub/` に `TurtleAIQuartetHub.exe` を生成する。ダブルクリック時は結果を読めるように待機し、自動確認には `--no-pause` を使う。
+- **配布**: exe に加えて `LICENSE.txt` と `config/turtle-ai-quartet-hub.example.json` を出力フォルダごと渡す。単一ファイル publish を繰り返すと内容ファイルが配布先から消えるため、プロジェクトの `AfterTargets="Publish"` で 2 ファイルを物理ファイルとして再コピーする。バッチでも publish 後に毎回コピーして存在を確認する。`CopyToPublishDirectory=IfDifferent` / `Always` だけでは連続発行時の欠落を防げなかった。
+- **NuGet 復元**: `publish.bat` は `win-x64` / `SelfContained=true` / `PublishSingleFile=true` の条件で明示的に restore してから `publish --no-restore` を行う。通常の設定で復元できなければ公式 `https://api.nuget.org/v3/index.json` を指定して一度再試行する。`NuGetAudit=false` で発行時の監査用通信を省き、通常ソースの `RestoreIgnoreFailedSources=true` で利用できないソースを警告に留める。自己完結型の .NET ランタイムパックを取得できない `NU1100` などは失敗を維持し、ソース一覧と接続確認先を表示する。TLS 検証は無効化しない。
+
+## 18. Smart App Control 向け配布署名（2026-09-27 追加）
+- **現象と原因**: `dist/turtle-ai-quartet-hub/TurtleAIQuartetHub.exe` は通常の `dotnet publish` では未署名となり、この PC の CodeIntegrity Operational ログに ID 3033 / 3077 の署名要件違反として記録された。Zone.Identifier はなくても Smart App Control はブロックする。開発用 `AIUsageChecker Dev` 証明書は自己署名で、配布の信頼には使わない。
+- **発生時期の調査**: Smart App Control の強制ポリシーは少なくとも 2026-08-25 に別の未署名バイナリをブロックしていた。今回の `dist` の単一ファイル exe は 2026-09-27 16:13 に更新され、同じパスがブロックされた最初の記録は 16:28。ユーザーは以前も同じ `dist` のパスから起動できていたため、パスの違いは原因ではない。旧ファイルは上書き済みでハッシュを比較できないが、Smart App Control はクラウド判定で未署名 exe を許可する場合があり、新しいビルドの評価が変わった可能性がある。
+- **手順**: `publish.bat` の通常発行では `scripts/Sign-Release.ps1 -Mode Inspect` が署名状態を表示する。認証局発行のコード署名証明書がある場合だけ、`TURTLE_CODE_SIGN_THUMBPRINT` と `TURTLE_CODE_SIGN_TIMESTAMP_URL` を指定し `publish.bat --sign` を実行する。発行前に証明書の EKU・秘密鍵・有効期限・チェーン・失効を検査し、発行後に SignTool の署名・検証と Authenticode の状態確認を行う。
+- **通常発行の確認**: 署名状態の表示に失敗しても発行済みファイルは成功として扱い、配布前の手動確認を促す警告を出す。`--sign` では署名・検証の失敗をエラーとして維持する。
+- **注意**: 自己署名や Windows 全体の保護解除を解決手段として扱わない。CA 署名でも実機上の Smart App Control 判定を確認する。Store の MSIX 配布は Store 側の署名が必要で、ローカル MSIX の自己署名とは別物。
+
+## 19. 極小表示からの直接切り替え（2026-09-27 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **操作**: 極小表示の上部には標準表示アイコンと縮小表示アイコンを別々に置く。それぞれ `SetDisplayMode` を通して切り替え、フォーカス再前面化の抑制とパネルのアクティブ化を従来の切替ボタンとそろえる。
+- **寸法**: 極小表示は 116×116 DIP のまま。左右 8 DIP の内側余白と両側 1.75 DIP の緑枠を引くとタイトル行の有効幅は 96.5 DIP。表示切替・最小化・閉じるの 4 ボタンを各 23 DIP、合計 92 DIP にして収める。強調枠 2.25 DIP のときも収まる。標準・縮小表示のボタン幅と左右マージンは従来値に戻す。
+
+## 20. Windows 補助アプリの表示選別（2026-09-28 追加）
+- **ファイル**: `Models/LauncherApplication.cs`, `Models/AppConfig.cs`, `Services/StatusStore.cs`
+- **対策**: `ShowInAuxiliaryLauncher` で `chatgpt-app` だけを表示対象から外す。`StatusStore` の初期生成時と設定再読み込み時の両方に同じ条件を使い、標準・縮小表示と Jump List を同期する。旧 ChatGPT 設定は破棄しない。
+- **Codex 表記**: `codex-app` の既定 `ShortName` は `GPT/Codex`。旧設定の `ShortName=Codex` は正規化時に移行し、ID・検出条件・起動処理は維持する。
+- **注意**: 2026-09-28 より前の「4 ボタン」の記述は変更前の仕様。縮小表示の幅 430 DIP で新しい 3 ボタン行が収まることを確認する。
+
+## 21. 控えと AI アプリボタンの左右配置（2026-09-28 追加）
+- **ファイル**: `MainWindow.xaml`
+- **対策**: 縮小表示の `CompactStoredPanelsToggleButton` を右側 StackPanel から独立させ、`StoredPanelsRowGrid` の左端へ配置する。標準表示の控え Expander は既存どおり左に置く。共用の `AIアプリ` ラベルと起動ボタンは右揃えにする。
+- **寸法**: 3 ボタンは `AuxiliaryApplicationButtonStyle` で幅 86 DIP・高さ 28 DIP・文字 11.5 DIP に統一し、`AIアプリ` ラベルは文字 11 DIP にする。最小幅 430 DIP の縮小表示で左右の操作が重ならないことを確認する。
+
+## 22. 縮小表示の AI アプリボタン寸法（2026-09-28 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **対策**: `AuxiliaryApplicationPanel.Tag` に表示モード名を渡し、共通ボタンスタイルの `DataTrigger` で `Compact` のときだけ幅 78 DIP・高さ 25 DIP・文字 10.5 DIP にする。標準表示は 86×28 DIP・文字 11.5 DIP のまま。
+- **注意**: 幅と `MinWidth` を同時に変更しないと、継承した最小幅で縮まない。モード切替時は高さの測定前に `Tag` を更新する。
+
+## 23. 縮小表示の控えカードの割り当てボタン（2026-09-29 追加）
+- **ファイル**: `MainWindow.xaml`
+- **配置**: `CompactStoredPanelTemplate` の A-D ボタンは `UniformGrid Columns="2"` で上段 A/B、下段 C/D とする。カード幅を変えず、各ボタンの横幅を確保する。
+- **高さ**: ボタン行は 46 DIP、各ボタンは高さ 21 DIP とし、縮小表示の控えを開いたときは既存の `GetCompactModeHeight` による実測でウィンドウを縦に広げる。
+- **文字**: 控えトグルとカード番号は 11 DIP、タイトルは 11 DIP、フォルダ名は 10.5 DIP。タイトルは番号の横で縦中央に揃え、利用可能な幅に応じて省略表示する。標準表示の控えカードと割り当て処理は変更しない。
+
+## 24. 縮小・極小表示のスロットカード入替（2026-09-29 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **操作**: `CompactSlotTemplate` と `MicroSlotTemplate` の外側 Button を標準カードと同じ `SlotCard_*` ドラッグ処理へ接続する。ドロップ後は `SwapSlotContents` と `ArrangeSlotsAfterPanelStateChangeWithSettlingAsync` を共用し、カードと管理ウィンドウの位置を同期する。
+- **誤操作防止**: 外側 Button はドラッグ開始対象、縮小カード内側の IDE / 起動ボタンは対象外。押し始めた要素を記憶し、内側ボタンからポインタが外れても入替を開始しない。ドラッグ終了直後の外側 Button の Click はフォーカス切替に使わない。
+- **表示**: ドロップ先の光彩は DragLeave / Drop で解除する。標準カードの `FocusFrameBrush` Binding を維持する。
+
+## 25. 標準表示の通知メッセージ（2026-09-30 追加）
+- **ファイル**: `MainWindow.xaml`
+- **表示**: `FooterControlsGrid` の `Message` は文字サイズ 14 DIP、上下中央揃え、`TextWrapping="Wrap"` で表示する。幅に収まらない場合は複数行にし、親の Auto 行で高さを確保する。固定高さや省略表示を追加しない。
+
+## 26. 標準表示の通知文字サイズを復元（2026-10-01 追加）
+- **ファイル**: `MainWindow.xaml`
+- **問題**: 通知文字を 14 DIP に拡大したことで、長い設定パスの折り返しが増え、通知枠が高くなり画面バランスが崩れた。
+- **対策**: `FooterControlsGrid` の `Message` を元の 10 DIP に戻す。上下中央揃え、`TextWrapping="Wrap"`、既存の余白と Auto 行による高さ調整は維持する。
+- **注意**: ユーザーのサイズ復元依頼により、セクション 25 の 14 DIP 指定はこの項目で置き換える。枠を詰めるために固定高さや省略表示を追加せず、文字サイズで調整する。
+
+## 27. 縮小表示の前後ボタンと AI アプリ寸法の復元（2026-10-02 更新）
+- **ファイル**: `MainWindow.xaml`
+- **前後操作**: 「前」「背」は幅・高さを 24 DIP に固定し、`MinWidth` / `MinHeight` を 0、Padding を 0、縦位置を Center にする。縮小カードの外側 Button は 28 DIP 高だが、上下各 2 DIP の透明フォーカス枠を除いた可視枠は 24 DIP 高である。
+- **AI アプリ**: ユーザーの撤回指示により、縮小表示の追加一括操作ボタン・専用確認パネル・対応コードを取り除き、補助アプリを第22節の元の 78×25 DIP・文字 10.5 DIP に復元した。68 DIP 幅・文字 9.5 DIP へ縮める変更は採用しない。
+- **注意**: 縮小ウィンドウ寸法・倍率・高さ算出は変えない。標準表示の一括操作・終了確認も従来どおり。コードビハインドに今回の変更を残さず、前後ボタンの寸法と説明属性だけを変更する。
+
+## 28. 縮小表示の余白と高さ測定（2026-10-02 更新）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **原因**: WPF の DesiredSize は Margin を含むが、GetCompactModeHeight は行の上下マージンを再加算し、測定幅からも左右マージンを二重に引いていた。下端に余分な空白が残り、控え表示の高さも過大になっていた。
+- **対策**: 各行を本体内の共通の有効幅で測定し、DesiredSize の高さをそのまま使う。RootLayoutGrid の Margin と通常の外周枠厚だけを別途加える。通常枠厚 1.75 DIP は CompactPanelBorderThickness で描画と測定に共用する。
+- **配置**: CompactBarPanel の上マージンを 0 DIP、RootLayoutGrid の下マージンを縮小時だけ 6 DIP にする。モードの高さ測定前に UpdateDisplayModeChrome で余白を確定し、標準・極小では元の Margin=8 に戻す。
+- **注意**: 第27節の寸法維持は今回の余白調整前の仕様。ユーザーの追加指示により閉じた縮小表示の高さは 156 DIP から 146 DIP へ詰めた。幅、前/背の 24 DIP 正方形、AI アプリの 78×25 DIP・文字 10.5 DIP は維持する。控えを開いた高さも実測で求め、手動の補正値や Margin の再加算を戻さない。
+
+## 29. 縮小表示の AI アプリボタンの高さ（2026-10-02 更新）
+- **ファイル**: `MainWindow.xaml`
+- **対策**: ユーザーの高さ調整指示により、AuxiliaryApplicationButtonStyle の Compact トリガだけを高さ 25→22 DIP にした。継承した BarButton の最小高さ 24 DIP に阻まれないよう MinHeight も 22 DIP にする。
+- **維持**: 横幅 78 DIP・文字サイズ 10.5 DIP・文字スタイル・配色はそのまま。標準表示の 86×28 DIP・文字 11.5 DIP と本体の余白設定は変更しない。第27・28節の縮小 AI アプリ高さ 25 DIP はこの調整で置き換える。
+- **確認**: 本体ビルド成功。430×146 DIP の縮小表示で GPT/Codex・Claude・Antigravity2 が各 78×22 DIP・文字 10.5 DIP となり、文字・ボタンの見切れがないことを描画と実測で確認した。
+- **追加調整**: ユーザーの「まだ目立つ」という指示を受け、高さと MinHeight を 22→18 DIP にした。横幅 78 DIP・文字サイズ 10.5 DIP・本体サイズ 430×146 DIP は維持する。本体ビルド成功、100% / 125% の描画で文字とボタンの見切れがないことを確認した。
+- **デザイン調整**: 18 DIP では薄すぎて上に寄るという指摘を受け、高さと MinHeight を 20 DIP に戻した。縮小時の StoredPanelsRowGrid.MinHeight を 30 DIP とし、控えの上マージンを外して縦中央、AuxiliaryApplicationsRow も上マージンを外して縦中央へ揃える。標準表示では補助アプリ行の元の上揃え・マージンを維持する。幅 78 DIP・文字 10.5 DIP・本体 430×146 DIP を維持し、左右の操作と AI ラベル・3 ボタンの中心が同じ高さになること、控え表示の収まり、標準表示の描画一致、100% / 125% の見切れなしを確認した。
+- **上下余白と厚みの再調整**: ユーザーの「もう少し太く、上下のスペースを半分」という指示により、縮小 AI ボタンの Height / MinHeight を 20→22 DIP にした。StoredPanelsRowGrid.MinHeight は 26 DIP、上下 Margin は各 2 DIP、RootLayoutGrid の下 Margin は 2 DIP とし、CompactWindowMinHeight を 136 DIP に下げて余分な高さを残さない。100% 描画でボタン行の見える上余白は 7→4 DIP、下余白は 16→8 DIP、本体は 430×137 DIP になる。控え・AI ラベル・3 ボタンは縦中央を共通の位置に揃え、幅 78 DIP・文字 10.5 DIP・左右余白を維持する。直前の本体高さ 146 DIP と余白設定はこの項目で置き換える。ビルド成功、100% / 125% の見切れなし、控えを開いた表示の収まり、標準表示の描画一致を確認した。
+
+## 30. 縮小表示の控え開閉とボタン位置の固定（2026-10-02 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **問題**: ユーザー環境で控えを開くとボタンが少し上へ動くと報告された。下端の余白も追加するよう依頼された。
+- **対策**: `CompactBarPanel` は上揃えにし、縮小時の `StoredPanelsRowGrid` は Height / MinHeight を 26 DIP に固定して上揃えにする。行内の控えと AI アプリは従来どおり縦中央へ置く。`RootLayoutGrid` の縮小時下 Margin は 2→6 DIP とし、下端に 4 DIP の余白を追加する。100% の閉じた表示は 430×141 DIP、控え表示は現在の保存内容で 430×384 DIP。
+- **維持**: AI アプリの 78×22 DIP・文字 10.5 DIP、前/背の 24 DIP 正方形、横幅と左右余白を維持する。標準表示へ戻したときは操作行の Height を Auto、MinHeight を 0、縦配置を Stretch に戻す。第29節の下 Margin=2 DIP と本体高さ 137 DIP は今回の依頼で置き換える。
+- **確認**: 100% で実際の控え開閉ハンドラを3往復実行し、既存23ボタンの座標・寸法変化と見切れが0件。WPF 自体の DPI を125%にした開閉描画でも同じ23ボタンの座標・寸法が一致する。標準・極小の125%描画は修正前と同一。画面下端付近のウィンドウ全体の作業領域補正は既存の挙動を維持する。
+
+## 31. タイトル編集と設定一覧の挿入移動（2026-10-02 追加）
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/StatusStore.cs`, `TurtleAIQuartetHub.Panel.Tests/PanelOrderTests.cs`
 - **タイトル**: `InlineTitleTextBox` は読み取り時に `DisplayTitle`、編集時に `PanelTitle` を表示する。Binding は `UpdateSourceTrigger=Explicit` とし、確定時だけ保存する。Esc は UpdateTarget で元の値を戻す。タイトルの最初のクリックも Handled にして外側カードの起動・フォーカス切替を防ぐ。設定用の通常TextBoxへインライン編集の終了処理を適用しない。
 - **並び替え**: メインカードの既存D&Dは交換のまま維持する。設定一覧の上下操作とD&Dは `MoveSlotContents` / `MoveStoredPanelContents` を通す挿入移動とし、移動区間の他カードの順序を保つ。位置番号・コレクション・控えページの参照は固定し、内容の隣接交換中は保存を抑制、完成後に一度だけ保存する。
@@ -100,50 +274,19 @@
 - **UI**: 設定のドラッグ開始は専用つまみだけに限定し、入力欄の文字選択・上下キーを妨げない。移動後は移動先のつまみへフォーカスして連続キー移動を可能にする。表と控えの間のドロップは受け付けない。控え一覧の端でドラッグ中にスクロールする。設定ダイアログの内側Gridを本体高さから78 DIP引いた範囲に制限し、下部操作が見切れないようにする。
 - **配置**: 標準の控え見出し領域は28 DIP。AIアプリ行の上Marginを0にして見出しと同じラインにする。AIアプリは標準86×28 DIP・縮小78×22 DIPのまま。
 
-## 12. タイトル全文のポップアップとクリック操作（2026-10-03 追加）
-- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
-- **表示**: 標準・縮小の表/控えで共通の `InlineTitleTextBox` に、`PlacementTarget.DataContext.DisplayTitle` を表示するツールチップを持たせる。長いタイトルは420 DIP幅で折り返し、省略しない。編集案内の固定文言と標準カードの上書き指定は取り除く。編集中はポップアップを抑制する。
-- **操作**: 表カードのタイトルは単クリックで標準・縮小共通の `ToggleSlotFocus` を呼び、ダブルクリックで編集する。マウス解放後、Windowsのダブルクリック判定時間だけ単クリックを保留し、二度目のクリックで取り消す。控えには管理ウィンドウがないため単クリックで起動や割り当てを行わず、全文表示・ダブルクリック編集を共通化する。
-- **維持**: Enter確定・Esc取消・フォーカス移動で確定する保存経路は維持する。ドラッグ開始・別のマウス操作・表示モード変更・終了時には保留を破棄し、実行時にもビジー状態・可視性・対象モデル・HWNDを検査する。
-- **注意**: ユーザーの操作統一依頼により、第11節の「最初のクリックも抑制」は、親カードへの二重伝播だけを止めて単クリックを共通処理へ送る仕様に置き換える。
+## 32. 設定一覧の並び替えUIの意匠・操作性刷新（2026-10-02 追加）
+- **ファイル**: `MainWindow.xaml`
+- **問題**: 設定一覧の並び替えボタン（テキストの「↕」「↑」「↓」が上下に並ぶ構成）がアプリ全体のダークグリーン・ネオングリーンのサイバーなテイストから浮いており、バランス・視認性・操作感に課題があった。
+- **対策**:
+  - 幅32 DIPの一体型縦スプリットステッパーコンテナ（`SettingsOrderContainerStyle`）へ刷新。
+  - 上ボタン: Segoe MDL2 Assets の `&#xE70E;` (ChevronUp)。
+  - 中央つまみ: モダンな6ドットグリッパー（2列×3行）。ドラッグ移動に対応し、選択時はアクセント枠とネオングリーン発光で ↑/↓ キーによる並び替えが直感的に行える。
+  - 下ボタン: Segoe MDL2 Assets の `&#xE70D;` (ChevronDown)。
+  - ホバー・押下・フォーカス時のカラーはすべてアプリの `SurfaceBrush`, `AccentBrush` (`#45D483`), `#1F3427` と調和。
+  - 行内の左端列幅を 58→44 DIP に最適化し、入力欄（名前・パス等）の横幅を拡大。
+- **維持**: `SettingsMovePanelButton_Click`、`SettingsPanelOrder_PreviewKeyDown`、`FocusSettingsPanelGrip` のイベントハンドラ・タグ参照・フォーカス探索仕様（`Cursor=SizeAll`、`Tag={Binding}`）を完全互換のまま維持。
 
-## 13. WPF 検証プロセスのエラーダイアログ防止（2026-10-03 追加）
-- **ファイル**: `tools/WpfCheckGuard.cs`, `docs/wpf-ui-validation.md`
-- **原因**: 一時検証ツール `TitleHoverUi.exe` のアサーション例外が未処理となり、Windowsのアプリケーションエラーをユーザーのデスクトップへ表示した。
-- **対策**: 一時WPFツールのSTAエントリーポイントを `WpfCheckGuard.Run` で囲む。同期・Dispatcher・バックグラウンドの例外を標準エラーへ記録し、終了コード1で終了する。エラーダイアログの抑制は検証プロセスだけに適用する。
-- **注意**: 本体アプリへ組み込んだり、Windows全体のエラー報告設定を無効化したりしない。検証時は保存先を隔離し、終了コードとプロセス終了を確認する。詳細は `docs/wpf-ui-validation.md` を参照。
-
-## 14. Antigravity IDE と CLI の導入状態を区別する（2026-10-03 追加）
-- **ファイル**: `Services/ApplicationDetectionService.cs`, `Services/ApplicationLauncher.cs`, `Models/AppConfig.cs`, `docs/antigravity-cli-detection-analysis-2026-10-03.md`
-<!-- 2026-10-04: ~/.gemini/bin/agy.exe の実在を確認したため、初回の未導入判定と承認待ちの記録を訂正。 -->
-- **原因・修正（2026-10-04）**: CLI は `~\.gemini\bin\agy.exe` に導入済みだったが、ハブの探索対象外かつ PATH 未登録だった。検出・起動 PATH の両方へ `~\.gemini\bin` を追加した。既存 PATH と明示設定の優先順位は維持する。
-- **別ツールとの比較**: `ai-usage-checker` は `~\.gemini\bin` も探索し、CLI 取得失敗時には IDE 言語サーバーへのフォールバックも持つ。利用量取得結果だけでハブの起動可否を有効化せず、実体を検出する。
-- **注意**: `antigravity` や `antigravity-ide` を CLI の代替候補へ追加しない。sandbox の .NET UserProfile は実ユーザーと異なるため、ユーザー単位の配置先は実ユーザーで確認する。
-- **確認**: PATH 未登録・`Command=agy` で `Installed` と既存ファイルのフルパスへ解決されること、CLI バージョン1.2.16、本体ビルド警告・エラー0、既存55テスト合格。起動中の旧バイナリは設定へフルパスを保存し、4スロットすべての有効化を確認した。追加インストール・OS PATH 変更は不要。
-
-## 15. VS Code で保存したプロキシの有効・無効を保持する（2026-10-07 追加）
-- **ファイル**: `Services/VscodeUserSettings.cs`, `Services/VscodeLauncher.cs`, `Services/SlotUserDataPaths.cs`, `TurtleAIQuartetHub.Panel.Tests/VscodeUserSettingsTests.cs`
-- **問題**: 専用 user-data の既存 `settings.json` を起動時に Roaming へ再リンクし、コメントアウト解除したプロキシを元の状態へ戻す。ハブ管理有効時は、保存したプロキシ状態を古いハブ設定で上書きする経路もあった。
-- **対策**: リンク作成は専用設定ファイルが無い初回だけ。既存ファイルは削除・再リンク・バックアップの上書きをせず保持する。ハブ設定によるプロキシ初期化は新規ファイルだけに限定し、既存ファイルの更新は「全パネルへ適用」の明示操作に限る。専用窓の起動環境変数も保存済み設定を優先する。
-- **メモリ**: 標準プロファイル共有の既定値は維持する。追加プロセス、常駐ファイル監視、設定内容の常駐キャッシュを設けず、ハブ管理有効の専用窓起動時にだけ小さな設定ファイルを読む。
-- **確認**: 修正前に再リンク・ファイル置換後の再起動・ハブ管理による有効/無効上書きの4件が失敗することを確認。修正後は全62件（設定22件を含む）合格。本体を含むビルドは警告・エラー0。
-- **範囲**: ユーザー報告は別PCの現象（作業中にユーザーから補足）。開発PCの共有モード設定は原因判断に使わない。別PCの設定ファイルのパスと実動作は未確認で、専用設定・リモート設定・別プロファイルのどれに当たるかは未確定。共有モードを自動で専用モードへ変更しない。詳細は `docs/vscode-proxy-persistence-analysis-2026-10-07.md` を参照。
-
-## 16. 標準表示の控えタイトル幅と番号の整列（2026-10-10 追加）
-- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
-- **要望**: 4列の控えカードでタイトルを読みやすくし、番号の出っ張り・2行タイトル・標準表示の横幅増加を避ける。
-- **配置**: `StoredPanelTemplate` のタイトルは1行でカードの内幅を使う。番号は既存のパス行の20 DIP固定列に置き、枠・背景なし、数字の等幅と右揃えで2桁まで揃える。パスは残り幅に制限し、`CharacterEllipsis` と全文ツールチップを使う。
-- **操作**: A〜Dの2x2配置を保ち、その右下に「⋯」を置く。削除メニューは既存の確認・取消経路を通し、空きカードは右下の登録ボタンから直接フォルダを選ぶ。タイトル編集と全文ツールチップは既存の `InlineTitleTextBox` を維持する。
-- **メニュー**: `ContextMenu` はカードの視覚ツリー外にあるため、`PlacementTarget.Tag` から対象をバインドする。削除ハンドラは `Button` と `MenuItem` の両方を `FrameworkElement.Tag` で受け取る。メニューのテンプレートもダーク配色にし、OS既定の白いアイコン列を表示しない。
-- **寸法**: 標準幅650 DIP・最小幅560 DIP、控えカード高118 DIP、4列、既存行の高さを維持する。縮小・極小表示と表示モード切替のサイズ算出は変更しない。番号や長い文字のためにウィンドウ幅・高さを増やさない。
-- **確認**: 本体ビルドは警告・エラー0、既存62件と標準・縮小のタイトル操作186項目に合格。650 DIPの100%/125%描画でビューポート外要素0件。隔離WPF描画で各メニューの対象・削除確認・取消、空き登録ボタン、560 DIP/125%での21〜24番と長文の省略、118 DIPのカード高を確認した。ネストしたメニューのBinding検証はテンプレートをMeasure/Arrangeしてから行い、本番の保存状態と外部IDEを操作しない。
-
-### 16-1. 控え右下の削除操作をゴミ箱ボタンに変更（2026-10-10 更新）
-- **変更**: ユーザーの指定により、上記の「⋯」と削除メニューを右下の直接操作に置き換えた。既存の `StoredDeleteButton` とゴミ箱アイコン（Segoe MDL2 Assets / E74D）を使用し、不要なメニュー用Styleとハンドラを削除する。
-- **操作・寸法**: `Button.Tag` の控えを既存の削除確認へ渡し、取消経路も維持する。空きカードは登録ボタンを表示する。標準幅650 DIP・最小幅560 DIP、4列・カード高118 DIP、タイトルと番号の配置は維持する。この更新が上記のメニュー仕様に優先する。
-- **確認**: 本体ビルドは警告・エラー0、既存回帰62件合格。隔離WPFで4カードそれぞれの直接クリックによる削除確認と取消、空き登録、21〜24番の表示を650 DIP/100%と560 DIP/125%で確認。650 DIP/125%の描画はビューポート外要素0件。保存状態と外部IDEは操作しない。
-
-## 17. ウィンドウの直接操作とフォーカス同期（2026-10-12 追加）
+## 33. ウィンドウの直接操作とフォーカス同期（2026-10-12 追加）
 - **ファイル**: `MainWindow.xaml.cs`, `Services/WindowFocusSynchronizer.cs`, `Services/WindowArranger.cs`, `TurtleAIQuartetHub.Panel.Tests/WindowFocusSynchronizerTests.cs`
 - **問題**: 直接最大化が `IsFocused` へ反映されず、旧フォーカスの Z 順補正や起動後の配置リトライが手動最大化を取り消していた。直接復元も再最大化され得た。
 - **対策**: HWND ごとの最大化への変化を自動補正より先に取り込み、同じディスプレイの旧フォーカスだけを解除する。420msの遷移猶予後に `ArrangeOnly` で対象だけを非アクティブ・アニメーションなしで象限へ戻す。最小化窓は復元しない。直接復元は自分の象限へ戻し、直接最小化は従来どおりフォーカスだけ解除する。
@@ -151,10 +294,15 @@
 - **注意**: 同期は既存の状態更新間隔（既定約1秒）で行う。フォーカス変更を取り込む前のZ順補正・全窓の再配置は禁止。通常Z帯と `SWP_NOZORDER` の配置、Win32要求の非同期化を維持する。直接操作に伴う整列で別ディスプレイや最小化窓を復元しない。過去の「手動最大化を取り消す」要望は確認したGit履歴・資料には見つからず、2026-06-07の手動最小化尊重を最大化・復元にも広げる判断。
 - **確認**: 回帰チェック74件（既存62＋追加12）と、表示しないWPF本体・模擬状態による統合チェック12件が合格。本体ビルドは警告・エラー0。実IDEのアニメーション・表示順の目視確認は未実施。経緯と実機手順は `docs/manual-window-focus-analysis-2026-10-12.md` を参照。
 
-## 18. 最前面・最背面ボタンと集中表示の前後位置（2026-10-14 追加）
-- **ファイル**: `MainWindow.xaml.cs`, `Services/WindowArranger.cs`, `tools/WindowLayerChecks/Program.cs`, `docs/window-layer-buttons-analysis-2026-10-14.md`
-- **問題**: 「最前面」は通常の `HWND_TOP` による補正だけで、環境によって前面へ移動しなかった。「最背面」は集中窓の順序補正が無条件に前面化し、押下した背面指定を取り消していた。標準と縮小は同じClickハンドラを使うため両方に影響する。
-- **対策**: 明示的な前面ボタンだけ `BringToFrontOnce` を使う。一時的に `HWND_TOPMOST` へ上げてから `HWND_NOTOPMOST` で通常帯へ戻す。集中窓の順序補正は指定レイヤーに従い、背面指定では集中窓を `HWND_BOTTOM` へ送り、その後に同面のタイルを背面へ送る。再適用・遅延確定でも「他アプリ > 集中窓 > タイル」を維持する。
-- **非同期順序**: 前面ボタンで一時topmost化した直後にはタイルの相対配置を行わない。別スレッドの解除要求より相対配置が先に反映されると、タイルまでtopmostになる。全ディスプレイの集中窓を既存の遅延Z順検査で確認し、集中窓がtopmost帯の間は補正を保留する。通常帯へ戻った後に違反したタイルだけを相対配置する。
-- **注意**: 常時のtopmost固定・`SetForegroundWindow` の繰り返し・集中解除・サイズ変更は追加しない。通常のフォーカス遷移は従来の通常Z帯と相対配置を維持する。前面操作後はパネル本体を即時に前面へ戻す。非表示中は指定だけを更新する。
-- **確認**: 既存74件と、実HWNDを持つ非表示窓による統合24件が合格。標準・縮小、4面・集中、背面後の再前面化、再適用、周期Z順補正、遅延確定、非表示中の保留を、同一スレッドと別スレッド窓の両方で確認した。修正前の2026-10-12ビルドでは前面操作の検証が失敗する。本体・検証ツールのビルドは警告・エラー0。実IDEの目視確認は未実施。
+## 34. メイン4カードのタイトル視認性向上とシステムモニタ（2026-10-19 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Models/SystemMonitorModels.cs`, `Services/SystemMonitorService.cs`, `TurtleAIQuartetHub.Panel.Tests/SystemMonitorAndCardTitleTests.cs`
+- **カードタイトル視認性向上**:
+  - `MainWindow.xaml.cs` の `IsInlineTitleTextBox` は `ReferenceEquals(style, TryFindResource("InlineTitleTextBox") as Style)` で参照同一性を判定しているため、`SlotCardTemplate` 側のタイトル `TextBox` でも `Style="{StaticResource InlineTitleTextBox}"` はそのまま保持し、派生スタイルへ差し替えない。
+  - `InlineTitleTextBox` の `ControlTemplate` 内の `TitleDisplay`（読み取り表示用 `TextBlock`）に `FontSize="{TemplateBinding FontSize}"`、`FontWeight="{TemplateBinding FontWeight}"`、`Foreground="{TemplateBinding Foreground}"` をバインドし、`SlotCardTemplate` のタイトル `TextBox` に `FontSize="15.5"`、`FontWeight="Bold"`、`Foreground="#F8FCF9"`、`Padding="2,0"`、`MinHeight="22"` を指定した。
+  - `ShortPath` の Margin を `0,2,0,0` から `2,0,0,0` に詰め、ヘッダ `StackPanel` の高さを従来の 40 DIP 以内（約 39 DIP）に収めることで、カード高さ（169 DIP）やアプリ全体のウィンドウサイズ（650×535 DIP）を一切圧迫・拡大せずにタイトル文字のみを大きく太字化した。
+- **システムモニタ表示（アイコン＆モーダル）**:
+  - タイトルバーの `SettingsButton`（歯車アイコン）のすぐ左に `SystemMonitorButton`（`Content="&#xE9D9;"`、`Segoe MDL2 Assets`）を配置し、標準表示時のみ表示する。
+  - 既存のウィンドウ内モーダルパターンに従い、`RootLayoutGrid` 内に `SystemMonitorOverlay`（`Grid.RowSpan="5"`、`Panel.ZIndex="23"`、`Esc` キー閉鎖対応）を実装。
+  - メモリ使用量（Win32 `GlobalMemoryStatusEx`）、CPU使用率（Win32 `GetSystemTimes` による前回サンプルとの差分計算、起動時プライミング済み）、および各ドライブ使用状況（`DriveInfo.GetDrives()`）は、モーダル表示中のみ動作する 1.5 秒周期の `DispatcherTimer`（`_systemMonitorTimer`）でリアルタイム更新し、モーダル閉鎖時はタイマーを停止してバックグラウンド負荷をゼロにする。
+  - 各フォルダ使用量（スロット A〜D、重複を除いた控えパネル、Hub の `StateDirectory`、VS Code データフォルダ、Antigravity IDE データフォルダ）は `Task.Run` と `CancellationTokenSource` で非同期に走査（`EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint }`）し、完了したフォルダから順次 UI スレッドでサイズ・ファイル数・相対比率バーを更新する。モーダル閉鎖時や「再計測」押下時は即座にキャンセルする。
+- **確認**: 本体ビルド警告・エラー0、回帰テスト全91件（既存74＋新規17）合格。

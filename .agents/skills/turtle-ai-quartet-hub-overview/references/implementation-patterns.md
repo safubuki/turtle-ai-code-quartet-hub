@@ -293,3 +293,16 @@
 - **非同期制御**: 手動切替は古い遅延整列・再適用・起動後リトライをキャンセルする。未完了の復元HWNDを引き継ぎ、すでに最大化している旧窓を再採用しない。パネルからの最大化要求中は同期を保留し、ディスプレイ移動中の一時的な通常状態は入力抑制の猶予後に判定する。
 - **注意**: 同期は既存の状態更新間隔（既定約1秒）で行う。フォーカス変更を取り込む前のZ順補正・全窓の再配置は禁止。通常Z帯と `SWP_NOZORDER` の配置、Win32要求の非同期化を維持する。直接操作に伴う整列で別ディスプレイや最小化窓を復元しない。過去の「手動最大化を取り消す」要望は確認したGit履歴・資料には見つからず、2026-06-07の手動最小化尊重を最大化・復元にも広げる判断。
 - **確認**: 回帰チェック74件（既存62＋追加12）と、表示しないWPF本体・模擬状態による統合チェック12件が合格。本体ビルドは警告・エラー0。実IDEのアニメーション・表示順の目視確認は未実施。経緯と実機手順は `docs/manual-window-focus-analysis-2026-10-12.md` を参照。
+
+## 34. メイン4カードのタイトル視認性向上とシステムモニタ（2026-10-19 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Models/SystemMonitorModels.cs`, `Services/SystemMonitorService.cs`, `TurtleAIQuartetHub.Panel.Tests/SystemMonitorAndCardTitleTests.cs`
+- **カードタイトル視認性向上**:
+  - `MainWindow.xaml.cs` の `IsInlineTitleTextBox` は `ReferenceEquals(style, TryFindResource("InlineTitleTextBox") as Style)` で参照同一性を判定しているため、`SlotCardTemplate` 側のタイトル `TextBox` でも `Style="{StaticResource InlineTitleTextBox}"` はそのまま保持し、派生スタイルへ差し替えない。
+  - `InlineTitleTextBox` の `ControlTemplate` 内の `TitleDisplay`（読み取り表示用 `TextBlock`）に `FontSize="{TemplateBinding FontSize}"`、`FontWeight="{TemplateBinding FontWeight}"`、`Foreground="{TemplateBinding Foreground}"` をバインドし、`SlotCardTemplate` のタイトル `TextBox` に `FontSize="15.5"`、`FontWeight="Bold"`、`Foreground="#F8FCF9"`、`Padding="2,0"`、`MinHeight="22"` を指定した。
+  - `ShortPath` の Margin を `0,2,0,0` から `2,0,0,0` に詰め、ヘッダ `StackPanel` の高さを従来の 40 DIP 以内（約 39 DIP）に収めることで、カード高さ（169 DIP）やアプリ全体のウィンドウサイズ（650×535 DIP）を一切圧迫・拡大せずにタイトル文字のみを大きく太字化した。
+- **システムモニタ表示（アイコン＆モーダル）**:
+  - タイトルバーの `SettingsButton`（歯車アイコン）のすぐ左に `SystemMonitorButton`（`Content="&#xE9D9;"`、`Segoe MDL2 Assets`）を配置し、標準表示時のみ表示する。
+  - 既存のウィンドウ内モーダルパターンに従い、`RootLayoutGrid` 内に `SystemMonitorOverlay`（`Grid.RowSpan="5"`、`Panel.ZIndex="23"`、`Esc` キー閉鎖対応）を実装。
+  - メモリ使用量（Win32 `GlobalMemoryStatusEx`）、CPU使用率（Win32 `GetSystemTimes` による前回サンプルとの差分計算、起動時プライミング済み）、および各ドライブ使用状況（`DriveInfo.GetDrives()`）は、モーダル表示中のみ動作する 1.5 秒周期の `DispatcherTimer`（`_systemMonitorTimer`）でリアルタイム更新し、モーダル閉鎖時はタイマーを停止してバックグラウンド負荷をゼロにする。
+  - 各フォルダ使用量（スロット A〜D、重複を除いた控えパネル、Hub の `StateDirectory`、VS Code データフォルダ、Antigravity IDE データフォルダ）は `Task.Run` と `CancellationTokenSource` で非同期に走査（`EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint }`）し、完了したフォルダから順次 UI スレッドでサイズ・ファイル数・相対比率バーを更新する。モーダル閉鎖時や「再計測」押下時は即座にキャンセルする。
+- **確認**: 本体ビルド警告・エラー0、回帰テスト全91件（既存74＋新規17）合格。
