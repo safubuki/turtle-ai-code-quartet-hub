@@ -1001,7 +1001,7 @@ public partial class MainWindow : Window
         _currentFolderUsageItems = items;
         SystemMonitorFoldersItemsControl.ItemsSource = items;
 
-        var targets = items.Where(item => item.CanOpenFolder).ToList();
+        var targets = items.Where(item => item.IsCalculating && !string.IsNullOrWhiteSpace(item.FolderPath)).ToList();
         if (targets.Count == 0)
         {
             SystemMonitorFolderStatusText.Text = "計測対象のフォルダはありません";
@@ -1013,46 +1013,70 @@ public partial class MainWindow : Window
         _folderSizeCalculationCancellation = cancellation;
         var token = cancellation.Token;
 
-        _ = Task.Run(async () =>
+        _ = CalculateAsync();
+
+        async Task CalculateAsync()
         {
             var completed = 0;
-            foreach (var item in targets)
+            var unavailable = 0;
+            try
             {
-                if (token.IsCancellationRequested)
+                await SystemMonitorService.MeasureFolderUsagesAsync(targets, async (item, result) =>
                 {
-                    return;
-                }
-
-                var (sizeBytes, fileCount) = SystemMonitorService.CalculateDirectorySize(item.FolderPath, token);
-                if (token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                completed++;
-                var currentCompleted = completed;
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    if (token.IsCancellationRequested)
+                    await Dispatcher.InvokeAsync(() =>
                     {
-                        return;
-                    }
+                        if (token.IsCancellationRequested || !ReferenceEquals(_currentFolderUsageItems, items))
+                        {
+                            return;
+                        }
 
-                    item.ApplyMeasuredSize(sizeBytes, fileCount, SystemMonitorService.FormatBytes(sizeBytes));
-                    SystemMonitorService.UpdateRelativeFolderRatios(items);
+                        if (result.SizeBytes is long sizeBytes)
+                        {
+                            if (result.DriveTotalBytes is long driveTotal)
+                            {
+                                item.ApplyDriveUsage(sizeBytes, driveTotal, SystemMonitorService.FormatBytes(sizeBytes));
+                            }
+                            else
+                            {
+                                item.ApplyMeasuredSize(sizeBytes, result.FileCount, SystemMonitorService.FormatBytes(sizeBytes));
+                            }
+                        }
+                        else
+                        {
+                            item.ApplyUnavailable(result.UnavailableReason ?? "計測不可");
+                            unavailable++;
+                        }
 
-                    if (currentCompleted < targets.Count)
-                    {
-                        SystemMonitorFolderStatusText.Text = $"計測中 ({currentCompleted}/{targets.Count})...";
-                    }
-                    else
-                    {
-                        var totalBytes = items.Where(x => x.SizeBytes.HasValue).Sum(x => x.SizeBytes!.Value);
-                        SystemMonitorFolderStatusText.Text = $"全 {targets.Count} フォルダ計測完了（合計 {SystemMonitorService.FormatBytes(totalBytes)}）";
-                    }
-                }, DispatcherPriority.Background);
+                        SystemMonitorService.UpdateRelativeFolderRatios(items);
+                        completed++;
+                        var totalBytes = items.Where(x => !x.IsDriveUsage && x.SizeBytes.HasValue)
+                            .Sum(x => x.SizeBytes!.Value);
+                        SystemMonitorFolderStatusText.Text = completed < targets.Count
+                            ? $"計測中 ({completed}/{targets.Count})..."
+                            : unavailable > 0
+                                ? $"完了 {completed} 件（スキップ・計測不可 {unavailable} 件）"
+                                : $"全 {completed} 件 計測完了（フォルダ計 {SystemMonitorService.FormatBytes(totalBytes)}）";
+                    }, DispatcherPriority.Background);
+                }, token);
             }
-        }, token);
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // 閉じる/再計測によるキャンセル。古い結果を新しい一覧へ反映しない。
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+                if (!token.IsCancellationRequested && ReferenceEquals(_currentFolderUsageItems, items))
+                {
+                    foreach (var item in targets.Where(item => item.IsCalculating))
+                    {
+                        item.ApplyUnavailable("計測不可");
+                    }
+
+                    SystemMonitorFolderStatusText.Text = "計測終了（一部を取得できませんでした）";
+                }
+            }
+        }
     }
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)

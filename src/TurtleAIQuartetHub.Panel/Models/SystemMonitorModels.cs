@@ -35,6 +35,12 @@ public sealed record DriveUsageItem(
     public string OpenFolderToolTip => $"エクスプローラで開く: {RootPath}";
 }
 
+internal sealed record FolderUsageMeasurement(
+    long? SizeBytes,
+    int FileCount = 0,
+    long? DriveTotalBytes = null,
+    string? UnavailableReason = null);
+
 public sealed class FolderUsageItem : INotifyPropertyChanged
 {
     private static readonly Brush DefaultBarBrush = CreateFrozenBrush("#45D483");
@@ -54,6 +60,7 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
     private long? _sizeBytes;
     private int _fileCount;
     private bool _isCalculating;
+    private bool _isDriveUsage;
     private double _usageRatio;
     private Brush _barBrush = DefaultBarBrush;
 
@@ -153,6 +160,12 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
         set => SetField(ref _isCalculating, value);
     }
 
+    public bool IsDriveUsage
+    {
+        get => _isDriveUsage;
+        private set => SetField(ref _isDriveUsage, value);
+    }
+
     public double UsageRatio
     {
         get => _usageRatio;
@@ -167,6 +180,7 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
 
     public void ApplyMeasuredSize(long sizeBytes, int fileCount, string formattedSize)
     {
+        IsDriveUsage = false;
         SizeBytes = sizeBytes;
         FileCount = fileCount;
         IsCalculating = false;
@@ -175,8 +189,17 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
         BarBrush = sizeBytes > 0 ? DefaultBarBrush : MutedBarBrush;
     }
 
+    public void ApplyDriveUsage(long usedBytes, long totalBytes, string formattedSize)
+    {
+        ApplyMeasuredSize(usedBytes, 0, formattedSize);
+        IsDriveUsage = true;
+        SubDetailText = "ドライブ使用量";
+        UsageRatio = totalBytes > 0 ? (double)usedBytes * 100d / totalBytes : 0d;
+    }
+
     public void ApplyUnavailable(string reasonText)
     {
+        IsDriveUsage = false;
         SizeBytes = null;
         FileCount = 0;
         IsCalculating = false;

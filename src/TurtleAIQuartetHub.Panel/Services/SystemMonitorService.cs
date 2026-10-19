@@ -286,41 +286,136 @@ public sealed class SystemMonitorService
         return items;
     }
 
-    public static (long TotalBytes, int FileCount) CalculateDirectorySize(string directoryPath, CancellationToken cancellationToken)
+    // 1 件の巨大フォルダや応答しない I/O が、後続の控えを待たせないようにする。
+    internal static async Task MeasureFolderUsagesAsync(
+        IReadOnlyList<FolderUsageItem> items,
+        Func<FolderUsageItem, FolderUsageMeasurement, Task> reportAsync,
+        CancellationToken cancellationToken,
+        TimeSpan? itemTimeout = null,
+        Func<string, CancellationToken, FolderUsageMeasurement>? measure = null)
     {
-        if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath))
+        var timeout = itemTimeout ?? TimeSpan.FromSeconds(3);
+        measure ??= MeasureFolderUsage;
+        await Parallel.ForEachAsync(items, new ParallelOptions
         {
-            return (0L, 0);
+            MaxDegreeOfParallelism = 2,
+            CancellationToken = cancellationToken
+        }, async (item, token) =>
+        {
+            using var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var itemToken = itemCancellation.Token;
+            var measurementTask = Task.Run(() =>
+            {
+                try
+                {
+                    return measure(item.FolderPath, itemToken);
+                }
+                catch (OperationCanceledException) when (itemToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Write(ex);
+                    return new FolderUsageMeasurement(null, UnavailableReason: "計測不可");
+                }
+            }, itemToken);
+
+            FolderUsageMeasurement result;
+            try
+            {
+                result = await measurementTask.WaitAsync(timeout, token).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                result = new FolderUsageMeasurement(null, UnavailableReason: "スキップ (時間超過)");
+            }
+            finally
+            {
+                // 待機だけを終わらせず、進行中のディレクトリ走査にも中断を伝える。
+                itemCancellation.Cancel();
+            }
+
+            token.ThrowIfCancellationRequested();
+            await reportAsync(item, result).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+    }
+
+    internal static FolderUsageMeasurement MeasureFolderUsage(string directoryPath, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var fullPath = Path.GetFullPath(directoryPath);
+        var root = Path.GetPathRoot(fullPath);
+        if (string.Equals(Path.TrimEndingDirectorySeparator(fullPath),
+            Path.TrimEndingDirectorySeparator(root ?? string.Empty), StringComparison.OrdinalIgnoreCase))
+        {
+            // ルートはファイルを列挙せず、OS が管理するボリューム使用量を表示する。
+            var drive = new DriveInfo(fullPath);
+            var total = drive.TotalSize;
+            var used = total - Math.Clamp(drive.TotalFreeSpace, 0L, total);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new FolderUsageMeasurement(used, DriveTotalBytes: total);
         }
 
+        var (sizeBytes, fileCount) = CalculateDirectorySize(fullPath, cancellationToken);
+        return new FolderUsageMeasurement(sizeBytes, fileCount);
+    }
+
+    public static (long TotalBytes, int FileCount) CalculateDirectorySize(string directoryPath, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // ルート自身が消失・アクセス拒否の場合は、0 B の成功として扱わない。
+        var rootDirectory = new DirectoryInfo(directoryPath);
+        if ((rootDirectory.Attributes & FileAttributes.Directory) == 0)
+        {
+            throw new DirectoryNotFoundException(directoryPath);
+        }
         var totalBytes = 0L;
         var fileCount = 0;
         var options = new EnumerationOptions
         {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = false,
             AttributesToSkip = FileAttributes.ReparsePoint
         };
 
-        var dirInfo = new DirectoryInfo(directoryPath);
-        foreach (var file in dirInfo.EnumerateFiles("*", options))
+        // 空ディレクトリが大量にある場合も、ディレクトリ/項目ごとに中断を確認する。
+        var pending = new Stack<DirectoryInfo>();
+        pending.Push(rootDirectory);
+        while (pending.TryPop(out var directory))
         {
-            if ((fileCount & 0xFF) == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                totalBytes += file.Length;
-                fileCount++;
+                foreach (var entry in directory.EnumerateFileSystemInfos("*", options))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (entry is DirectoryInfo child)
+                    {
+                        pending.Push(child);
+                    }
+                    else if (entry is FileInfo file)
+                    {
+                        try
+                        {
+                            totalBytes += file.Length;
+                            fileCount++;
+                        }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                        {
+                            // 走査中に削除・ロックされた一時ファイルは無視して継続。
+                        }
+                    }
+                }
             }
-            catch
+            catch (Exception ex) when (!ReferenceEquals(directory, rootDirectory)
+                && ex is IOException or UnauthorizedAccessException)
             {
-                // 走査中に削除・ロックされた一時ファイルは無視して継続
+                // 途中で消えた/アクセス不能になった子フォルダだけを除外する。
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return (totalBytes, fileCount);
     }
 
@@ -328,7 +423,7 @@ public sealed class SystemMonitorService
     {
         const long minimumReferenceBytes = 64L * 1024L * 1024L; // 64 MB 基準下限
         var maxBytes = items
-            .Where(item => item.SizeBytes.HasValue && item.SizeBytes.Value > 0)
+            .Where(item => !item.IsDriveUsage && item.SizeBytes.HasValue && item.SizeBytes.Value > 0)
             .Select(item => item.SizeBytes!.Value)
             .DefaultIfEmpty(0L)
             .Max();
@@ -336,6 +431,11 @@ public sealed class SystemMonitorService
         var denominator = Math.Max(maxBytes, minimumReferenceBytes);
         foreach (var item in items)
         {
+            if (item.IsDriveUsage)
+            {
+                continue;
+            }
+
             if (!item.SizeBytes.HasValue || item.SizeBytes.Value <= 0)
             {
                 item.UsageRatio = 0d;
