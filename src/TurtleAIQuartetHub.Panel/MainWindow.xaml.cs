@@ -80,6 +80,12 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _refreshCancellation = new();
     private CancellationTokenSource? _folderSizeCalculationCancellation;
     private IReadOnlyList<FolderUsageItem> _currentFolderUsageItems = [];
+    private readonly DiskCleanupService _diskCleanupService = new();
+    private CancellationTokenSource? _diskCleanupScanCancellation;
+    private DiskCleanupScanResult? _diskCleanupScan;
+    private IReadOnlyList<DiskCleanupCandidate> _pendingDiskCleanup = [];
+    private string? _lastDiskCleanupResultText;
+    private bool _isDiskCleanupRunning;
     private WindowSlot.SlotWindowLayerMode _managedWindowLayerMode = WindowSlot.SlotWindowLayerMode.Topmost;
     private int? _activeMonitorIndex;
     private bool _isBusy;
@@ -936,6 +942,7 @@ public partial class MainWindow : Window
     {
         SystemMonitorOverlay.Visibility = Visibility.Visible;
         RefreshSystemMonitorAll(forceFolderRecalculation: true);
+        StartDiskCleanupScan();
         _systemMonitorTimer.Start();
         CloseSystemMonitorDialogButton.Focus();
     }
@@ -944,6 +951,8 @@ public partial class MainWindow : Window
     {
         _systemMonitorTimer.Stop();
         CancelFolderSizeCalculation();
+        HideDiskCleanupDialog();
+        CancelDiskCleanupScan();
         SystemMonitorOverlay.Visibility = Visibility.Collapsed;
     }
 
@@ -981,6 +990,8 @@ public partial class MainWindow : Window
             SystemMonitorCpuProgressBar.Foreground = snapshot.CpuBarBrush;
             SystemMonitorCpuSummaryText.Text = snapshot.CpuDetailText;
 
+            UpdatePagefileSummary();
+
             SystemMonitorDrivesItemsControl.ItemsSource = _systemMonitorService.GetDriveUsages();
             SystemMonitorStatusText.Text = $"メモリ・CPU・各ドライブ・各フォルダの使用状況（更新: {DateTime.Now:HH:mm:ss}）";
         }
@@ -988,6 +999,33 @@ public partial class MainWindow : Window
         {
             DiagnosticLog.Write(ex);
         }
+    }
+
+    // メモリ使用量カードの下に pagefile.sys のディスク使用量を 1 行で出す。
+    // 余裕があるときは注意文を出さず、増加・拡張間近のときだけ色付きで知らせる。
+    private void UpdatePagefileSummary()
+    {
+        var snapshot = _systemMonitorService.CapturePagefile();
+        var assessment = SystemMonitorService.AssessPagefile(snapshot);
+        var growthText = snapshot.GrowthSinceHubStartBytes is long growth && growth > 0
+            ? $"ハブ起動後 +{SystemMonitorService.FormatBytes(growth)}"
+            : "増加なし";
+        SystemMonitorPagefileText.Text = snapshot.Settings.Mode == PagefileManagementMode.None
+            ? "ページファイル なし"
+            : $"ページファイル {SystemMonitorService.FormatBytes(snapshot.PagefileAllocatedBytes)}（{growthText}）";
+
+        var headroomBytes = snapshot.CommitLimitBytes > snapshot.CommittedBytes
+            ? (long)(snapshot.CommitLimitBytes - snapshot.CommittedBytes)
+            : 0L;
+        SystemMonitorPagefileText.ToolTip =
+            "pagefile.sys がディスク上で使っている容量です。メモリが足りなくなると Windows が自動で大きくし、そのぶんディスクを使います（PC の再起動で元に戻ります）。"
+            + $"{Environment.NewLine}設定: {SystemMonitorService.DescribePagefileSettings(snapshot.Settings)}"
+            + $"{Environment.NewLine}全アプリが予約したメモリ {SystemMonitorService.FormatBytes((long)snapshot.CommittedBytes)} / 上限 {SystemMonitorService.FormatBytes((long)snapshot.CommitLimitBytes)}（拡張まで あと {SystemMonitorService.FormatBytes(headroomBytes)}）";
+
+        var showWarning = assessment.Level != PagefileAssessmentLevel.Normal;
+        SystemMonitorPagefileWarningText.Visibility = showWarning ? Visibility.Visible : Visibility.Collapsed;
+        SystemMonitorPagefileWarningText.Text = showWarning ? assessment.HintText : string.Empty;
+        SystemMonitorPagefileWarningText.Foreground = SystemMonitorService.GetAssessmentBrush(assessment.Level);
     }
 
     private void StartFolderUsageCalculation()
@@ -999,7 +1037,7 @@ public partial class MainWindow : Window
             _statusStore.StoredPanels,
             _statusStore.Config);
         _currentFolderUsageItems = items;
-        SystemMonitorFoldersItemsControl.ItemsSource = items;
+        SystemMonitorFoldersItemsControl.ItemsSource = CreateGroupedFolderUsageView(items);
 
         var targets = items.Where(item => item.IsCalculating && !string.IsNullOrWhiteSpace(item.FolderPath)).ToList();
         if (targets.Count == 0)
@@ -1049,8 +1087,7 @@ public partial class MainWindow : Window
 
                         SystemMonitorService.UpdateRelativeFolderRatios(items);
                         completed++;
-                        var totalBytes = items.Where(x => !x.IsDriveUsage && x.SizeBytes.HasValue)
-                            .Sum(x => x.SizeBytes!.Value);
+                        var totalBytes = SystemMonitorService.SumWithoutNestedDuplicates(items);
                         SystemMonitorFolderStatusText.Text = completed < targets.Count
                             ? $"計測中 ({completed}/{targets.Count})..."
                             : unavailable > 0
@@ -1077,6 +1114,253 @@ public partial class MainWindow : Window
                 }
             }
         }
+    }
+
+    // 一覧は表 → 控え → アプリ → AI エージェントの順に作られるため、その出現順のまま枠でまとめる。
+    private static System.ComponentModel.ICollectionView CreateGroupedFolderUsageView(IReadOnlyList<FolderUsageItem> items)
+    {
+        var view = new System.Windows.Data.ListCollectionView(items.ToList());
+        view.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(FolderUsageItem.GroupTitle)));
+        return view;
+    }
+
+    private void OpenDiskCleanupButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        _lastDiskCleanupResultText = null;
+        DiskCleanupOverlay.Visibility = Visibility.Visible;
+        if (_diskCleanupScan is not null)
+        {
+            ApplyDiskCleanupScan(_diskCleanupScan);
+        }
+
+        // 一覧を開いた時点の状態（Copilot CLI の起動有無など）で選び直せるよう再スキャンする。
+        StartDiskCleanupScan();
+        CloseDiskCleanupDialogButton.Focus();
+    }
+
+    private void RescanDiskCleanupButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        _lastDiskCleanupResultText = null;
+        StartDiskCleanupScan();
+    }
+
+    private void CloseDiskCleanupButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideDiskCleanupDialog();
+    }
+
+    private void DiskCleanupCandidateCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateDiskCleanupSelection();
+    }
+
+    private void DeleteDiskCleanupButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        var selected = GetSelectedDiskCleanupCandidates();
+        if (selected.Count == 0 || _isDiskCleanupRunning)
+        {
+            return;
+        }
+
+        _pendingDiskCleanup = selected;
+        var totalBytes = selected.Sum(candidate => candidate.SizeBytes);
+        DiskCleanupConfirmMessageText.Text = $"{selected.Count} 件・{SystemMonitorService.FormatBytes(totalBytes)} を削除して空き容量に戻します。";
+        DiskCleanupConfirmDetailText.Text = string.Join(
+            Environment.NewLine,
+            selected.Select(candidate =>
+                $"[{candidate.SafetyText}] {GetDiskCleanupCategoryLabel(candidate.Category)}: {candidate.Title}（{candidate.SizeText}）"));
+        DiskCleanupConfirmOverlay.Visibility = Visibility.Visible;
+        CancelDiskCleanupConfirmButton.Focus();
+    }
+
+    private void CancelDiskCleanupConfirmButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideDiskCleanupConfirmDialog();
+    }
+
+    private async void ConfirmDiskCleanupButton_Click(object sender, RoutedEventArgs e)
+    {
+        var targets = _pendingDiskCleanup;
+        HideDiskCleanupConfirmDialog();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        await RunDiskCleanupAsync(targets);
+    }
+
+    private void HideDiskCleanupDialog()
+    {
+        HideDiskCleanupConfirmDialog();
+        DiskCleanupOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void HideDiskCleanupConfirmDialog()
+    {
+        _pendingDiskCleanup = [];
+        DiskCleanupConfirmOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void CancelDiskCleanupScan()
+    {
+        _diskCleanupScanCancellation?.Cancel();
+        _diskCleanupScanCancellation?.Dispose();
+        _diskCleanupScanCancellation = null;
+    }
+
+    private void StartDiskCleanupScan()
+    {
+        CancelDiskCleanupScan();
+        var cancellation = new CancellationTokenSource();
+        _diskCleanupScanCancellation = cancellation;
+        var token = cancellation.Token;
+
+        DiskCleanupEntrySummaryText.Text = "削除できる候補を確認しています...";
+        DiskCleanupStatusText.Text = "削除できる候補を確認しています...";
+        RescanDiskCleanupButton.IsEnabled = false;
+        _ = ScanAsync();
+
+        async Task ScanAsync()
+        {
+            try
+            {
+                var result = await Task.Run(() => _diskCleanupService.Scan(token), token);
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _diskCleanupScan = result;
+                ApplyDiskCleanupScan(result);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // 閉じる/再スキャンによるキャンセル。
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+                if (!token.IsCancellationRequested)
+                {
+                    DiskCleanupEntrySummaryText.Text = "削除できる候補を確認できませんでした。";
+                    DiskCleanupStatusText.Text = "削除できる候補を確認できませんでした。再スキャンしてください。";
+                }
+            }
+            finally
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    RescanDiskCleanupButton.IsEnabled = !_isDiskCleanupRunning;
+                }
+            }
+        }
+    }
+
+    private void ApplyDiskCleanupScan(DiskCleanupScanResult result)
+    {
+        var deletableBytes = result.DeletableBytes;
+        DiskCleanupEntrySummaryText.Text = deletableBytes > 0
+            ? $"削除できる候補: {SystemMonitorService.FormatBytes(deletableBytes)}（うち「安全」{SystemMonitorService.FormatBytes(result.SafeBytes)}）。\nCopilot CLI の旧バージョンと Temp の古いインストーラーです。"
+            : "現在、削除できる候補はありません。";
+
+        DiskCleanupCopilotItemsControl.ItemsSource = result.CopilotCandidates;
+        DiskCleanupTempItemsControl.ItemsSource = result.TempCandidates;
+        DiskCleanupCopilotSummaryText.Text = result.HasCopilotPackageRoot
+            ? FormatDiskCleanupGroupSummary(result.CopilotCandidates)
+            : "Copilot CLI のデータなし";
+        DiskCleanupTempSummaryText.Text = result.TempCandidates.Count > 0
+            ? FormatDiskCleanupGroupSummary(result.TempCandidates)
+            : "対象なし";
+        DiskCleanupCopilotNoteText.Text = result.IsCopilotRunning
+            ? "Copilot CLI の実行中は旧バージョンも保持します（実行中のセッションが使っている可能性があるため）。すべての Copilot CLI を終了してから「再スキャン」すると削除できます。"
+            : "自動更新のたびに約 200 MB の旧版が %USERPROFILE%\\.copilot\\pkg に残ります。最新版は残し、設定やセッション履歴には触れません。";
+        DiskCleanupCopilotNoteText.Foreground = result.IsCopilotRunning
+            ? SystemMonitorService.GetAssessmentBrush(PagefileAssessmentLevel.Warning)
+            : (Brush)FindResource("MutedTextBrush");
+
+        var scanText = deletableBytes > 0
+            ? $"削除できる候補 {SystemMonitorService.FormatBytes(deletableBytes)}（確認: {DateTime.Now:HH:mm:ss}）"
+            : $"削除できる候補はありません（確認: {DateTime.Now:HH:mm:ss}）";
+        DiskCleanupStatusText.Text = string.IsNullOrWhiteSpace(_lastDiskCleanupResultText)
+            ? scanText
+            : $"{_lastDiskCleanupResultText} {scanText}";
+        UpdateDiskCleanupSelection();
+    }
+
+    private static string FormatDiskCleanupGroupSummary(IReadOnlyList<DiskCleanupCandidate> candidates)
+    {
+        var deletable = candidates.Where(candidate => candidate.CanDelete).ToList();
+        return deletable.Count > 0
+            ? $"削除可 {deletable.Count} 件 / {SystemMonitorService.FormatBytes(deletable.Sum(candidate => candidate.SizeBytes))}"
+            : "削除できる項目なし";
+    }
+
+    private static string GetDiskCleanupCategoryLabel(DiskCleanupCategory category) => category switch
+    {
+        DiskCleanupCategory.CopilotCliVersion => "Copilot CLI",
+        _ => "Temp"
+    };
+
+    private List<DiskCleanupCandidate> GetSelectedDiskCleanupCandidates()
+    {
+        return _diskCleanupScan?.All
+            .Where(candidate => candidate.IsSelected && candidate.CanDelete)
+            .ToList() ?? [];
+    }
+
+    private void UpdateDiskCleanupSelection()
+    {
+        var selected = GetSelectedDiskCleanupCandidates();
+        var totalBytes = selected.Sum(candidate => candidate.SizeBytes);
+        DiskCleanupSelectionText.Text = selected.Count > 0
+            ? $"選択中: {selected.Count} 件 / {SystemMonitorService.FormatBytes(totalBytes)}"
+            : "選択中: 0 件";
+        DeleteDiskCleanupButton.IsEnabled = selected.Count > 0 && !_isDiskCleanupRunning;
+    }
+
+    private async Task RunDiskCleanupAsync(IReadOnlyList<DiskCleanupCandidate> targets)
+    {
+        if (_isDiskCleanupRunning)
+        {
+            return;
+        }
+
+        _isDiskCleanupRunning = true;
+        DeleteDiskCleanupButton.IsEnabled = false;
+        RescanDiskCleanupButton.IsEnabled = false;
+        DiskCleanupStatusText.Text = $"{targets.Count} 件を削除しています...";
+        try
+        {
+            var result = await Task.Run(() => _diskCleanupService.Delete(targets));
+            var reclaimedText = SystemMonitorService.FormatBytes(result.ReclaimedBytes);
+            _lastDiskCleanupResultText = result.SkippedCount > 0
+                ? $"{reclaimedText} を削除しました（使用中などで {result.SkippedCount} 件をスキップ）。"
+                : $"{reclaimedText} を削除しました（{result.DeletedCount} 件）。";
+            DiagnosticLog.Write(
+                $"Disk cleanup finished: deleted={result.DeletedCount}, skipped={result.SkippedCount}, reclaimed={result.ReclaimedBytes} bytes.");
+            _statusStore.Message = $"ディスク整理: {_lastDiskCleanupResultText}";
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+            _lastDiskCleanupResultText = "削除中にエラーが発生しました。一部の項目が残っている可能性があります。";
+        }
+        finally
+        {
+            _isDiskCleanupRunning = false;
+        }
+
+        // 空いた容量をドライブ・フォルダ表示にも反映する。
+        if (SystemMonitorOverlay.Visibility == Visibility.Visible)
+        {
+            RefreshSystemMonitorAll(forceFolderRecalculation: true);
+        }
+
+        StartDiskCleanupScan();
     }
 
     private void CompactSlotButton_Click(object sender, RoutedEventArgs e)
@@ -5263,6 +5547,20 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (DiskCleanupConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideDiskCleanupConfirmDialog();
+            e.Handled = true;
+            return;
+        }
+
+        if (DiskCleanupOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideDiskCleanupDialog();
+            e.Handled = true;
+            return;
+        }
+
         if (SystemMonitorOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideSystemMonitorDialog();
@@ -5549,6 +5847,8 @@ public partial class MainWindow : Window
         StoredPanelsExpander.IsEnabled = !busy;
         SettingsOverlay.IsEnabled = !busy;
         SystemMonitorOverlay.IsEnabled = !busy;
+        DiskCleanupOverlay.IsEnabled = !busy;
+        DiskCleanupConfirmOverlay.IsEnabled = !busy;
         AuxiliaryApplicationPanel.IsEnabled = !busy;
     }
 

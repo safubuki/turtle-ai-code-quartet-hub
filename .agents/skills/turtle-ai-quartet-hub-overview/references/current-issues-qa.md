@@ -15,6 +15,9 @@
 - 既定では VS Code の標準プロファイルを共有し、`%LOCALAPPDATA%/TurtleAIQuartetHub/user-data` にスロット別 Cache / WebStorage を作らないこと。過去の専用プロファイルが残っていれば起動後に回収されること。
 - 共有プロファイルでも、スロットのワークスペースパスとサイドバー幅は `slots.json` と実際の VS Code workspaceStorage から復元できること。チャットのモデル選択やサインイン状態が `storage.json` の書き換えで巻き戻らないこと。
 - VS Code が起動していないときにパネルを開くと、`%APPDATA%/Code` の再生成キャッシュ（Crashpad、CachedExtensionVSIXs、agent-host、GPUCache 等）が回収されること。`User`、設定、サインイン状態、チャット履歴（`WebStorage` / `globalStorage`）は残ること。VS Code 実行中は重いキャッシュ掃除をスキップすること。
+- キャッシュ・残存 user-data の回収は、配下のジャンクション/シンボリックリンクを辿らずリンク自体だけを外すこと。リンク先の実データを削除しないこと（`UserDataReclaimTests`）。ロック中ファイルで消せなかったフォルダは次回回収へ回し、階層ごとの例外スタックで `panel.log` を埋めないこと。
+- システムモニタのメモリ使用量カードに `ページファイル ○ GB（増加なし）` の 1 行が出ること。余裕があるときは注意文が出ず、ハブ起動後に `pagefile.sys` が 256 MB 以上増えたら赤の注意文が出ること。1.5 秒周期の更新で UI が重くならないこと（WMI を使わない）。
+- ディスク整理で、Copilot CLI の各 platform の最新版と、Copilot CLI 実行中の旧版が「保持」になり選択できないこと。Temp は 24 時間以内のものが「注意」で未選択、使用中のインストーラーが「保持」であること。「削除する」を押すまで何も消えず、削除後に空き容量・候補一覧・フォルダ計測が更新されること。
 - 低速または標準スペック端末で VS Code の起動が遅れ、ウィンドウが中央付近に出た場合でも、専用 `user-data-dir` の既存 VS Code ウィンドウとして再接続され、C=左下など対象スロットへ戻ること。
 - 標準表示の丸いステータス LED は、停止中=赤、起動中=黄色、起動済み=緑で表示されること。
 - 各スロットで VS Code / Antigravity IDE / Codex CLI / Claude CLI / GitHub Copilot CLI / Grok Build CLI / Antigravity CLI を選択できること。
@@ -126,6 +129,7 @@
 - terminal ホストや CLI 実体が環境で異なる場合、`applications[].detection.processNames` の追加設定が必要になる可能性がある。
 - Antigravity の起動ラッパーや初期化タイミングが変わると、遅延再配置の回数や待ち時間の調整が必要になる可能性がある。
 - 実行中 EXE ロックにより通常の `dotnet build` が失敗する場合があるため、反復確認では `scripts/Build-Panel.ps1` を使う。
+- 4 窓 + AI エージェント運用でのディスク急増（2026-10-26 調査）: ハブ本体の書き込みは `panel.log`（起動時 2 MB で切り詰め）、`slots.json`、設定 JSON、`storage.json` の対象キーだけで、合計数 MB に収まる。数 GB 単位の増加はハブ外が主因だった。主な内訳は、VS Code `User/workspaceStorage/*/chatSessions` と `state.vscdb`（+ `.backup`）のチャット履歴、`WebStorage`、AI CLI の自動更新で旧版が残ること（例: `~/.copilot/pkg` に全世代、codex.exe / claude.exe の 300 MB 級の複数コピー、`.old`、npm キャッシュ）、`~/.gemini/antigravity-browser-profile` である。メモリのコミット量が上限に近づくと、自動管理の `pagefile.sys` も拡張される。ハブ側でこれらを自動削除しない（他アプリのデータで、チャット履歴を含むため）。`.build-tmp/` に AI エージェントのタスク別ビルド/発行物が溜まる点は開発時だけの要因で、手動で削除できる。
 
 ## Windows 補助アプリ表示の QA（2026-09-28 追加）
 - 標準表示と縮小表示で `GPT/Codex` / Claude / Antigravity2 の 3 ボタンが同じ幅で表示され、ChatGPT Classic ボタンがないこと。縮小表示の最小幅 430 DIP でも `Windows` ラベルと全ボタンが収まること。

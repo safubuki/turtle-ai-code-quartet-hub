@@ -45,7 +45,10 @@
 - `src/TurtleAIQuartetHub.Panel/Services/VscodeLayoutState.cs`: VS Code storage.json からレイアウト保存/復元。
 - `src/TurtleAIQuartetHub.Panel/Services/TaskbarJumpListService.cs`: Jump List 更新。
 - `src/TurtleAIQuartetHub.Panel/Models/SystemMonitorModels.cs`: システムモニタの表示モデル（`SystemResourceSnapshot`、`DriveUsageItem`、`FolderUsageItem`）。
-- `src/TurtleAIQuartetHub.Panel/Services/SystemMonitorService.cs`: メモリ使用量（`GlobalMemoryStatusEx`）、CPU使用率（`GetSystemTimes` 差分計測）、各ドライブ使用状況（`DriveInfo`）、各フォルダ（A〜Dワークスペース、控えワークスペース、Hubデータ、VS Code / Antigravity IDEデータ）の使用量計測サービス。
+- `src/TurtleAIQuartetHub.Panel/Services/SystemMonitorService.cs`: メモリ使用量（`GlobalMemoryStatusEx`）、CPU使用率（`GetSystemTimes` 差分計測）、ページファイル（コミット量・`pagefile.sys` の確保量・拡張検出）、各ドライブ使用状況（`DriveInfo`）、各フォルダ（A〜Dワークスペース、控えワークスペース、Hubデータ、VS Code / Antigravity IDEデータ、AI エージェントのデータ、Temp）の使用量計測サービス。
+- `src/TurtleAIQuartetHub.Panel/Services/DiskCleanupService.cs`: システムモニタの「ディスク整理」。Copilot CLI の旧バージョンと Temp の古いインストーラーだけを、安全度（安全/注意/保持）付きで候補にして削除する。
+- `src/TurtleAIQuartetHub.Panel/Services/FileSystemCleanup.cs`: リンクを辿らない共通削除処理。VS Code キャッシュ回収とディスク整理で共用する。
+- `src/TurtleAIQuartetHub.Panel/Models/DiskCleanupModels.cs`: ディスク整理の候補・結果、ページファイルの状態・評価モデル。
 
 ## 実行時データ
 - `%LOCALAPPDATA%/TurtleAIQuartetHub/slots.json`: visible slot と stored panel の保存状態。

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Media;
+using Microsoft.Win32;
 using TurtleAIQuartetHub.Panel.Models;
 
 namespace TurtleAIQuartetHub.Panel.Services;
@@ -11,7 +12,18 @@ public sealed class SystemMonitorService
     private static readonly Brush WarningUsageBrush = CreateFrozenBrush("#F2CA57");
     private static readonly Brush CriticalUsageBrush = CreateFrozenBrush("#E56B5F");
 
+    // 数万ファイル規模（VS Code データ、AI エージェントのデータ、Temp）でも低速 PC で計測しきれる時間。
+    private static readonly TimeSpan LargeFolderMeasurementTimeout = TimeSpan.FromSeconds(15);
+
+    // ハブ起動後に pagefile.sys がこれ以上増えたら「拡張あり」と表示する。
+    internal const long PagefileGrowthNoticeBytes = 256L * 1024 * 1024;
+
+    private const int SystemPageFileInformationClass = 18;
+    private const int StatusInfoLengthMismatch = unchecked((int)0xC0000004);
+
     private readonly object _cpuLock = new();
+    private long? _minimumObservedPagefileBytes;
+    private PagefileSettings? _pagefileSettings;
     private ulong _lastIdleTime;
     private ulong _lastKernelTime;
     private ulong _lastUserTime;
@@ -246,7 +258,10 @@ public sealed class SystemMonitorService
                 folderPath: hubPath,
                 displayPath: hubPath,
                 initialSizeText: "計測中...",
-                isCalculating: true));
+                isCalculating: true)
+            {
+                MeasurementTimeout = LargeFolderMeasurementTimeout
+            });
         }
 
         var vsCodeDataDir = SlotUserDataPaths.GetInstalledUserDataDirectory(config);
@@ -262,7 +277,10 @@ public sealed class SystemMonitorService
                 folderPath: fullVsCodeDir,
                 displayPath: fullVsCodeDir,
                 initialSizeText: "計測中...",
-                isCalculating: true));
+                isCalculating: true)
+            {
+                MeasurementTimeout = LargeFolderMeasurementTimeout
+            });
         }
 
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -279,11 +297,71 @@ public sealed class SystemMonitorService
                     folderPath: fullAgyDir,
                     displayPath: fullAgyDir,
                     initialSizeText: "計測中...",
-                    isCalculating: true));
+                    isCalculating: true)
+                {
+                    MeasurementTimeout = LargeFolderMeasurementTimeout
+                });
             }
         }
 
+        foreach (var (badgeText, title, folderPath) in GetAiAgentDataFolders(vsCodeDataDir))
+        {
+            if (!Directory.Exists(folderPath) || !seenLocalPaths.Add(Path.GetFullPath(folderPath)))
+            {
+                continue;
+            }
+
+            var fullPath = Path.GetFullPath(folderPath);
+            items.Add(new FolderUsageItem(
+                badgeText: badgeText,
+                categoryKind: "Agent",
+                title: title,
+                folderPath: fullPath,
+                displayPath: fullPath,
+                initialSizeText: "計測中...",
+                isCalculating: true)
+            {
+                MeasurementTimeout = LargeFolderMeasurementTimeout
+            });
+        }
+
         return items;
+    }
+
+    // 4 窓で AI エージェントを動かすと増えやすいフォルダ。どれも他アプリのデータなので計測だけ行う。
+    private static IEnumerable<(string BadgeText, string Title, string FolderPath)> GetAiAgentDataFolders(string? vsCodeDataDir)
+    {
+        if (!string.IsNullOrWhiteSpace(vsCodeDataDir))
+        {
+            yield return ("Chat", "VS Code のチャット履歴など", Path.Combine(vsCodeDataDir, "User", "workspaceStorage"));
+        }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            yield return ("Codex", "Codex のデータ（セッション・本体）", Path.Combine(userProfile, ".codex"));
+            yield return ("Copilot", "Copilot CLI のデータ（旧バージョン含む）", Path.Combine(userProfile, ".copilot"));
+            yield return ("Claude", "Claude Code のデータ", Path.Combine(userProfile, ".claude"));
+            yield return ("Gemini", "Gemini / Antigravity のデータ", Path.Combine(userProfile, ".gemini"));
+            yield return ("Grok", "Grok CLI のデータ", Path.Combine(userProfile, ".grok"));
+        }
+
+        yield return ("Temp", "一時フォルダ（Temp）", DiskCleanupService.GetDefaultTempRoot());
+    }
+
+    // 入れ子のフォルダ（VS Code データ内の workspaceStorage など）を合計で二重に数えない。
+    internal static long SumWithoutNestedDuplicates(IReadOnlyList<FolderUsageItem> items)
+    {
+        var measured = items
+            .Where(item => !item.IsDriveUsage && item.SizeBytes.HasValue && !string.IsNullOrWhiteSpace(item.FolderPath))
+            .Select(item => (Path: Path.TrimEndingDirectorySeparator(item.FolderPath), Bytes: item.SizeBytes!.Value))
+            .ToList();
+
+        return measured
+            .Where(item => !measured.Any(other =>
+                other.Path.Length < item.Path.Length
+                && item.Path.StartsWith(other.Path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            .Sum(item => item.Bytes);
     }
 
     // 1 件の巨大フォルダや応答しない I/O が、後続の控えを待たせないようにする。
@@ -294,7 +372,7 @@ public sealed class SystemMonitorService
         TimeSpan? itemTimeout = null,
         Func<string, CancellationToken, FolderUsageMeasurement>? measure = null)
     {
-        var timeout = itemTimeout ?? TimeSpan.FromSeconds(3);
+        var defaultTimeout = itemTimeout ?? TimeSpan.FromSeconds(3);
         measure ??= MeasureFolderUsage;
         await Parallel.ForEachAsync(items, new ParallelOptions
         {
@@ -302,6 +380,7 @@ public sealed class SystemMonitorService
             CancellationToken = cancellationToken
         }, async (item, token) =>
         {
+            var timeout = item.MeasurementTimeout ?? defaultTimeout;
             using var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             var itemToken = itemCancellation.Token;
             var measurementTask = Task.Run(() =>
@@ -529,6 +608,206 @@ public sealed class SystemMonitorService
         }
     }
 
+    // 1.5 秒ごとの更新から呼ぶため WMI は使わず、カーネルの集計値を直接読む。
+    public PagefileSnapshot CapturePagefile()
+    {
+        var memoryStatus = new MEMORYSTATUSEX
+        {
+            dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>()
+        };
+        GlobalMemoryStatusEx(ref memoryStatus);
+
+        // ullTotalPageFile は「物理メモリ + ページファイル」のコミット上限を表す。
+        var commitLimit = memoryStatus.ullTotalPageFile;
+        var committed = commitLimit > memoryStatus.ullAvailPageFile
+            ? commitLimit - memoryStatus.ullAvailPageFile
+            : 0UL;
+        var (allocated, inUse, peak) = ReadPagefileUsage();
+
+        long? growth = null;
+        if (allocated > 0)
+        {
+            _minimumObservedPagefileBytes = _minimumObservedPagefileBytes is long minimum
+                ? Math.Min(minimum, allocated)
+                : allocated;
+            growth = allocated - _minimumObservedPagefileBytes.Value;
+        }
+
+        _pagefileSettings ??= ReadPagefileSettings();
+        return new PagefileSnapshot(
+            memoryStatus.ullTotalPhys,
+            commitLimit,
+            committed,
+            allocated,
+            inUse,
+            peak,
+            growth,
+            _pagefileSettings);
+    }
+
+    // 注意文はメモリ使用量カード（半幅）に出すため、短く保つ。余裕ありの文は表示しない。
+    internal static PagefileAssessment AssessPagefile(PagefileSnapshot snapshot)
+    {
+        if (snapshot.Settings.Mode == PagefileManagementMode.None)
+        {
+            return new PagefileAssessment(
+                PagefileAssessmentLevel.Warning,
+                "なし",
+                "ページファイルがないため、メモリが尽きるとアプリが落ちることがあります。");
+        }
+
+        if (snapshot.GrowthSinceHubStartBytes is long growth && growth >= PagefileGrowthNoticeBytes)
+        {
+            return new PagefileAssessment(
+                PagefileAssessmentLevel.Critical,
+                "拡張あり",
+                $"メモリ不足で pagefile.sys が {FormatBytes(growth)} 増え、ディスクを使っています。PC の再起動で元に戻ります。");
+        }
+
+        var percent = snapshot.CommitPercent;
+        if (percent >= 90d)
+        {
+            return new PagefileAssessment(
+                PagefileAssessmentLevel.Critical,
+                "逼迫",
+                snapshot.Settings.CanGrow
+                    ? "メモリが足りなくなりかけています。まもなく pagefile.sys が拡張され、ディスクを使います。"
+                    : "メモリが足りなくなりかけています。上限に達するとアプリが落ちることがあります。");
+        }
+
+        if (percent >= 75d)
+        {
+            return new PagefileAssessment(
+                PagefileAssessmentLevel.Warning,
+                "注意",
+                snapshot.Settings.CanGrow
+                    ? "メモリが少なくなっています。足りなくなると pagefile.sys が拡張されます。"
+                    : "メモリが少なくなっています。");
+        }
+
+        return new PagefileAssessment(PagefileAssessmentLevel.Normal, "余裕あり", string.Empty);
+    }
+
+    public static Brush GetAssessmentBrush(PagefileAssessmentLevel level) => level switch
+    {
+        PagefileAssessmentLevel.Critical => CriticalUsageBrush,
+        PagefileAssessmentLevel.Warning => WarningUsageBrush,
+        _ => NormalUsageBrush
+    };
+
+    public static string DescribePagefileSettings(PagefileSettings settings) => settings.Mode switch
+    {
+        PagefileManagementMode.SystemManaged => "自動管理（必要に応じて拡張）",
+        PagefileManagementMode.Custom when settings.CanGrow =>
+            $"カスタム（{FormatBytes(settings.InitialBytes ?? 0)} ～ 最大 {FormatBytes(settings.MaximumBytes ?? 0)}）",
+        PagefileManagementMode.Custom => $"固定サイズ（{FormatBytes(settings.MaximumBytes ?? 0)}）",
+        PagefileManagementMode.None => "ページファイルなし",
+        _ => "設定を取得できません"
+    };
+
+    internal static PagefileSettings ParsePagingFiles(IReadOnlyList<string>? values)
+    {
+        var entries = values?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToList() ?? [];
+        if (entries.Count == 0)
+        {
+            return new PagefileSettings(PagefileManagementMode.None, null, null);
+        }
+
+        const long megabyte = 1024L * 1024L;
+        var initialTotal = 0L;
+        var maximumTotal = 0L;
+        foreach (var entry in entries)
+        {
+            // "?:\pagefile.sys" は全ドライブ自動管理。サイズ省略や "0 0" はそのドライブのシステム管理サイズ。
+            if (entry.StartsWith("?:", StringComparison.Ordinal))
+            {
+                return new PagefileSettings(PagefileManagementMode.SystemManaged, null, null);
+            }
+
+            var parts = entry.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3
+                || !long.TryParse(parts[^2], out var initialMegabytes)
+                || !long.TryParse(parts[^1], out var maximumMegabytes)
+                || (initialMegabytes == 0 && maximumMegabytes == 0))
+            {
+                return new PagefileSettings(PagefileManagementMode.SystemManaged, null, null);
+            }
+
+            initialTotal += initialMegabytes * megabyte;
+            maximumTotal += maximumMegabytes * megabyte;
+        }
+
+        return new PagefileSettings(PagefileManagementMode.Custom, initialTotal, maximumTotal);
+    }
+
+    private static PagefileSettings ReadPagefileSettings()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management");
+            return ParsePagingFiles(key?.GetValue("PagingFiles") as string[]);
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or IOException or UnauthorizedAccessException)
+        {
+            DiagnosticLog.Write(ex);
+            return new PagefileSettings(PagefileManagementMode.Unknown, null, null);
+        }
+    }
+
+    // SYSTEM_PAGEFILE_INFORMATION: NextEntryOffset, TotalSize, TotalInUse, PeakUsage（ページ数）, PageFileName。
+    private static (long Allocated, long InUse, long Peak) ReadPagefileUsage()
+    {
+        var bufferSize = 1024;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var buffer = Marshal.AllocHGlobal(bufferSize);
+            try
+            {
+                var status = NtQuerySystemInformation(SystemPageFileInformationClass, buffer, bufferSize, out var returned);
+                if (status == StatusInfoLengthMismatch)
+                {
+                    bufferSize = Math.Max(bufferSize * 2, returned);
+                    continue;
+                }
+
+                if (status != 0 || returned <= 0)
+                {
+                    return (0, 0, 0);
+                }
+
+                long pageSize = Environment.SystemPageSize;
+                long allocated = 0, inUse = 0, peak = 0;
+                var offset = 0;
+                while (offset + 16 <= returned)
+                {
+                    var entry = buffer + offset;
+                    allocated += (uint)Marshal.ReadInt32(entry, 4) * pageSize;
+                    inUse += (uint)Marshal.ReadInt32(entry, 8) * pageSize;
+                    peak += (uint)Marshal.ReadInt32(entry, 12) * pageSize;
+                    var next = Marshal.ReadInt32(entry, 0);
+                    if (next <= 0)
+                    {
+                        break;
+                    }
+
+                    offset += next;
+                }
+
+                return (allocated, inUse, peak);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        return (0, 0, 0);
+    }
+
     private static (ulong TotalBytes, ulong AvailableBytes) ReadPhysicalMemory()
     {
         var memoryStatus = new MEMORYSTATUSEX
@@ -649,4 +928,11 @@ public sealed class SystemMonitorService
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQuerySystemInformation(
+        int systemInformationClass,
+        IntPtr systemInformation,
+        int systemInformationLength,
+        out int returnLength);
 }

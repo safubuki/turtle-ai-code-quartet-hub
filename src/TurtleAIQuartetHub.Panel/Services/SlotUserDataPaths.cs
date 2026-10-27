@@ -151,7 +151,7 @@ public static class SlotUserDataPaths
         // 残っていると Cache / WebStorage だけで数 GB になるため、起動時に回収する。
         if (!config.UseDedicatedUserDataDirs && Directory.Exists(slotUserDataRoot))
         {
-            reclaimed += TryDeleteDirectoryBestEffort(slotUserDataRoot);
+            reclaimed += FileSystemCleanup.DeleteDirectoryBestEffort(slotUserDataRoot);
         }
 
         var installedDirectory = GetInstalledUserDataDirectory(config.CodeCommand);
@@ -353,7 +353,7 @@ public static class SlotUserDataPaths
         var reclaimed = 0L;
         foreach (var directoryName in directoryNames)
         {
-            reclaimed += TryDeleteDirectoryBestEffort(Path.Combine(userDataDirectory, directoryName));
+            reclaimed += FileSystemCleanup.DeleteDirectoryBestEffort(Path.Combine(userDataDirectory, directoryName));
         }
 
         return reclaimed;
@@ -385,50 +385,5 @@ public static class SlotUserDataPaths
         }
 
         return false;
-    }
-
-    private static long TryDeleteDirectoryBestEffort(string directoryPath)
-    {
-        if (!Directory.Exists(directoryPath))
-        {
-            return 0;
-        }
-
-        var reclaimed = 0L;
-        try
-        {
-            foreach (var filePath in Directory.EnumerateFiles(directoryPath, "*", SearchOption.TopDirectoryOnly))
-            {
-                reclaimed += TryDeleteFile(filePath);
-            }
-
-            foreach (var childDirectory in Directory.EnumerateDirectories(directoryPath))
-            {
-                reclaimed += TryDeleteDirectoryBestEffort(childDirectory);
-            }
-
-            Directory.Delete(directoryPath, false);
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Write(ex);
-        }
-
-        return reclaimed;
-    }
-
-    private static long TryDeleteFile(string filePath)
-    {
-        try
-        {
-            var length = new FileInfo(filePath).Length;
-            File.Delete(filePath);
-            return length;
-        }
-        catch
-        {
-            // ロック中のキャッシュファイルは次回の回収に回す。大量の個別失敗で panel.log を埋めない。
-            return 0;
-        }
     }
 }

@@ -1976,6 +1976,70 @@
         </ItemsControl.ItemContainerStyle>
       </ItemsControl>
     </DataTemplate>
+    <DataTemplate x:Key="DiskCleanupCandidateTemplate" DataType="{x:Type models:DiskCleanupCandidate}">
+      <Border Margin="0,0,0,6"
+              Padding="8,7"
+              Background="#1B221E"
+              BorderBrush="{StaticResource BorderBrushSoft}"
+              BorderThickness="1"
+              CornerRadius="8"
+              ToolTip="{Binding ToolTipText}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <CheckBox Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                    IsEnabled="{Binding CanDelete}"
+                    Click="DiskCleanupCandidateCheckBox_Click" />
+          <Border Grid.Column="1"
+                  MinWidth="40"
+                  Margin="0,0,8,0"
+                  Padding="6,2"
+                  CornerRadius="5"
+                  BorderThickness="1"
+                  VerticalAlignment="Center"
+                  Background="{Binding SafetyBackgroundBrush}"
+                  BorderBrush="{Binding SafetyBorderBrush}">
+            <TextBlock Text="{Binding SafetyText}"
+                       FontSize="10.5"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center"
+                       Foreground="{Binding SafetyForegroundBrush}" />
+          </Border>
+          <StackPanel Grid.Column="2" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Title}"
+                       FontSize="12.5"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource TextBrush}" />
+            <TextBlock Margin="0,2,0,0"
+                       Text="{Binding ReasonText}"
+                       FontSize="10.5"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource MutedTextBrush}" />
+          </StackPanel>
+          <StackPanel Grid.Column="3"
+                      Margin="10,0,0,0"
+                      VerticalAlignment="Center">
+            <TextBlock Text="{Binding SizeText}"
+                       FontSize="13"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Right"
+                       Foreground="{Binding SafetyForegroundBrush}" />
+            <TextBlock Text="{Binding LastWriteText}"
+                       FontSize="10"
+                       HorizontalAlignment="Right"
+                       Foreground="{StaticResource MutedTextBrush}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
   </Window.Resources>
 
   <Border x:Name="PanelFrameBorder"
@@ -3880,6 +3944,19 @@
                                  Foreground="{StaticResource MutedTextBrush}"
                                  TextWrapping="Wrap"
                                  Text="使用中 -- / --" />
+                      <!-- pagefile.sys のディスク使用量。普段は 1 行だけ出し、増加・拡張間近のときだけ注意文を出す。 -->
+                      <TextBlock x:Name="SystemMonitorPagefileText"
+                                 Margin="0,4,0,0"
+                                 FontSize="11"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 TextWrapping="Wrap"
+                                 ToolTipService.ShowDuration="30000"
+                                 Text="ページファイル --" />
+                      <TextBlock x:Name="SystemMonitorPagefileWarningText"
+                                 Margin="0,3,0,0"
+                                 FontSize="11"
+                                 TextWrapping="Wrap"
+                                 Visibility="Collapsed" />
                     </StackPanel>
                   </Border>
 
@@ -4024,6 +4101,47 @@
                     </ItemsControl>
                   </StackPanel>
                 </Border>
+                <Border Margin="0,10,0,0"
+                        Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE74D;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="13"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"
+                                   Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="ディスク整理"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}" />
+                      </StackPanel>
+                      <TextBlock x:Name="DiskCleanupEntrySummaryText"
+                                 Margin="0,4,0,0"
+                                 FontSize="11"
+                                 TextWrapping="Wrap"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 Text="Copilot CLI の旧バージョンと、Temp に残った古いインストーラーを確認します。" />
+                    </StackPanel>
+                    <Button x:Name="OpenDiskCleanupButton"
+                            Grid.Column="1"
+                            Margin="10,0,0,0"
+                            Padding="12,5"
+                            VerticalAlignment="Center"
+                            Content="確認して整理..."
+                            Click="OpenDiskCleanupButton_Click"
+                            Style="{StaticResource BaseButton}" />
+                  </Grid>
+                </Border>
 
                 <Border Margin="0,10,0,0"
                         Padding="12,10"
@@ -4058,6 +4176,54 @@
                     </Grid>
 
                     <ItemsControl x:Name="SystemMonitorFoldersItemsControl">
+                      <!-- 分類（表 / 控え / アプリ / AI エージェント）ごとに、バッジと同じ色の枠でまとめる。 -->
+                      <ItemsControl.GroupStyle>
+                        <GroupStyle>
+                          <GroupStyle.ContainerStyle>
+                            <Style TargetType="GroupItem">
+                              <Setter Property="Template">
+                                <Setter.Value>
+                                  <ControlTemplate TargetType="GroupItem">
+                                    <Border Margin="0,0,0,10"
+                                            Padding="8,8,8,2"
+                                            CornerRadius="9"
+                                            BorderThickness="1"
+                                            Background="#141A17"
+                                            BorderBrush="{Binding Items[0].BadgeBorderBrush}">
+                                      <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="2,0,0,2">
+                                          <Border Width="4"
+                                                  Height="14"
+                                                  Margin="0,0,7,0"
+                                                  CornerRadius="2"
+                                                  VerticalAlignment="Center"
+                                                  Background="{Binding Items[0].BadgeForegroundBrush}" />
+                                          <TextBlock Text="{Binding Name}"
+                                                     FontSize="12"
+                                                     FontWeight="SemiBold"
+                                                     VerticalAlignment="Center"
+                                                     Foreground="{Binding Items[0].BadgeForegroundBrush}" />
+                                          <TextBlock Text="{Binding ItemCount, StringFormat={}（{0} 件）}"
+                                                     FontSize="11"
+                                                     Margin="4,0,0,0"
+                                                     VerticalAlignment="Center"
+                                                     Foreground="{StaticResource MutedTextBrush}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Items[0].GroupDescriptionText}"
+                                                   Margin="13,0,0,7"
+                                                   FontSize="10.5"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{StaticResource MutedTextBrush}" />
+                                        <ItemsPresenter />
+                                      </StackPanel>
+                                    </Border>
+                                  </ControlTemplate>
+                                </Setter.Value>
+                              </Setter>
+                            </Style>
+                          </GroupStyle.ContainerStyle>
+                        </GroupStyle>
+                      </ItemsControl.GroupStyle>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
                           <Border Margin="0,0,0,6"
@@ -4157,6 +4323,305 @@
                       Style="{StaticResource BaseButton}"
                       MinWidth="88" />
             </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+    <Border x:Name="DiskCleanupOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="24">
+      <Grid>
+        <Border Width="590"
+                MaxHeight="490"
+                Padding="16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1"
+                CornerRadius="12">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE74D;"
+                             FontFamily="Segoe MDL2 Assets"
+                             FontSize="15"
+                             VerticalAlignment="Center"
+                             Margin="0,0,8,0"
+                             Foreground="{StaticResource AccentBrush}" />
+                  <TextBlock Text="ディスク整理"
+                             FontSize="16"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource TextBrush}" />
+                </StackPanel>
+                <TextBlock x:Name="DiskCleanupStatusText"
+                           Margin="0,2,0,0"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="削除できる候補を確認しています..." />
+              </StackPanel>
+              <Button x:Name="RescanDiskCleanupButton"
+                      Grid.Column="1"
+                      Content="再スキャン"
+                      Click="RescanDiskCleanupButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      Padding="10,4"
+                      Margin="0,0,8,0"
+                      VerticalAlignment="Top" />
+              <Button Grid.Column="2"
+                      Content="X"
+                      ToolTip="ディスク整理を閉じる"
+                      Click="CloseDiskCleanupButton_Click"
+                      Style="{StaticResource ChromeButton}"
+                      VerticalAlignment="Top" />
+            </Grid>
+
+            <!-- 安全度の凡例。削除してよいかを色で判断できるようにする。 -->
+            <Border Grid.Row="1"
+                    Margin="0,10,0,0"
+                    Padding="10,7"
+                    Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrushSoft}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                  <Border Padding="6,1" CornerRadius="5" BorderThickness="1" Background="#16301F" BorderBrush="#2F7A4C" VerticalAlignment="Top" Margin="0,0,6,0">
+                    <TextBlock Text="安全" FontSize="10.5" FontWeight="SemiBold" Foreground="#6FE3A0" />
+                  </Border>
+                  <TextBlock Text="再取得できる&#x0a;不要ファイル" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                  <Border Padding="6,1" CornerRadius="5" BorderThickness="1" Background="#332A12" BorderBrush="#8A7230" VerticalAlignment="Top" Margin="0,0,6,0">
+                    <TextBlock Text="注意" FontSize="10.5" FontWeight="SemiBold" Foreground="#F2CA57" />
+                  </Border>
+                  <TextBlock Text="24時間以内に作成。&#x0a;既定では選択しない" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                  <Border Padding="6,1" CornerRadius="5" BorderThickness="1" Background="#23292A" BorderBrush="#465052" VerticalAlignment="Top" Margin="0,0,6,0">
+                    <TextBlock Text="保持" FontSize="10.5" FontWeight="SemiBold" Foreground="#A9B4B6" />
+                  </Border>
+                  <TextBlock Text="最新版・使用中。&#x0a;削除できません" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="2"
+                          Margin="0,10,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Margin="0,0,4,0">
+                <Border Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                  <StackPanel>
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="GitHub Copilot CLI の旧バージョン"
+                                 FontSize="13"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextBrush}" />
+                      <TextBlock x:Name="DiskCleanupCopilotSummaryText"
+                                 Grid.Column="1"
+                                 FontSize="11"
+                                 VerticalAlignment="Center"
+                                 Foreground="{StaticResource MutedTextBrush}" />
+                    </Grid>
+                    <TextBlock x:Name="DiskCleanupCopilotNoteText"
+                               Margin="0,4,0,8"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="自動更新のたびに約 200 MB の旧版が %USERPROFILE%\.copilot\pkg に残ります。最新版は残し、設定やセッション履歴には触れません。" />
+                    <ItemsControl x:Name="DiskCleanupCopilotItemsControl"
+                                  ItemTemplate="{StaticResource DiskCleanupCandidateTemplate}" />
+                  </StackPanel>
+                </Border>
+
+                <Border Margin="0,10,0,0"
+                        Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                  <StackPanel>
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="Temp に残ったインストーラー・更新ファイル"
+                                 FontSize="13"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextBrush}" />
+                      <TextBlock x:Name="DiskCleanupTempSummaryText"
+                                 Grid.Column="1"
+                                 FontSize="11"
+                                 VerticalAlignment="Center"
+                                 Foreground="{StaticResource MutedTextBrush}" />
+                    </Grid>
+                    <TextBlock x:Name="DiskCleanupTempNoteText"
+                               Margin="0,4,0,8"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="Temp 直下にある、インストーラー（.exe / .msi / .msix など 10 MB 以上）か、インストーラーだけが入ったフォルダが対象です。その他の一時ファイルには触れません。" />
+                    <ItemsControl x:Name="DiskCleanupTempItemsControl"
+                                  ItemTemplate="{StaticResource DiskCleanupCandidateTemplate}" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <Grid Grid.Row="3"
+                  Margin="0,12,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="DiskCleanupSelectionText"
+                         VerticalAlignment="Center"
+                         FontSize="12"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource TextBrush}"
+                         Text="選択中: 0 件" />
+              <Button x:Name="CloseDiskCleanupDialogButton"
+                      Grid.Column="1"
+                      Content="閉じる"
+                      Click="CloseDiskCleanupButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="88"
+                      Margin="0,0,8,0" />
+              <Button x:Name="DeleteDiskCleanupButton"
+                      Grid.Column="2"
+                      Content="選択した項目を削除..."
+                      IsEnabled="False"
+                      Click="DeleteDiskCleanupButton_Click"
+                      Style="{StaticResource DangerButtonStyle}" />
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="DiskCleanupConfirmOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="26">
+      <Grid>
+        <Border Width="420"
+                Padding="16"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="#8C3F38"
+                BorderThickness="1"
+                CornerRadius="12"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Width="34"
+                      Height="34"
+                      CornerRadius="10"
+                      Background="#2B1715"
+                      BorderBrush="#8C3F38"
+                      BorderThickness="1"
+                      Margin="0,0,12,0">
+                <TextBlock Text="&#xE74D;"
+                           FontFamily="Segoe MDL2 Assets"
+                           FontSize="16"
+                           Foreground="#F2B7AF"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+              </Border>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="選択した項目を削除しますか？"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="DiskCleanupConfirmMessageText"
+                           Margin="0,5,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}" />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Margin="0,14,0,0"
+                    Padding="10,8"
+                    MaxHeight="150"
+                    Background="#271A18"
+                    BorderBrush="#8C3F38"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="DiskCleanupConfirmDetailText"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource TextBrush}" />
+              </ScrollViewer>
+            </Border>
+
+            <TextBlock Grid.Row="2"
+                       Margin="0,12,0,0"
+                       Text="ごみ箱には移動せず、すぐに削除して容量を空けます。必要になれば各アプリが再ダウンロードします。設定・履歴・サインイン情報は対象外です。使用中の項目は自動でスキップします。"
+                       Foreground="#F2B7AF"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Grid.Row="3"
+                        Margin="0,16,0,0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+              <Button x:Name="CancelDiskCleanupConfirmButton"
+                      Content="キャンセル"
+                      Click="CancelDiskCleanupConfirmButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="96"
+                      Margin="0,0,8,0" />
+              <Button x:Name="ConfirmDiskCleanupButton"
+                      Content="削除する"
+                      Click="ConfirmDiskCleanupButton_Click"
+                      Style="{StaticResource DangerButtonStyle}" />
+            </StackPanel>
           </Grid>
         </Border>
       </Grid>

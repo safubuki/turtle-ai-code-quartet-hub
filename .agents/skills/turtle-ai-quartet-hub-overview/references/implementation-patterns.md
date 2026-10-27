@@ -134,6 +134,7 @@
 - **回収**: 共有プロファイル運用では `%LOCALAPPDATA%/TurtleAIQuartetHub/user-data` の残存専用プロファイルを起動時に削除する。専用運用でも各スロット起動前に消すのは再生成キャッシュだけ。
 - **必ず残すもの**: `User`（settings / keybindings / globalStorage / workspaceStorage）、`WebStorage`、`Partitions`、`Local Storage`、`Session Storage`。サインイン状態とチャット履歴は消さない。毎回の再ログインを発生させない。
 - **消してよいもの**: `Crashpad`（実行中でも可）、Cache / CachedData / CachedExtensionVSIXs / logs / agent-host / GPUCache など再生成できるキャッシュのみ。VS Code プロセスが一つも無いときだけ重いキャッシュを削除する。初回起動はキャッシュ再生成のため少し遅くなることがある。
+- **削除の安全性（2026-10-26 追加）**: `TryDeleteDirectoryBestEffort` はリパースポイント（ジャンクション/シンボリックリンク）を辿らず、`Directory.Delete(path, false)` でリンクだけ外す。以前は `EnumerateDirectories` がジャンクションも返すため再帰し、キャッシュ外のリンク先実データまで削除していた。消せなかったフォルダの `IOException` はログへ出さず次回へ回す。
 - **注意**: 専用 user-data-dir を再有効化するとディスクが増える。ウィンドウ識別のため必要でも、キャッシュのコピーや `globalStorage` 丸ごとコピーは戻さない。フォーカス切替中に `storage.json` を書かない。VS Code 実行中は共有プロファイルのキャッシュを触らない。
 
 ## 11. 管理ウィンドウの終了確認とメモリ安全性（2026-08-25 追加）
@@ -306,3 +307,20 @@
   - メモリ使用量（Win32 `GlobalMemoryStatusEx`）、CPU使用率（Win32 `GetSystemTimes` による前回サンプルとの差分計算、起動時プライミング済み）、および各ドライブ使用状況（`DriveInfo.GetDrives()`）は、モーダル表示中のみ動作する 1.5 秒周期の `DispatcherTimer`（`_systemMonitorTimer`）でリアルタイム更新し、モーダル閉鎖時はタイマーを停止してバックグラウンド負荷をゼロにする。
   - 各フォルダ使用量（スロット A〜D、重複を除いた控えパネル、Hub の `StateDirectory`、VS Code データフォルダ、Antigravity IDE データフォルダ）は `Task.Run` と `CancellationTokenSource` で非同期に走査（`EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint }`）し、完了したフォルダから順次 UI スレッドでサイズ・ファイル数・相対比率バーを更新する。モーダル閉鎖時や「再計測」押下時は即座にキャンセルする。
 - **確認**: 本体ビルド警告・エラー0、回帰テスト全91件（既存74＋新規17）合格。
+
+## 35. ページファイル表示・AI データ容量・ディスク整理（2026-10-27 追加）
+- **ファイル**: `Services/DiskCleanupService.cs`, `Services/FileSystemCleanup.cs`, `Services/SystemMonitorService.cs`, `Models/DiskCleanupModels.cs`, `Models/SystemMonitorModels.cs`, `MainWindow.xaml`, `MainWindow.xaml.cs`, `TurtleAIQuartetHub.Panel.Tests/DiskCleanupTests.cs`
+- **ページファイル**: 専用カードは作らず、メモリ使用量カードの下に `ページファイル 3.0 GB（増加なし）` の 1 行だけを出す（`UpdatePagefileSummary`）。注意文は「注意」以上のときだけ色付きで出し、余裕があるときは出さない。詳細（設定・予約メモリ・上限・拡張までの余裕）は 1 行のツールチップに出す。
+  - 2026-10-27 に一度、帯グラフ付きの専用カードにしたが、「ページファイルを消費しているように見える」「メモリ使用量と同じ情報に見える」「場所を取りすぎ」と指摘されて 1 行にした。帯グラフ・物理メモリの凡例・ディスク使用量の大きな数字を戻さない。拡張は厳密には実メモリ使用量ではなくコミット量で決まるが、利用者向けにはメモリ使用量カードと注意文で足りる。
+  - 1.5 秒周期で呼ぶため WMI は使わない。コミット量は `GlobalMemoryStatusEx`（`ullTotalPageFile` - `ullAvailPageFile`）、`pagefile.sys` の確保量・使用量・ピークは `NtQuerySystemInformation(SystemPageFileInformation=18)`、設定（自動管理/カスタム/なし）は `HKLM\...\Memory Management\PagingFiles` を読む。
+  - 「拡張あり」は、ハブ起動後に観測した確保量の最小値から 256 MB 以上増えたときに出す。最小値はメモリだけに持ち、ファイルへは書かない。PC 起動前の大きさは分からないため、ハブを再起動すると基準もリセットされる。
+  - 評価の優先順は、なし > 拡張あり > 逼迫（90%以上）> 注意（75%以上）> 余裕あり。注意文は半幅カードに収まるよう短く保つ。
+- **AI データ容量**: フォルダ一覧に `workspaceStorage`（チャット履歴など）、`~/.codex`、`~/.copilot`、`~/.claude`、`~/.gemini`、`~/.grok`、Temp を紫バッジ（`Agent`）で追加する。計測のみで削除しない。大きいフォルダは `FolderUsageItem.MeasurementTimeout`（15 秒）で既定の 3 秒より延ばす。「フォルダ計」は `SumWithoutNestedDuplicates` で入れ子（VS Code データ内の workspaceStorage など）を二重に数えない。
+  - 一覧は `CreateGroupedFolderUsageView`（`ListCollectionView` + `FolderUsageItem.GroupTitle`）で、表 / 控え / アプリ / AI エージェントの枠にまとめる。枠線と見出しはバッジと同じ色にする（緑・灰・青・紫）。グループの並びは作成順（`BuildFolderUsageItems` の追加順）に従うので、並べ替えを入れない。
+- **ディスク整理**: システムモニタの「確認して整理...」から開く。対象は次の 2 種類だけ。
+  - Copilot CLI: `~/.copilot/pkg/<platform>/<version>`。版は `System.Version` で数値比較する（文字列比較だと 1.0.9 > 1.0.100 になる）。各 platform の最新版は「保持」にし、`tmp` は対象外にする。`copilot` プロセスか、`pkg` 配下の実行ファイルを使うプロセスがあれば旧版もすべて「保持」にし、削除直前にも再確認する。`universal/1.0.89` 以降はローダーだけで、npm 経由でプラットフォーム別パッケージを起動するため、古い `universal` 版を消してよい。
+  - Temp: `%TEMP%` 直下だけを見る。10 MB 以上のインストーラー（.exe / .msi / .msix / .appx 系）か、インストーラーと 1 MB 以下の付随ファイルだけが入ったフォルダ（サブフォルダなし・20 ファイル以下）を候補にする。24 時間以内に作成・更新されたものは「注意」で既定では選択しない。`FileShare.None` で開けないものは「保持」にする。
+  - 削除は `<path>.turtle-deleting` へ移動してから行う。移動できない＝使用中なのでスキップし、途中まで消して実行中のアプリを壊さない。消し残った退避名は次回スキャンで「安全」として再表示する。許可ルート外のパスは拒否する。リンクは `FileSystemCleanup` で辿らない。
+  - ごみ箱には送らない（容量を空けるのが目的）。確認ダイアログは既存の赤系オーバーレイを使い、WPF 標準の `MessageBox` は使わない。
+- **注意**: 対象を増やすときも、設定・履歴・サインイン情報を含むフォルダ（`workspaceStorage`、`WebStorage`、`~/.gemini/antigravity-browser-profile`、各 CLI のセッション）は候補にしない。npm グローバルや VS Code 拡張内の CLI 本体の重複も、それぞれのインストーラーが管理しているため削除対象にしない。
+- **確認**: 回帰テスト 26 件（`DiskCleanupTests`）を追加。画面は `.build-tmp/disk-cleanup-preview` の非表示描画で確認する（`Show()` しない、周期更新と保存を止める、削除の確定は呼ばない）。全体表示（MaxHeight 解除）の後に通常サイズを描画すると空白になるので、通常サイズを先に描画する。

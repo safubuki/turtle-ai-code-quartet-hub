@@ -54,6 +54,9 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
     private static readonly Brush StoredBadgeBackground = CreateFrozenBrush("#1E2622");
     private static readonly Brush StoredBadgeBorder = CreateFrozenBrush("#3A4C42");
     private static readonly Brush StoredBadgeForeground = CreateFrozenBrush("#A9BFB0");
+    private static readonly Brush AgentBadgeBackground = CreateFrozenBrush("#241C30");
+    private static readonly Brush AgentBadgeBorder = CreateFrozenBrush("#5B4A7A");
+    private static readonly Brush AgentBadgeForeground = CreateFrozenBrush("#C9B3F0");
 
     private string _sizeText;
     private string _subDetailText;
@@ -95,15 +98,38 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
 
     public string DisplayPath { get; }
 
+    // 未指定なら一括計測の既定タイムアウトを使う。AI エージェントのデータなど大きいフォルダだけ延ばす。
+    public TimeSpan? MeasurementTimeout { get; init; }
+
     public bool CanOpenFolder => !string.IsNullOrWhiteSpace(FolderPath) && Directory.Exists(FolderPath);
 
     public string OpenFolderToolTip => CanOpenFolder
         ? $"エクスプローラで開く: {FolderPath}"
         : "開けるローカルフォルダがありません";
 
+    // システムモニタのフォルダ一覧を、この見出しごとの枠にまとめて表示する。
+    public string GroupTitle => CategoryKind switch
+    {
+        "Slot" => "表のワークスペース（A〜D）",
+        "Stored" => "控えのワークスペース",
+        "App" => "アプリのデータ（ハブ・IDE）",
+        "Agent" => "AI エージェントのデータと一時フォルダ",
+        _ => "その他"
+    };
+
+    public string GroupDescriptionText => CategoryKind switch
+    {
+        "Slot" => "メインの 4 枚のカードに登録している作業フォルダです。",
+        "Stored" => "控えに保存している作業フォルダです。",
+        "App" => "ハブ・VS Code・Antigravity IDE の設定とキャッシュです。",
+        "Agent" => "AI エージェントのチャット履歴・セッション・本体と、Temp です。このうち Copilot CLI の旧バージョンと Temp の古いインストーラーは、上の「ディスク整理」で安全に削除できます。",
+        _ => string.Empty
+    };
+
     public Brush BadgeBackgroundBrush => CategoryKind switch
     {
         "App" => AppBadgeBackground,
+        "Agent" => AgentBadgeBackground,
         "Stored" => StoredBadgeBackground,
         _ => SlotBadgeBackground
     };
@@ -111,6 +137,7 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
     public Brush BadgeBorderBrush => CategoryKind switch
     {
         "App" => AppBadgeBorder,
+        "Agent" => AgentBadgeBorder,
         "Stored" => StoredBadgeBorder,
         _ => SlotBadgeBorder
     };
@@ -118,6 +145,7 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
     public Brush BadgeForegroundBrush => CategoryKind switch
     {
         "App" => AppBadgeForeground,
+        "Agent" => AgentBadgeForeground,
         "Stored" => StoredBadgeForeground,
         _ => SlotBadgeForeground
     };

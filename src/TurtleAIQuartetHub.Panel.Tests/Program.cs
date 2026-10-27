@@ -50,6 +50,8 @@ PanelOrderTests.Run(failures);
 WindowFocusSynchronizerTests.Run(failures);
 SystemMonitorAndCardTitleTests.Run(failures);
 await FolderUsageCalculationTests.RunAsync(failures);
+UserDataReclaimTests.Run(failures);
+DiskCleanupTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -70,6 +72,8 @@ Console.WriteLine("Panel ordering and persistence regression checks passed (6/6)
 Console.WriteLine("ウィンドウ直接操作のフォーカス同期チェックに合格しました (12/12)。");
 Console.WriteLine("メインカードタイトル視認性＆システムモニタ回帰チェックに合格しました (17/17)。");
 Console.WriteLine("巨大フォルダ・ドライブの使用量計測チェックに合格しました (11/11)。");
+Console.WriteLine("VS Code user-data 回収のリンク保護チェックに合格しました (3/3)。");
+Console.WriteLine("ディスク整理・ページファイル表示のチェックに合格しました (26/26)。");
 return 0;
 
 async Task VerifyAsync(
