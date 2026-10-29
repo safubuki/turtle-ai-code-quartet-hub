@@ -947,6 +947,67 @@ public sealed class StatusStore : INotifyPropertyChanged
         return true;
     }
 
+    /// <summary>
+    /// 控え一覧でのドラッグ移動。移動先に内容があれば入れ替える。移動先が空きなら内容を移し、
+    /// 空いた移動元のページ（そのページだけ）を前詰めして末尾を空ける。他のページは動かさない。
+    /// </summary>
+    public bool TryMoveStoredPanelInOverview(StoredPanelSlot source, StoredPanelSlot target, out bool swapped)
+    {
+        swapped = false;
+        var sourcePage = StoredPanelPages.FirstOrDefault(page => page.Slots.Contains(source));
+        if (ReferenceEquals(source, target)
+            || !source.HasContent
+            || sourcePage is null
+            || !StoredPanels.Contains(target))
+        {
+            return false;
+        }
+
+        if (target.HasContent)
+        {
+            swapped = true;
+            SwapStoredPanels(source, target);
+            return true;
+        }
+
+        _suppressPersistence = true;
+        try
+        {
+            SwapStoredPanelContentsCore(source, target);
+            CompactStoredPanelSlotsCore(sourcePage.Slots);
+        }
+        finally
+        {
+            _suppressPersistence = false;
+        }
+
+        SavePanelStates();
+        return true;
+    }
+
+    private void CompactStoredPanelSlotsCore(IList<StoredPanelSlot> slots)
+    {
+        var contents = slots
+            .Where(slot => slot.HasContent)
+            .Select(slot => (slot.PanelTitle, slot.WorkspacePath, slot.ApplicationId))
+            .ToList();
+
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if (i < contents.Count)
+            {
+                var (title, path, applicationId) = contents[i];
+                slots[i].LoadFrom(title, path, applicationId);
+            }
+            else
+            {
+                slots[i].Clear();
+            }
+
+            ApplyApplicationMetadata(slots[i]);
+        }
+    }
+
     public void SwapSlotContents(WindowSlot source, WindowSlot target)
     {
         if (ReferenceEquals(source, target))

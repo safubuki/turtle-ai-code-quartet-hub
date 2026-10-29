@@ -1982,7 +1982,70 @@
       </ItemsControl>
     </DataTemplate>
 
-    <!-- 控え一覧のタイル。配置ボタンは持たず、選択（またはドラッグ）だけを受け持つ。
+    <!-- 控えタブのツールチップ。名前に加えて、そのタブに入っている控えカードを並べる。 -->
+    <DataTemplate x:Key="StoredPageToolTipTemplate" DataType="{x:Type models:StoredPanelPage}">
+      <StackPanel MaxWidth="360">
+        <TextBlock Text="{Binding Header}"
+                   Foreground="{StaticResource AccentBrush}"
+                   FontSize="14"
+                   FontWeight="SemiBold" />
+        <ItemsControl ItemsSource="{Binding Slots}" Margin="0,6,0,0">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="{x:Type models:StoredPanelSlot}">
+              <DockPanel x:Name="StoredCardLine" Margin="0,1.5,0,1.5">
+                <Ellipse Width="6"
+                         Height="6"
+                         Margin="1,0,8,0"
+                         VerticalAlignment="Center"
+                         Fill="{StaticResource AccentBrush}"
+                         DockPanel.Dock="Left" />
+                <TextBlock Text="{Binding DisplayTitle}"
+                           FontSize="13.5"
+                           TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding HasContent}" Value="False">
+                  <Setter TargetName="StoredCardLine" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="クリックで切り替え、ダブルクリックで名前を変更"
+                   Margin="0,7,0,0"
+                   Foreground="{StaticResource MutedTextBrush}"
+                   FontSize="11.5" />
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- 控えタブ用の角丸ツールチップ。既定の四角いシステム表示ではなく、パネルの配色に合わせる。
+         影のぶん外側に余白を取り、ポップアップ自体は透明にして角丸を活かす。 -->
+    <Style x:Key="StoredPageToolTipStyle" TargetType="ToolTip">
+      <Setter Property="OverridesDefaultStyle" Value="True" />
+      <Setter Property="HasDropShadow" Value="False" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="ContentTemplate" Value="{StaticResource StoredPageToolTipTemplate}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToolTip">
+            <Border Margin="8"
+                    Padding="13,9,15,10"
+                    CornerRadius="12"
+                    Background="#1D2622"
+                    BorderBrush="#4F8466"
+                    BorderThickness="2">
+              <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.45" />
+              </Border.Effect>
+              <ContentPresenter />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 控え一覧のタイル。配置ボタンは持たず、選択とドラッグ（タイル同士の並べ替えも）を受け持つ。
          配置先は一覧上部の A〜D パッド、またはメインのスロットカードへのドロップで決める。
          6 ページ分がスクロールなしで収まるよう、横長・低めにして文字を大きく取る。
          一覧がパネルより低いときは、余った高さを 6 段へ均等に配って下端までぴったり埋める。 -->
@@ -1998,7 +2061,12 @@
               Tag="{Binding}"
               PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
-              MouseLeftButtonUp="StoredOverviewTile_MouseLeftButtonUp">
+              MouseLeftButtonUp="StoredOverviewTile_MouseLeftButtonUp"
+              AllowDrop="True"
+              DragEnter="StoredOverviewTile_DragEnter"
+              DragLeave="StoredOverviewTile_DragLeave"
+              DragOver="StoredOverviewTile_DragOver"
+              Drop="StoredOverviewTile_Drop">
         <Border.ToolTip>
           <TextBlock>
             <Run Text="{Binding DisplayTitle, Mode=OneWay}" FontWeight="SemiBold" />
@@ -2090,7 +2158,10 @@
                      Foreground="{StaticResource MutedTextBrush}"
                      FontSize="11.5"
                      FontWeight="SemiBold"
-                     Margin="0,0,8,0" />
+                     Margin="0,0,8,0"
+                     Cursor="Hand"
+                     ToolTip="クリックで控えパネルをこのタブに切り替え"
+                     MouseLeftButtonUp="StoredOverviewPageHeader_MouseLeftButtonUp" />
           <Rectangle Height="1"
                      VerticalAlignment="Center"
                      Fill="{StaticResource BorderBrushSoft}" />
@@ -2116,6 +2187,10 @@
         <DataTrigger Binding="{Binding IsSelected}" Value="True">
           <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource AccentBrush}" />
         </DataTrigger>
+        <Trigger SourceName="PageHeaderText" Property="IsMouseOver" Value="True">
+          <Setter TargetName="PageHeaderText" Property="TextDecorations" Value="Underline" />
+          <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Trigger>
       </DataTemplate.Triggers>
     </DataTemplate>
 
@@ -2273,11 +2348,12 @@
 
   </Window.Resources>
 
+  <!-- ウィンドウ自体は DWM で角丸にする（OnSourceInitialized）。縮小表示の緑枠もその丸みに沿わせる。 -->
   <Border x:Name="PanelFrameBorder"
           Background="Transparent"
           BorderBrush="Transparent"
           BorderThickness="0"
-          CornerRadius="0">
+          CornerRadius="8">
     <Grid x:Name="RootLayoutGrid" Background="{StaticResource PanelBackgroundBrush}" Margin="8">
     <Grid.RowDefinitions>
       <RowDefinition Height="26" />
@@ -2357,7 +2433,8 @@
                         HorizontalScrollBarVisibility="Disabled"
                         CanContentScroll="False">
             <!-- 表示領域いっぱいを下限にして 6 段を均等割りする。入りきらないときだけスクロール。 -->
-            <ItemsControl ItemsSource="{Binding StoredPanelPages}"
+            <ItemsControl x:Name="StoredOverviewPagesList"
+                          ItemsSource="{Binding StoredPanelPages}"
                           ItemTemplate="{StaticResource StoredOverviewPageTemplate}"
                           MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
               <ItemsControl.ItemsPanel>
@@ -2642,12 +2719,8 @@
                             MouseDoubleClick="StoredPanelPageTab_MouseDoubleClick"
                             Style="{StaticResource StoredPageTabButtonStyle}">
                       <Button.ToolTip>
-                        <!-- 名前が省略表示されても、ここで全文を確認できる。 -->
-                        <TextBlock>
-                          <Run Text="{Binding Header, Mode=OneWay}" />
-                          <LineBreak />
-                          <Run Text="クリックで切り替え、ダブルクリックで名前を変更" />
-                        </TextBlock>
+                        <!-- 名前が省略表示されても、ここで全文と中身の控えを確認できる。 -->
+                        <ToolTip Content="{Binding}" Style="{StaticResource StoredPageToolTipStyle}" />
                       </Button.ToolTip>
                     </Button>
                     <TextBox x:Name="PageHeaderEditBox"
@@ -2824,8 +2897,11 @@
                   <Button Content="{Binding Header}" Tag="{Binding}"
                           Click="StoredPanelPageTab_Click"
                           MouseDoubleClick="StoredPanelPageTab_MouseDoubleClick"
-                          Style="{StaticResource CompactStoredTabStyle}"
-                          ToolTip="{Binding Header}" />
+                          Style="{StaticResource CompactStoredTabStyle}">
+                    <Button.ToolTip>
+                      <ToolTip Content="{Binding}" Style="{StaticResource StoredPageToolTipStyle}" />
+                    </Button.ToolTip>
+                  </Button>
                   <TextBox x:Name="PageHeaderEditBox"
                            Tag="{Binding}"
                            Visibility="Collapsed"

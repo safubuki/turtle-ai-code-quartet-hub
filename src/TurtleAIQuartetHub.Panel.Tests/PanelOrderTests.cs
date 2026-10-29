@@ -72,6 +72,47 @@ internal static class PanelOrderTests
                 && !store.StoredPanels[8].HasContent && !store.StoredPanels[9].HasContent;
         }, failures);
 
+        Verify("一覧で空きへ移動すると移動元ページだけを前詰めし他ページは動かさない", store =>
+        {
+            var moved = store.TryMoveStoredPanelInOverview(store.StoredPanels[1], store.StoredPanels[8], out var swapped);
+            var restored = new StatusStore(store.Config);
+            return moved && !swapped
+                && StoredTitles(store, 0, 4) == "1,3,4,"
+                && StoredTitles(store, 4, 4) == "5,6,7,8"
+                && StoredTitles(store, 8, 4) == "2,,,"
+                && store.StoredPanels[8].WorkspacePath == @"C:\order\stored-2"
+                && store.StoredPanels[8].ApplicationId == "antigravity"
+                && store.StoredPanels[2].WorkspacePath == @"C:\order\stored-4"
+                && StoredTitles(restored, 0, 12) == "1,3,4,,5,6,7,8,2,,,";
+        }, failures);
+
+        Verify("一覧で同じページの空きへ移動しても末尾が空く形に詰める", store =>
+        {
+            store.ClearStoredPanel(store.StoredPanels[3]);
+            var moved = store.TryMoveStoredPanelInOverview(store.StoredPanels[0], store.StoredPanels[3], out var swapped);
+            return moved && !swapped
+                && StoredTitles(store, 0, 4) == "2,3,1,"
+                && StoredTitles(store, 4, 4) == "5,6,7,8";
+        }, failures);
+
+        Verify("一覧で内容のある位置へ移動すると入れ替える", store =>
+        {
+            var moved = store.TryMoveStoredPanelInOverview(store.StoredPanels[1], store.StoredPanels[6], out var swapped);
+            return moved && swapped
+                && StoredTitles(store, 0, 8) == "1,7,3,4,5,6,2,8"
+                && store.StoredPanels[6].WorkspacePath == @"C:\order\stored-2";
+        }, failures);
+
+        Verify("一覧で空の控え・同じ位置からの移動は状態を変更しない", store =>
+        {
+            var before = File.ReadAllText(Path.Combine(store.Config.StateDirectory, "slots.json"));
+            return !store.TryMoveStoredPanelInOverview(store.StoredPanels[8], store.StoredPanels[0], out _)
+                && !store.TryMoveStoredPanelInOverview(store.StoredPanels[0], store.StoredPanels[0], out _)
+                && !store.TryMoveStoredPanelInOverview(store.StoredPanels[0], new StoredPanelSlot(100), out _)
+                && StoredTitles(store, 0, 9) == "1,2,3,4,5,6,7,8,"
+                && File.ReadAllText(Path.Combine(store.Config.StateDirectory, "slots.json")) == before;
+        }, failures);
+
         Verify("並び替えとタイトル変更を再読み込みして復元する", store =>
         {
             store.MoveSlotContents(store.Slots[0], store.Slots[2]);
@@ -89,6 +130,9 @@ internal static class PanelOrderTests
     }
 
     private static string Titles(StatusStore store) => string.Join(",", store.Slots.Select(slot => slot.PanelTitle));
+
+    private static string StoredTitles(StatusStore store, int start, int count) =>
+        string.Join(",", store.StoredPanels.Skip(start).Take(count).Select(slot => slot.PanelTitle));
 
     private static void Verify(string name, Func<StatusStore, bool> assertion, List<string> failures)
     {

@@ -30,8 +30,14 @@ public partial class MainWindow : Window
     private const string MicroModeGlyph = "\uF158";
     private const string StandardModeGlyph = "\uE740";
     private const double StoredOverviewGap = 6;
-    private const double StoredOverviewSlideDistance = 28;
-    private static readonly Duration StoredOverviewOpenDuration = new(TimeSpan.FromMilliseconds(220));
+    private const double StoredOverviewSlideDistance = 40;
+    private const double StoredOverviewItemRise = 10;
+    private static readonly Duration StoredOverviewOpenDuration = new(TimeSpan.FromMilliseconds(320));
+    private static readonly Duration StoredOverviewItemDuration = new(TimeSpan.FromMilliseconds(260));
+    private static readonly TimeSpan StoredOverviewItemFirstDelay = TimeSpan.FromMilliseconds(70);
+    private static readonly TimeSpan StoredOverviewItemStagger = TimeSpan.FromMilliseconds(35);
+    // 控え Quartet を開いたら、下の控えタブが出た後に一拍おいて一覧を横へ引き出す。
+    private static readonly TimeSpan StoredOverviewAutoOpenDelay = TimeSpan.FromMilliseconds(150);
     private static readonly Duration StoredOverviewCloseDuration = new(TimeSpan.FromMilliseconds(140));
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan FocusSwitchArrangeDelay = TimeSpan.FromMilliseconds(420);
@@ -111,6 +117,7 @@ public partial class MainWindow : Window
     private bool _isStoredOverviewClosing;
     private bool _storedOverviewPrefersLeft;
     private bool _isStoredOverviewOnLeft;
+    private DispatcherTimer? _storedOverviewAutoOpenTimer;
     // 非表示（一括最小化）に入る直前のフォーカス（ディスプレイごとに 1 つ）を覚え、表示時に復帰する。
     private readonly List<WindowSlot> _hiddenFocusedSlots = [];
     private Point _dragStartPoint;
@@ -430,6 +437,7 @@ public partial class MainWindow : Window
     private void ShowAppExitConfirmDialog()
     {
         DiagnosticLog.Write(LogLevel.Info, $"Panel close requested via {_closeRequestSource}; awaiting confirmation.");
+        CloseStoredOverview(animate: false);
         EnsureExitConfirmViewport();
         AppExitConfirmOverlay.Visibility = Visibility.Visible;
         BringPanelToFrontImmediate();
@@ -441,6 +449,10 @@ public partial class MainWindow : Window
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
         RestoreBoundsAfterExitConfirm();
         _closeRequestSource = "Alt+F4 またはシステムメニュー";
+        if (_displayMode == DisplayMode.Standard && StoredPanelsExpander.IsExpanded)
+        {
+            ScheduleStoredOverviewAutoOpen();
+        }
     }
 
     private void EnsureExitConfirmViewport()
@@ -3453,6 +3465,7 @@ public partial class MainWindow : Window
     private void StoredPanelsExpander_Expanded(object sender, RoutedEventArgs e)
     {
         UpdateWindowHeightForStoredPanels(true);
+        ScheduleStoredOverviewAutoOpen();
     }
 
     private void StoredPanelsExpander_Collapsed(object sender, RoutedEventArgs e)
@@ -3493,13 +3506,54 @@ public partial class MainWindow : Window
             return;
         }
 
-        _storedOverviewPrefersLeft = HasMoreScreenSpaceOnLeft();
+        _storedOverviewPrefersLeft = ShouldPlaceStoredOverviewOnLeft();
         StoredOverviewPopup.CustomPopupPlacementCallback = PlaceStoredOverview;
         StoredOverviewPopup.IsOpen = true;
     }
 
+    // 標準表示で控え Quartet が開いている間は、一覧も最初から出しておく（すぐ見たい用途のため）。
+    // 一覧ボタンで閉じた後は、次に控え Quartet を開き直すまで出さない。
+    private void ScheduleStoredOverviewAutoOpen()
+    {
+        CancelStoredOverviewAutoOpen();
+        _storedOverviewAutoOpenTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = StoredOverviewAutoOpenDelay
+        };
+        _storedOverviewAutoOpenTimer.Tick += StoredOverviewAutoOpenTimer_Tick;
+        _storedOverviewAutoOpenTimer.Start();
+    }
+
+    private void CancelStoredOverviewAutoOpen()
+    {
+        if (_storedOverviewAutoOpenTimer is null)
+        {
+            return;
+        }
+
+        _storedOverviewAutoOpenTimer.Stop();
+        _storedOverviewAutoOpenTimer.Tick -= StoredOverviewAutoOpenTimer_Tick;
+        _storedOverviewAutoOpenTimer = null;
+    }
+
+    private void StoredOverviewAutoOpenTimer_Tick(object? sender, EventArgs e)
+    {
+        CancelStoredOverviewAutoOpen();
+        if (_displayMode != DisplayMode.Standard
+            || !StoredPanelsExpander.IsExpanded
+            || WindowState == WindowState.Minimized
+            || AppExitConfirmOverlay.Visibility == Visibility.Visible
+            || StoredOverviewPopup.IsOpen && !_isStoredOverviewClosing)
+        {
+            return;
+        }
+
+        OpenStoredOverview();
+    }
+
     private void CloseStoredOverview(bool animate)
     {
+        CancelStoredOverviewAutoOpen();
         StoredOverviewButton.ClearValue(TagProperty);
         AutomationProperties.SetName(StoredOverviewButton, "控えの一覧を開く");
         SelectOverviewStoredPanel(null);
@@ -3566,6 +3620,46 @@ public partial class MainWindow : Window
 
         StoredOverviewTranslate.BeginAnimation(TranslateTransform.XProperty, slide);
         StoredOverviewRoot.BeginAnimation(OpacityProperty, fade);
+        if (show)
+        {
+            AnimateStoredOverviewItemsIn();
+        }
+    }
+
+    // 枠が滑り出るのに合わせて、配置先パッド→控え1→…→控え6 の順に少しずつ浮かび上がらせる。
+    private void AnimateStoredOverviewItemsIn()
+    {
+        StoredOverviewRoot.UpdateLayout();
+        var items = new List<FrameworkElement> { StoredOverviewTargetPad };
+        for (var index = 0; index < StoredOverviewPagesList.Items.Count; index++)
+        {
+            if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement container)
+            {
+                items.Add(container);
+            }
+        }
+
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+            var rise = new TranslateTransform(0, StoredOverviewItemRise);
+            item.RenderTransform = rise;
+            // 開始待ちの間は基準値が見えるため、基準値を 0 にしてから 1 へ向けて動かす。
+            item.Opacity = 0;
+
+            var beginTime = StoredOverviewItemFirstDelay + TimeSpan.FromTicks(StoredOverviewItemStagger.Ticks * index);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            item.BeginAnimation(OpacityProperty, new DoubleAnimation(1, StoredOverviewItemDuration)
+            {
+                BeginTime = beginTime,
+                EasingFunction = ease
+            });
+            rise.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, StoredOverviewItemDuration)
+            {
+                BeginTime = beginTime,
+                EasingFunction = ease
+            });
+        }
     }
 
     private CustomPopupPlacement[] PlaceStoredOverview(Size popupSize, Size targetSize, Point offset)
@@ -3575,7 +3669,9 @@ public partial class MainWindow : Window
         return _storedOverviewPrefersLeft ? [left, right] : [right, left];
     }
 
-    private bool HasMoreScreenSpaceOnLeft()
+    // 基本はパネルの右側。右に一覧の幅ぶんの空きが無いときだけ左側へ出す
+    // （左右どちらにも入りきらないときは、空きが広い側）。
+    private bool ShouldPlaceStoredOverviewOnLeft()
     {
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero
@@ -3585,9 +3681,16 @@ public partial class MainWindow : Window
             return false;
         }
 
+        // 作業領域とウィンドウ境界は物理ピクセルなので、一覧の幅も DPI 倍率で換算して比べる。
+        var requiredSpace = (StoredOverviewRoot.Width + StoredOverviewGap) * VisualTreeHelper.GetDpi(this).DpiScaleX;
         var leftSpace = window.Left - workArea.Left;
         var rightSpace = workArea.Left + workArea.Width - (window.Left + window.Width);
-        return leftSpace > rightSpace;
+        if (rightSpace >= requiredSpace)
+        {
+            return false;
+        }
+
+        return leftSpace >= requiredSpace || leftSpace > rightSpace;
     }
 
     // パネルと同じ高さを下限にし、全ページが入りきらないときは中身に合わせて伸ばす
@@ -3609,6 +3712,8 @@ public partial class MainWindow : Window
         }
 
         UpdateStoredOverviewHeight();
+        // パネルを動かして右側に空きができたら右へ戻す（逆に右が足りなくなれば左へ）。
+        _storedOverviewPrefersLeft = ShouldPlaceStoredOverviewOnLeft();
         var offset = StoredOverviewPopup.HorizontalOffset;
         StoredOverviewPopup.HorizontalOffset = offset + 0.01;
         StoredOverviewPopup.HorizontalOffset = offset;
@@ -3626,6 +3731,100 @@ public partial class MainWindow : Window
             ? storedPanel
             : null);
         e.Handled = true;
+    }
+
+    // 一覧のページ見出し（控え1 など）を押すと、下の控えパネルもそのタブへ切り替える。
+    private void StoredOverviewPageHeader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not StoredPanelPage page)
+        {
+            return;
+        }
+
+        _statusStore.SelectStoredPanelPage(page);
+        e.Handled = true;
+    }
+
+    private void StoredOverviewTile_DragEnter(object sender, DragEventArgs e)
+    {
+        if (!CanDropOnStoredOverviewTile(sender, e))
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        SetStoredOverviewTileDropHighlight(sender, true);
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void StoredOverviewTile_DragLeave(object sender, DragEventArgs e)
+    {
+        SetStoredOverviewTileDropHighlight(sender, false);
+    }
+
+    private void StoredOverviewTile_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = CanDropOnStoredOverviewTile(sender, e) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void StoredOverviewTile_Drop(object sender, DragEventArgs e)
+    {
+        SetStoredOverviewTileDropHighlight(sender, false);
+        e.Handled = true;
+        if (!CanDropOnStoredOverviewTile(sender, e)
+            || e.Data.GetData("StoredPanelSlot") is not StoredPanelSlot sourcePanel
+            || (sender as FrameworkElement)?.Tag is not StoredPanelSlot targetPanel)
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+
+        // 選択は位置（スロット）に付いているので、内容が動く前に解いておく。
+        SelectOverviewStoredPanel(null);
+        var title = sourcePanel.DisplayTitle;
+        var targetLabel = targetPanel.Label;
+        var targetTitle = targetPanel.DisplayTitle;
+        if (!_statusStore.TryMoveStoredPanelInOverview(sourcePanel, targetPanel, out var swapped))
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+
+        _statusStore.Message = swapped
+            ? $"「{title}」と「{targetTitle}」の控えを入れ替えました。"
+            : $"「{title}」を{targetLabel}の位置へ移動し、移動元の控えを前に詰めました。";
+        RefreshAuxiliaryUi();
+    }
+
+    private bool CanDropOnStoredOverviewTile(object sender, DragEventArgs e)
+    {
+        return !_isBusy
+            && e.Data.GetData("StoredPanelSlot") is StoredPanelSlot { HasContent: true } sourcePanel
+            && (sender as FrameworkElement)?.Tag is StoredPanelSlot targetPanel
+            && !ReferenceEquals(sourcePanel, targetPanel);
+    }
+
+    // 空きタイルは半透明なので、ドロップ先として光らせるときは不透明に戻す。
+    private void SetStoredOverviewTileDropHighlight(object sender, bool isHighlighted)
+    {
+        if (sender is not Border border)
+        {
+            return;
+        }
+
+        if (isHighlighted)
+        {
+            border.BorderBrush = (Brush)FindResource("AccentBrush");
+            border.Opacity = 1;
+            return;
+        }
+
+        // ローカル値を外し、テンプレートのトリガー（選択中・空きなど）の見た目へ戻す。
+        border.ClearValue(Border.BorderBrushProperty);
+        border.ClearValue(OpacityProperty);
     }
 
     private async void StoredOverviewTargetButton_Click(object sender, RoutedEventArgs e)
@@ -4138,6 +4337,10 @@ public partial class MainWindow : Window
         {
             CloseStoredOverview(animate: false);
         }
+        else if (StoredPanelsExpander.IsExpanded)
+        {
+            ScheduleStoredOverviewAutoOpen();
+        }
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         SystemMonitorButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
@@ -4514,6 +4717,10 @@ public partial class MainWindow : Window
         {
             _wasMinimized = false;
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(CorrectWindowSizeForCurrentDpi));
+            if (StoredPanelsExpander.IsExpanded)
+            {
+                ScheduleStoredOverviewAutoOpen();
+            }
         }
 
         if (IsAnyMouseButtonPressed())
@@ -5873,6 +6080,18 @@ public partial class MainWindow : Window
         var handle = new WindowInteropHelper(this).Handle;
         _panelWindowProcHookKeepAlive = PanelWindowProcHook;
         HwndSource.FromHwnd(handle)?.AddHook(_panelWindowProcHookKeepAlive);
+        ApplyRoundedWindowCorners(handle);
+    }
+
+    // カードや控え一覧と揃えて、パネル自体も角丸にする。AllowsTransparency を使うと描画が重く
+    // なるため、Windows 11 の DWM 角丸を使う（Windows 10 では属性が無視され、従来どおり四角）。
+    // 枠線の色もカードの枠と同じ落ち着いた色にして、システム既定の明るい縁取りを避ける。
+    private static void ApplyRoundedWindowCorners(IntPtr handle)
+    {
+        var cornerPreference = DwmwcpRound;
+        _ = DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref cornerPreference, sizeof(int));
+        var borderColor = PanelBorderColorRef;
+        _ = DwmSetWindowAttribute(handle, DwmwaBorderColor, ref borderColor, sizeof(int));
     }
 
     protected override void OnClosed(EventArgs e)
@@ -6045,6 +6264,15 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    private const int DwmwaWindowCornerPreference = 33;
+    private const int DwmwaBorderColor = 34;
+    private const int DwmwcpRound = 2;
+    // COLORREF (0x00BBGGRR) で #2E3832（BorderBrushSoft）。
+    private const int PanelBorderColorRef = 0x0032382E;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     // ウィンドウが現在載っているディスプレイの DPI 倍率（100%=1.0, 150%=1.5）。
     // 取得できないときは WPF が認識している倍率→1.0 の順でフォールバックする。

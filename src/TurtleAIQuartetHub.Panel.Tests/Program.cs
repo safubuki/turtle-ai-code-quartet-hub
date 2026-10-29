@@ -68,7 +68,7 @@ Console.WriteLine("VS Code workspace title matching regression checks passed (21
 Console.WriteLine("VS Code 設定保持の回帰チェックに合格しました (22/22)。");
 Console.WriteLine("Application configuration migration regression checks passed (4/4).");
 Console.WriteLine("Compact IDE toggle regression checks passed (4/4).");
-Console.WriteLine("Panel ordering and persistence regression checks passed (6/6).");
+Console.WriteLine("Panel ordering and persistence regression checks passed (10/10).");
 Console.WriteLine("ウィンドウ直接操作のフォーカス同期チェックに合格しました (12/12)。");
 Console.WriteLine("メインカードタイトル視認性＆システムモニタ回帰チェックに合格しました (17/17)。");
 Console.WriteLine("巨大フォルダ・ドライブの使用量計測チェックに合格しました (11/11)。");
