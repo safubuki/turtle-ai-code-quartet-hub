@@ -9,6 +9,7 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
     private string _workspacePath = string.Empty;
     private string _applicationId = AppConfig.VsCodeApplicationId;
     private string _applicationShortName = "VS Code";
+    private bool _isOverviewSelected;
 
     public StoredPanelSlot(int index)
     {
@@ -92,6 +93,13 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
     {
         get => _applicationShortName;
         set => SetField(ref _applicationShortName, string.IsNullOrWhiteSpace(value) ? ApplicationId : value.Trim());
+    }
+
+    /// <summary>控え一覧で配置先待ちとして選ばれているか。保存対象ではない画面上の状態。</summary>
+    public bool IsOverviewSelected
+    {
+        get => _isOverviewSelected;
+        set => SetField(ref _isOverviewSelected, value);
     }
 
     public void LoadFrom(string? panelTitle, string? workspacePath)
