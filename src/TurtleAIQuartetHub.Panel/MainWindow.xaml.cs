@@ -2590,6 +2590,57 @@ public partial class MainWindow : Window
         });
     }
 
+    private const string PullRequestInboxUrl = "https://github.com/pulls/inbox";
+
+    private void OpenSlotGitHubButton_Click(object sender, RoutedEventArgs e)
+    {
+        // カードの 1 面フォーカス切り替えへ伝播させない。
+        e.Handled = true;
+        if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        var webUrl = slot.GitHubWebUrl;
+        if (string.IsNullOrEmpty(webUrl))
+        {
+            _statusStore.Message = slot.GitHubToolTip;
+            return;
+        }
+
+        if (OpenInBrowser(webUrl))
+        {
+            _statusStore.Message = $"スロット {slot.Name} の GitHub を開きました: {webUrl}";
+        }
+    }
+
+    private void PullRequestInboxButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (OpenInBrowser(PullRequestInboxUrl))
+        {
+            _statusStore.Message = "GitHub の Pull Request 受信箱を開きました。";
+        }
+    }
+
+    private bool OpenInBrowser(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            DiagnosticLog.Write(ex);
+            _statusStore.Message = $"ブラウザを開けませんでした: {url}";
+            return false;
+        }
+    }
+
     private void OpenSlotWorkspaceFolderButton_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
@@ -4344,6 +4395,7 @@ public partial class MainWindow : Window
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         SystemMonitorButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        PullRequestInboxButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         SettingsButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         HelpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         if (!isStandard && SystemMonitorOverlay.Visibility == Visibility.Visible)

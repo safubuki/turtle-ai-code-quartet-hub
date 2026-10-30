@@ -47,6 +47,7 @@ VscodeUserSettingsTests.Run(failures);
 AppConfigTests.Run(failures);
 WindowSlotCompactIdeToggleTests.Run(failures);
 PanelOrderTests.Run(failures);
+GitHubRepositoryResolverTests.Run(failures);
 WindowFocusSynchronizerTests.Run(failures);
 SystemMonitorAndCardTitleTests.Run(failures);
 await FolderUsageCalculationTests.RunAsync(failures);
@@ -69,6 +70,7 @@ Console.WriteLine("VS Code 設定保持の回帰チェックに合格しまし�
 Console.WriteLine("Application configuration migration regression checks passed (4/4).");
 Console.WriteLine("Compact IDE toggle regression checks passed (4/4).");
 Console.WriteLine("Panel ordering and persistence regression checks passed (10/10).");
+Console.WriteLine($"GitHub URL 解決の回帰チェックに合格しました ({GitHubRepositoryResolverTests.Count}/{GitHubRepositoryResolverTests.Count})。");
 Console.WriteLine("ウィンドウ直接操作のフォーカス同期チェックに合格しました (12/12)。");
 Console.WriteLine("メインカードタイトル視認性＆システムモニタ回帰チェックに合格しました (17/17)。");
 Console.WriteLine("巨大フォルダ・ドライブの使用量計測チェックに合格しました (11/11)。");

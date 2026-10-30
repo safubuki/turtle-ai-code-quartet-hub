@@ -196,7 +196,7 @@ internal static class SystemMonitorAndCardTitleTests
                 titleTextBox?.ToString() ?? "null");
         }
 
-        // 3. TitleBarButtonsPanel で SystemMonitorButton が SettingsButton の直前（左隣）に配置されていること
+        // 3. TitleBarButtonsPanel で SystemMonitorButton → PullRequestInboxButton → SettingsButton の順に並ぶこと
         var titleBarButtonsPanel = root.Descendants()
             .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "TitleBarButtonsPanel");
         Check(failures, "TitleBarButtonsPanel が存在すること", titleBarButtonsPanel is not null, "TitleBarButtonsPanel");
@@ -207,11 +207,12 @@ internal static class SystemMonitorAndCardTitleTests
                 .Select(e => (string?)e.Attribute(x + "Name") ?? string.Empty)
                 .ToList();
             var monitorIdx = buttonNames.IndexOf("SystemMonitorButton");
+            var inboxIdx = buttonNames.IndexOf("PullRequestInboxButton");
             var settingsIdx = buttonNames.IndexOf("SettingsButton");
             Check(
                 failures,
-                "SystemMonitorButton が SettingsButton のすぐ左に配置されていること",
-                monitorIdx >= 0 && settingsIdx == monitorIdx + 1,
+                "SystemMonitorButton の右隣に PullRequestInboxButton、その右に SettingsButton が配置されていること",
+                monitorIdx >= 0 && inboxIdx == monitorIdx + 1 && settingsIdx == inboxIdx + 1,
                 string.Join(", ", buttonNames));
         }
 

@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using TurtleAIQuartetHub.Panel.Services;
 
 namespace TurtleAIQuartetHub.Panel.Models;
 
@@ -38,6 +39,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
     private bool _isHidden;
     private int? _monitorOverride;
     private string _displayBadgeText = string.Empty;
+    private string? _gitHubResolutionFolder;
+    private GitHubRepositoryResolver.Resolution _gitHubResolution;
     private Brush _displayBrush = DefaultDisplayBrush;
     private VscodeLayoutPreference _preferredLayout = VscodeLayoutPreference.Empty;
 
@@ -88,6 +91,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ExplorerWorkspacePath));
                 OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
                 OnPropertyChanged(nameof(WorkspaceFolderToolTip));
+                OnPropertyChanged(nameof(GitHubWebUrl));
+                OnPropertyChanged(nameof(CanOpenGitHub));
+                OnPropertyChanged(nameof(GitHubToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -278,6 +284,13 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
     }
 
+    /// <summary>ワークスペースに対応する GitHub リポジトリの Web URL。解決できなければ空文字。</summary>
+    public string GitHubWebUrl => ResolveGitHub().WebUrl;
+
+    public bool CanOpenGitHub => ResolveGitHub().IsResolved;
+
+    public string GitHubToolTip => ResolveGitHub().Message;
+
     public string PanelTitle
     {
         get => _panelTitle;
@@ -316,6 +329,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ExplorerWorkspacePath));
                 OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
                 OnPropertyChanged(nameof(WorkspaceFolderToolTip));
+                OnPropertyChanged(nameof(GitHubWebUrl));
+                OnPropertyChanged(nameof(CanOpenGitHub));
+                OnPropertyChanged(nameof(GitHubToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -334,6 +350,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ExplorerWorkspacePath));
                 OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
                 OnPropertyChanged(nameof(WorkspaceFolderToolTip));
+                OnPropertyChanged(nameof(GitHubWebUrl));
+                OnPropertyChanged(nameof(CanOpenGitHub));
+                OnPropertyChanged(nameof(GitHubToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -351,6 +370,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ExplorerWorkspacePath));
                 OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
                 OnPropertyChanged(nameof(WorkspaceFolderToolTip));
+                OnPropertyChanged(nameof(GitHubWebUrl));
+                OnPropertyChanged(nameof(CanOpenGitHub));
+                OnPropertyChanged(nameof(GitHubToolTip));
                 OnPropertyChanged(nameof(HasPanelContent));
             }
         }
@@ -505,6 +527,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
             OnPropertyChanged(nameof(ExplorerWorkspacePath));
             OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
             OnPropertyChanged(nameof(WorkspaceFolderToolTip));
+            OnPropertyChanged(nameof(GitHubWebUrl));
+            OnPropertyChanged(nameof(CanOpenGitHub));
+            OnPropertyChanged(nameof(GitHubToolTip));
             OnPropertyChanged(nameof(HasPanelContent));
         }
     }
@@ -631,6 +656,23 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
 
         return path;
+    }
+
+    // 同じフォルダについてはボタンの有効判定とツールチップで結果を使い回す。
+    // フォルダが変われば（パス変更の通知で再評価され）解決し直す。
+    private GitHubRepositoryResolver.Resolution ResolveGitHub()
+    {
+        var folder = ExplorerWorkspacePath;
+        if (_gitHubResolutionFolder is not null && string.Equals(_gitHubResolutionFolder, folder, StringComparison.OrdinalIgnoreCase))
+        {
+            return _gitHubResolution;
+        }
+
+        _gitHubResolution = string.IsNullOrEmpty(folder)
+            ? new GitHubRepositoryResolver.Resolution(string.Empty, "ローカルのワークスペースフォルダが無いため、GitHub を特定できません。")
+            : GitHubRepositoryResolver.Resolve(folder);
+        _gitHubResolutionFolder = folder;
+        return _gitHubResolution;
     }
 
     private static string GetExplorerWorkspacePath(string? value)
