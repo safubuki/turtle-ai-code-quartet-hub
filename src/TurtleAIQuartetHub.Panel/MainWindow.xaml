@@ -447,7 +447,7 @@
       <Setter Property="BorderBrush" Value="#6A3832" />
       <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="ToolTip" Value="この控えを削除" />
+      <Setter Property="ToolTip" Value="この控えをクリア（フォルダは削除されません）" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding HasContent}" Value="False">
           <Setter Property="Visibility" Value="Collapsed" />
@@ -488,7 +488,7 @@
       <Setter Property="BorderBrush" Value="#6A3832" />
       <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
       <Setter Property="FontSize" Value="13" />
-      <Setter Property="ToolTip" Value="このパネル情報を削除" />
+      <Setter Property="ToolTip" Value="このパネル情報をクリア（フォルダは削除されません）" />
       <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True">
           <Setter Property="Foreground" Value="#FFE7E2" />
@@ -570,12 +570,29 @@
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" CornerRadius="8">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <Grid>
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <!-- 更新ありの赤丸（local:UpdateBadge.IsActive）。アイコンの右下に重ね、背景色の縁で切り離す。 -->
+                <Ellipse x:Name="UpdateBadgeDot"
+                         Width="7"
+                         Height="7"
+                         Margin="0,0,3,4"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Bottom"
+                         Fill="#F0524A"
+                         Stroke="{StaticResource PanelBackgroundBrush}"
+                         StrokeThickness="1.2"
+                         IsHitTestVisible="False"
+                         Visibility="Collapsed" />
+              </Grid>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="ButtonBorder" Property="Background" Value="#25302A" />
                 <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+              </Trigger>
+              <Trigger Property="local:UpdateBadge.IsActive" Value="True">
+                <Setter TargetName="UpdateBadgeDot" Property="Visibility" Value="Visible" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -1505,7 +1522,7 @@
                            Foreground="{StaticResource MutedTextBrush}" />
               </StackPanel>
               <Button Grid.Column="3"
-                      Content="&#xE74D;"
+                      Content="&#xE75C;"
                       Tag="{Binding}"
                       Click="ClearSlotPanelInfoButton_Click"
                       Style="{StaticResource SlotClearInfoButtonStyle}"
@@ -1814,6 +1831,93 @@
       </Button>
     </DataTemplate>
 
+    <!-- 控えカードの右クリックメニュー（項目はコードビハインドで組み立てる）。既定の白いメニューではなく、
+         パネルの配色と角丸に合わせる。右端の補足（InputGestureText）には配置先の現在の内容などを出す。 -->
+    <Style x:Key="PanelContextMenuStyle" TargetType="ContextMenu">
+      <Setter Property="OverridesDefaultStyle" Value="True" />
+      <Setter Property="HasDropShadow" Value="False" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ContextMenu">
+            <Border Margin="0,0,8,8"
+                    Padding="4"
+                    MinWidth="220"
+                    CornerRadius="10"
+                    Background="#1D2622"
+                    BorderBrush="#3E5148"
+                    BorderThickness="1">
+              <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="10" ShadowDepth="2" Opacity="0.45" />
+              </Border.Effect>
+              <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Resources>
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="Separator">
+                <Rectangle Height="1" Margin="8,4" Fill="{StaticResource BorderBrushSoft}" />
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Style>
+        <Style TargetType="MenuItem">
+          <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+          <Setter Property="Padding" Value="6,5,12,5" />
+          <Setter Property="Cursor" Value="Hand" />
+          <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="MenuItem">
+                <Border x:Name="ItemBorder"
+                        Background="Transparent"
+                        CornerRadius="6"
+                        Padding="{TemplateBinding Padding}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="26" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ContentPresenter ContentSource="Icon"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                    <ContentPresenter Grid.Column="1"
+                                      ContentSource="Header"
+                                      RecognizesAccessKey="True"
+                                      VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2"
+                               Text="{TemplateBinding InputGestureText}"
+                               MaxWidth="150"
+                               Margin="16,0,0,0"
+                               FontSize="11"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsHighlighted" Value="True">
+                    <Setter TargetName="ItemBorder" Property="Background" Value="#25302A" />
+                  </Trigger>
+                  <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="ItemBorder" Property="Opacity" Value="0.4" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Style>
+      </Style.Resources>
+    </Style>
+
     <DataTemplate x:Key="CompactStoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
       <Border Background="{StaticResource SurfaceAltBrush}"
               BorderBrush="{StaticResource BorderBrushSoft}"
@@ -1823,6 +1927,7 @@
               Tag="{Binding}"
               PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
+              PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
               AllowDrop="True"
               DragEnter="StoredPanelCard_DragEnter"
               DragLeave="StoredPanelCard_DragLeave"
@@ -1860,11 +1965,11 @@
                     Style="{StaticResource StoredRegisterFolderButton}"
                     Width="20" Height="20" MinWidth="0" MinHeight="0" Padding="0"
                     ToolTip="フォルダを控えに登録" />
-            <Button Content="&#xE74D;" Tag="{Binding}"
+            <Button Content="&#xE75C;" Tag="{Binding}"
                     Click="DeleteStoredPanelButton_Click"
                     Style="{StaticResource StoredDeleteButton}"
                     Width="20" Height="20" MinWidth="0" MinHeight="0" Padding="0"
-                    IsEnabled="{Binding HasContent}" ToolTip="控えを削除" />
+                    IsEnabled="{Binding HasContent}" ToolTip="控えをクリア（フォルダは削除されません）" />
           </StackPanel>
           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ShortPath}"
                      ToolTip="{Binding WorkspacePath}" Foreground="{StaticResource MutedTextBrush}"
@@ -1905,6 +2010,7 @@
               Tag="{Binding}"
               PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
+              PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
               AllowDrop="True"
               DragEnter="StoredPanelCard_DragEnter"
               DragLeave="StoredPanelCard_DragLeave"
@@ -1986,10 +2092,10 @@
                     Style="{StaticResource StoredRegisterFolderButton}"
                     AutomationProperties.Name="フォルダを選んでこの控えに登録"
                     HorizontalAlignment="Right" VerticalAlignment="Bottom" />
-            <Button Grid.Column="1" Content="&#xE74D;" Tag="{Binding}"
+            <Button Grid.Column="1" Content="&#xE75C;" Tag="{Binding}"
                     Click="DeleteStoredPanelButton_Click"
                     Style="{StaticResource StoredDeleteButton}"
-                    AutomationProperties.Name="この控えを削除"
+                    AutomationProperties.Name="この控えをクリア"
                     HorizontalAlignment="Right" VerticalAlignment="Bottom"
                     IsEnabled="{Binding HasContent}" />
           </Grid>
@@ -2092,6 +2198,7 @@
               Tag="{Binding}"
               PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
+              PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
               MouseLeftButtonUp="StoredOverviewTile_MouseLeftButtonUp"
               AllowDrop="True"
               DragEnter="StoredOverviewTile_DragEnter"
@@ -2119,6 +2226,7 @@
                      FontWeight="SemiBold"
                      LineHeight="16"
                      LineStackingStrategy="BlockLineHeight"
+                     MaxHeight="32"
                      TextWrapping="Wrap"
                      TextTrimming="CharacterEllipsis" />
           <DockPanel Grid.Row="1" LastChildFill="True">
@@ -2395,8 +2503,8 @@
     </Grid.RowDefinitions>
 
     <!-- 控え一覧。メインの 4 カードを隠さないよう、パネルの外側（画面の空きが広い側）へ
-         別ウィンドウとして横付けする。位置はコードビハインドでパネルに追従させ、高さは
-         パネル以上・中身が全部見える高さにする（スクロールは画面に収まらないときだけ）。 -->
+         別ウィンドウとして横付けする。位置と高さはコードビハインドでパネルに追従させ、
+         上端・下端をパネルと揃える（中身が入りきらないときだけ一覧をスクロールする）。 -->
     <Popup x:Name="StoredOverviewPopup"
            PlacementTarget="{Binding ElementName=PanelFrameBorder}"
            Placement="Custom"
@@ -2487,45 +2595,57 @@
       <StackPanel x:Name="TitleBarButtonsPanel"
                   HorizontalAlignment="Right"
                   Orientation="Horizontal">
-        <Button x:Name="SystemMonitorButton"
-                Content="&#xE9D9;"
-                Width="26"
-                FontFamily="Segoe MDL2 Assets"
-                FontSize="12"
-                FontWeight="SemiBold"
-                ToolTip="システムモニタ"
-                AutomationProperties.Name="システムモニタ"
-                Click="SystemMonitorButton_Click"
-                Style="{StaticResource ChromeButton}" />
-        <Button x:Name="PullRequestInboxButton"
-                Width="26"
-                ToolTip="GitHub の Pull Request 受信箱を開く（github.com/pulls/inbox）"
-                AutomationProperties.Name="GitHub の Pull Request 受信箱を開く"
-                Click="PullRequestInboxButton_Click"
-                Style="{StaticResource ChromeButton}">
-          <Path Data="{StaticResource GitPullRequestGeometry}"
-                Width="13"
-                Height="13"
-                Stretch="Uniform"
-                Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-        </Button>
-        <Button x:Name="SettingsButton"
-                Content="&#xE713;"
-                Width="26"
-                FontFamily="Segoe MDL2 Assets"
-                FontSize="12"
-                FontWeight="SemiBold"
-                ToolTip="設定"
-                Click="SettingsButton_Click"
-                Style="{StaticResource ChromeButton}" />
-        <Button x:Name="HelpButton"
-                Content="?"
-                Width="26"
-                FontSize="12"
-                FontWeight="SemiBold"
-                ToolTip="ヘルプ"
-                Click="HelpButton_Click"
-                Style="{StaticResource ChromeButton}" />
+        <!-- VS Code と同じく、ツール系（モニタ・PR・設定・ヘルプ）は詰めてひとまとまりにし、
+             右端の表示切替・最小化・閉じるとは間を空ける。標準表示のときだけ出す（コードで切り替え）。 -->
+        <StackPanel x:Name="TitleBarToolButtonsPanel"
+                    Orientation="Horizontal"
+                    Margin="0,0,14,0">
+          <!-- アイコン色でシステム全体の状況（緑＝正常・黄＝注意・赤＝警告）を示す。色とツールチップはコードで更新する。 -->
+          <Button x:Name="SystemMonitorButton"
+                  Content="&#xE9D9;"
+                  Width="26"
+                  FontFamily="Segoe MDL2 Assets"
+                  FontSize="12"
+                  FontWeight="SemiBold"
+                  ToolTip="システムモニタ"
+                  AutomationProperties.Name="システムモニタ"
+                  Click="SystemMonitorButton_Click"
+                  Style="{StaticResource ChromeButton}" />
+          <!-- 未読の PR 通知があると右下に赤丸（local:UpdateBadge.IsActive）を出す。ツールチップはコードで更新する。 -->
+          <Button x:Name="PullRequestInboxButton"
+                  Width="26"
+                  Margin="2,0,0,0"
+                  ToolTip="GitHub の Pull Request 受信箱を開く（github.com/pulls/inbox）"
+                  AutomationProperties.Name="GitHub の Pull Request 受信箱を開く"
+                  Click="PullRequestInboxButton_Click"
+                  Style="{StaticResource ChromeButton}">
+            <Path Data="{StaticResource GitPullRequestGeometry}"
+                  Width="13"
+                  Height="13"
+                  Stretch="Uniform"
+                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+          </Button>
+          <Button x:Name="SettingsButton"
+                  Content="&#xE713;"
+                  Width="26"
+                  Margin="2,0,0,0"
+                  FontFamily="Segoe MDL2 Assets"
+                  FontSize="12"
+                  FontWeight="SemiBold"
+                  ToolTip="設定"
+                  Click="SettingsButton_Click"
+                  Style="{StaticResource ChromeButton}" />
+          <Button x:Name="HelpButton"
+                  Content="？"
+                  Width="26"
+                  Margin="2,0,0,0"
+                  FontSize="12"
+                  FontWeight="SemiBold"
+                  ToolTip="ヘルプ"
+                  Click="HelpButton_Click"
+                  Style="{StaticResource ChromeButton}" />
+        </StackPanel>
+        <!-- 表示切替・最小化・閉じるの間隔（Margin）と幅は表示モードに合わせてコードで設定する。 -->
         <Button x:Name="StandardJumpButton"
                 Content="&#xE740;"
                 Width="26"
@@ -2550,25 +2670,30 @@
                 Style="{StaticResource ChromeButton}" />
         <Button x:Name="DisplayModeButton"
                 Content="&#xE73F;"
-                Width="30"
+                Width="32"
                 FontFamily="Segoe MDL2 Assets"
                 FontSize="12"
                 FontWeight="SemiBold"
                 ToolTip="縮小表示へ切り替え"
                 Click="DisplayModeButton_Click"
                 Style="{StaticResource ChromeButton}" />
+        <!-- 最小化（－）と閉じる（✕）は VS Code と同じ Windows の標準キャプション記号（ChromeMinimize / ChromeClose）。 -->
         <Button x:Name="MinimizeButton"
-                Content="_"
+                Content="&#xE921;"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="10"
                 ToolTip="最小化"
+                AutomationProperties.Name="最小化"
                 Click="MinimizeButton_Click"
-                Style="{StaticResource ChromeButton}"
-                Margin="2,0,0,0" />
+                Style="{StaticResource ChromeButton}" />
         <Button x:Name="CloseButton"
-                Content="X"
+                Content="&#xE8BB;"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="10"
                 ToolTip="パネルを閉じる"
+                AutomationProperties.Name="パネルを閉じる"
                 Click="CloseButton_Click"
-                Style="{StaticResource ChromeButton}"
-                Margin="2,0,0,0" />
+                Style="{StaticResource ChromeButton}" />
       </StackPanel>
     </Grid>
 
@@ -3301,7 +3426,7 @@
                       BorderBrush="#8C3F38"
                       BorderThickness="1"
                       Margin="0,0,12,0">
-                <TextBlock Text="&#xE74D;"
+                <TextBlock Text="&#xE75C;"
                            FontFamily="Segoe MDL2 Assets"
                            FontSize="16"
                            Foreground="#F2B7AF"
@@ -3310,7 +3435,7 @@
               </Border>
 
               <StackPanel Grid.Column="1">
-                <TextBlock Text="このパネル情報を削除しますか？"
+                <TextBlock Text="このパネル情報をクリアしますか？"
                            FontSize="15"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextBrush}" />
@@ -3340,11 +3465,15 @@
               </StackPanel>
             </Border>
 
-            <TextBlock Grid.Row="2"
-                       Margin="0,12,0,0"
-                       Text="削除すると、タイトル、保存済みワークスペース、選択アプリ、ウィンドウ割り当てが消えます。起動中のIDE / CLIウィンドウも閉じます。"
-                       Foreground="#F2B7AF"
-                       TextWrapping="Wrap" />
+            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+              <TextBlock Text="クリアすると、このアプリに登録したタイトル、保存済みワークスペース、選択アプリ、ウィンドウ割り当てが消えます。起動中のIDE / CLIウィンドウも閉じます。"
+                         Foreground="#F2B7AF"
+                         TextWrapping="Wrap" />
+              <TextBlock Margin="0,6,0,0"
+                         Text="※ フォルダやファイル本体は削除されません。"
+                         Foreground="{StaticResource AccentBrush}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
 
             <StackPanel Grid.Row="3"
                         Margin="0,16,0,0"
@@ -3357,7 +3486,7 @@
                       MinWidth="96"
                       Margin="0,0,8,0" />
               <Button x:Name="ConfirmClearSlotInfoButton"
-                      Content="削除する"
+                      Content="クリアする"
                       Click="ConfirmClearSlotInfoButton_Click"
                       Style="{StaticResource DangerButtonStyle}" />
             </StackPanel>
@@ -3402,7 +3531,7 @@
                       BorderBrush="#6A3832"
                       BorderThickness="1"
                       Margin="0,0,12,0">
-                <TextBlock Text="&#xE74D;"
+                <TextBlock Text="&#xE75C;"
                            FontFamily="Segoe MDL2 Assets"
                            FontSize="16"
                            Foreground="#F2B7AF"
@@ -3411,7 +3540,7 @@
               </Border>
 
               <StackPanel Grid.Column="1">
-                <TextBlock Text="控えを削除しますか？"
+                <TextBlock Text="控えをクリアしますか？"
                            FontSize="15"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextBrush}" />
@@ -3441,11 +3570,15 @@
               </StackPanel>
             </Border>
 
-            <TextBlock Grid.Row="2"
-                       Margin="0,12,0,0"
-                       Text="削除すると、この控えスロットは空きになります。"
-                       Foreground="{StaticResource MutedTextBrush}"
-                       TextWrapping="Wrap" />
+            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+              <TextBlock Text="クリアすると、この控えスロットは空きになります。"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         TextWrapping="Wrap" />
+              <TextBlock Margin="0,6,0,0"
+                         Text="※ フォルダやファイル本体は削除されません。"
+                         Foreground="{StaticResource AccentBrush}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
 
             <StackPanel Grid.Row="3"
                         Margin="0,16,0,0"
@@ -3458,7 +3591,7 @@
                       MinWidth="96"
                       Margin="0,0,8,0" />
               <Button x:Name="ConfirmDeleteStoredPanelButton"
-                      Content="削除する"
+                      Content="クリアする"
                       Click="ConfirmDeleteStoredPanelButton_Click"
                       Style="{StaticResource DangerButtonStyle}" />
             </StackPanel>
@@ -4697,6 +4830,7 @@
                                   <ColumnDefinition Width="Auto" />
                                   <ColumnDefinition Width="Auto" />
                                   <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border MinWidth="36"
                                         Padding="6,2"
@@ -4732,7 +4866,29 @@
                                            VerticalAlignment="Center"
                                            Margin="0,0,8,0"
                                            Foreground="{StaticResource AccentBrush}" />
+                                <!-- Hub・VS Code・Antigravity のデータだけ、容量の内訳と原因を解析できる。 -->
                                 <Button Grid.Column="4"
+                                        Content="&#xE721;"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="11"
+                                        Padding="6,3"
+                                        Margin="0,0,6,0"
+                                        Tag="{Binding}"
+                                        ToolTip="容量の内訳と、増えた原因を解析"
+                                        AutomationProperties.Name="容量の内訳と原因を解析"
+                                        Click="AnalyzeDataFolderButton_Click">
+                                  <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource BaseButton}">
+                                      <Setter Property="Visibility" Value="Collapsed" />
+                                      <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanAnalyze}" Value="True">
+                                          <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                      </Style.Triggers>
+                                    </Style>
+                                  </Button.Style>
+                                </Button>
+                                <Button Grid.Column="5"
                                         Content="&#xE8DA;"
                                         FontFamily="Segoe MDL2 Assets"
                                         FontSize="11"
@@ -4983,6 +5139,263 @@
                       IsEnabled="False"
                       Click="DeleteDiskCleanupButton_Click"
                       Style="{StaticResource DangerButtonStyle}" />
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- 容量の解析結果。結論 → 伝えるときのキーワード → 現象・原因・対処 → 容量の多い場所 の順に並べる。
+         キーワード（H1・V3 など）の意味は docs/data-folder-diagnostics.md と対応する。 -->
+    <Border x:Name="DataFolderAnalysisOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#96090B0A"
+            Panel.ZIndex="24">
+      <Grid>
+        <Border Width="590"
+                MaxHeight="520"
+                Padding="16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1"
+                CornerRadius="12">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE721;"
+                             FontFamily="Segoe MDL2 Assets"
+                             FontSize="15"
+                             VerticalAlignment="Center"
+                             Margin="0,0,8,0"
+                             Foreground="{StaticResource AccentBrush}" />
+                  <TextBlock x:Name="DataFolderAnalysisTitleText"
+                             Text="容量の解析"
+                             FontSize="16"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource TextBrush}" />
+                </StackPanel>
+                <TextBlock x:Name="DataFolderAnalysisStatusText"
+                           Margin="0,2,0,0"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}" />
+              </StackPanel>
+              <Button x:Name="RerunDataFolderAnalysisButton"
+                      Grid.Column="1"
+                      Content="再解析"
+                      Click="RerunDataFolderAnalysisButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      Padding="10,4"
+                      Margin="0,0,8,0"
+                      VerticalAlignment="Top" />
+              <Button Grid.Column="2"
+                      Content="X"
+                      ToolTip="解析を閉じる"
+                      Click="CloseDataFolderAnalysisButton_Click"
+                      Style="{StaticResource ChromeButton}"
+                      VerticalAlignment="Top" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,10,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel x:Name="DataFolderAnalysisResultPanel" Margin="0,0,4,0" Visibility="Collapsed">
+                <!-- 結論。枠の色で 正常（緑）・注意（黄）・要対処（赤）を示す。 -->
+                <Border x:Name="DataFolderAnalysisConclusionBorder"
+                        Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderThickness="1.5"
+                        CornerRadius="10">
+                  <StackPanel>
+                    <TextBlock x:Name="DataFolderAnalysisConclusionText"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="DataFolderAnalysisTotalText"
+                               Margin="0,3,0,0"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                    <Border Margin="0,9,0,0"
+                            Padding="10,7"
+                            Background="#141A17"
+                            BorderBrush="{StaticResource BorderBrushSoft}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                      <StackPanel>
+                        <TextBlock Text="伝えるときのキーワード"
+                                   FontSize="10.5"
+                                   Foreground="{StaticResource MutedTextBrush}" />
+                        <TextBox x:Name="DataFolderAnalysisKeywordText"
+                                 Margin="0,2,0,0"
+                                 IsReadOnly="True"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Foreground="{StaticResource TextBrush}"
+                                 CaretBrush="{StaticResource TextBrush}"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 TextWrapping="Wrap" />
+                        <TextBlock Margin="0,3,0,0"
+                                   FontSize="10.5"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="記号（H1・V3 など）と大きさを伝えると、原因と改善策を特定できます。" />
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                </Border>
+
+                <ItemsControl x:Name="DataFolderAnalysisFindingsItemsControl" Margin="0,10,0,0">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type models:DataFolderFinding}">
+                      <Border Margin="0,0,0,8"
+                              Padding="12,9"
+                              Background="#1B221E"
+                              BorderBrush="{Binding LevelBrush}"
+                              BorderThickness="3,1,1,1"
+                              CornerRadius="8">
+                        <StackPanel>
+                          <Grid>
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="Auto" />
+                              <ColumnDefinition Width="Auto" />
+                              <ColumnDefinition Width="*" />
+                              <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Padding="7,1"
+                                    Margin="0,0,6,0"
+                                    CornerRadius="5"
+                                    Background="#223027"
+                                    BorderBrush="{Binding LevelBrush}"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Code}"
+                                         FontSize="12"
+                                         FontWeight="Bold"
+                                         Foreground="{StaticResource TextBrush}" />
+                            </Border>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding LevelText}"
+                                       Margin="0,0,8,0"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{Binding LevelBrush}" />
+                            <TextBlock Grid.Column="3"
+                                       Text="{Binding SizeText}"
+                                       FontSize="13"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{Binding LevelBrush}" />
+                          </Grid>
+                          <TextBlock Margin="0,6,0,0"
+                                     Text="{Binding Symptom}"
+                                     FontSize="12"
+                                     FontWeight="SemiBold"
+                                     TextWrapping="Wrap"
+                                     Foreground="{StaticResource TextBrush}" />
+                          <TextBlock Margin="0,5,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}">
+                            <Run Text="原因: " FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" /><Run Text="{Binding Cause, Mode=OneWay}" />
+                          </TextBlock>
+                          <TextBlock Margin="0,3,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}">
+                            <Run Text="対処: " FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" /><Run Text="{Binding Remedy, Mode=OneWay}" />
+                          </TextBlock>
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Margin="0,2,0,0"
+                        Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                  <StackPanel>
+                    <TextBlock Text="容量の多い場所（上位）"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <ItemsControl x:Name="DataFolderAnalysisHeavyItemsControl" Margin="0,6,0,0">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:DataFolderHeavyEntry}">
+                          <StackPanel Margin="0,0,0,7">
+                            <Grid>
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+                              <TextBlock Text="{Binding Label}"
+                                         FontSize="11.5"
+                                         FontWeight="SemiBold"
+                                         TextTrimming="CharacterEllipsis"
+                                         Foreground="{StaticResource TextBrush}" />
+                              <TextBlock Grid.Column="1"
+                                         Text="{Binding PercentText}"
+                                         Margin="8,0,8,0"
+                                         FontSize="11"
+                                         Foreground="{StaticResource MutedTextBrush}" />
+                              <TextBlock Grid.Column="2"
+                                         Text="{Binding SizeText}"
+                                         FontSize="12"
+                                         FontWeight="Bold"
+                                         Foreground="{StaticResource AccentBrush}" />
+                            </Grid>
+                            <ProgressBar Margin="0,3,0,2"
+                                         Height="4"
+                                         Style="{StaticResource SystemMonitorProgressBarStyle}"
+                                         Foreground="{StaticResource AccentBrush}"
+                                         Value="{Binding Percent, Mode=OneWay}" />
+                            <TextBlock Text="{Binding RelativePath}"
+                                       FontSize="10.5"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding RelativePath}"
+                                       Foreground="{StaticResource MutedTextBrush}" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <Grid Grid.Row="2" Margin="0,12,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock VerticalAlignment="Center"
+                         FontSize="11"
+                         TextWrapping="Wrap"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         Text="※ 解析は読み取りだけで、ファイルを削除・変更しません。" />
+              <Button x:Name="CloseDataFolderAnalysisDialogButton"
+                      Grid.Column="1"
+                      Content="閉じる"
+                      Click="CloseDataFolderAnalysisButton_Click"
+                      Style="{StaticResource BaseButton}"
+                      MinWidth="88" />
             </Grid>
           </Grid>
         </Border>

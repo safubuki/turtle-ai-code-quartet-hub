@@ -18,10 +18,20 @@ public sealed class SystemMonitorService
     // ハブ起動後に pagefile.sys がこれ以上増えたら「拡張あり」と表示する。
     internal const long PagefileGrowthNoticeBytes = 256L * 1024 * 1024;
 
+    // バーの色とタイトルバーのアイコン色で同じしきい値を使う（注意＝黄、警告＝赤）。
+    internal const double CpuWarningPercent = 70d;
+    internal const double CpuCriticalPercent = 88d;
+    internal const double MemoryWarningPercent = 75d;
+    internal const double MemoryCriticalPercent = 90d;
+    internal const double DriveWarningPercent = 80d;
+    internal const double DriveCriticalPercent = 92d;
+
     private const int SystemPageFileInformationClass = 18;
     private const int StatusInfoLengthMismatch = unchecked((int)0xC0000004);
 
     private readonly object _cpuLock = new();
+    // ページファイルの最小観測値は、モーダルの周期更新と背景のアイコン評価の両方から更新する。
+    private readonly object _pagefileLock = new();
     private long? _minimumObservedPagefileBytes;
     private PagefileSettings? _pagefileSettings;
     private ulong _lastIdleTime;
@@ -54,7 +64,7 @@ public sealed class SystemMonitorService
     public SystemResourceSnapshot CaptureSystemResources(int activeManagedWindowCount)
     {
         var cpuPercent = SampleCpuUsagePercent();
-        var cpuBrush = GetUsageBrush(cpuPercent, warningThreshold: 70d, criticalThreshold: 88d);
+        var cpuBrush = GetUsageBrush(cpuPercent, CpuWarningPercent, CpuCriticalPercent);
         var coreCount = Environment.ProcessorCount;
         var cpuDetail = activeManagedWindowCount > 0
             ? $"論理プロセッサ: {coreCount} コア / 管理中ウィンドウ: {activeManagedWindowCount} 個"
@@ -65,7 +75,7 @@ public sealed class SystemMonitorService
         var memPercent = totalMem > 0
             ? Math.Clamp((double)usedMem * 100d / totalMem, 0d, 100d)
             : 0d;
-        var memBrush = GetUsageBrush(memPercent, warningThreshold: 75d, criticalThreshold: 90d);
+        var memBrush = GetUsageBrush(memPercent, MemoryWarningPercent, MemoryCriticalPercent);
 
         return new SystemResourceSnapshot(
             CpuUsagePercent: cpuPercent,
@@ -82,7 +92,11 @@ public sealed class SystemMonitorService
             MemoryBarBrush: memBrush);
     }
 
-    public IReadOnlyList<DriveUsageItem> GetDriveUsages()
+    /// <param name="fixedOnly">
+    /// true ならローカル ディスクだけを調べる。背景の定期評価で、応答の遅いネットワークドライブや
+    /// 光学ドライブに触れないようにするため。
+    /// </param>
+    public IReadOnlyList<DriveUsageItem> GetDriveUsages(bool fixedOnly = false)
     {
         var result = new List<DriveUsageItem>();
         DriveInfo[] drives;
@@ -100,6 +114,11 @@ public sealed class SystemMonitorService
         {
             try
             {
+                if (fixedOnly && drive.DriveType != DriveType.Fixed)
+                {
+                    continue;
+                }
+
                 if (!drive.IsReady)
                 {
                     continue;
@@ -139,7 +158,7 @@ public sealed class SystemMonitorService
                     _ => "ドライブ"
                 };
 
-                var brush = GetUsageBrush(percent, warningThreshold: 80d, criticalThreshold: 92d);
+                var brush = GetUsageBrush(percent, DriveWarningPercent, DriveCriticalPercent);
 
                 result.Add(new DriveUsageItem(
                     RootPath: rootPath,
@@ -152,7 +171,10 @@ public sealed class SystemMonitorService
                     UsagePercentText: $"{percent:0.0} %",
                     CapacityDetailText: $"使用 {FormatBytes(used)} / {FormatBytes(total)}",
                     FreeSpaceText: $"空き {FormatBytes(free)}",
-                    BarBrush: brush));
+                    BarBrush: brush)
+                {
+                    IsFixedDrive = drive.DriveType == DriveType.Fixed
+                });
             }
             catch (Exception ex)
             {
@@ -260,7 +282,8 @@ public sealed class SystemMonitorService
                 initialSizeText: "計測中...",
                 isCalculating: true)
             {
-                MeasurementTimeout = LargeFolderMeasurementTimeout
+                MeasurementTimeout = LargeFolderMeasurementTimeout,
+                AnalysisKind = DataFolderKind.Hub
             });
         }
 
@@ -279,7 +302,8 @@ public sealed class SystemMonitorService
                 initialSizeText: "計測中...",
                 isCalculating: true)
             {
-                MeasurementTimeout = LargeFolderMeasurementTimeout
+                MeasurementTimeout = LargeFolderMeasurementTimeout,
+                AnalysisKind = DataFolderKind.VsCode
             });
         }
 
@@ -299,7 +323,8 @@ public sealed class SystemMonitorService
                     initialSizeText: "計測中...",
                     isCalculating: true)
                 {
-                    MeasurementTimeout = LargeFolderMeasurementTimeout
+                    MeasurementTimeout = LargeFolderMeasurementTimeout,
+                    AnalysisKind = DataFolderKind.Antigravity
                 });
             }
         }
@@ -625,15 +650,20 @@ public sealed class SystemMonitorService
         var (allocated, inUse, peak) = ReadPagefileUsage();
 
         long? growth = null;
-        if (allocated > 0)
+        PagefileSettings settings;
+        lock (_pagefileLock)
         {
-            _minimumObservedPagefileBytes = _minimumObservedPagefileBytes is long minimum
-                ? Math.Min(minimum, allocated)
-                : allocated;
-            growth = allocated - _minimumObservedPagefileBytes.Value;
+            if (allocated > 0)
+            {
+                _minimumObservedPagefileBytes = _minimumObservedPagefileBytes is long minimum
+                    ? Math.Min(minimum, allocated)
+                    : allocated;
+                growth = allocated - _minimumObservedPagefileBytes.Value;
+            }
+
+            settings = _pagefileSettings ??= ReadPagefileSettings();
         }
 
-        _pagefileSettings ??= ReadPagefileSettings();
         return new PagefileSnapshot(
             memoryStatus.ullTotalPhys,
             commitLimit,
@@ -642,7 +672,86 @@ public sealed class SystemMonitorService
             inUse,
             peak,
             growth,
-            _pagefileSettings);
+            settings);
+    }
+
+    /// <summary>
+    /// システムモニタを開いていない間のアイコン色用。UI スレッド外から呼べるよう、
+    /// 画面の部品には触れず、ローカル ディスクだけを調べる。
+    /// </summary>
+    public SystemHealthSummary CaptureHealth()
+    {
+        var resources = CaptureSystemResources(activeManagedWindowCount: 0);
+        var pagefile = AssessPagefile(CapturePagefile());
+        return EvaluateHealth(
+            resources.CpuUsagePercent,
+            resources.MemoryUsagePercent,
+            GetDriveUsages(fixedOnly: true),
+            pagefile);
+    }
+
+    // 各項目のうち最も悪い状態を全体の状態にする（警告 > 注意 > 正常）。
+    internal static SystemHealthSummary EvaluateHealth(
+        double cpuPercent,
+        double memoryPercent,
+        IEnumerable<DriveUsageItem> drives,
+        PagefileAssessment pagefile)
+    {
+        var issues = new List<SystemHealthIssue>();
+        AddUsageIssue(issues, cpuPercent, CpuWarningPercent, CpuCriticalPercent, $"CPU 使用率 {cpuPercent:0} %");
+        AddUsageIssue(issues, memoryPercent, MemoryWarningPercent, MemoryCriticalPercent, $"メモリ使用量 {memoryPercent:0} %");
+        foreach (var drive in drives.Where(drive => drive.IsFixedDrive))
+        {
+            AddUsageIssue(
+                issues,
+                drive.UsagePercent,
+                DriveWarningPercent,
+                DriveCriticalPercent,
+                $"ディスク空き容量 {drive.RootPath.TrimEnd('\\')}（使用率 {drive.UsagePercent:0} %・{drive.FreeSpaceText}）");
+        }
+
+        if (pagefile.Level != PagefileAssessmentLevel.Normal)
+        {
+            issues.Add(new SystemHealthIssue(
+                pagefile.Level == PagefileAssessmentLevel.Critical ? SystemHealthLevel.Critical : SystemHealthLevel.Warning,
+                $"ページファイル {pagefile.BadgeText}"));
+        }
+
+        var ordered = issues.OrderByDescending(issue => issue.Level).ToList();
+        return new SystemHealthSummary(
+            ordered.Count > 0 ? ordered[0].Level : SystemHealthLevel.Normal,
+            ordered);
+    }
+
+    internal static SystemHealthLevel GetUsageLevel(double percent, double warningThreshold, double criticalThreshold)
+    {
+        if (percent >= criticalThreshold)
+        {
+            return SystemHealthLevel.Critical;
+        }
+
+        return percent >= warningThreshold ? SystemHealthLevel.Warning : SystemHealthLevel.Normal;
+    }
+
+    public static Brush GetHealthBrush(SystemHealthLevel level) => level switch
+    {
+        SystemHealthLevel.Critical => CriticalUsageBrush,
+        SystemHealthLevel.Warning => WarningUsageBrush,
+        _ => NormalUsageBrush
+    };
+
+    private static void AddUsageIssue(
+        List<SystemHealthIssue> issues,
+        double percent,
+        double warningThreshold,
+        double criticalThreshold,
+        string text)
+    {
+        var level = GetUsageLevel(percent, warningThreshold, criticalThreshold);
+        if (level != SystemHealthLevel.Normal)
+        {
+            issues.Add(new SystemHealthIssue(level, text));
+        }
     }
 
     // 注意文はメモリ使用量カード（半幅）に出すため、短く保つ。余裕ありの文は表示しない。
@@ -856,17 +965,7 @@ public sealed class SystemMonitorService
 
     private static Brush GetUsageBrush(double percent, double warningThreshold, double criticalThreshold)
     {
-        if (percent >= criticalThreshold)
-        {
-            return CriticalUsageBrush;
-        }
-
-        if (percent >= warningThreshold)
-        {
-            return WarningUsageBrush;
-        }
-
-        return NormalUsageBrush;
+        return GetHealthBrush(GetUsageLevel(percent, warningThreshold, criticalThreshold));
     }
 
     private static Brush CreateFrozenBrush(string hex)

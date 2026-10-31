@@ -12,6 +12,7 @@
   "launchTimeoutSeconds": 20,
   "remoteReconnectTimeoutSeconds": 5,
   "statusRefreshIntervalMilliseconds": 1000,
+  "checkPullRequestUpdates": true,
   "defaultWorkspaceApplicationId": "vscode",
   "applications": [
     {

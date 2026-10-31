@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using TurtleAIQuartetHub.Panel.Services;
 
 namespace TurtleAIQuartetHub.Panel.Models;
 
@@ -10,6 +11,8 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
     private string _applicationId = AppConfig.VsCodeApplicationId;
     private string _applicationShortName = "VS Code";
     private bool _isOverviewSelected;
+    private string? _gitHubResolutionFolder;
+    private GitHubRepositoryResolver.Resolution _gitHubResolution;
 
     public StoredPanelSlot(int index)
     {
@@ -45,6 +48,7 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ShortPath));
                 OnPropertyChanged(nameof(DisplayTitle));
                 OnPropertyChanged(nameof(HasContent));
+                RefreshWorkspaceLinks();
             }
         }
     }
@@ -95,6 +99,18 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
         set => SetField(ref _applicationShortName, string.IsNullOrWhiteSpace(value) ? ApplicationId : value.Trim());
     }
 
+    /// <summary>エクスプローラで開けるローカルフォルダ。リモートや存在しないパスなら空文字。</summary>
+    public string ExplorerWorkspacePath => WindowSlot.GetExplorerWorkspacePath(WorkspacePath);
+
+    public bool CanOpenWorkspaceFolder => !string.IsNullOrWhiteSpace(ExplorerWorkspacePath);
+
+    /// <summary>ワークスペースに対応する GitHub リポジトリの Web URL。解決できなければ空文字。</summary>
+    public string GitHubWebUrl => ResolveGitHub().WebUrl;
+
+    public bool CanOpenGitHub => ResolveGitHub().IsResolved;
+
+    public string GitHubToolTip => ResolveGitHub().Message;
+
     /// <summary>控え一覧で配置先待ちとして選ばれているか。保存対象ではない画面上の状態。</summary>
     public bool IsOverviewSelected
     {
@@ -119,6 +135,34 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
         PanelTitle = string.Empty;
         WorkspacePath = string.Empty;
         ApplicationId = AppConfig.VsCodeApplicationId;
+    }
+
+    /// <summary>
+    /// フォルダの有無や .git/config は外部で変わるため、右クリックメニューを開く直前に読み直す。
+    /// </summary>
+    public void RefreshWorkspaceLinks()
+    {
+        _gitHubResolutionFolder = null;
+        OnPropertyChanged(nameof(ExplorerWorkspacePath));
+        OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+        OnPropertyChanged(nameof(GitHubWebUrl));
+        OnPropertyChanged(nameof(CanOpenGitHub));
+        OnPropertyChanged(nameof(GitHubToolTip));
+    }
+
+    private GitHubRepositoryResolver.Resolution ResolveGitHub()
+    {
+        var folder = ExplorerWorkspacePath;
+        if (_gitHubResolutionFolder is not null && string.Equals(_gitHubResolutionFolder, folder, StringComparison.OrdinalIgnoreCase))
+        {
+            return _gitHubResolution;
+        }
+
+        _gitHubResolution = string.IsNullOrEmpty(folder)
+            ? new GitHubRepositoryResolver.Resolution(string.Empty, "ローカルのワークスペースフォルダが無いため、GitHub を特定できません。")
+            : GitHubRepositoryResolver.Resolve(folder);
+        _gitHubResolutionFolder = folder;
+        return _gitHubResolution;
     }
 
     private static string NormalizeWorkspacePath(string? value)

@@ -685,6 +685,48 @@ public sealed class StatusStore : INotifyPropertyChanged
         return true;
     }
 
+    /// <summary>
+    /// 登録済みの控えのフォルダだけを差し替える。利用者が付けた名前と選択アプリは残し、
+    /// 旧フォルダ名から自動で付いた名前（重複時の連番付きを含む）だけを新しいフォルダ名にする。
+    /// </summary>
+    public bool ChangeStoredPanelWorkspace(StoredPanelSlot storedPanel, string workspacePath)
+    {
+        if (string.IsNullOrWhiteSpace(workspacePath) || !storedPanel.HasContent)
+        {
+            return false;
+        }
+
+        var previousPath = storedPanel.WorkspacePath;
+        var hadAutoTitle = string.IsNullOrWhiteSpace(storedPanel.PanelTitle)
+            || (!string.IsNullOrWhiteSpace(previousPath)
+                && IsCopyTitleOf(storedPanel.PanelTitle, GetBaseTitleFromWorkspacePath(previousPath)));
+
+        _suppressPersistence = true;
+        try
+        {
+            storedPanel.WorkspacePath = workspacePath;
+            if (string.IsNullOrWhiteSpace(storedPanel.WorkspacePath))
+            {
+                storedPanel.WorkspacePath = previousPath;
+                return false;
+            }
+
+            if (hadAutoTitle)
+            {
+                storedPanel.PanelTitle = MakeUniquePanelTitle(
+                    GetBaseTitleFromWorkspacePath(storedPanel.WorkspacePath),
+                    storedPanel);
+            }
+        }
+        finally
+        {
+            _suppressPersistence = false;
+        }
+
+        SavePanelStates();
+        return true;
+    }
+
     public void ClearStoredPanel(StoredPanelSlot storedPanel)
     {
         _suppressPersistence = true;

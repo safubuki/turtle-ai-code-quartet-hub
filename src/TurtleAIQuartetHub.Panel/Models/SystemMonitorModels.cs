@@ -19,6 +19,21 @@ public sealed record SystemResourceSnapshot(
     string MemoryAvailableText,
     Brush MemoryBarBrush);
 
+public enum SystemHealthLevel
+{
+    Normal,
+    Warning,
+    Critical
+}
+
+public sealed record SystemHealthIssue(SystemHealthLevel Level, string Text);
+
+/// <summary>
+/// システムモニタの各項目（CPU / メモリ / ドライブ / ページファイル）の状態を集約した結果。
+/// 最も悪い項目の状態を <see cref="Level"/> に持ち、注意・警告の原因を悪い順に <see cref="Issues"/> に並べる。
+/// </summary>
+public sealed record SystemHealthSummary(SystemHealthLevel Level, IReadOnlyList<SystemHealthIssue> Issues);
+
 public sealed record DriveUsageItem(
     string RootPath,
     string DisplayTitle,
@@ -33,6 +48,9 @@ public sealed record DriveUsageItem(
     Brush BarBrush)
 {
     public string OpenFolderToolTip => $"エクスプローラで開く: {RootPath}";
+
+    // 光学ドライブ（常に満杯）やネットワークドライブは、アイコン色の集約に含めない。
+    public bool IsFixedDrive { get; init; }
 }
 
 internal sealed record FolderUsageMeasurement(
@@ -102,6 +120,11 @@ public sealed class FolderUsageItem : INotifyPropertyChanged
     public TimeSpan? MeasurementTimeout { get; init; }
 
     public bool CanOpenFolder => !string.IsNullOrWhiteSpace(FolderPath) && Directory.Exists(FolderPath);
+
+    // Hub データ・VS Code / Antigravity IDE のデータだけ、容量の内訳と原因を解析できる。
+    public DataFolderKind? AnalysisKind { get; init; }
+
+    public bool CanAnalyze => AnalysisKind is not null && CanOpenFolder;
 
     public string OpenFolderToolTip => CanOpenFolder
         ? $"エクスプローラで開く: {FolderPath}"

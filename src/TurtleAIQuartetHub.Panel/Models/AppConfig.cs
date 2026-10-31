@@ -55,6 +55,10 @@ public sealed class AppConfig
 
     public int StatusRefreshIntervalMilliseconds { get; set; } = 1000;
 
+    // GitHub CLI (gh) が導入・サインイン済みなら、数分ごとに未読の Pull Request 通知を確認し、
+    // 受信箱ボタンに赤丸を出す。false にすると gh を起動せず、GitHub への確認も行わない。
+    public bool CheckPullRequestUpdates { get; set; } = true;
+
     public string DefaultWorkspaceApplicationId { get; set; } = VsCodeApplicationId;
 
     public List<ToolApplicationConfig> Applications { get; set; } = DefaultApplications();

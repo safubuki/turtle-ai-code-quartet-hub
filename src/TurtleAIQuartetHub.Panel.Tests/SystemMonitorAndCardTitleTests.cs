@@ -203,7 +203,8 @@ internal static class SystemMonitorAndCardTitleTests
 
         if (titleBarButtonsPanel is not null)
         {
-            var buttonNames = titleBarButtonsPanel.Elements()
+            var buttonNames = titleBarButtonsPanel.Descendants()
+                .Where(e => e.Name.LocalName == "Button")
                 .Select(e => (string?)e.Attribute(x + "Name") ?? string.Empty)
                 .ToList();
             var monitorIdx = buttonNames.IndexOf("SystemMonitorButton");

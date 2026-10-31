@@ -675,7 +675,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
         return _gitHubResolution;
     }
 
-    private static string GetExplorerWorkspacePath(string? value)
+    internal static string GetExplorerWorkspacePath(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {

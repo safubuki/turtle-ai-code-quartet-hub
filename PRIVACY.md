@@ -6,7 +6,7 @@ Turtle AI Code Quartet Hub は、4つの開発ワークスペースを A-D ス�
 
 ## 参照する情報
 
-このアプリは、ユーザーの PC 上にあるローカル情報のみを参照します。
+このアプリは、ユーザーの PC 上にあるローカル情報を参照します（例外として、下記「ネットワーク利用」の GitHub 通知の確認があります）。
 
 - Win32 API で取得できる管理対象ウィンドウ（IDE / CLI / 補助 Windows アプリ）のハンドル、タイトル、プロセス ID、位置とサイズ。
 - ワークスペースパス、remote workspace URI、パネルタイトル、スロット割り当て、控えパネル、レイアウト設定。
@@ -28,11 +28,14 @@ AI 実行状態の推定、VS Code UI Automation 走査、VS Code 拡張ログ�
 - スロット別 VS Code user-data-dir。
 - 最後に確認できたワークスペースパスまたは remote workspace URI。
 - 例外や遅い処理を記録するアプリ診断ログ。
+- タイトルバーの更新バッジ（赤丸）を最後に確認した時刻（`update-badges.json`）。通知の内容は保存しません。
 - 任意のユーザー設定ファイル `%LOCALAPPDATA%\TurtleAIQuartetHub\config\turtle-ai-quartet-hub.json`（起動コマンドに加え、VS Code 共通のプロキシ URL を含む場合がある）。
 
 ## ネットワーク利用
 
 Turtle AI Code Quartet Hub は、アプリ独自のテレメトリ、ワークスペース情報、プロンプト、ソースコード、VS Code ログ、利用状況分析を公開者へ送信しません。
+
+GitHub CLI（`gh`）がインストール・サインイン済みで、設定 `checkPullRequestUpdates` が有効（既定）の場合、このアプリは Pull Request 受信箱アイコンに更新を知らせるため、約 3 分ごとに `gh api notifications` を実行して、ユーザー自身の GitHub アカウントの未読通知を読み取ります。通信は `gh` とユーザーのサインイン情報で GitHub に対して行われ、アプリは認証情報や通知の内容を保存・送信しません。`checkPullRequestUpdates` を `false` にすると、この確認は行いません。
 
 このアプリは、ローカルパスまたは remote workspace URI を指定して VS Code を起動する場合があります。VS Code、VS Code 拡張機能、SSH、GitHub Copilot、Codex、その他のツールが行うネットワーク通信は、それぞれの製品・サービスの仕様とプライバシーポリシーに従います。
 

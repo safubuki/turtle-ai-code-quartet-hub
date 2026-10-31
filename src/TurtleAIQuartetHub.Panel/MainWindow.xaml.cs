@@ -199,6 +199,7 @@ public partial class MainWindow : Window
             RefreshAuxiliaryUi();
             RefreshLaunchButtonAvailability();
             ScheduleUnusedUserDataReclaim();
+            StartTitleBarIndicators();
         };
     }
 
@@ -972,6 +973,7 @@ public partial class MainWindow : Window
     {
         _systemMonitorTimer.Stop();
         CancelFolderSizeCalculation();
+        HideDataFolderAnalysisDialog();
         HideDiskCleanupDialog();
         CancelDiskCleanupScan();
         SystemMonitorOverlay.Visibility = Visibility.Collapsed;
@@ -1011,10 +1013,16 @@ public partial class MainWindow : Window
             SystemMonitorCpuProgressBar.Foreground = snapshot.CpuBarBrush;
             SystemMonitorCpuSummaryText.Text = snapshot.CpuDetailText;
 
-            UpdatePagefileSummary();
+            var pagefileAssessment = UpdatePagefileSummary();
 
-            SystemMonitorDrivesItemsControl.ItemsSource = _systemMonitorService.GetDriveUsages();
+            var drives = _systemMonitorService.GetDriveUsages();
+            SystemMonitorDrivesItemsControl.ItemsSource = drives;
             SystemMonitorStatusText.Text = $"メモリ・CPU・各ドライブ・各フォルダの使用状況（更新: {DateTime.Now:HH:mm:ss}）";
+            ApplySystemHealth(SystemMonitorService.EvaluateHealth(
+                snapshot.CpuUsagePercent,
+                snapshot.MemoryUsagePercent,
+                drives,
+                pagefileAssessment));
         }
         catch (Exception ex)
         {
@@ -1024,7 +1032,7 @@ public partial class MainWindow : Window
 
     // メモリ使用量カードの下に pagefile.sys のディスク使用量を 1 行で出す。
     // 余裕があるときは注意文を出さず、増加・拡張間近のときだけ色付きで知らせる。
-    private void UpdatePagefileSummary()
+    private PagefileAssessment UpdatePagefileSummary()
     {
         var snapshot = _systemMonitorService.CapturePagefile();
         var assessment = SystemMonitorService.AssessPagefile(snapshot);
@@ -1047,6 +1055,7 @@ public partial class MainWindow : Window
         SystemMonitorPagefileWarningText.Visibility = showWarning ? Visibility.Visible : Visibility.Collapsed;
         SystemMonitorPagefileWarningText.Text = showWarning ? assessment.HintText : string.Empty;
         SystemMonitorPagefileWarningText.Foreground = SystemMonitorService.GetAssessmentBrush(assessment.Level);
+        return assessment;
     }
 
     private void StartFolderUsageCalculation()
@@ -2618,6 +2627,7 @@ public partial class MainWindow : Window
     {
         if (OpenInBrowser(PullRequestInboxUrl))
         {
+            MarkPullRequestsSeen();
             _statusStore.Message = "GitHub の Pull Request 受信箱を開きました。";
         }
     }
@@ -2682,7 +2692,7 @@ public partial class MainWindow : Window
 
         SuppressFocusedSlotReassertForPanelInput();
         _pendingSlotInfoClear = slot;
-        ClearSlotInfoMessageText.Text = $"スロット{slot.Name}の保存情報を削除して空のパネルに戻します。";
+        ClearSlotInfoMessageText.Text = $"スロット{slot.Name}の登録内容をクリアして空のパネルに戻します。";
         var detail = string.IsNullOrWhiteSpace(slot.PanelTitle)
             ? slot.ShortPath
             : slot.PanelTitle;
@@ -2733,7 +2743,7 @@ public partial class MainWindow : Window
                     _statusStore.Message = BuildCloseFailureMessage(
                         slot,
                         result,
-                        "パネル情報は削除していません。");
+                        "パネル情報はクリアしていません。");
                     return;
                 }
             }
@@ -3159,12 +3169,27 @@ public partial class MainWindow : Window
             return;
         }
 
+        SelectStoredPanelFolder(storedPanel);
+    }
+
+    // 空きの控えには新規登録、登録済みの控えはフォルダだけ差し替える（名前と選択アプリは残す）。
+    private void SelectStoredPanelFolder(StoredPanelSlot storedPanel)
+    {
+        var isChange = storedPanel.HasContent;
+
         // エクスプローラのフォルダ選択ダイアログ。ローカルフォルダのみ選択でき、リモート URI は指定できない。
         var dialog = new Microsoft.Win32.OpenFolderDialog
         {
-            Title = $"{storedPanel.Label} に登録するワークスペースフォルダを選択",
+            Title = isChange
+                ? $"{storedPanel.Label} のワークスペースフォルダを変更"
+                : $"{storedPanel.Label} に登録するワークスペースフォルダを選択",
             Multiselect = false
         };
+
+        if (isChange && storedPanel.CanOpenWorkspaceFolder)
+        {
+            dialog.InitialDirectory = storedPanel.ExplorerWorkspacePath;
+        }
 
         if (dialog.ShowDialog(this) != true)
         {
@@ -3172,19 +3197,27 @@ public partial class MainWindow : Window
         }
 
         var folderPath = dialog.FolderName;
+        var failureMessage = isChange
+            ? "選択したフォルダに変更できませんでした。"
+            : "選択したフォルダを控えに登録できませんでした。";
         if (string.IsNullOrWhiteSpace(folderPath) || !System.IO.Directory.Exists(folderPath))
         {
-            _statusStore.Message = "選択したフォルダを控えに登録できませんでした。";
+            _statusStore.Message = failureMessage;
             return;
         }
 
-        if (!_statusStore.RegisterStoredPanelWorkspace(storedPanel, folderPath))
+        var succeeded = isChange
+            ? _statusStore.ChangeStoredPanelWorkspace(storedPanel, folderPath)
+            : _statusStore.RegisterStoredPanelWorkspace(storedPanel, folderPath);
+        if (!succeeded)
         {
-            _statusStore.Message = "選択したフォルダを控えに登録できませんでした。";
+            _statusStore.Message = failureMessage;
             return;
         }
 
-        _statusStore.Message = $"{storedPanel.Label} に「{storedPanel.DisplayTitle}」を登録しました。";
+        _statusStore.Message = isChange
+            ? $"{storedPanel.Label}「{storedPanel.DisplayTitle}」のフォルダを変更しました: {storedPanel.WorkspacePath}"
+            : $"{storedPanel.Label} に「{storedPanel.DisplayTitle}」を登録しました。";
         RefreshAuxiliaryUi();
     }
 
@@ -3200,8 +3233,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        ShowClearStoredPanelDialog(storedPanel);
+    }
+
+    private void ShowClearStoredPanelDialog(StoredPanelSlot storedPanel)
+    {
         _pendingStoredPanelDeletion = storedPanel;
-        DeleteStoredPanelMessageText.Text = $"{storedPanel.Label} の保存内容を削除して空きスロットに戻します。";
+        DeleteStoredPanelMessageText.Text = $"{storedPanel.Label} の登録内容をクリアして空きスロットに戻します。";
 
         var detail = string.IsNullOrWhiteSpace(storedPanel.PanelTitle)
             ? storedPanel.ShortPath
@@ -3227,7 +3265,7 @@ public partial class MainWindow : Window
 
         var label = _pendingStoredPanelDeletion.Label;
         _statusStore.ClearStoredPanel(_pendingStoredPanelDeletion);
-        _statusStore.Message = $"{label} を空きスロットに戻しました。";
+        _statusStore.Message = $"{label} をクリアして空きスロットに戻しました（フォルダは削除していません）。";
         HideDeleteStoredPanelDialog();
         RefreshAuxiliaryUi();
     }
@@ -3744,13 +3782,14 @@ public partial class MainWindow : Window
         return leftSpace >= requiredSpace || leftSpace > rightSpace;
     }
 
-    // パネルと同じ高さを下限にし、全ページが入りきらないときは中身に合わせて伸ばす
-    // （一覧はスクロールさせずに全体を見渡せることを優先する）。
+    // 上端・下端をパネルと揃えるため、高さはパネルと同じに固定する。下限（MinHeight）だけだと、
+    // 長いタイトルの折り返しなどで中身が少しでも大きいと一覧だけ下へはみ出してずれる。
+    // 6 ページ分は通常この高さに収まり、入りきらないときだけ一覧部分をスクロールさせる。
     private void UpdateStoredOverviewHeight()
     {
         if (PanelFrameBorder.ActualHeight > 0)
         {
-            StoredOverviewRoot.MinHeight = PanelFrameBorder.ActualHeight;
+            StoredOverviewRoot.Height = PanelFrameBorder.ActualHeight;
         }
     }
 
@@ -4394,10 +4433,7 @@ public partial class MainWindow : Window
         }
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        SystemMonitorButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        PullRequestInboxButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        SettingsButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        HelpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        TitleBarToolButtonsPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         if (!isStandard && SystemMonitorOverlay.Visibility == Visibility.Visible)
         {
             HideSystemMonitorDialog();
@@ -4482,8 +4518,12 @@ public partial class MainWindow : Window
         StandardJumpButton.Width = isMicro ? 23 : 26;
         MinimizeButton.Width = isMicro ? 23 : 32;
         CloseButton.Width = isMicro ? 23 : 32;
-        MinimizeButton.Margin = isMicro ? new Thickness(0) : new Thickness(2, 0, 0, 0);
-        CloseButton.Margin = isMicro ? new Thickness(0) : new Thickness(2, 0, 0, 0);
+        // 表示切替・最小化・閉じるは VS Code のように少し間を空ける。極小表示は幅が足りないので詰める。
+        var windowControlMargin = isMicro ? new Thickness(0) : new Thickness(4, 0, 0, 0);
+        StandardJumpButton.Margin = windowControlMargin;
+        DisplayModeButton.Margin = windowControlMargin;
+        MinimizeButton.Margin = windowControlMargin;
+        CloseButton.Margin = windowControlMargin;
 
         (DisplayModeButton.Content, DisplayModeButton.ToolTip) = _displayMode switch
         {
@@ -5500,11 +5540,7 @@ public partial class MainWindow : Window
         CancelInlineTitleClick();
         if (e.ClickCount >= 2)
         {
-            textBox.IsReadOnly = false;
-            textBox.Focusable = true;
-            textBox.Cursor = Cursors.IBeam;
-            textBox.Focus();
-            textBox.SelectAll();
+            BeginInlineTitleTextBoxEdit(textBox);
         }
         else
         {
@@ -5569,6 +5605,15 @@ public partial class MainWindow : Window
         }
 
         FinishInlineTitleTextBoxEdit(textBox, commit: true, clearKeyboardFocus: false);
+    }
+
+    private static void BeginInlineTitleTextBoxEdit(TextBox textBox)
+    {
+        textBox.IsReadOnly = false;
+        textBox.Focusable = true;
+        textBox.Cursor = Cursors.IBeam;
+        textBox.Focus();
+        textBox.SelectAll();
     }
 
     private static void FinishInlineTitleTextBoxEdit(TextBox textBox, bool commit, bool clearKeyboardFocus)
@@ -6071,6 +6116,13 @@ public partial class MainWindow : Window
         if (DiskCleanupConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideDiskCleanupConfirmDialog();
+            e.Handled = true;
+            return;
+        }
+
+        if (DataFolderAnalysisOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideDataFolderAnalysisDialog();
             e.Handled = true;
             return;
         }

@@ -89,7 +89,11 @@ dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csp
 4. 起動中スロットの別アプリボタンを押すと、同じ位置でアプリを切り替えます。
 5. スロットボタンを押すと、1面フォーカス表示と4面表示を切り替えます。
    管理ウィンドウの最大化ボタンやタイトルバーのダブルクリックでもフォーカス表示に切り替わります。直接復元すると元の4面位置へ戻り、直接最小化した窓は最小化のまま維持します。同期は状態更新の間隔（既定は約1秒）で行います。
-6. 右上のゴミ箱アイコンで、保存済みのスロット情報を確認付きで削除できます。
+6. 右上の消しゴムアイコンで、このアプリに登録したスロット情報（タイトル・ワークスペース・選択アプリ）を確認付きでクリアできます。フォルダやファイル本体は削除されません。
+7. 控えカード（標準・縮小表示のカード、控え一覧のタイル）を右クリックすると、スロット A〜D への表示、フォルダの登録 / 変更、名前の編集、エクスプローラー / GitHub で開く、控えのクリアをまとめて操作できます。
+8. タイトルバーのシステムモニタアイコンは、CPU・メモリ・ディスク空き容量・ページファイルのうち最も悪い状態を色で示します（緑＝正常、黄＝注意、赤＝警告）。ツールチップに原因の項目を表示します。
+9. Pull Request 受信箱アイコンは、GitHub CLI（`gh`）がサインイン済みなら約 3 分ごとに未読の Pull Request 通知（コメント・レビュー・レビュー依頼・CI 結果など）を確認し、新しい更新があると右下に赤丸を出します。受信箱を開くと既読扱いになり赤丸が消えます。
+10. システムモニタの「アプリのデータ（ハブ・IDE）」の各行にある虫眼鏡ボタンで、Hub データ・VS Code・Antigravity IDE のデータの内訳と、容量が増えた原因を解析できます（読み取りのみ）。結果は診断コード（H1・V3 など）と大きさで表示され、意味と対処は [docs/data-folder-diagnostics.md](docs/data-folder-diagnostics.md) にまとめています。
 
 ## CLI インストール例
 
@@ -195,6 +199,7 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `launchTimeoutSeconds`: VS Code / Antigravity / CLI 起動待ち時間
 - `remoteReconnectTimeoutSeconds`: SSH / Remote 接続の再接続待ち時間
 - `statusRefreshIntervalMilliseconds`: 管理中ウィンドウ状態とワークスペース表示の更新間隔
+- `checkPullRequestUpdates`: Pull Request 受信箱アイコンの赤丸のため、`gh api notifications` で未読通知を確認するか。既定は `true`。`gh` が無い・未サインインのときは確認しない。`false` にすると `gh` を起動せず GitHub へも問い合わせない
 - `useDedicatedUserDataDirs`: スロット別に VS Code user-data-dir を切るか。既定は `false`（標準プロファイル共有）。`true` にするとウィンドウ識別は容易になるが、キャッシュがスロット数だけ増える。専用時は `User/settings.json` が無い初回だけ `%APPDATA%/Code/User/settings.json`（Roaming）へリンクする。既存ファイルや VS Code での保存によりリンクが外れたファイルは再リンクせず、その窓のプロキシの有効・無効を保持する。Roaming の内容はハブから書き換えない
 - `inheritMainUserState`: 専用 user-data-dir 利用時に、通常 VS Code の設定やスニペットをスロットへ引き継ぐか。`settings.json` は未作成のときだけ種としてコピーし、既存のパネル設定は上書きしない。`globalStorage` や Chromium キャッシュはコピーしない
 - `manageVsCodeUserSettings` / `vsCodeUseHttpProxy` / `vsCodeHttpProxy` / `vsCodeHttpNoProxy`: 歯車設定の「VS Code 共通ユーザー設定」。プロキシはハブ設定へ保存し、VS Code 起動時にプロセス環境変数として渡す。専用窓に保存済みの設定があれば環境変数もその内容を優先し、起動時にプロキシキーを上書きしない。「全パネルへ適用」を押した場合は専用プロファイルのプロキシキーを更新する。標準の `%APPDATA%/Code/User/settings.json` は変更しない
