@@ -221,6 +221,7 @@
 - **配置**: `CompactStoredPanelTemplate` の A-D ボタンは `UniformGrid Columns="2"` で上段 A/B、下段 C/D とする。カード幅を変えず、各ボタンの横幅を確保する。
 - **高さ**: ボタン行は 46 DIP、各ボタンは高さ 21 DIP とし、縮小表示の控えを開いたときは既存の `GetCompactModeHeight` による実測でウィンドウを縦に広げる。
 - **文字**: 控えトグルとカード番号は 11 DIP、タイトルは 11 DIP、フォルダ名は 10.5 DIP。タイトルは番号の横で縦中央に揃え、利用可能な幅に応じて省略表示する。標準表示の控えカードと割り当て処理は変更しない。
+- **注意**: カードごとの A-D ボタンは第38節（#4）で廃止した。
 
 ## 24. 縮小・極小表示のスロットカード入替（2026-09-29 追加）
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
@@ -327,7 +328,7 @@
 
 ## 36. 控え一覧の高さ・控えの右クリックメニュー・クリア表記・タイトルバーの状態表示（2026-10-30 追加）
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `MainWindow.StoredPanelMenu.cs`, `MainWindow.TitleBarIndicators.cs`, `UpdateBadge.cs`, `Models/StoredPanelSlot.cs`, `Models/SystemMonitorModels.cs`, `Services/StatusStore.cs`, `Services/SystemMonitorService.cs`, `Services/PullRequestNotificationService.cs`, `Services/UpdateBadgeStateStore.cs`, `TurtleAIQuartetHub.Panel.Tests/TitleBarIndicatorTests.cs`
-- **控え一覧の高さ（#5）**: `UpdateStoredOverviewHeight` は `StoredOverviewRoot.Height` をパネル（`PanelFrameBorder.ActualHeight`）と同じに固定する。`MinHeight` だけに戻すと、長いタイトルの折り返しで中身が少し大きいだけで一覧の下端がパネルより下へはみ出す。タイルのタイトルは `MaxHeight="32"`（2 行）で省略し、通常は 6 ページがスクロールなしで収まる。入りきらないときだけ一覧部分をスクロールさせる。控え一覧は標準表示専用（縮小表示へ切り替えると閉じる）。
+- **控え一覧の高さ（#5）**: `UpdateStoredOverviewHeight` は `StoredOverviewRoot.Height` をパネル（`PanelFrameBorder.ActualHeight`）と同じに固定する。`MinHeight` だけに戻すと、長いタイトルの折り返しで中身が少し大きいだけで一覧の下端がパネルより下へはみ出す。タイルのタイトルは `MaxHeight="32"`（2 行）で省略し、通常は 6 ページがスクロールなしで収まる。入りきらないときだけ一覧部分をスクロールさせる。表示モードを切り替えると一覧は閉じる（縮小表示でも開ける。第38節）。
 - **控えの右クリックメニュー（#8）**: 標準・縮小の控えカードと控え一覧のタイルに `PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"` を付け、メニューは開くたびにコードで組み立てる（`BuildStoredPanelContextMenu`）。直前に `StoredPanelSlot.RefreshWorkspaceLinks()` でフォルダの有無と GitHub リモートを読み直す。名前の編集中（`TextBox.IsReadOnly == false`）は入力欄の標準メニューを優先する。各項目はカード上のボタンと同じ処理（`ShowStoredPanelAsync` / `SelectStoredPanelFolder` / `ShowClearStoredPanelDialog`）を呼ぶ。登録済みの控えの「フォルダを変更」は `StatusStore.ChangeStoredPanelWorkspace` で、利用者が付けた名前と選択アプリを残し、旧フォルダ名から自動で付いた名前（連番付きを含む）だけ新しいフォルダ名にする。タイトル欄の無い控え一覧のタイルから「名前を編集」すると、下の控えパネルを該当タブへ切り替えて、そのカードのタイトル欄で編集を始める。メニューの見た目は `PanelContextMenuStyle`（暗色・角丸、右端の `InputGestureText` に配置先の現在の内容）。
 - **「削除」→「クリア」（#9）**: 控え・スロットのゴミ箱は消しゴム（Segoe MDL2 `&#xE75C;`）にし、ツールチップ・確認ダイアログ・確定ボタンを「クリア」に統一した。両方の確認ダイアログに「※ フォルダやファイル本体は削除されません。」を出す。**「削除」＝ファイルが消える、「クリア」＝登録が消える** の使い分けを守り、ディスク整理など本当にファイルを消す箇所の「削除」とゴミ箱アイコンはそのまま残す。
 - **システムモニタのアイコン色（#7）**: `SystemMonitorService.EvaluateHealth` が CPU / メモリ / ローカル ディスク / ページファイルの最も悪い状態（警告 > 注意 > 正常）と原因の一覧を返し、`ApplySystemHealth` がアイコン色（緑・黄・赤）とツールチップに反映する。しきい値はバーの色と同じ定数（`CpuWarningPercent` など）を使う。モーダルを開いていない間は 5 秒ごとに `Task.Run(CaptureHealth)` で評価し（CPU はこの間の平均）、開いている間は 1.5 秒ごとの更新が同じ値でアイコンも更新する。背景評価は `GetDriveUsages(fixedOnly: true)` でローカル ディスクだけを調べ、応答の遅いネットワークドライブや常に満杯の光学ドライブに触れない。ページファイルの最小観測値は両方の経路から更新するので `_pagefileLock` で守る。
@@ -341,3 +342,13 @@
 - **目的**: 開発環境で再現しない容量の肥大を、利用者が診断コード（H1〜H8 / V1〜V11 / G1〜G11）と大きさだけ伝えれば原因が分かるようにする。コードの意味・しきい値・開発側の改善案は `docs/data-folder-diagnostics.md` が正。コードを聞いたらまずこの一覧を見る。
 - **仕組み**: `FolderSizeIndex` がフォルダを 1 回だけ走査し、5 階層までのフォルダ別合計を持つ（35,913 ファイル・6 GB で約 0.6 秒）。判定は `Evaluate`（純粋関数）で、合成データのテストで現象ごとに確認する。`workspace.json` の参照先が消えたものを「消えたフォルダのデータ」とする。VS Code は `file:///c%3A/...` と書くため `TryGetLocalPath` で自前変換する。`ssh-remote%2B...` のようなリモート URI は .NET で解釈できないので、存在確認せず残っている扱いにする。
 - **注意**: コード番号は既存を変えず、末尾に足す（利用者が覚えた記号の意味を変えない）。解析は読み取りのみで、削除はディスク整理に任せる。
+
+## 38. 縮小表示の控えは「選んで上のスロットへ」（2026-11-01 追加・#4）
+- **ファイル**: `MainWindow.xaml`（`CompactStoredPanelTemplate`・`CompactSlotTemplate`・`CompactSlotButtonStyle`・`CompactStoredAssignHintRow`）, `MainWindow.CompactStoredAssign.cs`, `SlotAssignTarget.cs`
+- **目的**: 縮小表示の控えエリアの高さを減らす。カードごとの A-D ボタン（46 DIP）をやめ、カードは名前とフォルダ名の 2 行にする。控えエリアは約 244→約 136 DIP。
+- **操作**: 控えカードを単クリック（`PreviewMouseLeftButtonDown` の `ClickCount == 1`）で選ぶと、`SlotAssignTarget.IsArmed`（継承する添付プロパティ）を `CompactBarPanel` に立て、上のスロット 4 枚が配置先（緑枠・「▶ ここに表示」）に変わる。押したスロットへ `ShowStoredPanelFromOverviewAsync` で表示し、選択は解除される。選択中はタブ行を案内と `取消` に置き換える（高さは変えない）。Esc・同じカードの再クリック・空きカードのクリック・表示モードの切り替えでも解除する。
+- **選択の共有**: 選択は標準表示の控え一覧と同じ `_selectedOverviewStoredPanel` / `IsOverviewSelected` を使う。`SelectOverviewStoredPanel` が `UpdateCompactStoredAssignState` も呼ぶ。`ApplyDisplayMode` で必ず解除し、モードをまたいで持ち越さない。
+- **注意**: 選択中はスロットの名前欄（`InlineTitleTextBox`）を `IsHitTestVisible=False` にし、IDE 切替・起動ボタンを隠す。名前の単クリックはフォーカス切替のタイマーを動かすため、そのままだと配置ではなくフォーカス切替になる。ドラッグでの配置（`SlotCard_Drop`）と右クリックメニューの「スロット X に表示」はそのまま使える。
+- **縮小表示の控え一覧**: 縮小表示の「控え」トグルの右に `CompactStoredOverviewButton` を置き、標準表示と同じ `StoredOverviewPopup` を開く。高さは `UpdateStoredOverviewHeight`（`PanelFrameBorder` の高さ）で縮小表示のウィンドウに揃い、左右の配置ルール（`ShouldPlaceStoredOverviewOnLeft`）も同じ。縮小表示では一覧の A〜D パッド（`StoredOverviewTargetPad`）を隠し、タイルで選んだカードも本体のスロットの「ここに表示」で配置する。`ApplyDisplayMode` は表示モードを切り替えるたびに一覧を閉じる（標準表示で控えが開いていれば自動で開き直す）。
+- **縮小表示の一覧の見た目**: `CompactLayout.IsActive`（継承する添付プロパティ）を `StoredOverviewRoot` に立て、タイルは番号・フォルダ名の行（`TileFooter`）を省いた名前だけの表示（最小高さ 34 DIP・文字 11 DIP、2 行まで）にする。ページ見出しは 10.5 DIP、一覧の見出しは 12.5 DIP、案内は 10.5 DIP で、縮小表示の控えカードやタブの文字に揃える。フォルダ名などはタイルのツールチップで見る。
+- **縮小表示の一覧の開き方**: 縮小表示の「控え」トグルで控えを開くと、標準表示の Expander と同じく `ScheduleStoredOverviewAutoOpen` で一覧も横へ引き出し（同じスライド・フェード）、閉じると一緒に閉じる。判定は `IsStoredPanelsAreaOpen`（標準＝Expander、縮小＝`_isCompactStoredPanelsOpen`）に集約し、表示モード切替・終了確認からの復帰・最小化からの復帰でも同じ条件で開き直す。一覧のスクロールバーは `SlimScrollViewerStyle` / `SlimScrollBarStyle`（幅 6・角丸・矢印なし、中身と 5 DIP 離す）。

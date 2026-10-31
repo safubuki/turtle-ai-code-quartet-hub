@@ -196,6 +196,34 @@ internal static class SystemMonitorAndCardTitleTests
                 titleTextBox?.ToString() ?? "null");
         }
 
+        // 2b. 縮小表示の控えカードはカードごとの A〜D ボタンを持たず（#4）、選択中はスロット側が配置先に切り替わること
+        var compactStoredTemplate = root.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "CompactStoredPanelTemplate");
+        var compactSlotTemplate = root.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "CompactSlotTemplate");
+        Check(
+            failures,
+            "縮小表示の控えカードに A〜D ボタンが無く、クリックで選ぶ作りになっていること",
+            compactStoredTemplate is not null
+            && !compactStoredTemplate.Descendants().Any(e => (string?)e.Attribute("Click") == "ShowStoredPanelButton_Click")
+            && (string?)compactStoredTemplate.Elements().First().Attribute("PreviewMouseLeftButtonDown") == "CompactStoredCard_PreviewMouseLeftButtonDown",
+            compactStoredTemplate?.ToString() ?? "null");
+        Check(
+            failures,
+            "縮小表示のスロットが控えの選択中に「ここに表示」へ切り替わるトリガーを持つこと",
+            compactSlotTemplate is not null
+            && compactSlotTemplate.Descendants().Any(e => e.Name.LocalName == "Trigger"
+                && (string?)e.Attribute("Property") == "local:SlotAssignTarget.IsArmed")
+            && compactSlotTemplate.Descendants().Any(e => (string?)e.Attribute(x + "Name") == "CompactSlotAssignPill"),
+            "CompactSlotTemplate");
+        var compactOverviewButton = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "CompactStoredOverviewButton");
+        Check(
+            failures,
+            "縮小表示にも控え一覧ボタンがあり、標準表示と同じ一覧を開くこと",
+            compactOverviewButton is not null && (string?)compactOverviewButton.Attribute("Click") == "StoredOverviewButton_Click",
+            compactOverviewButton?.ToString() ?? "null");
+
         // 3. TitleBarButtonsPanel で SystemMonitorButton → PullRequestInboxButton → SettingsButton の順に並ぶこと
         var titleBarButtonsPanel = root.Descendants()
             .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "TitleBarButtonsPanel");

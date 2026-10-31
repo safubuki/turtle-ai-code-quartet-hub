@@ -450,7 +450,7 @@ public partial class MainWindow : Window
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
         RestoreBoundsAfterExitConfirm();
         _closeRequestSource = "Alt+F4 またはシステムメニュー";
-        if (_displayMode == DisplayMode.Standard && StoredPanelsExpander.IsExpanded)
+        if (IsStoredPanelsAreaOpen)
         {
             ScheduleStoredOverviewAutoOpen();
         }
@@ -1400,6 +1400,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsCompactStoredAssignArmed)
+        {
+            ShowSelectedStoredPanelInCompactSlot(slot);
+            return;
+        }
+
         HandleCompactSlotToggle(slot);
     }
 
@@ -1441,6 +1447,15 @@ public partial class MainWindow : Window
 
         _isCompactStoredPanelsOpen = !_isCompactStoredPanelsOpen;
         UpdateCompactStoredPanelsVisibility();
+        // 標準表示の控え Quartet と同じく、開いたら一覧も横に引き出し、閉じたら一緒に閉じる。
+        if (_isCompactStoredPanelsOpen)
+        {
+            ScheduleStoredOverviewAutoOpen();
+        }
+        else
+        {
+            CloseStoredOverview(animate: false);
+        }
 
         var currentBounds = GetCurrentWindowBounds();
         var scale = GetCurrentDpiScale(new WindowInteropHelper(this).Handle);
@@ -3585,8 +3600,11 @@ public partial class MainWindow : Window
         _isStoredOverviewClosing = false;
         SelectOverviewStoredPanel(null);
         UpdateStoredOverviewHeight();
-        StoredOverviewButton.Tag = "Active";
-        AutomationProperties.SetName(StoredOverviewButton, "控えの一覧を閉じる");
+        foreach (var button in new[] { StoredOverviewButton, CompactStoredOverviewButton })
+        {
+            button.Tag = "Active";
+            AutomationProperties.SetName(button, "控えの一覧を閉じる");
+        }
 
         if (StoredOverviewPopup.IsOpen)
         {
@@ -3600,8 +3618,16 @@ public partial class MainWindow : Window
         StoredOverviewPopup.IsOpen = true;
     }
 
-    // 標準表示で控え Quartet が開いている間は、一覧も最初から出しておく（すぐ見たい用途のため）。
-    // 一覧ボタンで閉じた後は、次に控え Quartet を開き直すまで出さない。
+    // 控えが開いているか（標準表示は控え Quartet の Expander、縮小表示は「控え」トグル）。
+    private bool IsStoredPanelsAreaOpen => _displayMode switch
+    {
+        DisplayMode.Standard => StoredPanelsExpander.IsExpanded,
+        DisplayMode.Compact => _isCompactStoredPanelsOpen,
+        _ => false
+    };
+
+    // 控えが開いている間は、一覧も最初から出しておく（すぐ見たい用途のため）。標準・縮小表示とも同じ。
+    // 一覧ボタンで閉じた後は、次に控えを開き直すまで出さない。
     private void ScheduleStoredOverviewAutoOpen()
     {
         CancelStoredOverviewAutoOpen();
@@ -3628,8 +3654,7 @@ public partial class MainWindow : Window
     private void StoredOverviewAutoOpenTimer_Tick(object? sender, EventArgs e)
     {
         CancelStoredOverviewAutoOpen();
-        if (_displayMode != DisplayMode.Standard
-            || !StoredPanelsExpander.IsExpanded
+        if (!IsStoredPanelsAreaOpen
             || WindowState == WindowState.Minimized
             || AppExitConfirmOverlay.Visibility == Visibility.Visible
             || StoredOverviewPopup.IsOpen && !_isStoredOverviewClosing)
@@ -3643,8 +3668,11 @@ public partial class MainWindow : Window
     private void CloseStoredOverview(bool animate)
     {
         CancelStoredOverviewAutoOpen();
-        StoredOverviewButton.ClearValue(TagProperty);
-        AutomationProperties.SetName(StoredOverviewButton, "控えの一覧を開く");
+        foreach (var button in new[] { StoredOverviewButton, CompactStoredOverviewButton })
+        {
+            button.ClearValue(TagProperty);
+            AutomationProperties.SetName(button, "控えの一覧を開く");
+        }
         SelectOverviewStoredPanel(null);
 
         if (!StoredOverviewPopup.IsOpen)
@@ -3948,16 +3976,27 @@ public partial class MainWindow : Window
         }
 
         _selectedOverviewStoredPanel = storedPanel;
+        UpdateCompactStoredAssignState();
         if (storedPanel is not null)
         {
             storedPanel.IsOverviewSelected = true;
             StoredOverviewTargetPad.Tag = "Armed";
-            StoredOverviewHintText.Text = $"「{storedPanel.DisplayTitle}」の配置先 A〜D を押す";
-            StoredOverviewHintText.ToolTip = StoredOverviewHintText.Text;
+            StoredOverviewHintText.Text = IsCompactMode
+                ? $"「{storedPanel.DisplayTitle}」をスロットの「ここに表示」で配置"
+                : $"「{storedPanel.DisplayTitle}」の配置先 A〜D を押す";
+            StoredOverviewHintText.ToolTip = StoredOverviewHintText.Text + (IsCompactMode ? "（Esc で取消）" : string.Empty);
             return;
         }
 
         StoredOverviewTargetPad.ClearValue(TagProperty);
+        if (IsCompactMode)
+        {
+            // 縮小表示の一覧には A〜D パッドが無く、本体のスロットが配置先になる。
+            StoredOverviewHintText.Text = "カードを選んでスロットへ（ドラッグでも可）";
+            StoredOverviewHintText.ToolTip = "カードを選ぶと本体のスロット A〜D が「ここに表示」に変わります。押したスロットに表示します。カードをスロットへドラッグしても配置できます。";
+            return;
+        }
+
         StoredOverviewHintText.Text = "カードを選んで A〜D を押す（ドラッグでも可）";
         StoredOverviewHintText.ToolTip = "カードを選んで A〜D を押すか、カードを A〜D やメインのカードへドラッグして配置します。";
     }
@@ -4411,6 +4450,8 @@ public partial class MainWindow : Window
         var preModeChangeBounds = GetCurrentWindowBounds();
 
         _displayMode = mode;
+        // 控えの選択は表示モードごとの操作なので、切り替えたら持ち越さない。
+        SelectOverviewStoredPanel(null);
 
         var isStandard = mode == DisplayMode.Standard;
         var isCompact = mode == DisplayMode.Compact;
@@ -4420,14 +4461,19 @@ public partial class MainWindow : Window
         CompactBarPanel.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         MicroPanel.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
         CompactStoredPanelsToggleButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        CompactStoredOverviewButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        // 縮小表示の一覧は本体のスロットを配置先にするので、一覧側の A〜D パッドは標準表示だけ。
+        StoredOverviewTargetPad.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        CompactLayout.SetIsActive(StoredOverviewRoot, isCompact);
+        // 一覧の見出しも縮小表示の文字の大きさに揃える（タイルとページ見出しは XAML のトリガーで切り替える）。
+        StoredOverviewTitleText.FontSize = isCompact ? 12.5 : 14;
+        StoredOverviewHintText.FontSize = isCompact ? 10.5 : 11.5;
         AuxiliaryApplicationPanel.Tag = mode.ToString();
         UpdateCompactStoredPanelsVisibility();
         StoredPanelsExpander.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        if (!isStandard)
-        {
-            CloseStoredOverview(animate: false);
-        }
-        else if (StoredPanelsExpander.IsExpanded)
+        // 一覧は表示モードごとに高さと配置先の操作が違うので、切り替えたら一度閉じる。
+        CloseStoredOverview(animate: false);
+        if (IsStoredPanelsAreaOpen)
         {
             ScheduleStoredOverviewAutoOpen();
         }
@@ -4809,7 +4855,7 @@ public partial class MainWindow : Window
         {
             _wasMinimized = false;
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(CorrectWindowSizeForCurrentDpi));
-            if (StoredPanelsExpander.IsExpanded)
+            if (IsStoredPanelsAreaOpen)
             {
                 ScheduleStoredOverviewAutoOpen();
             }
@@ -6141,6 +6187,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsCompactStoredAssignArmed && e.Key == Key.Escape)
+        {
+            SelectOverviewStoredPanel(null);
+            e.Handled = true;
+            return;
+        }
+
         base.OnPreviewKeyDown(e);
     }
 
@@ -6438,6 +6491,7 @@ public partial class MainWindow : Window
         CompactBarPanel.IsEnabled = !busy;
         CompactStoredPanelsArea.IsEnabled = !busy;
         CompactStoredPanelsToggleButton.IsEnabled = !busy;
+        CompactStoredOverviewButton.IsEnabled = !busy;
         StoredPanelsExpander.IsEnabled = !busy;
         StoredOverviewTargetPad.IsEnabled = !busy;
         SettingsOverlay.IsEnabled = !busy;

@@ -714,6 +714,18 @@
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="CompactButtonBorder" Property="Background" Value="#121715" />
               </Trigger>
+              <!-- 控えカードを選んでいる間は配置先として光らせる（local:SlotAssignTarget.IsArmed は CompactBarPanel から継承）。 -->
+              <Trigger Property="local:SlotAssignTarget.IsArmed" Value="True">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#152C1F" />
+                <Setter TargetName="CompactButtonBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="local:SlotAssignTarget.IsArmed" Value="True" />
+                  <Condition Property="IsMouseOver" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="#24402F" />
+              </MultiTrigger>
               <DataTrigger Binding="{Binding IsFocused}" Value="True">
                 <Setter TargetName="CompactButtonBorder" Property="Effect">
                   <Setter.Value>
@@ -1784,7 +1796,8 @@
     </DataTemplate>
 
     <DataTemplate x:Key="CompactSlotTemplate" DataType="{x:Type models:WindowSlot}">
-      <Button Tag="{Binding}"
+      <Button x:Name="CompactSlotButton"
+              Tag="{Binding}"
               Click="CompactSlotButton_Click"
               PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="SlotCard_PreviewMouseMove"
@@ -1807,14 +1820,16 @@
                        Style="{StaticResource CompactSlotBadgeTextStyle}" />
           </Border>
 
-          <TextBox Grid.Column="1"
+          <TextBox x:Name="CompactSlotTitleBox"
+                   Grid.Column="1"
                    Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
                    Style="{StaticResource InlineTitleTextBox}"
                    VerticalAlignment="Center"
                    MinHeight="0" Height="18" Padding="0"
                    FontSize="12" />
 
-          <Button Grid.Column="2"
+          <Button x:Name="CompactSlotIdeToggle"
+                  Grid.Column="2"
                   Tag="{Binding}"
                   Content="{Binding CompactIdeToggleLabel}"
                   ToolTip="{Binding CompactIdeToggleToolTip}"
@@ -1823,12 +1838,41 @@
                   IsEnabled="{Binding CanToggleCompactIde}"
                   Click="CompactSlotIdeToggleButton_Click"
                   Style="{StaticResource CompactSlotIdeToggleButtonStyle}" />
-          <Button Grid.Column="3"
+          <Button x:Name="CompactSlotPowerToggle"
+                  Grid.Column="3"
                   Tag="{Binding}"
                   Click="CompactSlotPowerButton_Click"
                   Style="{StaticResource CompactSlotPowerButtonStyle}" />
+          <!-- 控えカードを選んでいる間だけ、IDE 切替・起動ボタンの代わりに出す。クリックはカード本体が受ける。 -->
+          <Border x:Name="CompactSlotAssignPill"
+                  Grid.Column="2"
+                  Grid.ColumnSpan="2"
+                  Visibility="Collapsed"
+                  IsHitTestVisible="False"
+                  Height="18"
+                  Margin="4,0,0,0"
+                  Padding="7,0"
+                  CornerRadius="9"
+                  Background="#223027"
+                  BorderBrush="{StaticResource AccentBrush}"
+                  BorderThickness="1">
+            <TextBlock Text="▶ ここに表示"
+                       Foreground="{StaticResource AccentBrush}"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+          </Border>
         </Grid>
       </Button>
+      <DataTemplate.Triggers>
+        <!-- 配置先として選ぶ間は、名前のクリック（フォーカス切替・名前編集）もカード本体のクリックとして扱う。 -->
+        <Trigger SourceName="CompactSlotButton" Property="local:SlotAssignTarget.IsArmed" Value="True">
+          <Setter TargetName="CompactSlotTitleBox" Property="IsHitTestVisible" Value="False" />
+          <Setter TargetName="CompactSlotIdeToggle" Property="Visibility" Value="Collapsed" />
+          <Setter TargetName="CompactSlotPowerToggle" Property="Visibility" Value="Collapsed" />
+          <Setter TargetName="CompactSlotAssignPill" Property="Visibility" Value="Visible" />
+        </Trigger>
+      </DataTemplate.Triggers>
     </DataTemplate>
 
     <!-- 控えカードの右クリックメニュー（項目はコードビハインドで組み立てる）。既定の白いメニューではなく、
@@ -1918,14 +1962,14 @@
       </Style.Resources>
     </Style>
 
+    <!-- 縮小表示の控えカード。A〜D ボタンは持たず、クリックで選んでから上のスロット A〜D を押して配置する
+         （選択中は IsOverviewSelected。標準表示の控え一覧と同じ選択を使う）。 -->
     <DataTemplate x:Key="CompactStoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
-      <Border Background="{StaticResource SurfaceAltBrush}"
-              BorderBrush="{StaticResource BorderBrushSoft}"
-              BorderThickness="1"
-              CornerRadius="6"
-              Padding="5"
+      <Border CornerRadius="6"
+              Padding="5,4"
+              Cursor="Hand"
               Tag="{Binding}"
-              PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
+              PreviewMouseLeftButtonDown="CompactStoredCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
               PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
               AllowDrop="True"
@@ -1933,11 +1977,26 @@
               DragLeave="StoredPanelCard_DragLeave"
               DragOver="StoredPanelCard_DragOver"
               Drop="StoredPanelCard_Drop">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="#3D4E45" />
+              </Trigger>
+              <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
+                <Setter Property="Background" Value="#1A2C21" />
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="21" />
-            <RowDefinition Height="18" />
-            <RowDefinition Height="46" />
+            <RowDefinition Height="17" />
           </Grid.RowDefinitions>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -1973,21 +2032,8 @@
           </StackPanel>
           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ShortPath}"
                      ToolTip="{Binding WorkspacePath}" Foreground="{StaticResource MutedTextBrush}"
-                     FontSize="10.5" TextTrimming="CharacterEllipsis" />
-          <UniformGrid Grid.Row="2" Grid.ColumnSpan="2" Columns="2">
-            <Button Content="A" Tag="{Binding}" CommandParameter="A" Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="0,0,3,2" IsEnabled="{Binding HasContent}" />
-            <Button Content="B" Tag="{Binding}" CommandParameter="B" Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="3,0,0,2" IsEnabled="{Binding HasContent}" />
-            <Button Content="C" Tag="{Binding}" CommandParameter="C" Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="0,2,3,0" IsEnabled="{Binding HasContent}" />
-            <Button Content="D" Tag="{Binding}" CommandParameter="D" Click="ShowStoredPanelButton_Click"
-                    Style="{StaticResource StoredAssignButton}" MinWidth="0" MinHeight="21" Height="21"
-                    Padding="0" Margin="3,2,0,0" IsEnabled="{Binding HasContent}" />
-          </UniformGrid>
+                     FontSize="10.5" TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center" />
         </Grid>
       </Border>
     </DataTemplate>
@@ -2186,6 +2232,74 @@
          配置先は一覧上部の A〜D パッド、またはメインのスロットカードへのドロップで決める。
          6 ページ分がスクロールなしで収まるよう、横長・低めにして文字を大きく取る。
          一覧がパネルより低いときは、余った高さを 6 段へ均等に配って下端までぴったり埋める。 -->
+    <!-- 控え一覧のスクロールバー。Windows 標準の白い太いバーではなく、パネル配色の細い角丸にする。
+         矢印ボタンは置かず、つまみのドラッグ・溝のクリック・ホイールで動かす。 -->
+    <Style x:Key="SlimScrollBarStyle" TargetType="ScrollBar">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="6" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Border Background="#141A17" CornerRadius="3">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" />
+                </Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" />
+                </Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb Cursor="Hand">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbBorder" MinHeight="24" CornerRadius="3" Background="#3E5148" />
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="#5E7568" />
+                          </Trigger>
+                          <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="#3B7A55" />
+                          </Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 縦スクロール専用。バーは中身に重ねず右に専用の溝（間隔 5）を取り、スクロールが要るときだけ出す。 -->
+    <Style x:Key="SlimScrollViewerStyle" TargetType="ScrollViewer">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollViewer">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                      CanContentScroll="{TemplateBinding CanContentScroll}" />
+              <ScrollBar x:Name="PART_VerticalScrollBar"
+                         Grid.Column="1"
+                         Margin="5,0,0,0"
+                         Orientation="Vertical"
+                         Style="{StaticResource SlimScrollBarStyle}"
+                         Value="{TemplateBinding VerticalOffset}"
+                         Maximum="{TemplateBinding ScrollableHeight}"
+                         ViewportSize="{TemplateBinding ViewportHeight}"
+                         Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <DataTemplate x:Key="StoredOverviewTileTemplate" DataType="{x:Type models:StoredPanelSlot}">
       <Border x:Name="TileBorder"
               MinHeight="62"
@@ -2229,7 +2343,7 @@
                      MaxHeight="32"
                      TextWrapping="Wrap"
                      TextTrimming="CharacterEllipsis" />
-          <DockPanel Grid.Row="1" LastChildFill="True">
+          <DockPanel x:Name="TileFooter" Grid.Row="1" LastChildFill="True">
             <TextBlock Text="{Binding Label}"
                        DockPanel.Dock="Left"
                        Margin="0,0,5,0"
@@ -2272,6 +2386,17 @@
           <Setter TargetName="TileApplicationText" Property="Visibility" Value="Collapsed" />
           <Setter TargetName="TilePathText" Property="Visibility" Value="Collapsed" />
         </DataTrigger>
+        <!-- 縮小表示の一覧は高さが限られるので、番号・フォルダ名の行を省いて名前だけの低いタイルにする
+             （フォルダ名などはツールチップで見られる）。local:CompactLayout.IsActive は StoredOverviewRoot から継承。 -->
+        <Trigger SourceName="TileBorder" Property="local:CompactLayout.IsActive" Value="True">
+          <Setter TargetName="TileBorder" Property="MinHeight" Value="34" />
+          <Setter TargetName="TileBorder" Property="Padding" Value="6,3,6,3" />
+          <Setter TargetName="TileFooter" Property="Visibility" Value="Collapsed" />
+          <Setter TargetName="TileTitleText" Property="FontSize" Value="11" />
+          <Setter TargetName="TileTitleText" Property="LineHeight" Value="14" />
+          <Setter TargetName="TileTitleText" Property="MaxHeight" Value="28" />
+          <Setter TargetName="TileTitleText" Property="VerticalAlignment" Value="Center" />
+        </Trigger>
         <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
           <Setter TargetName="TileBorder" Property="Background" Value="#223027" />
           <Setter TargetName="TileBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
@@ -2290,7 +2415,7 @@
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <DockPanel Margin="1,0,0,3">
+        <DockPanel x:Name="PageHeaderRow" Margin="1,0,0,3">
           <TextBlock x:Name="PageHeaderText"
                      Text="{Binding Header}"
                      DockPanel.Dock="Left"
@@ -2326,6 +2451,11 @@
         <DataTrigger Binding="{Binding IsSelected}" Value="True">
           <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource AccentBrush}" />
         </DataTrigger>
+        <!-- 縮小表示の一覧は文字を縮小表示の控えタブ（10.5）に揃え、ページの間隔も詰める。 -->
+        <Trigger SourceName="PageHeaderText" Property="local:CompactLayout.IsActive" Value="True">
+          <Setter TargetName="PageHeaderText" Property="FontSize" Value="10.5" />
+          <Setter TargetName="PageHeaderRow" Property="Margin" Value="1,0,0,2" />
+        </Trigger>
         <Trigger SourceName="PageHeaderText" Property="IsMouseOver" Value="True">
           <Setter TargetName="PageHeaderText" Property="TextDecorations" Value="Underline" />
           <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -2542,7 +2672,8 @@
                     AutomationProperties.Name="控えの一覧を閉じる"
                     Click="CloseStoredOverviewButton_Click"
                     Style="{StaticResource ChromeButton}" />
-            <TextBlock Text="控え一覧"
+            <TextBlock x:Name="StoredOverviewTitleText"
+                       Text="控え一覧"
                        DockPanel.Dock="Left"
                        VerticalAlignment="Center"
                        Foreground="{StaticResource TextBrush}"
@@ -2570,7 +2701,8 @@
           <ScrollViewer Grid.Row="2"
                         VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled"
-                        CanContentScroll="False">
+                        CanContentScroll="False"
+                        Style="{StaticResource SlimScrollViewerStyle}">
             <!-- 表示領域いっぱいを下限にして 6 段を均等割りする。入りきらないときだけスクロール。 -->
             <ItemsControl x:Name="StoredOverviewPagesList"
                           ItemsSource="{Binding StoredPanelPages}"
@@ -3000,6 +3132,26 @@
                        VerticalAlignment="Center" />
           </StackPanel>
       </Button>
+      <!-- 縮小表示でも控え一覧を横に出す。控えエリアを閉じたままでも使える。
+           一覧でカードを選び、本体のスロットの「ここに表示」で配置する（一覧の A〜D パッドは縮小表示では隠す）。 -->
+      <Button x:Name="CompactStoredOverviewButton"
+              Width="26"
+              Height="22"
+              MinHeight="22"
+              MinWidth="0"
+              Padding="0"
+              Margin="64,0,0,0"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center"
+              Panel.ZIndex="2"
+              Visibility="Collapsed"
+              Content="&#xE8A9;"
+              FontFamily="Segoe MDL2 Assets"
+              FontSize="10"
+              ToolTip="すべての控えを横に一覧表示します。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。"
+              AutomationProperties.Name="控えの一覧を開く"
+              Click="StoredOverviewButton_Click"
+              Style="{StaticResource StoredOverviewToggleButtonStyle}" />
       <StackPanel x:Name="AuxiliaryApplicationsRow"
                   Orientation="Horizontal"
                   HorizontalAlignment="Right"
@@ -3050,7 +3202,27 @@
           <RowDefinition Height="23" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid>
+        <!-- 控えカードを選んでいる間は、タブの行を配置先の案内と「取消」に置き換える（高さは変えない）。 -->
+        <Grid x:Name="CompactStoredAssignHintRow" Visibility="Collapsed">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="CompactStoredAssignHintText"
+                     Margin="2,0,6,0"
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource AccentBrush}"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="1" Content="取消"
+                  Click="CancelCompactStoredAssignButton_Click"
+                  Style="{StaticResource BarButton}"
+                  Width="38" Height="21" MinHeight="21" MinWidth="0"
+                  Padding="2,0" FontSize="10"
+                  ToolTip="控えの選択を取り消す（Esc）" />
+        </Grid>
+        <Grid x:Name="CompactStoredTabsRow">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
