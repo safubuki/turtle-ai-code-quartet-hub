@@ -1799,6 +1799,7 @@
       <Button x:Name="CompactSlotButton"
               Tag="{Binding}"
               Click="CompactSlotButton_Click"
+              PreviewMouseRightButtonUp="CompactSlotCard_PreviewMouseRightButtonUp"
               PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="SlotCard_PreviewMouseMove"
               AllowDrop="True"
@@ -1875,7 +1876,7 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
-    <!-- 控えカードの右クリックメニュー（項目はコードビハインドで組み立てる）。既定の白いメニューではなく、
+    <!-- 控えカードと縮小表示のスロットカードの右クリックメニュー（項目はコードビハインドで組み立てる）。既定の白いメニューではなく、
          パネルの配色と角丸に合わせる。右端の補足（InputGestureText）には配置先の現在の内容などを出す。 -->
     <Style x:Key="PanelContextMenuStyle" TargetType="ContextMenu">
       <Setter Property="OverridesDefaultStyle" Value="True" />
@@ -1919,34 +1920,71 @@
           <Setter Property="Template">
             <Setter.Value>
               <ControlTemplate TargetType="MenuItem">
-                <Border x:Name="ItemBorder"
-                        Background="Transparent"
-                        CornerRadius="6"
-                        Padding="{TemplateBinding Padding}">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="26" />
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <ContentPresenter ContentSource="Icon"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center" />
-                    <ContentPresenter Grid.Column="1"
-                                      ContentSource="Header"
-                                      RecognizesAccessKey="True"
-                                      VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2"
-                               Text="{TemplateBinding InputGestureText}"
-                               MaxWidth="150"
-                               Margin="16,0,0,0"
-                               FontSize="11"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               VerticalAlignment="Center" />
-                  </Grid>
-                </Border>
+                <Grid>
+                  <Border x:Name="ItemBorder"
+                          Background="Transparent"
+                          CornerRadius="6"
+                          Padding="{TemplateBinding Padding}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <ContentPresenter ContentSource="Icon"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" />
+                      <ContentPresenter Grid.Column="1"
+                                        ContentSource="Header"
+                                        RecognizesAccessKey="True"
+                                        VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2"
+                                 Text="{TemplateBinding InputGestureText}"
+                                 MaxWidth="150"
+                                 Margin="16,0,0,0"
+                                 FontSize="11"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center" />
+                      <TextBlock x:Name="SubmenuArrow"
+                                 Grid.Column="3"
+                                 Text="&#xE76C;"
+                                 FontFamily="Segoe MDL2 Assets"
+                                 FontSize="9"
+                                 Margin="8,0,-4,0"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 VerticalAlignment="Center"
+                                 Visibility="Collapsed" />
+                    </Grid>
+                  </Border>
+                  <!-- IDE / CLI の切り替えなど、1 階層だけのサブメニュー。 -->
+                  <Popup x:Name="PART_Popup"
+                         Placement="Right"
+                         HorizontalOffset="2"
+                         VerticalOffset="-5"
+                         AllowsTransparency="True"
+                         Focusable="False"
+                         PopupAnimation="Fade"
+                         IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                    <Border Margin="0,0,8,8"
+                            Padding="4"
+                            MinWidth="160"
+                            CornerRadius="10"
+                            Background="#1D2622"
+                            BorderBrush="#3E5148"
+                            BorderThickness="1">
+                      <Border.Effect>
+                        <DropShadowEffect Color="#000000" BlurRadius="10" ShadowDepth="2" Opacity="0.45" />
+                      </Border.Effect>
+                      <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                  </Popup>
+                </Grid>
                 <ControlTemplate.Triggers>
+                  <Trigger Property="Role" Value="SubmenuHeader">
+                    <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
+                  </Trigger>
                   <Trigger Property="IsHighlighted" Value="True">
                     <Setter TargetName="ItemBorder" Property="Background" Value="#25302A" />
                   </Trigger>

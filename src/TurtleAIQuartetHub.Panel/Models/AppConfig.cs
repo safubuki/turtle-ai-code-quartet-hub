@@ -355,11 +355,12 @@ public sealed class AppConfig
         {
             VsCodeApplicationId => 0,
             "antigravity" => 1,
-            "codex" => 2,
-            "claude" => 3,
-            "github-copilot" => 4,
+            // 標準表示の CLI 欄は上段 2 つ・下段 3 つ（中央は幅が狭い）の順で並ぶ。
+            "claude" => 2,
+            "codex" => 3,
+            AntigravityCliApplicationId => 4,
             "grok" => 5,
-            AntigravityCliApplicationId => 6,
+            "github-copilot" => 6,
             "chatgpt-app" => 7,
             "codex-app" => 8,
             "claude-app" => 9,
