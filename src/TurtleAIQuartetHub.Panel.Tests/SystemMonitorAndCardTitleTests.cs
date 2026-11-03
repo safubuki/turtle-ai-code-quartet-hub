@@ -176,7 +176,7 @@ internal static class SystemMonitorAndCardTitleTests
             widthAttr == "650" && heightAttr == "535",
             $"Width={widthAttr}, Height={heightAttr}");
 
-        // 2. SlotCardTemplate のタイトル TextBox が FontWeight=Bold かつ拡大フォント(15.5)になっていること
+        // 2. SlotCardTemplate のタイトル TextBox が FontWeight=Bold かつ拡大フォント(16.5)になっていること
         var slotCardTemplate = root.Descendants()
             .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "SlotCardTemplate");
         Check(failures, "SlotCardTemplate が存在すること", slotCardTemplate is not null, "SlotCardTemplate");
@@ -188,10 +188,10 @@ internal static class SystemMonitorAndCardTitleTests
                     && ((string?)e.Attribute("Text"))?.Contains("PanelTitle", StringComparison.Ordinal) == true);
             Check(
                 failures,
-                "SlotCardTemplate のタイトル TextBox が Bold かつ FontSize=15.5 で InlineTitleTextBox スタイルを維持していること",
+                "SlotCardTemplate のタイトル TextBox が Bold かつ FontSize=16.5 で InlineTitleTextBox スタイルを維持していること",
                 titleTextBox is not null
                 && (string?)titleTextBox.Attribute("FontWeight") == "Bold"
-                && (string?)titleTextBox.Attribute("FontSize") == "15.5"
+                && (string?)titleTextBox.Attribute("FontSize") == "16.5"
                 && ((string?)titleTextBox.Attribute("Style"))?.Contains("InlineTitleTextBox", StringComparison.Ordinal) == true,
                 titleTextBox?.ToString() ?? "null");
         }

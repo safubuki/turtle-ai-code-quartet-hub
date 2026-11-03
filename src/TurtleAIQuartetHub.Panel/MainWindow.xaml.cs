@@ -4461,7 +4461,6 @@ public partial class MainWindow : Window
         CompactBarPanel.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         MicroPanel.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
         CompactStoredPanelsToggleButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
-        CompactStoredOverviewButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         // 縮小表示の一覧は本体のスロットを配置先にするので、一覧側の A〜D パッドは標準表示だけ。
         StoredOverviewTargetPad.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         CompactLayout.SetIsActive(StoredOverviewRoot, isCompact);
@@ -4552,7 +4551,9 @@ public partial class MainWindow : Window
     private void UpdateDisplayModeChrome()
     {
         var isMicro = _displayMode == DisplayMode.Micro;
-        RootLayoutGrid.Margin = IsCompactMode ? new Thickness(8, 8, 8, 6) : new Thickness(8);
+        // 縮小表示はタイトル行のすぐ下にカードが来るので、上の余白を 3 だけ詰めてカードの上（CompactBarPanel の Margin）へ回し、
+        // タイトルが上下の中央に見えるようにする（全体の高さは変えない）。
+        RootLayoutGrid.Margin = IsCompactMode ? new Thickness(8, 5, 8, 6) : new Thickness(8);
         // 控えの開閉で操作行が伸縮しないよう、縮小時は行の高さと上端を固定する。
         StoredPanelsRowGrid.Height = IsCompactMode ? 26 : double.NaN;
         StoredPanelsRowGrid.MinHeight = IsCompactMode ? 26 : 0;

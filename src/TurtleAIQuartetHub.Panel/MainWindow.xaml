@@ -242,7 +242,8 @@
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
                     CornerRadius="8">
-              <ContentPresenter HorizontalAlignment="Center"
+              <!-- Button の既定は Center。左寄せにしたいボタンだけ HorizontalContentAlignment で変える。 -->
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalAlignment="Center"
                                 Margin="{TemplateBinding Padding}" />
             </Border>
@@ -328,6 +329,7 @@
       <Setter Property="MinHeight" Value="24" />
       <Setter Property="Height" Value="24" />
       <Setter Property="Padding" Value="5,1" />
+      <Setter Property="FontSize" Value="12" />
       <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="ToolTip" Value="{Binding ToolTip}" />
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
@@ -375,12 +377,12 @@
     <Style x:Key="ApplicationGroupLabelStyle" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#A9B7B0" />
       <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-      <Setter Property="FontSize" Value="9" />
+      <Setter Property="FontSize" Value="10" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Padding" Value="5,0" />
       <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
-      <Setter Property="Margin" Value="8,-5,0,0" />
+      <Setter Property="Margin" Value="8,-6,0,0" />
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -396,11 +398,11 @@
       <Setter Property="BorderBrush" Value="#2C6888" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}" Value="Compact">
-          <Setter Property="MinWidth" Value="78" />
-          <Setter Property="Width" Value="78" />
-          <Setter Property="MinHeight" Value="22" />
-          <Setter Property="Height" Value="22" />
-          <Setter Property="FontSize" Value="10.5" />
+          <Setter Property="MinWidth" Value="84" />
+          <Setter Property="Width" Value="84" />
+          <Setter Property="MinHeight" Value="23" />
+          <Setter Property="Height" Value="23" />
+          <Setter Property="FontSize" Value="11.5" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -426,7 +428,7 @@
     <Style x:Key="SlotActionButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
       <Setter Property="MinHeight" Value="24" />
       <Setter Property="Padding" Value="8,3" />
-      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontSize" Value="12" />
       <Setter Property="MinWidth" Value="64" />
     </Style>
 
@@ -598,6 +600,12 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+    </Style>
+
+    <!-- タイトル行（高さ 26）に収まる高さ。はみ出すとホバーの角丸の下が切れたり、下のカードに重なったりする。 -->
+    <Style x:Key="TitleBarChromeButton" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="TinyPill" TargetType="Border">
@@ -780,7 +788,7 @@
     <Style x:Key="CompactSlotBadgeTextStyle" TargetType="TextBlock">
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontSize" Value="12" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
       <Style.Triggers>
@@ -799,7 +807,7 @@
       <Setter Property="Padding" Value="0" />
       <Setter Property="Margin" Value="5,0,0,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Focusable" Value="False" />
       <Setter Property="Background" Value="#17201B" />
@@ -1202,13 +1210,14 @@
 
     <Style x:Key="CompactStoredTabStyle" TargetType="Button" BasedOn="{StaticResource StoredPageTabButtonStyle}">
       <Setter Property="MinWidth" Value="0" />
-      <Setter Property="Width" Value="54" />
-      <Setter Property="MaxWidth" Value="54" />
+      <!-- 6 ページ分のタブ・整列・一覧が縮小表示の最小幅に収まる幅。 -->
+      <Setter Property="Width" Value="50" />
+      <Setter Property="MaxWidth" Value="50" />
       <Setter Property="Height" Value="21" />
       <Setter Property="MinHeight" Value="21" />
-      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Margin" Value="0,0,3,0" />
       <Setter Property="Padding" Value="3,0" />
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="11" />
     </Style>
 
     <Style x:Key="LedIndicatorStyle" TargetType="Ellipse">
@@ -1521,7 +1530,7 @@
                           VerticalAlignment="Center">
                 <TextBox Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
                          Style="{StaticResource InlineTitleTextBox}"
-                         FontSize="15.5"
+                         FontSize="16.5"
                          FontWeight="Bold"
                          Foreground="#F8FCF9"
                          Padding="2,0"
@@ -1531,6 +1540,7 @@
                          MaxLength="40" />
                 <TextBlock Text="{Binding ShortPath}"
                            Margin="2,0,0,0"
+                           FontSize="12.5"
                            Foreground="{StaticResource MutedTextBrush}" />
               </StackPanel>
               <Button Grid.Column="3"
@@ -1700,7 +1710,7 @@
                     </Style>
                   </Border.Style>
                   <TextBlock Text="{Binding DisplayBadgeText}"
-                             FontSize="11"
+                             FontSize="12"
                              FontWeight="SemiBold"
                              Foreground="{Binding DisplayBrush}"
                              ToolTip="このパネルが表示されているディスプレイ" />
@@ -1826,8 +1836,8 @@
                    Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
                    Style="{StaticResource InlineTitleTextBox}"
                    VerticalAlignment="Center"
-                   MinHeight="0" Height="18" Padding="0"
-                   FontSize="12" />
+                   MinHeight="0" Height="20" Padding="0"
+                   FontSize="13" />
 
           <Button x:Name="CompactSlotIdeToggle"
                   Grid.Column="2"
@@ -2033,8 +2043,8 @@
         </Border.Style>
         <Grid>
           <Grid.RowDefinitions>
-            <RowDefinition Height="21" />
-            <RowDefinition Height="17" />
+            <RowDefinition Height="22" />
+            <RowDefinition Height="18" />
           </Grid.RowDefinitions>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -2049,12 +2059,12 @@
                     BorderBrush="#335A43" BorderThickness="1" Margin="0,0,5,0">
               <TextBlock Text="{Binding Label}" Foreground="{StaticResource AccentBrush}"
                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                         FontWeight="SemiBold" FontSize="11" />
+                         FontWeight="SemiBold" FontSize="12" />
             </Border>
             <TextBox Grid.Column="1" Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
                      Style="{StaticResource InlineTitleTextBox}"
-                     FontSize="11" VerticalAlignment="Center"
-                     MinHeight="0" Height="20" Padding="0" />
+                     FontSize="12" VerticalAlignment="Center"
+                     MinHeight="0" Height="21" Padding="0" />
           </Grid>
           <StackPanel Grid.Column="1" Orientation="Horizontal">
             <Button Content="&#xED25;" Tag="{Binding}"
@@ -2070,7 +2080,7 @@
           </StackPanel>
           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ShortPath}"
                      ToolTip="{Binding WorkspacePath}" Foreground="{StaticResource MutedTextBrush}"
-                     FontSize="10.5" TextTrimming="CharacterEllipsis"
+                     FontSize="11.5" TextTrimming="CharacterEllipsis"
                      VerticalAlignment="Center" />
         </Grid>
       </Border>
@@ -2103,14 +2113,14 @@
         <Grid Height="104">
           <Grid.RowDefinitions>
             <RowDefinition Height="24" />
-            <RowDefinition Height="18" />
-            <RowDefinition Height="62" />
+            <RowDefinition Height="19" />
+            <RowDefinition Height="61" />
           </Grid.RowDefinitions>
 
           <TextBox x:Name="StoredPanelTitle"
                    Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
                    Style="{StaticResource InlineTitleTextBox}"
-                   FontSize="13.5"
+                   FontSize="14.5"
                    VerticalAlignment="Center" />
 
           <Grid Grid.Row="1" Margin="0,3,0,0">
@@ -2123,11 +2133,11 @@
                        TextAlignment="Right"
                        Typography.NumeralAlignment="Tabular"
                        Foreground="{StaticResource AccentBrush}"
-                       FontSize="11" FontWeight="SemiBold" />
+                       FontSize="12" FontWeight="SemiBold" />
             <TextBlock Grid.Column="1" Text="{Binding ShortPath}"
                        ToolTip="{Binding WorkspacePath}"
                        Foreground="{StaticResource MutedTextBrush}"
-                       FontSize="11" TextTrimming="CharacterEllipsis" />
+                       FontSize="12" TextTrimming="CharacterEllipsis" />
           </Grid>
 
           <Grid Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Top">
@@ -2149,25 +2159,25 @@
                       CommandParameter="A" Click="ShowStoredPanelButton_Click"
                       Style="{StaticResource StoredAssignButton}"
                       HorizontalAlignment="Stretch" Margin="0,0,4,4"
-                      FontSize="11.5"
+                      FontSize="12.5"
                       IsEnabled="{Binding HasContent}" />
               <Button Grid.Row="0" Grid.Column="1" Content="B" Tag="{Binding}"
                       CommandParameter="B" Click="ShowStoredPanelButton_Click"
                       Style="{StaticResource StoredAssignButton}"
                       HorizontalAlignment="Stretch" Margin="4,0,0,4"
-                      FontSize="11.5"
+                      FontSize="12.5"
                       IsEnabled="{Binding HasContent}" />
               <Button Grid.Row="1" Grid.Column="0" Content="C" Tag="{Binding}"
                       CommandParameter="C" Click="ShowStoredPanelButton_Click"
                       Style="{StaticResource StoredAssignButton}"
                       HorizontalAlignment="Stretch" Margin="0,4,4,0"
-                      FontSize="11.5"
+                      FontSize="12.5"
                       IsEnabled="{Binding HasContent}" />
               <Button Grid.Row="1" Grid.Column="1" Content="D" Tag="{Binding}"
                       CommandParameter="D" Click="ShowStoredPanelButton_Click"
                       Style="{StaticResource StoredAssignButton}"
                       HorizontalAlignment="Stretch" Margin="4,4,0,0"
-                      FontSize="11.5"
+                      FontSize="12.5"
                       IsEnabled="{Binding HasContent}" />
             </Grid>
 
@@ -2427,12 +2437,12 @@
         <!-- 縮小表示の一覧は高さが限られるので、番号・フォルダ名の行を省いて名前だけの低いタイルにする
              （フォルダ名などはツールチップで見られる）。local:CompactLayout.IsActive は StoredOverviewRoot から継承。 -->
         <Trigger SourceName="TileBorder" Property="local:CompactLayout.IsActive" Value="True">
-          <Setter TargetName="TileBorder" Property="MinHeight" Value="34" />
+          <Setter TargetName="TileBorder" Property="MinHeight" Value="36" />
           <Setter TargetName="TileBorder" Property="Padding" Value="6,3,6,3" />
           <Setter TargetName="TileFooter" Property="Visibility" Value="Collapsed" />
-          <Setter TargetName="TileTitleText" Property="FontSize" Value="11" />
-          <Setter TargetName="TileTitleText" Property="LineHeight" Value="14" />
-          <Setter TargetName="TileTitleText" Property="MaxHeight" Value="28" />
+          <Setter TargetName="TileTitleText" Property="FontSize" Value="12" />
+          <Setter TargetName="TileTitleText" Property="LineHeight" Value="15" />
+          <Setter TargetName="TileTitleText" Property="MaxHeight" Value="30" />
           <Setter TargetName="TileTitleText" Property="VerticalAlignment" Value="Center" />
         </Trigger>
         <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
@@ -2489,9 +2499,9 @@
         <DataTrigger Binding="{Binding IsSelected}" Value="True">
           <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource AccentBrush}" />
         </DataTrigger>
-        <!-- 縮小表示の一覧は文字を縮小表示の控えタブ（10.5）に揃え、ページの間隔も詰める。 -->
+        <!-- 縮小表示の一覧は見出しを縮小表示の控えタブ（11）と同じくらいに抑え、ページの間隔も詰める。 -->
         <Trigger SourceName="PageHeaderText" Property="local:CompactLayout.IsActive" Value="True">
-          <Setter TargetName="PageHeaderText" Property="FontSize" Value="10.5" />
+          <Setter TargetName="PageHeaderText" Property="FontSize" Value="11" />
           <Setter TargetName="PageHeaderRow" Property="Margin" Value="1,0,0,2" />
         </Trigger>
         <Trigger SourceName="PageHeaderText" Property="IsMouseOver" Value="True">
@@ -2780,7 +2790,7 @@
                   ToolTip="システムモニタ"
                   AutomationProperties.Name="システムモニタ"
                   Click="SystemMonitorButton_Click"
-                  Style="{StaticResource ChromeButton}" />
+                  Style="{StaticResource TitleBarChromeButton}" />
           <!-- 未読の PR 通知があると右下に赤丸（local:UpdateBadge.IsActive）を出す。ツールチップはコードで更新する。 -->
           <Button x:Name="PullRequestInboxButton"
                   Width="26"
@@ -2788,7 +2798,7 @@
                   ToolTip="GitHub の Pull Request 受信箱を開く（github.com/pulls/inbox）"
                   AutomationProperties.Name="GitHub の Pull Request 受信箱を開く"
                   Click="PullRequestInboxButton_Click"
-                  Style="{StaticResource ChromeButton}">
+                  Style="{StaticResource TitleBarChromeButton}">
             <Path Data="{StaticResource GitPullRequestGeometry}"
                   Width="13"
                   Height="13"
@@ -2804,7 +2814,7 @@
                   FontWeight="SemiBold"
                   ToolTip="設定"
                   Click="SettingsButton_Click"
-                  Style="{StaticResource ChromeButton}" />
+                  Style="{StaticResource TitleBarChromeButton}" />
           <Button x:Name="HelpButton"
                   Content="？"
                   Width="26"
@@ -2813,7 +2823,7 @@
                   FontWeight="SemiBold"
                   ToolTip="ヘルプ"
                   Click="HelpButton_Click"
-                  Style="{StaticResource ChromeButton}" />
+                  Style="{StaticResource TitleBarChromeButton}" />
         </StackPanel>
         <!-- 表示切替・最小化・閉じるの間隔（Margin）と幅は表示モードに合わせてコードで設定する。 -->
         <Button x:Name="StandardJumpButton"
@@ -2826,7 +2836,7 @@
                 ToolTip="標準表示へ戻す"
                  AutomationProperties.Name="標準表示へ戻す"
                 Click="StandardJumpButton_Click"
-                Style="{StaticResource ChromeButton}" />
+                Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="CompactJumpButton"
                 Content="&#xE73F;"
                 Width="23"
@@ -2837,7 +2847,7 @@
                 ToolTip="縮小表示へ切り替え"
                 AutomationProperties.Name="縮小表示へ切り替え"
                 Click="CompactJumpButton_Click"
-                Style="{StaticResource ChromeButton}" />
+                Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="DisplayModeButton"
                 Content="&#xE73F;"
                 Width="32"
@@ -2846,7 +2856,7 @@
                 FontWeight="SemiBold"
                 ToolTip="縮小表示へ切り替え"
                 Click="DisplayModeButton_Click"
-                Style="{StaticResource ChromeButton}" />
+                Style="{StaticResource TitleBarChromeButton}" />
         <!-- 最小化（－）と閉じる（✕）は VS Code と同じ Windows の標準キャプション記号（ChromeMinimize / ChromeClose）。 -->
         <Button x:Name="MinimizeButton"
                 Content="&#xE921;"
@@ -2855,7 +2865,7 @@
                 ToolTip="最小化"
                 AutomationProperties.Name="最小化"
                 Click="MinimizeButton_Click"
-                Style="{StaticResource ChromeButton}" />
+                Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="CloseButton"
                 Content="&#xE8BB;"
                 FontFamily="Segoe MDL2 Assets"
@@ -2863,7 +2873,7 @@
                 ToolTip="パネルを閉じる"
                 AutomationProperties.Name="パネルを閉じる"
                 Click="CloseButton_Click"
-                Style="{StaticResource ChromeButton}" />
+                Style="{StaticResource TitleBarChromeButton}" />
       </StackPanel>
     </Grid>
 
@@ -2899,7 +2909,7 @@
             Grid.Row="1"
             Visibility="Collapsed"
             VerticalAlignment="Top"
-            Margin="5,0,5,0"
+            Margin="5,3,5,0"
             Padding="3"
             Background="{StaticResource SurfaceBrush}"
             BorderBrush="{StaticResource BorderBrushSoft}"
@@ -3007,7 +3017,13 @@
     </Border>
 
     <Grid x:Name="StoredPanelsRowGrid" Grid.Row="2" Margin="5,2,5,3">
+      <!-- 右列は AI アプリの行。標準表示の控え Quartet は両列にまたがり、見出しの右上に AI アプリが重なる。 -->
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
       <Expander x:Name="StoredPanelsExpander"
+                Grid.ColumnSpan="2"
                 Style="{StaticResource StoredPanelsExpanderStyle}"
                 IsExpanded="False"
                 Expanded="StoredPanelsExpander_Expanded"
@@ -3131,14 +3147,15 @@
       </Border>
       </Expander>
 
+      <!-- 標準表示の控え Quartet の見出しと同じく、AI アプリの手前まで押せるように横に広げる。 -->
       <Button x:Name="CompactStoredPanelsToggleButton"
-                Width="60"
                 Height="24"
                 MinHeight="24"
                 MinWidth="0"
                 Padding="4,0"
-                Margin="0"
-                HorizontalAlignment="Left"
+                Margin="0,0,10,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Left"
                 VerticalAlignment="Center"
                 Panel.ZIndex="2"
                 Background="Transparent"
@@ -3149,7 +3166,7 @@
                 Click="CompactStoredPanelsToggleButton_Click"
                 Style="{StaticResource BarButton}">
           <StackPanel Orientation="Horizontal"
-                      HorizontalAlignment="Center"
+                      HorizontalAlignment="Left"
                       VerticalAlignment="Center">
             <Grid Width="16" Height="16" Margin="0,0,4,0">
               <Ellipse Fill="#F4F7F5" />
@@ -3164,33 +3181,14 @@
                     RenderTransformOrigin="0.5,0.5" />
             </Grid>
             <TextBlock Text="控え"
-                       FontSize="11"
+                       FontSize="12"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource TextBrush}"
                        VerticalAlignment="Center" />
           </StackPanel>
       </Button>
-      <!-- 縮小表示でも控え一覧を横に出す。控えエリアを閉じたままでも使える。
-           一覧でカードを選び、本体のスロットの「ここに表示」で配置する（一覧の A〜D パッドは縮小表示では隠す）。 -->
-      <Button x:Name="CompactStoredOverviewButton"
-              Width="26"
-              Height="22"
-              MinHeight="22"
-              MinWidth="0"
-              Padding="0"
-              Margin="64,0,0,0"
-              HorizontalAlignment="Left"
-              VerticalAlignment="Center"
-              Panel.ZIndex="2"
-              Visibility="Collapsed"
-              Content="&#xE8A9;"
-              FontFamily="Segoe MDL2 Assets"
-              FontSize="10"
-              ToolTip="すべての控えを横に一覧表示します。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。"
-              AutomationProperties.Name="控えの一覧を開く"
-              Click="StoredOverviewButton_Click"
-              Style="{StaticResource StoredOverviewToggleButtonStyle}" />
       <StackPanel x:Name="AuxiliaryApplicationsRow"
+                  Grid.Column="1"
                   Orientation="Horizontal"
                   HorizontalAlignment="Right"
                   VerticalAlignment="Top"
@@ -3199,7 +3197,7 @@
         <TextBlock Text="AIアプリ"
                    VerticalAlignment="Center"
                    Foreground="{StaticResource MutedTextBrush}"
-                   FontSize="11"
+                   FontSize="12"
                    FontWeight="SemiBold"
                    Margin="0,0,6,0" />
         <ItemsControl x:Name="AuxiliaryApplicationPanel"
@@ -3250,14 +3248,14 @@
                      Margin="2,0,6,0"
                      VerticalAlignment="Center"
                      Foreground="{StaticResource AccentBrush}"
-                     FontSize="11"
+                     FontSize="12"
                      FontWeight="SemiBold"
                      TextTrimming="CharacterEllipsis" />
           <Button Grid.Column="1" Content="取消"
                   Click="CancelCompactStoredAssignButton_Click"
                   Style="{StaticResource BarButton}"
                   Width="38" Height="21" MinHeight="21" MinWidth="0"
-                  Padding="2,0" FontSize="10"
+                  Padding="2,0" FontSize="11"
                   ToolTip="控えの選択を取り消す（Esc）" />
         </Grid>
         <Grid x:Name="CompactStoredTabsRow">
@@ -3285,8 +3283,8 @@
                            Visibility="Collapsed"
                            Text="{Binding Header, Mode=OneWay}"
                            MaxLength="20"
-                           Width="54" Height="21"
-                           Padding="2,0" FontSize="10"
+                           Width="50" Height="21"
+                           Padding="2,0" FontSize="11"
                            Foreground="{StaticResource TextBrush}"
                            Background="#223027"
                            CaretBrush="{StaticResource TextBrush}"
@@ -3299,12 +3297,30 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <Button Grid.Column="1" Content="整列"
-                  Click="CompactStoredPanelsButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Width="38" Height="21" MinHeight="21" MinWidth="0"
-                  Padding="2,0" FontSize="10"
-                  ToolTip="控えの空きを前に詰める" />
+          <!-- 標準表示と同じく、整列の横に一覧を置く。 -->
+          <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <Button Content="整列"
+                    Click="CompactStoredPanelsButton_Click"
+                    Style="{StaticResource BarButton}"
+                    Width="36" Height="21" MinHeight="21" MinWidth="0"
+                    Padding="2,0" FontSize="11"
+                    ToolTip="控えの空きを前に詰める" />
+            <!-- 一覧でカードを選び、本体のスロットの「ここに表示」で配置する（一覧の A〜D パッドは縮小表示では隠す）。 -->
+            <Button x:Name="CompactStoredOverviewButton"
+                    Width="26"
+                    Height="21"
+                    MinHeight="21"
+                    MinWidth="0"
+                    Padding="0"
+                    Margin="3,0,0,0"
+                    Content="&#xE8A9;"
+                    FontFamily="Segoe MDL2 Assets"
+                    FontSize="10"
+                    ToolTip="すべての控えを横に一覧表示します。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。"
+                    AutomationProperties.Name="控えの一覧を開く"
+                    Click="StoredOverviewButton_Click"
+                    Style="{StaticResource StoredOverviewToggleButtonStyle}" />
+          </StackPanel>
         </Grid>
         <ContentControl Grid.Row="1"
                         Content="{Binding SelectedStoredPanelPage}"
