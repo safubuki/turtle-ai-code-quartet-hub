@@ -39,7 +39,7 @@ internal static class UserDataReclaimTests
                 UseDedicatedUserDataDirs = false
             };
 
-            var reclaimed = SlotUserDataPaths.ReclaimUnusedUserData(config);
+            var reclaimed = SlotUserDataPaths.ReclaimUnusedUserData(config, installedDirectory: null, () => false);
 
             Check(failures, "ジャンクション先のファイルは回収で削除しない", File.Exists(keepPath));
             Check(failures, "共有プロファイル運用では残存 user-data を回収する",

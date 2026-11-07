@@ -15,8 +15,8 @@ public static class DataFolderDiagnosticsService
     private const long GB = 1024L * MB;
 
     // フォルダを 1 回だけ走査し、この深さまでのフォルダ別合計を持つ
-    // （Hub の user-data\A\User\globalStorage\<拡張機能> が 5 階層目）。
-    private const int IndexDepth = 5;
+    // Hub の user-data\A\Partitions\<partition>\WebStorage\<bucket>\CacheStorage まで保持する。
+    private const int IndexDepth = 7;
 
     private const string UserDataDirectoryName = "user-data";
     private const string UserDirectoryName = "User";
@@ -29,7 +29,7 @@ public static class DataFolderDiagnosticsService
         "blob_storage", "clp", "agent-host", "copilot-terminal-output"
     };
 
-    // サインイン情報などを含むブラウザ保存領域。再生成できないので削除は勧めない。
+    // サインイン情報などを含むブラウザ保存領域。丸ごとは消さず CacheStorage のみ別途回収する。
     private static readonly HashSet<string> WebStorageNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "WebStorage", "Service Worker", "IndexedDB", "Local Storage", "Session Storage", "Partitions", "Shared Dictionary"
@@ -138,7 +138,7 @@ public static class DataFolderDiagnosticsService
             var cacheBytes = cacheBySlot.Values.Sum();
             Add(findings, "H2", Grade(cacheBytes, 500 * MB, 2 * GB), cacheBytes,
                 $"スロット別の VS Code キャッシュが合計 {Format(cacheBytes)} あります（{DescribeBySlot(cacheBySlot)}）。",
-                "スロット別プロファイルではスロットごとにキャッシュを持ちます。ハブは起動時に回収しますが、VS Code の窓が開いているスロットは回収を見送るため、開きっぱなしの使い方だと増え続けます。",
+                "スロット別プロファイルではスロットごとにキャッシュを持ちます。ハブは起動時に回収しますが、VS Code のプロセスが一つでも残っていると回収を見送るため、開きっぱなしの使い方だと増え続けます。",
                 "VS Code の窓を閉じてからハブを再起動すると回収されます。スロット別プロファイルが不要なら、設定の useDedicatedUserDataDirs を false にすると次回起動時にまとめて削除されます。");
 
             var workspaceBySlot = knownSlots.ToDictionary(
@@ -169,10 +169,11 @@ public static class DataFolderDiagnosticsService
                 .SelectMany(slot => index.Children(slot))
                 .Where(child => WebStorageNames.Contains(FolderSizeIndex.NameOf(child)))
                 .Sum(index.Size);
+            var webCacheBytes = knownSlots.Sum(slot => VscodeCacheStorage.GetRelativePaths(index.Children, slot).Sum(index.Size));
             Add(findings, "H5", Grade(webBytes, 1 * GB, 3 * GB), webBytes,
-                $"スロット別のブラウザ保存領域（WebStorage など）が合計 {Format(webBytes)} あります。",
-                "拡張機能や Web ビューが保存するデータで、サインイン情報も含みます。スロットごとに別々に作られます。",
-                "サインイン情報を含むため削除はおすすめしません。Web ビューを多用する拡張機能を見直してください。");
+                $"スロット別のブラウザ保存領域（WebStorage など）が合計 {Format(webBytes)} あります。うち CacheStorage は {Format(webCacheBytes)} です。",
+                "Web ビューのキャッシュとサインイン情報などが、スロットごとに別々に作られます。VS Code のプロセスが残っていると、キャッシュの自動回収を見送ります。",
+                WebStorageRemedy(reclaimed: true));
 
             var unknownSlots = slotDirectories.Except(knownSlots).OrderByDescending(index.Size).ToList();
             var unknownSlotBytes = unknownSlots.Sum(index.Size);
@@ -293,10 +294,11 @@ public static class DataFolderDiagnosticsService
             "設定 workbench.localHistory.maxFileSize / maxFileEntries で上限を下げると増えにくくなります。");
 
         var webBytes = rootChildren.Where(child => WebStorageNames.Contains(FolderSizeIndex.NameOf(child))).Sum(index.Size);
+        var webCacheBytes = VscodeCacheStorage.GetRelativePaths(index.Children).Sum(index.Size);
         Add(findings, prefix + "10", Grade(webBytes, 1 * GB, 3 * GB), webBytes,
-            $"ブラウザ保存領域（WebStorage など）が {Format(webBytes)} あります。",
+            $"ブラウザ保存領域（WebStorage など）が {Format(webBytes)} あります。うち CacheStorage は {Format(webCacheBytes)} です。",
             "拡張機能や Web ビューが保存するデータで、サインイン情報も含みます。",
-            "サインイン情報を含むため削除はおすすめしません。Web ビューを多用する拡張機能を見直してください。");
+            WebStorageRemedy(reclaimed));
 
         // どの分類にも当てはまらない大きいフォルダ。名前を伝えてもらい、分類と対処を追加していく。
         var unknown = rootChildren
@@ -312,6 +314,12 @@ public static class DataFolderDiagnosticsService
             "このフォルダ名を伝えてください。分類と対処を追加します。");
         return findings;
     }
+
+    private static string WebStorageRemedy(bool reclaimed) =>
+        (reclaimed
+            ? "VS Code をすべて終了してからハブを起動し直すと、CacheStorage だけを自動回収します。窓を閉じてもプロセスが残っている場合は見送ります。"
+            : "Antigravity IDE の CacheStorage はハブの自動回収対象外です。")
+        + "ブラウザ保存領域全体は削除しないでください。設定・サインイン情報・チャット履歴は回収対象外です。キャッシュは次回の利用時に再生成されます。";
 
     // 一覧には「中身で見ないと意味が分からない入れ物」（user-data、各スロット、User）を開いて並べる。
     private static IReadOnlyList<DataFolderHeavyEntry> BuildHeavyEntries(FolderSizeIndex index)

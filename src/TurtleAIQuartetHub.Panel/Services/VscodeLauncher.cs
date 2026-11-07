@@ -41,6 +41,22 @@ public sealed class VscodeLauncher
         AppConfig config,
         CancellationToken cancellationToken)
     {
+        await SlotUserDataPaths.UserDataMaintenanceGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await LaunchMissingCoreAsync(slots, config, cancellationToken);
+        }
+        finally
+        {
+            SlotUserDataPaths.UserDataMaintenanceGate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<WindowAssignment>> LaunchMissingCoreAsync(
+        IReadOnlyList<WindowSlot> slots,
+        AppConfig config,
+        CancellationToken cancellationToken)
+    {
         var launchTargets = slots
             .Where(slot => slot.WindowHandle == IntPtr.Zero || !_windowEnumerator.IsLiveWindow(slot.WindowHandle))
             .Take(4)

@@ -7,9 +7,9 @@ namespace TurtleAIQuartetHub.Panel.Services;
 internal static class FileSystemCleanup
 {
     // 削除できたバイト数を返す。消せなかったファイル・フォルダは残し、次回の回収に回す。
-    public static long DeleteDirectoryBestEffort(string directoryPath)
+    public static long DeleteDirectoryBestEffort(string directoryPath, Func<bool>? canContinue = null)
     {
-        if (!Directory.Exists(directoryPath))
+        if (canContinue?.Invoke() == false || !Directory.Exists(directoryPath))
         {
             return 0;
         }
@@ -27,15 +27,28 @@ internal static class FileSystemCleanup
 
             foreach (var filePath in Directory.EnumerateFiles(directoryPath, "*", SearchOption.TopDirectoryOnly))
             {
+                if (canContinue?.Invoke() == false)
+                {
+                    return reclaimed;
+                }
+
                 reclaimed += DeleteFileBestEffort(filePath);
             }
 
             foreach (var childDirectory in Directory.EnumerateDirectories(directoryPath))
             {
-                reclaimed += DeleteDirectoryBestEffort(childDirectory);
+                if (canContinue?.Invoke() == false)
+                {
+                    return reclaimed;
+                }
+
+                reclaimed += DeleteDirectoryBestEffort(childDirectory, canContinue);
             }
 
-            Directory.Delete(directoryPath, false);
+            if (canContinue?.Invoke() != false)
+            {
+                Directory.Delete(directoryPath, false);
+            }
         }
         catch (IOException)
         {

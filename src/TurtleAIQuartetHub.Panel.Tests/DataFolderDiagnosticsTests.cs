@@ -4,7 +4,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // 容量の解析（診断コード H1〜H8 / V1〜V11 / G1〜G11）が、想定した現象で想定したコードを出すことを確認する。
 internal static class DataFolderDiagnosticsTests
 {
-    public const int Count = 14;
+    public const int Count = 17;
 
     private const long MB = 1024L * 1024;
     private const long GB = 1024L * MB;
@@ -117,6 +117,30 @@ internal static class DataFolderDiagnosticsTests
             DataFolderDiagnosticsService.TryGetLocalPath(new Uri("file://server/share/repo")));
         Check(failures, "解析: リモートのワークスペースは存在確認しない（消えた扱いにしない）",
             DataFolderDiagnosticsService.TryGetLocalPath(new Uri("vscode-vfs://github/owner/repo")) is null);
+
+        var webHub = EvaluateHub(true,
+            (@"user-data\A\WebStorage\1\CacheStorage\data", 2 * GB),
+            (@"user-data\B\Partitions\webview\WebStorage\2\CacheStorage\data", 1 * GB),
+            (@"user-data\C\Service Worker\CacheStorage\origin\data", 1 * GB),
+            (@"user-data\A\WebStorage\1\IndexedDB\data", 1 * GB),
+            (@"user-data\A\User\workspaceStorage\repo\state.vscdb", 2 * GB));
+        Check(failures, "解析: H5 は深い CacheStorage を重複なく内訳表示し、H3 を別に保持する",
+            Codes(webHub) == "H5,H3"
+            && webHub.Findings[0].Bytes == 5 * GB
+            && webHub.Findings[0].Symptom.Contains("CacheStorage は 4.0 GB", StringComparison.Ordinal)
+            && webHub.Findings[0].Remedy.Contains("プロセスが残っている", StringComparison.Ordinal));
+
+        var webCode = EvaluateIde(DataFolderKind.VsCode, (@"WebStorage\1\CacheStorage\data", 2 * GB));
+        var webAgy = EvaluateIde(DataFolderKind.Antigravity, (@"WebStorage\1\CacheStorage\data", 2 * GB));
+        Check(failures, "解析: V10 は CacheStorage の自動回収、G10 は対象外を案内する",
+            Codes(webCode) == "V10" && Codes(webAgy) == "G10"
+            && webCode.Findings[0].Remedy.Contains("CacheStorage だけを自動回収", StringComparison.Ordinal)
+            && webAgy.Findings[0].Remedy.Contains("自動回収対象外", StringComparison.Ordinal));
+
+        var remainingWeb = EvaluateHub(true, (@"user-data\A\WebStorage\1\IndexedDB\data", 2 * GB));
+        Check(failures, "解析: CacheStorage 回収後も他のブラウザ保存領域が大きければ H5 を残す",
+            Codes(remainingWeb) == "H5" && remainingWeb.Findings[0].Bytes == 2 * GB
+            && remainingWeb.Findings[0].Symptom.Contains("CacheStorage は 0 B", StringComparison.Ordinal));
     }
 
     private static DataFolderDiagnosis EvaluateHub(bool dedicated, params (string Path, long Bytes)[] files)
@@ -149,7 +173,7 @@ internal static class DataFolderDiagnosticsTests
 
     private static FolderSizeIndex BuildIndex((string Path, long Bytes)[] files)
     {
-        var index = new FolderSizeIndex(maxDepth: 5);
+        var index = new FolderSizeIndex(maxDepth: 7);
         foreach (var (path, bytes) in files)
         {
             index.AddFile(path, bytes);

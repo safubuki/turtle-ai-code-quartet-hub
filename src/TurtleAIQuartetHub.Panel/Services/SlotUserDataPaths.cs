@@ -6,6 +6,9 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public static class SlotUserDataPaths
 {
+    // 起動時の背景清掃とハブからの VS Code 起動を直列化する。UI スレッドでは非同期待機する。
+    internal static SemaphoreSlim UserDataMaintenanceGate { get; } = new(1, 1);
+
     private static readonly string[] SharedUserFiles =
     [
         "settings.json",
@@ -23,6 +26,7 @@ public static class SlotUserDataPaths
     // 消してよいのは再生成できるキャッシュだけ。
     // 残すもの: User（設定・キーバインド・globalStorage・workspaceStorage）、
     // WebStorage / Partitions / Local Storage / Session Storage（サインインとチャット履歴）。
+    // ただし既知の配置にある CacheStorage だけは、全 VS Code 停止中に別途回収する。
     private static readonly string[] RegenerableCacheDirectoryNames =
     [
         "Cache",
@@ -144,36 +148,57 @@ public static class SlotUserDataPaths
 
     public static long ReclaimUnusedUserData(AppConfig config)
     {
+        UserDataMaintenanceGate.Wait();
+        try
+        {
+            return ReclaimUnusedUserData(config, GetInstalledUserDataDirectory(config.CodeCommand), IsAnyVsCodeProcessAlive);
+        }
+        finally
+        {
+            UserDataMaintenanceGate.Release();
+        }
+    }
+
+    // 実機の AppData に触れず、プロセス残存も再現できるテスト用の依存境界。
+    internal static long ReclaimUnusedUserData(AppConfig config, string? installedDirectory, Func<bool> isAnyVsCodeProcessAlive)
+    {
         var reclaimed = 0L;
         var slotUserDataRoot = Path.Combine(config.StateDirectory, "user-data");
+        var canContinue = CreateInactiveProcessCheck(isAnyVsCodeProcessAlive);
 
-        // 共有プロファイル運用ではスロット別 user-data は使わない。過去の専用プロファイルが
-        // 残っていると Cache / WebStorage だけで数 GB になるため、起動時に回収する。
-        if (!config.UseDedicatedUserDataDirs && Directory.Exists(slotUserDataRoot))
-        {
-            reclaimed += FileSystemCleanup.DeleteDirectoryBestEffort(slotUserDataRoot);
-        }
-
-        var installedDirectory = GetInstalledUserDataDirectory(config.CodeCommand);
         if (!string.IsNullOrWhiteSpace(installedDirectory))
         {
             reclaimed += PruneCacheDirectories(installedDirectory, AlwaysSafeCacheDirectoryNames);
-
-            if (IsAnyVsCodeProcessAlive())
-            {
-                DiagnosticLog.Write("Skipped heavy VS Code cache prune: a VS Code process is running.");
-            }
-            else
-            {
-                reclaimed += PruneCacheDirectories(installedDirectory, RegenerableCacheDirectoryNames);
-            }
         }
 
-        if (config.UseDedicatedUserDataDirs && Directory.Exists(slotUserDataRoot))
+        if (!canContinue())
+        {
+            DiagnosticLog.Write("Skipped VS Code cache prune (including CacheStorage): a VS Code process is running or its state is unavailable. Close all VS Code processes and restart the hub.");
+            return reclaimed;
+        }
+
+        // 共有プロファイル運用ではスロット別 user-data は使わない。過去の専用プロファイルが
+        // 残っていると Cache / WebStorage だけで数 GB になるため、起動時に回収する。
+        if (!config.UseDedicatedUserDataDirs && VscodeCacheStorage.IsUnlinkedDirectory(slotUserDataRoot))
+        {
+            reclaimed += FileSystemCleanup.DeleteDirectoryBestEffort(slotUserDataRoot, canContinue);
+        }
+
+        if (!string.IsNullOrWhiteSpace(installedDirectory))
+        {
+            reclaimed += PruneRegenerableCaches(installedDirectory, canContinue);
+        }
+
+        if (config.UseDedicatedUserDataDirs && VscodeCacheStorage.IsUnlinkedDirectory(slotUserDataRoot))
         {
             foreach (var slotDirectory in Directory.EnumerateDirectories(slotUserDataRoot))
             {
-                reclaimed += PruneRegenerableCaches(slotDirectory);
+                if (!canContinue())
+                {
+                    break;
+                }
+
+                reclaimed += PruneRegenerableCaches(slotDirectory, canContinue);
             }
         }
 
@@ -338,14 +363,16 @@ public static class SlotUserDataPaths
         }
     }
 
-    private static long PruneRegenerableCaches(string userDataDirectory)
+    private static long PruneRegenerableCaches(string userDataDirectory, Func<bool>? canContinue = null)
     {
-        return PruneCacheDirectories(userDataDirectory, RegenerableCacheDirectoryNames);
+        canContinue ??= CreateInactiveProcessCheck(IsAnyVsCodeProcessAlive);
+        return PruneCacheDirectories(userDataDirectory, RegenerableCacheDirectoryNames, canContinue)
+            + VscodeCacheStorage.Prune(userDataDirectory, canContinue);
     }
 
-    private static long PruneCacheDirectories(string userDataDirectory, IReadOnlyList<string> directoryNames)
+    private static long PruneCacheDirectories(string userDataDirectory, IReadOnlyList<string> directoryNames, Func<bool>? canContinue = null)
     {
-        if (!Directory.Exists(userDataDirectory))
+        if (!VscodeCacheStorage.IsUnlinkedDirectory(userDataDirectory))
         {
             return 0;
         }
@@ -353,10 +380,45 @@ public static class SlotUserDataPaths
         var reclaimed = 0L;
         foreach (var directoryName in directoryNames)
         {
-            reclaimed += FileSystemCleanup.DeleteDirectoryBestEffort(Path.Combine(userDataDirectory, directoryName));
+            if (canContinue?.Invoke() == false)
+            {
+                break;
+            }
+
+            reclaimed += FileSystemCleanup.DeleteDirectoryBestEffort(Path.Combine(userDataDirectory, directoryName), canContinue);
         }
 
         return reclaimed;
+    }
+
+    private static Func<bool> CreateInactiveProcessCheck(Func<bool> isAnyVsCodeProcessAlive)
+    {
+        var elapsed = Stopwatch.StartNew();
+        var nextCheck = TimeSpan.Zero;
+        var stopped = true;
+        return () =>
+        {
+            if (stopped && elapsed.Elapsed >= nextCheck)
+            {
+                try
+                {
+                    stopped = !isAnyVsCodeProcessAlive();
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Write(ex);
+                    stopped = false;
+                }
+
+                nextCheck = elapsed.Elapsed + TimeSpan.FromMilliseconds(200);
+                if (!stopped)
+                {
+                    DiagnosticLog.Write("VS Code cache prune stopped: a process is running or its state could not be checked.");
+                }
+            }
+
+            return stopped;
+        };
     }
 
     private static bool IsAnyVsCodeProcessAlive()

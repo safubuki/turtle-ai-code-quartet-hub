@@ -208,6 +208,8 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `applications`: VS Code、Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリなどの起動定義と検出候補
 - `slots[].applicationId`: スロットごとの起動対象アプリ
 
+ハブ起動時は、VS Code がすべて終了している場合にキャッシュをバックグラウンドで回収します。ブラウザ保存領域では `CacheStorage` だけを対象とし、設定・サインイン情報・チャット履歴は保持します。窓を閉じても VS Code のプロセスが残っている場合は見送ります。H5 / V10 の警告には CacheStorage の容量を表示します。詳細は [容量の解析と診断コード](docs/data-folder-diagnostics.md) を参照してください。
+
 `applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場、`%LOCALAPPDATA%\agy\bin`、`~\.gemini\bin`、`~\.local\bin` も探索します。旧設定の `gemini` アプリ ID は読み込み時に `antigravity-cli` へ移行されます。
 
 実行時データは `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。

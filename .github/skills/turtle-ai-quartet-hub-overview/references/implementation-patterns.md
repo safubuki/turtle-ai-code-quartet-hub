@@ -314,3 +314,11 @@
 - **中断**: `WaitAsync` で待機期限を設け、期限到達・閉鎖・再計測時は走査側のトークンもキャンセルする。OSの同期I/Oそのものは即時中断できないため、遅れて終了した結果をUIへ反映しない。通常走査はディレクトリ/項目ごとにキャンセルを確認し、ジャンクション等の再解析ポイントを辿らない。取得できない子ディレクトリは従来どおり除外するが、対象ルートの失敗を0 Bと誤表示しない。
 - **注意**: 第34節の再帰列挙・逐次処理は本節で置き換える。UI更新はDispatcher上で行い、閉鎖・再計測後のキャンセルトークンと一覧の参照一致を確認する。単にタイムアウトしたTaskを放置して走査を続けたり、部分集計を確定値として表示したりしない。
 - **確認**: 本体とテストのビルド警告・エラー0。回帰テスト102件（既存91＋追加11）が合格。実ドライブの容量取得と後続フォルダ、空/消失フォルダ、遅い先頭項目、並行枠2件の時間超過、読み取り例外、閉鎖/再計測に相当するキャンセルと遅延結果の破棄を確認。
+
+## 36. VS Code CacheStorage の停止中回収（2026-11-07 追加）
+- **ファイル**: `Services/SlotUserDataPaths.cs`, `Services/VscodeCacheStorage.cs`, `Services/FileSystemCleanup.cs`, `Services/VscodeLauncher.cs`, `Services/DataFolderDiagnosticsService.cs`
+- **問題**: H5 のブラウザ保存領域内にある CacheStorage が直下キャッシュの回収対象外で、専用スロットごとに蓄積する。窓を閉じてもプロセスが残る環境がある。
+- **対策**: 既存の起動時 Task.Run から標準・専用プロファイルの `WebStorage/<bucket>/CacheStorage`、`Service Worker/CacheStorage` と `Partitions/<partition>` 内の同じ配置を回収する。プロセスが存在する/確認不能なら見送る。清掃中も 200 ms 間隔で確認し、一度起動を検出したらその回収は中止する。ハブの VS Code 起動と清掃は `UserDataMaintenanceGate` で排他し、起動側は非同期待機する。
+- **保護**: 既知の相対配置だけを許可し、ルート外と祖先の reparse point を拒否する。内部リンクを辿らず、ロック中のファイルは次回へ回す。User・Cookies・IndexedDB・未保存データ・Service Worker 登録情報は触らない。第10節の WebStorage 保持に対する例外は CacheStorage のみ。専用無効時の旧 user-data 全体回収は従来仕様だが、プロセス停止条件を追加した。
+- **診断**: H5/V10/G10 に CacheStorage の内訳を表示。G10 は自動回収対象外。既存コード番号・しきい値は維持し、索引を7階層に拡張して専用 Partition 内も数える。H3 の履歴は削除対象にしない。
+- **注意**: 外部起動との完全な排他はできない。強制終了や任意の CacheStorage 名の再帰検索は追加しない。別 PC 固有の増加元の拡張機能は未特定。原因・確認手順は `docs/data-folder-diagnostics.md` を参照。

@@ -52,6 +52,7 @@ WindowFocusSynchronizerTests.Run(failures);
 SystemMonitorAndCardTitleTests.Run(failures);
 await FolderUsageCalculationTests.RunAsync(failures);
 UserDataReclaimTests.Run(failures);
+await CacheStorageReclaimTests.RunAsync(failures);
 DiskCleanupTests.Run(failures);
 TitleBarIndicatorTests.Run(failures);
 DataFolderDiagnosticsTests.Run(failures);
@@ -77,6 +78,7 @@ Console.WriteLine("ウィンドウ直接操作のフォーカス同期チェッ�
 Console.WriteLine("メインカードタイトル視認性＆システムモニタ回帰チェックに合格しました (17/17)。");
 Console.WriteLine("巨大フォルダ・ドライブの使用量計測チェックに合格しました (11/11)。");
 Console.WriteLine("VS Code user-data 回収のリンク保護チェックに合格しました (3/3)。");
+Console.WriteLine($"CacheStorage の安全な自動回収チェックに合格しました ({CacheStorageReclaimTests.Count}/{CacheStorageReclaimTests.Count})。");
 Console.WriteLine("ディスク整理・ページファイル表示のチェックに合格しました (26/26)。");
 Console.WriteLine("タイトルバーの状態表示・控えのフォルダ変更のチェックに合格しました (16/16)。");
 Console.WriteLine($"容量の解析（診断コード）のチェックに合格しました ({DataFolderDiagnosticsTests.Count}/{DataFolderDiagnosticsTests.Count})。");
