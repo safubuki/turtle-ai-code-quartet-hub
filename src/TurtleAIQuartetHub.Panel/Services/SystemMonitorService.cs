@@ -15,7 +15,7 @@ public sealed class SystemMonitorService
     // 数万ファイル規模（VS Code データ、AI エージェントのデータ、Temp）でも低速 PC で計測しきれる時間。
     private static readonly TimeSpan LargeFolderMeasurementTimeout = TimeSpan.FromSeconds(15);
 
-    // ハブ起動後に pagefile.sys がこれ以上増えたら「拡張あり」と表示する。
+    // メモリが注意域にあるとき、これ以上の pagefile.sys 増加を補足する。
     internal const long PagefileGrowthNoticeBytes = 256L * 1024 * 1024;
 
     // バーの色とタイトルバーのアイコン色で同じしきい値を使う（注意＝黄、警告＝赤）。
@@ -682,7 +682,7 @@ public sealed class SystemMonitorService
     public SystemHealthSummary CaptureHealth()
     {
         var resources = CaptureSystemResources(activeManagedWindowCount: 0);
-        var pagefile = AssessPagefile(CapturePagefile());
+        var pagefile = AssessPagefile(CapturePagefile(), resources.MemoryUsagePercent);
         return EvaluateHealth(
             resources.CpuUsagePercent,
             resources.MemoryUsagePercent,
@@ -754,47 +754,40 @@ public sealed class SystemMonitorService
         }
     }
 
-    // 注意文はメモリ使用量カード（半幅）に出すため、短く保つ。余裕ありの文は表示しない。
-    internal static PagefileAssessment AssessPagefile(PagefileSnapshot snapshot)
+    // 注意文とアイコン色は、画面に出ている物理メモリのバーと同じ基準にする。
+    // コミット率・ページファイルの過去の拡張・無効設定だけでは、緑のカードに警告を出さない。
+    internal static PagefileAssessment AssessPagefile(PagefileSnapshot snapshot, double memoryUsagePercent)
     {
+        var memoryLevel = GetUsageLevel(memoryUsagePercent, MemoryWarningPercent, MemoryCriticalPercent);
+        if (memoryLevel == SystemHealthLevel.Normal)
+        {
+            return new PagefileAssessment(PagefileAssessmentLevel.Normal, "余裕あり", string.Empty);
+        }
+
+        var level = memoryLevel == SystemHealthLevel.Critical
+            ? PagefileAssessmentLevel.Critical
+            : PagefileAssessmentLevel.Warning;
+        var hint = memoryLevel == SystemHealthLevel.Critical
+            ? "メモリ使用量が多くなっています。不要なアプリを閉じてください。"
+            : "メモリ使用量が増えています。使っていないアプリを閉じると空きを増やせます。";
+
         if (snapshot.Settings.Mode == PagefileManagementMode.None)
         {
             return new PagefileAssessment(
-                PagefileAssessmentLevel.Warning,
+                level,
                 "なし",
-                "ページファイルがないため、メモリが尽きるとアプリが落ちることがあります。");
+                hint + "ページファイルは無効です。");
         }
 
         if (snapshot.GrowthSinceHubStartBytes is long growth && growth >= PagefileGrowthNoticeBytes)
         {
             return new PagefileAssessment(
-                PagefileAssessmentLevel.Critical,
+                level,
                 "拡張あり",
-                $"メモリ不足で pagefile.sys が {FormatBytes(growth)} 増え、ディスクを使っています。PC の再起動で元に戻ります。");
+                hint + $"ページファイルはハブ起動後に {FormatBytes(growth)} 増えています。");
         }
 
-        var percent = snapshot.CommitPercent;
-        if (percent >= 90d)
-        {
-            return new PagefileAssessment(
-                PagefileAssessmentLevel.Critical,
-                "逼迫",
-                snapshot.Settings.CanGrow
-                    ? "メモリが足りなくなりかけています。まもなく pagefile.sys が拡張され、ディスクを使います。"
-                    : "メモリが足りなくなりかけています。上限に達するとアプリが落ちることがあります。");
-        }
-
-        if (percent >= 75d)
-        {
-            return new PagefileAssessment(
-                PagefileAssessmentLevel.Warning,
-                "注意",
-                snapshot.Settings.CanGrow
-                    ? "メモリが少なくなっています。足りなくなると pagefile.sys が拡張されます。"
-                    : "メモリが少なくなっています。");
-        }
-
-        return new PagefileAssessment(PagefileAssessmentLevel.Normal, "余裕あり", string.Empty);
+        return new PagefileAssessment(level, memoryLevel == SystemHealthLevel.Critical ? "逼迫" : "注意", hint);
     }
 
     public static Brush GetAssessmentBrush(PagefileAssessmentLevel level) => level switch

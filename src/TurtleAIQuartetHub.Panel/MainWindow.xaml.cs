@@ -1013,7 +1013,7 @@ public partial class MainWindow : Window
             SystemMonitorCpuProgressBar.Foreground = snapshot.CpuBarBrush;
             SystemMonitorCpuSummaryText.Text = snapshot.CpuDetailText;
 
-            var pagefileAssessment = UpdatePagefileSummary();
+            var pagefileAssessment = UpdatePagefileSummary(snapshot.MemoryUsagePercent);
 
             var drives = _systemMonitorService.GetDriveUsages();
             SystemMonitorDrivesItemsControl.ItemsSource = drives;
@@ -1031,11 +1031,11 @@ public partial class MainWindow : Window
     }
 
     // メモリ使用量カードの下に pagefile.sys のディスク使用量を 1 行で出す。
-    // 余裕があるときは注意文を出さず、増加・拡張間近のときだけ色付きで知らせる。
-    private PagefileAssessment UpdatePagefileSummary()
+    // 警告文は同じ更新で取得した物理メモリ使用率で判定し、緑の間は表示しない。
+    private PagefileAssessment UpdatePagefileSummary(double memoryUsagePercent)
     {
         var snapshot = _systemMonitorService.CapturePagefile();
-        var assessment = SystemMonitorService.AssessPagefile(snapshot);
+        var assessment = SystemMonitorService.AssessPagefile(snapshot, memoryUsagePercent);
         var growthText = snapshot.GrowthSinceHubStartBytes is long growth && growth > 0
             ? $"ハブ起動後 +{SystemMonitorService.FormatBytes(growth)}"
             : "増加なし";
@@ -1047,9 +1047,10 @@ public partial class MainWindow : Window
             ? (long)(snapshot.CommitLimitBytes - snapshot.CommittedBytes)
             : 0L;
         SystemMonitorPagefileText.ToolTip =
-            "pagefile.sys がディスク上で使っている容量です。メモリが足りなくなると Windows が自動で大きくし、そのぶんディスクを使います（PC の再起動で元に戻ります）。"
+            "pagefile.sys がディスク上で使っている容量です。設定と使用状況に応じて Windows が拡張する場合があります。"
             + $"{Environment.NewLine}設定: {SystemMonitorService.DescribePagefileSettings(snapshot.Settings)}"
-            + $"{Environment.NewLine}全アプリが予約したメモリ {SystemMonitorService.FormatBytes((long)snapshot.CommittedBytes)} / 上限 {SystemMonitorService.FormatBytes((long)snapshot.CommitLimitBytes)}（拡張まで あと {SystemMonitorService.FormatBytes(headroomBytes)}）";
+            + $"{Environment.NewLine}メモリ確保量（コミット）{SystemMonitorService.FormatBytes((long)snapshot.CommittedBytes)} / 上限 {SystemMonitorService.FormatBytes((long)snapshot.CommitLimitBytes)}（上限まで {SystemMonitorService.FormatBytes(headroomBytes)}）"
+            + $"{Environment.NewLine}コミットは物理メモリ使用量とは別の値です。警告色は物理メモリ使用率に合わせています。";
 
         var showWarning = assessment.Level != PagefileAssessmentLevel.Normal;
         SystemMonitorPagefileWarningText.Visibility = showWarning ? Visibility.Visible : Visibility.Collapsed;

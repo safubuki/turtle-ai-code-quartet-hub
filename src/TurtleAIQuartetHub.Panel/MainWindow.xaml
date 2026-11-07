@@ -4760,7 +4760,7 @@
                                  Foreground="{StaticResource MutedTextBrush}"
                                  TextWrapping="Wrap"
                                  Text="使用中 -- / --" />
-                      <!-- pagefile.sys のディスク使用量。普段は 1 行だけ出し、増加・拡張間近のときだけ注意文を出す。 -->
+                      <!-- pagefile.sys の容量は通常色の1行。警告文は物理メモリのバーが注意域のときだけ表示。 -->
                       <TextBlock x:Name="SystemMonitorPagefileText"
                                  Margin="0,4,0,0"
                                  FontSize="11"

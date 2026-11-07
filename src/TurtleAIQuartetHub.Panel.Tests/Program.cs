@@ -54,6 +54,7 @@ await FolderUsageCalculationTests.RunAsync(failures);
 UserDataReclaimTests.Run(failures);
 await CacheStorageReclaimTests.RunAsync(failures);
 DiskCleanupTests.Run(failures);
+MemoryWarningTests.Run(failures);
 TitleBarIndicatorTests.Run(failures);
 DataFolderDiagnosticsTests.Run(failures);
 
@@ -80,6 +81,7 @@ Console.WriteLine("巨大フォルダ・ドライブの使用量計測チェッ�
 Console.WriteLine("VS Code user-data 回収のリンク保護チェックに合格しました (3/3)。");
 Console.WriteLine($"CacheStorage の安全な自動回収チェックに合格しました ({CacheStorageReclaimTests.Count}/{CacheStorageReclaimTests.Count})。");
 Console.WriteLine("ディスク整理・ページファイル表示のチェックに合格しました (26/26)。");
+Console.WriteLine($"メモリ警告・アイコン色の整合チェックに合格しました ({MemoryWarningTests.Count}/{MemoryWarningTests.Count})。");
 Console.WriteLine("タイトルバーの状態表示・控えのフォルダ変更のチェックに合格しました (16/16)。");
 Console.WriteLine($"容量の解析（診断コード）のチェックに合格しました ({DataFolderDiagnosticsTests.Count}/{DataFolderDiagnosticsTests.Count})。");
 return 0;

@@ -47,12 +47,12 @@ internal static class TitleBarIndicatorTests
 
         var pagefileCritical = SystemMonitorService.EvaluateHealth(
             10,
-            40,
+            95,
             [],
             new PagefileAssessment(PagefileAssessmentLevel.Critical, "拡張あり", "hint"));
-        Check(failures, "健康状態: ページファイルの拡張は警告",
+        Check(failures, "健康状態: 物理メモリ逼迫中のページファイルの補足も表示する",
             pagefileCritical.Level == SystemHealthLevel.Critical
-            && pagefileCritical.Issues[0].Text.Contains("拡張あり", StringComparison.Ordinal));
+            && pagefileCritical.Issues.Any(issue => issue.Text.Contains("拡張あり", StringComparison.Ordinal)));
 
         Check(failures, "健康状態: しきい値ちょうどで段階が上がる",
             SystemMonitorService.GetUsageLevel(SystemMonitorService.CpuWarningPercent, SystemMonitorService.CpuWarningPercent, SystemMonitorService.CpuCriticalPercent) == SystemHealthLevel.Warning

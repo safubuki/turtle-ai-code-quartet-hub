@@ -153,13 +153,13 @@ internal static class DiskCleanupTests
             new(48 * gb, 52 * gb, committed, 4L * 1024 * 1024 * 1024, 0, 0, growth, auto);
 
         Check(failures, "ページファイル評価: 余裕があれば「余裕あり」",
-            SystemMonitorService.AssessPagefile(Snapshot(26 * gb, 0)) is { Level: PagefileAssessmentLevel.Normal, BadgeText: "余裕あり" });
-        Check(failures, "ページファイル評価: 75% 以上は「注意」",
-            SystemMonitorService.AssessPagefile(Snapshot(42 * gb, 0)).Level == PagefileAssessmentLevel.Warning);
-        Check(failures, "ページファイル評価: 90% 以上は「逼迫」",
-            SystemMonitorService.AssessPagefile(Snapshot(49 * gb, 0)) is { Level: PagefileAssessmentLevel.Critical, BadgeText: "逼迫" });
-        Check(failures, "ページファイル評価: ハブ起動後の拡張を最優先で知らせる",
-            SystemMonitorService.AssessPagefile(Snapshot(20 * gb, SystemMonitorService.PagefileGrowthNoticeBytes)) is { BadgeText: "拡張あり" });
+            SystemMonitorService.AssessPagefile(Snapshot(26 * gb, 0), 47.5) is { Level: PagefileAssessmentLevel.Normal, BadgeText: "余裕あり", HintText: "" });
+        Check(failures, "ページファイル評価: 物理メモリ 75% 以上は「注意」",
+            SystemMonitorService.AssessPagefile(Snapshot(42 * gb, 0), 75).Level == PagefileAssessmentLevel.Warning);
+        Check(failures, "ページファイル評価: 物理メモリ 90% 以上は「逼迫」",
+            SystemMonitorService.AssessPagefile(Snapshot(49 * gb, 0), 90) is { Level: PagefileAssessmentLevel.Critical, BadgeText: "逼迫" });
+        Check(failures, "ページファイル評価: 物理メモリが注意域のときは拡張量を補足する",
+            SystemMonitorService.AssessPagefile(Snapshot(20 * gb, SystemMonitorService.PagefileGrowthNoticeBytes), 80) is { Level: PagefileAssessmentLevel.Warning, BadgeText: "拡張あり" });
     }
 
     private static void VerifyPagefileCapture(List<string> failures)
