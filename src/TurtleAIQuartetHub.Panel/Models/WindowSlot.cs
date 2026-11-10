@@ -555,8 +555,49 @@ public sealed class WindowSlot : INotifyPropertyChanged
         }
     }
 
+    // AI フックの通知から決まる状態。入れ替え時はワークスペースと一緒に移す（SwapAiActivity）。
+    public AiActivityTracker AiTracker { get; private set; } = new();
+
+    public AiActivityState AiActivity => AiTracker.State;
+
+    public string? AiActivityToolTip => AiTracker.State switch
+    {
+        AiActivityState.Working => $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中",
+        AiActivityState.Done when AiTracker.LastWasAttentionRequest =>
+            $"{GetAiToolDisplayName(AiTracker.LastTool)} が操作を待っています（フォーカス表示を切り替えると消えます）",
+        AiActivityState.Done => $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
+        _ => null
+    };
+
+    public void NotifyAiActivityChanged()
+    {
+        OnPropertyChanged(nameof(AiActivity));
+        OnPropertyChanged(nameof(AiActivityToolTip));
+    }
+
+    public static void SwapAiActivity(WindowSlot source, WindowSlot target)
+    {
+        (source.AiTracker, target.AiTracker) = (target.AiTracker, source.AiTracker);
+        source.NotifyAiActivityChanged();
+        target.NotifyAiActivityChanged();
+    }
+
+    private static string GetAiToolDisplayName(string tool) => tool switch
+    {
+        "claude" => "Claude Code",
+        "codex" => "Codex",
+        "copilot" => "GitHub Copilot",
+        "" => "AI",
+        _ => tool
+    };
+
     public void ClearWindow()
     {
+        if (AiTracker.Reset())
+        {
+            NotifyAiActivityChanged();
+        }
+
         WindowHandle = IntPtr.Zero;
         CurrentWorkspacePath = string.Empty;
         WindowTitle = string.Empty;

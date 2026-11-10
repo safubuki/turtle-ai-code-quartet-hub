@@ -43,6 +43,13 @@ public partial class App : Application
             return;
         }
 
+        // AI フックの通知はハブが動いているときだけ意味がある。ハブ未起動の状態から開いたりしない。
+        if (e.Args.Length > 0 && string.Equals(e.Args[0], Services.AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase))
+        {
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         _singleInstanceCoordinator.CommandReceived += args =>

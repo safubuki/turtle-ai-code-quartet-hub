@@ -530,6 +530,13 @@ public partial class MainWindow : Window
 
     public void ExecuteExternalCommand(string[]? args)
     {
+        // AI フックの通知はパネルを前面に出さず、表示だけを更新する。
+        if (args is { Length: > 0 } && string.Equals(args[0], AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase))
+        {
+            HandleAiHookEvent(args);
+            return;
+        }
+
         _ = ExecuteExternalCommandAsync(args ?? []);
     }
 
@@ -650,6 +657,7 @@ public partial class MainWindow : Window
     {
         _statusStore.ResetApplicationPathSettings();
         SettingsConfigPathText.Text = AppConfig.GetUserConfigPath();
+        RefreshAiNotifySettingsStatus();
         SettingsOverlay.Visibility = Visibility.Visible;
         CloseSettingsDialogButton.Focus();
     }
@@ -4006,6 +4014,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            PruneStaleAiActivity();
             await RefreshSlotsAsync();
         }
         catch (Exception ex)
@@ -5929,6 +5938,8 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        AcknowledgeAiActivityOnFocusChange(slot);
 
         if (slot.IsFocused)
         {

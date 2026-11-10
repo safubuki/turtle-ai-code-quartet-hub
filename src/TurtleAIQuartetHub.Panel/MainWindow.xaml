@@ -763,6 +763,90 @@
       </Style.Triggers>
     </Style>
 
+    <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
+         作業中: バッジに重ねた枠だけが、ホタルのようにゆっくり（約 3.6 秒周期）明滅する。目に刺さらないよう、
+                 フレームレートを抑えて正弦波で明るさを変え、真っ暗にも最大輝度にもしない。
+         完了／許可待ち: バッジ全体を淡い緑で塗り、周りをぼんやり光らせる（点滅しない）。フォーカス表示を切り替える（1 面フォーカス⇔4 面表示）と消える。 -->
+    <Color x:Key="AiGlowColor">#45D483</Color>
+    <SolidColorBrush x:Key="AiDoneBackgroundBrush" Color="#36805A" />
+    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#9AF5C0" />
+    <SolidColorBrush x:Key="AiDoneForegroundBrush" Color="#F4FFF8" />
+    <DropShadowEffect x:Key="AiDoneGlowEffect"
+                      Color="{StaticResource AiGlowColor}"
+                      BlurRadius="16"
+                      ShadowDepth="0"
+                      Opacity="1" />
+
+    <Style x:Key="AiWorkingRingStyle" TargetType="Border">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#8AF2B5" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="Effect">
+        <Setter.Value>
+          <DropShadowEffect Color="{StaticResource AiGlowColor}"
+                            BlurRadius="7"
+                            ShadowDepth="0"
+                            Opacity="0.9" />
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard x:Name="AiWorkingRingPulse">
+              <Storyboard Timeline.DesiredFrameRate="30">
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 From="0.12"
+                                 To="0.95"
+                                 Duration="0:0:1.8"
+                                 AutoReverse="True"
+                                 RepeatBehavior="Forever">
+                  <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut" />
+                  </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <StopStoryboard BeginStoryboardName="AiWorkingRingPulse" />
+          </DataTrigger.ExitActions>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- 標準表示のスロット名バッジ（A〜D）。 -->
+    <Style x:Key="SlotNameBadgeStyle" TargetType="Border">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="#223027" />
+      <Setter Property="BorderBrush" Value="#335A43" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
+          <Setter Property="Effect" Value="{StaticResource AiDoneGlowEffect}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SlotNameBadgeTextStyle" TargetType="TextBlock">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Foreground" Value="{StaticResource AiDoneForegroundBrush}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="CompactSlotBadgeStyle" TargetType="Border">
       <Setter Property="Width" Value="18" />
       <Setter Property="Height" Value="18" />
@@ -770,7 +854,6 @@
       <Setter Property="Background" Value="#223027" />
       <Setter Property="BorderBrush" Value="#335A43" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Margin" Value="0,0,5,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
@@ -781,6 +864,12 @@
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
           <Setter Property="Background" Value="#2C2414" />
           <Setter Property="BorderBrush" Value="#C49B38" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
+          <Setter Property="Effect" Value="{StaticResource AiDoneGlowEffect}" />
+          <Setter Property="Opacity" Value="1" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -794,6 +883,9 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
           <Setter Property="Foreground" Value="#6F7B74" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Foreground" Value="{StaticResource AiDoneForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1051,14 +1143,19 @@
                     BorderBrush="{Binding FocusFrameBrush}"
                     BorderThickness="2"
                     CornerRadius="7">
-              <Border x:Name="MicroButtonBorder"
-                      Background="{TemplateBinding Background}"
-                      BorderBrush="{TemplateBinding BorderBrush}"
-                      BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="6">
-                <ContentPresenter HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
-              </Border>
+              <Grid>
+                <Border x:Name="MicroButtonBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="6">
+                  <ContentPresenter HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" />
+                </Border>
+                <!-- 極小表示はバッジが無いので、カードの枠を明滅させる。 -->
+                <Border CornerRadius="6"
+                        Style="{StaticResource AiWorkingRingStyle}" />
+              </Grid>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -1078,6 +1175,13 @@
                                       Opacity="0.4" />
                   </Setter.Value>
                 </Setter>
+              </DataTrigger>
+              <!-- AI の完了／許可待ち: カード全体をぼんやり光らせる（フォーカス表示より優先）。 -->
+              <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
+                <Setter TargetName="MicroButtonBorder" Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
+                <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{StaticResource AiDoneGlowEffect}" />
+                <Setter Property="Foreground" Value="{StaticResource AiDoneForegroundBrush}" />
               </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
@@ -1512,19 +1616,17 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <Border Width="28"
-                      Height="28"
-                      CornerRadius="8"
-                      Background="#223027"
-                      BorderBrush="#335A43"
-                      BorderThickness="1"
-                      Margin="0,0,8,0">
-                <TextBlock Text="{Binding Name}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource AccentBrush}" />
-              </Border>
+              <Grid Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    ToolTip="{Binding AiActivityToolTip}">
+                <Border Style="{StaticResource SlotNameBadgeStyle}">
+                  <TextBlock Text="{Binding Name}"
+                             Style="{StaticResource SlotNameBadgeTextStyle}" />
+                </Border>
+                <Border CornerRadius="8"
+                        BorderThickness="2"
+                        Style="{StaticResource AiWorkingRingStyle}" />
+              </Grid>
               <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
               <StackPanel Grid.Column="2"
                           VerticalAlignment="Center">
@@ -1826,10 +1928,16 @@
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
-          <Border Style="{StaticResource CompactSlotBadgeStyle}">
-            <TextBlock Text="{Binding Name}"
-                       Style="{StaticResource CompactSlotBadgeTextStyle}" />
-          </Border>
+          <Grid Margin="0,0,5,0"
+                VerticalAlignment="Center"
+                ToolTip="{Binding AiActivityToolTip}">
+            <Border Style="{StaticResource CompactSlotBadgeStyle}">
+              <TextBlock Text="{Binding Name}"
+                         Style="{StaticResource CompactSlotBadgeTextStyle}" />
+            </Border>
+            <Border CornerRadius="4"
+                    Style="{StaticResource AiWorkingRingStyle}" />
+          </Grid>
 
           <TextBox x:Name="CompactSlotTitleBox"
                    Grid.Column="1"
@@ -3876,6 +3984,41 @@
                           Margin="0,12,0,0"
                           VerticalScrollBarVisibility="Auto">
               <StackPanel>
+                <Border Padding="10"
+                        Margin="0,0,0,12"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <StackPanel>
+                    <TextBlock Text="AI の作業通知"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                    <TextBlock Margin="0,4,0,8"
+                               Text="Claude Code・Codex・GitHub Copilot のフック機能で、AI が作業中はスロットのバッジの枠がゆっくり明滅し、応答が終わるとバッジがぼんやり光ります（そのスロットのフォーカス表示を切り替えると消えます）。VS Code のチャット欄・CLI のどちらで使っても通知されます。設定すると、各ツールのユーザー設定（~/.claude/settings.json、~/.codex/hooks.json、~/.copilot/hooks/）へ通知用の項目だけを追加し、元のファイルは .turtle-hub-backup として残します。Codex は初回に CLI の /hooks で承認が必要です。"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="AiNotifyStatusText"
+                               Margin="0,0,0,8"
+                               FontSize="11"
+                               Foreground="{StaticResource TextBrush}"
+                               TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                      <Button Content="フックを設定"
+                              MinWidth="110"
+                              Click="InstallAiNotifyHooksButton_Click"
+                              Style="{StaticResource BaseButton}"
+                              ToolTip="インストール済みのツールにだけ、通知用のフックを追加（設定し直しても重複しません）" />
+                      <Button Content="フックを解除"
+                              MinWidth="110"
+                              Margin="8,0,0,0"
+                              Click="UninstallAiNotifyHooksButton_Click"
+                              Style="{StaticResource BaseButton}"
+                              ToolTip="このアプリが追加した通知用のフックだけを取り除く（ほかの設定は残す）" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
                 <Border Padding="10"
                         Background="#111815"
                         BorderBrush="{StaticResource BorderBrushSoft}"

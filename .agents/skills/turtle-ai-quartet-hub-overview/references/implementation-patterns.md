@@ -2,10 +2,17 @@
 
 更新日: 2026-09-17
 
-## 1. AI 状態監視を戻さない
-- AI 状態検出、UI Automation のチャット走査、拡張ログ解析、VS Code 外枠オーバーレイは削除済み。
-- `StatusStore.RefreshWindowStatusesAsync` は HWND、タイトル、ワークスペース表示更新の軽量処理として維持する。
-- AI 状態に由来するカード色、縮小ボタン色、点滅、Jump List 文言を復活させない。
+## 1. AI 状態は「フックの明示通知」だけで表示する（推定は戻さない）
+- **方針変更（2026-11-11）**: 以前の AI 状態検出（UI Automation のチャット走査、拡張ログ解析）は不安定なため削除した。現在は、Claude Code / Codex / GitHub Copilot の**フック**が送る明示的な通知（指示を受けた・応答が終わった・許可を待っている）だけで、スロットの作業中・完了を表示する。
+- **引き続き戻さないもの**: UI Automation、拡張ログ、OpenTelemetry、ターミナル出力からの推定と、VS Code 外枠オーバーレイ。Jump List の文言も AI 状態で変えない。`StatusStore.RefreshWindowStatusesAsync` は HWND、タイトル、ワークスペース表示更新の軽量処理として維持する。
+- **ファイル**: `Services/AiActivityTracker.cs`（通知の解釈・スロット単位の状態・cwd からのスロット特定）、`Models/AiActivityState.cs`、`Services/AiNotifyHookInstaller.cs`（フックの設定・解除と通知スクリプト）、`MainWindow.AiActivity.cs`、`Models/WindowSlot.cs`（`AiTracker` / `AiActivity`）、`TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`
+- **流れ**: フック → `~/.turtle-ai-quartet-hub/ai-notify.ps1` → 既存の名前付きパイプ `TurtleAIQuartetHub.Commands` に `["--ai-event", tool, event, cwd, session, notification_type]` → `ExecuteExternalCommand` の先頭で振り分けて `HandleAiHookEvent`。**この経路では `ActivatePanelWindow` を呼ばない**（通知のたびにハブが前面に出ないように）。ハブ未起動時に `--ai-event` 付きで起動されても UI を開かずに終了する。
+- **スロット特定**: フックの `cwd` が、ウィンドウを持つスロットのワークスペース（`CurrentWorkspacePath` / `DisplayPath` / `EffectivePath` など）と同じか配下なら対象。最も深く一致したスロットを選ぶ。フォルダ名の前方一致（`turtle` と `turtle-ai…`）を同一視しない。Git Bash 形式（`/c/...`）も扱う。リモート URI は対象外。
+- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、完了で「完了」（フォーカス表示中でも光らせる）、許可待ち（Claude の `Notification` の `permission_prompt` / `elicitation_dialog`、Codex の `PermissionRequest`）も「完了」と同じ光り方。Claude の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。中断（Codex の `Interrupt`）は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。
+- **解除**: スロットの `IsFocused` が切り替わったとき（`Slot_PropertyChanged`。パネルでの 1 面フォーカス⇔4 面表示のほか、ウィンドウの直接最大化・復元によるフォーカス同期も含む）に光を消す。ウィンドウが前面に来ただけでは消さない（フォーカス表示中に終わっても気づけるように、2026-11-11 利用者要望）。カードの入れ替え中（`StatusStore.IsSwappingSlotContents`）は IsFocused がウィンドウと一緒に移るだけなので消さない。周期更新では、完了通知が来ないまま 60 分たった作業中だけを片付ける。許可待ちを見た後は、セッションが残っていれば作業中へ戻る。ウィンドウが閉じたら（`WindowSlot.ClearWindow`）消す。スロット入れ替えでは `WindowSlot.SwapAiActivity` でワークスペースと一緒に移す。
+- **見た目**: 作業中は `AiWorkingRingStyle` の枠だけを約 3.6 秒周期で明滅（正弦波・30fps・真っ暗／最大輝度にしない）。完了は塗り＋周りのぼんやりした光（点滅しない）。標準・縮小表示はスロット名バッジ（A〜D）、極小表示はカード全体。目が痛くならないことを優先し、速い点滅やチカチカした表現にしない。
+- **フック設定**: 歯車設定の「AI の作業通知」から設定・解除する。`~/.claude/settings.json`（`UserPromptSubmit` / `Stop` / `Notification`）、`~/.codex/hooks.json`（`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt`、初回は CLI の `/hooks` で承認が必要）、`~/.copilot/hooks/turtle-ai-quartet-hub.json`（`userPromptSubmitted` / `agentStop`）。既存の設定や利用者のフックは残し、通知スクリプトのパスを含む項目だけを足し引きする（2 回設定しても重複しない）。書き換え前の内容は `.turtle-hub-backup` に残す。ツールのフォルダが無ければ触らない。Codex の `config.toml` の `notify` は Codex アプリが使うため触らない。
+- **通知スクリプトの注意**: Windows PowerShell 5.1 は BOM なし UTF-8 を ANSI として読むため ASCII だけで書く。`$Event` は自動変数なので引数名は `HookEvent`。AI の動作を変えないよう、必ず `{}` を出して終了コード 0 で終わる（Stop フックの出力は継続指示として解釈されうる）。ハブ未起動時はパイプの有無を見て即終了する。スクリプトは AppData ではなくホーム直下に置く（MSIX 版では AppData がアプリ専用の場所へ振り替えられ、AI ツールから見えないことがあるため）。
 
 ## 2. スロット状態と保存
 - `slots.json` は visible slot と stored panel を同じドキュメントで保持する。

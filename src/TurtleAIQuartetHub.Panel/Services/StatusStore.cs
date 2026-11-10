@@ -1071,7 +1071,23 @@ public sealed class StatusStore : INotifyPropertyChanged
         SavePanelStates();
     }
 
+    // 入れ替え中は IsFocused もウィンドウと一緒に移るだけで、利用者がフォーカスを切り替えたわけではない。
+    public bool IsSwappingSlotContents { get; private set; }
+
     private void SwapSlotContentsCore(WindowSlot source, WindowSlot target)
+    {
+        IsSwappingSlotContents = true;
+        try
+        {
+            SwapSlotContentsCoreUnguarded(source, target);
+        }
+        finally
+        {
+            IsSwappingSlotContents = false;
+        }
+    }
+
+    private void SwapSlotContentsCoreUnguarded(WindowSlot source, WindowSlot target)
     {
         (source.PanelTitle, target.PanelTitle) = (target.PanelTitle, source.PanelTitle);
         (source.Path, target.Path) = (target.Path, source.Path);
@@ -1090,6 +1106,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         (source.WindowLayerMode, target.WindowLayerMode) = (target.WindowLayerMode, source.WindowLayerMode);
         (source.IsHidden, target.IsHidden) = (target.IsHidden, source.IsHidden);
         (source.PreferredLayout, target.PreferredLayout) = (target.PreferredLayout, source.PreferredLayout);
+        WindowSlot.SwapAiActivity(source, target);
         ApplyApplicationMetadata(source);
         ApplyApplicationMetadata(target);
 

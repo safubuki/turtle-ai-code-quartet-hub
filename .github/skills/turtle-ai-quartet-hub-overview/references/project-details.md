@@ -9,7 +9,7 @@
 - VS Code / Antigravity はワークスペース IDE として、Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI はワークスペース CLI として各スロットで起動できる。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
 - 通常表示の各スロットにはフォルダボタンがあり、保存済みまたは検出済みのローカルワークスペースを Explorer で開ける。SSH / remote URI のワークスペースではボタンを無効化する。
-- AI 状態表示、AI 状態監視、VS Code 外枠フレーム、AI 状態連動の点滅や色変更は削除済み。
+- 画面・ログからの AI 状態推定と VS Code 外枠フレームは削除済み。AI の作業中・完了は、Claude Code / Codex / GitHub Copilot のフックからの明示的な通知だけでスロットのバッジに表示する（歯車設定の「AI の作業通知」でフックを設定）。
 - `?` ヘルプと README は、Codex / Copilot / Claude / Grok の Windows ネイティブインストーラーを優先して表示し、npm または Bash 系の方法を代替手段として併記する。
 
 ## 技術スタック

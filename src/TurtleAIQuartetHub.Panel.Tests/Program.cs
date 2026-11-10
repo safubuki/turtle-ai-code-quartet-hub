@@ -57,6 +57,7 @@ DiskCleanupTests.Run(failures);
 MemoryWarningTests.Run(failures);
 TitleBarIndicatorTests.Run(failures);
 DataFolderDiagnosticsTests.Run(failures);
+AiActivityTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -84,6 +85,7 @@ Console.WriteLine("ディスク整理・ページファイル表示のチェッ�
 Console.WriteLine($"メモリ警告・アイコン色の整合チェックに合格しました ({MemoryWarningTests.Count}/{MemoryWarningTests.Count})。");
 Console.WriteLine("タイトルバーの状態表示・控えのフォルダ変更のチェックに合格しました (16/16)。");
 Console.WriteLine($"容量の解析（診断コード）のチェックに合格しました ({DataFolderDiagnosticsTests.Count}/{DataFolderDiagnosticsTests.Count})。");
+Console.WriteLine("AI の作業通知（状態・スロット特定・フック設定）のチェックに合格しました (27/27)。");
 return 0;
 
 async Task VerifyAsync(
