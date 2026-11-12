@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
   <title id="title">AI通知バッジの表示と、光を確認した後の変化</title>
-  <desc id="desc">指示の開始で待機から作業中へ、応答終了または許可待ちで光る表示へ変わる。フォーカス表示を切り替えると光が消え、作業中の記録があれば明滅に戻り、なければ待機になる。</desc>
+  <desc id="desc">指示の開始で待機から作業中の緑の明滅へ、応答が終わると薄い青の光へ変わる。許可の確認中は緑のまま。フォーカス表示を切り替えると光が消え、作業中の記録があれば緑の明滅に戻り、なければ待機になる。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#438163"/></marker>
     <style>
@@ -13,8 +13,8 @@
     </style>
   </defs>
   <rect width="1200" height="700" rx="20" fill="#f3f8f5"/>
-  <text x="48" y="54" class="title">バッジは「作業中」と「確認したい通知」を分けて持つ</text>
-  <text x="48" y="87" class="body">応答終了と許可待ちは同じ光。意味はツールチップで確認できます。</text>
+  <text x="48" y="54" class="title">青く光るのは、応答が終わったときだけ</text>
+  <text x="48" y="87" class="body">許可や質問で止まっていても、作業中の緑の明滅が続きます。</text>
 
   <rect x="48" y="150" width="300" height="176" rx="16" fill="#ffffff" stroke="#bfd3c7" stroke-width="2"/>
   <rect x="72" y="176" width="46" height="38" rx="8" fill="#eef4f0" stroke="#afc5b8" stroke-width="2"/>
@@ -24,8 +24,8 @@
   <text x="72" y="281" class="body">未確認の通知なし</text>
   <text x="72" y="307" class="small">通常のバッジ表示</text>
 
-  <path d="M348 237 H440" class="line"/>
-  <text x="394" y="201" class="small" text-anchor="middle">指示を開始</text>
+  <path d="M348 238 H450" class="line"/>
+  <text x="399" y="220" class="small" text-anchor="middle">指示を開始</text>
   <rect x="450" y="150" width="300" height="176" rx="16" fill="#ffffff" stroke="#72b48e" stroke-width="2"/>
   <rect x="474" y="176" width="46" height="38" rx="8" fill="#eef8f1" stroke="#39aa6b" stroke-width="3"/>
   <text x="489" y="203" class="heading" style="fill:#23834d">A</text>
@@ -34,30 +34,27 @@
   <text x="474" y="281" class="body">セッションを記録</text>
   <text x="474" y="307" class="small">枠がゆっくり明滅</text>
 
-  <path d="M750 237 H842" class="line"/>
-  <text x="796" y="186" class="small" text-anchor="middle">応答終了</text>
-  <text x="796" y="209" class="small" text-anchor="middle">許可待ち</text>
-  <rect x="852" y="150" width="300" height="176" rx="16" fill="#e2f5e9" stroke="#70b28b" stroke-width="2"/>
-  <rect x="871" y="171" width="56" height="48" rx="12" fill="#66d68f" opacity="0.22"/>
-  <rect x="876" y="176" width="46" height="38" rx="8" fill="#60c98a" stroke="#31975e" stroke-width="2"/>
-  <text x="891" y="203" class="heading" style="fill:#113b23">A</text>
+  <path d="M750 238 H852" class="line"/>
+  <text x="801" y="220" class="small" text-anchor="middle">応答終了</text>
+  <rect x="852" y="150" width="300" height="176" rx="16" fill="#e8f4fb" stroke="#7eafd0" stroke-width="2"/>
+  <rect x="871" y="171" width="56" height="48" rx="12" fill="#9fd0f0" opacity="0.35"/>
+  <rect x="876" y="176" width="46" height="38" rx="8" fill="#3E7EAD" stroke="#D7EEFB" stroke-width="2"/>
+  <text x="891" y="203" class="heading" style="fill:#F7FCFF">A</text>
   <text x="938" y="204" class="heading">光る</text>
-  <text x="876" y="252" class="body">確認したい通知あり</text>
+  <text x="876" y="252" class="body">応答が終わった知らせ</text>
   <text x="876" y="281" class="body">成功・失敗の判定はしない</text>
-  <text x="876" y="307" class="small">バッジ全体がぼんやり光る</text>
+  <text x="876" y="307" class="small">薄い青でぼんやり光る</text>
 
-  <path d="M1002 326 V365 H600 V332" class="line"/>
-  <rect x="625" y="347" width="357" height="35" rx="8" fill="#f3f8f5"/>
-  <text x="641" y="370" class="small">光を確認し、作業中の記録が残る → 作業中へ</text>
+  <path d="M940 326 V392 H600 V326" class="line"/>
+  <text x="616" y="380" class="small">光を消すと、作業が残っていれば緑へ</text>
 
-  <path d="M1002 365 V438 H198 V332" class="line"/>
-  <rect x="355" y="420" width="545" height="35" rx="8" fill="#f3f8f5"/>
-  <text x="373" y="443" class="small">光を確認し、作業中の記録が残らない → 待機へ</text>
+  <path d="M1064 326 V456 H198 V326" class="line"/>
+  <text x="220" y="444" class="small">光を消すと、作業がなければ待機へ</text>
 
   <rect x="48" y="494" width="1104" height="158" rx="16" fill="#ffffff" stroke="#bed7c9" stroke-width="2"/>
   <text x="72" y="529" class="heading">「光を確認する」操作</text>
-  <text x="72" y="562" class="body">そのスロットのフォーカス表示を切り替える（1面表示にする / 4面表示へ戻す）。</text>
-  <text x="72" y="590" class="body">ウィンドウを前面へ出すだけでは消えません。許可待ちの確認後は、作業中の表示へ戻ります。</text>
-  <text x="72" y="624" class="small">中断は新しい光を付けません。終了通知を受け取れずに残った作業中の記録は、60分超で整理対象になります。</text>
+  <text x="72" y="562" class="body">光っているスロットのフォーカス表示を切り替える（1面表示にする / 4面表示へ戻す）。</text>
+  <text x="72" y="590" class="body">ウィンドウを前面へ出すだけでは消えません。残った作業があれば緑へ、なければ待機へ戻ります。</text>
+  <text x="72" y="624" class="small">許可の確認中は緑のままです。中断は新しい光を付けません。終了通知が来ない作業中は、60分超で整理します。</text>
   <text x="48" y="681" class="small">図は標準表示の A バッジを例示。縮小表示はバッジ、極小表示はカード全体に同じ状態を示します。</text>
 </svg>

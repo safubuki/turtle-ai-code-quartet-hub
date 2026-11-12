@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" role="img" aria-labelledby="title desc">
+  <title id="title">色が変わるまで、誰が何をするか</title>
+  <desc id="desc">1と2はAIツール。2でAIが起動するのは、カルテットハブが登録したフックのプログラム。3はフックのプログラムが、開いているカルテットハブへ通信する。4と5はカルテットハブが判断し、カルテットハブがバッジの色を変える。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#438163"/></marker>
+    <style>
+      text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #18392b; }
+      .title { font-size: 28px; font-weight: 700; }
+      .heading { font-size: 18px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .small { font-size: 14px; fill: #526b5e; }
+      .who { font-size: 14px; font-weight: 700; }
+      .card { fill: #ffffff; stroke: #bed7c9; stroke-width: 2; }
+      .line { fill: none; stroke: #438163; stroke-width: 2.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="660" rx="20" fill="#f3f8f5"/>
+  <text x="36" y="46" class="title">色が変わるまで、誰が何をするか</text>
+  <text x="36" y="76" class="body">左は AI ツール。中央は、フックのプログラムからカルテットハブへの通信。右はカルテットハブです。</text>
+
+  <rect x="24" y="96" width="448" height="30" rx="8" fill="#d7ebe0"/>
+  <text x="40" y="116" class="who" style="fill:#1d5c3a">AIツールがすること</text>
+  <rect x="504" y="96" width="208" height="30" rx="8" fill="#e7e4f4"/>
+  <text x="520" y="116" class="who" style="fill:#3d3470">フックのプログラム</text>
+  <rect x="744" y="96" width="432" height="30" rx="8" fill="#d9e7f4"/>
+  <text x="760" y="116" class="who" style="fill:#1d4e73">カルテットハブがすること</text>
+
+  <rect x="24" y="136" width="208" height="280" rx="16" class="card"/>
+  <text x="40" y="168" class="heading">1　判断する</text>
+  <text x="40" y="194" class="who" style="fill:#1d5c3a">主体：AIツール</text>
+  <text x="40" y="228" class="body">指示を受け取ると、</text>
+  <text x="40" y="252" class="body">「始まった」と</text>
+  <text x="40" y="276" class="body">判断します。</text>
+  <text x="40" y="312" class="small">終わったときも、</text>
+  <text x="40" y="336" class="small">判断するのは AIツール。</text>
+  <text x="40" y="372" class="small">4つのツールで同じです。</text>
+
+  <path d="M232 276 H264" class="line"/>
+
+  <rect x="264" y="136" width="208" height="280" rx="16" fill="#e6f3eb" stroke="#70a88a" stroke-width="2"/>
+  <text x="280" y="168" class="heading">2　起動する</text>
+  <text x="280" y="194" class="who" style="fill:#1d5c3a">主体：AIツール</text>
+  <text x="280" y="228" class="body">カルテットハブが</text>
+  <text x="280" y="252" class="body">登録したプログラムを</text>
+  <text x="280" y="276" class="body">起動します。</text>
+  <text x="280" y="312" class="small">プログラム起動がフック。</text>
+  <text x="280" y="348" class="small">用意はカルテットハブ。</text>
+  <text x="280" y="372" class="small">起動するのは AI です。</text>
+
+  <path d="M472 276 H504" class="line"/>
+
+  <rect x="504" y="136" width="208" height="280" rx="16" fill="#f7f5fc" stroke="#c9c2e4" stroke-width="2"/>
+  <text x="520" y="168" class="heading">3　通信する</text>
+  <text x="520" y="194" class="who" style="fill:#3d3470">主体：フックのプログラム</text>
+  <text x="520" y="228" class="body">名前付きパイプで</text>
+  <text x="520" y="252" class="body">一方的に渡します。</text>
+  <text x="520" y="288" class="small">claude</text>
+  <text x="520" y="312" class="small">開始 または 終了</text>
+  <text x="520" y="336" class="small">作業フォルダ</text>
+  <text x="520" y="372" class="small">文章は渡しません。</text>
+
+  <path d="M712 276 H744" class="line"/>
+
+  <rect x="744" y="136" width="208" height="280" rx="16" class="card"/>
+  <text x="760" y="168" class="heading">4　受けて決める</text>
+  <text x="760" y="194" class="who" style="fill:#1d4e73">主体：カルテットハブ</text>
+  <text x="760" y="228" class="body">通信を受け取り、</text>
+  <text x="760" y="252" class="body">作業フォルダを見ます。</text>
+  <text x="760" y="288" class="body">スロット A だと</text>
+  <text x="760" y="312" class="body">自分で決めます。</text>
+  <text x="760" y="348" class="small">チャットは見ません。</text>
+
+  <path d="M952 276 H984" class="line"/>
+
+  <rect x="984" y="136" width="192" height="280" rx="16" class="card"/>
+  <text x="1000" y="168" class="heading">5　色を変える</text>
+  <text x="1000" y="194" class="who" style="fill:#1d4e73">主体：カルテットハブ</text>
+  <text x="1000" y="226" class="body">バッジだけを塗る。</text>
+  <rect x="1000" y="248" width="36" height="28" rx="7" fill="#eef8f1" stroke="#39aa6b" stroke-width="3"/>
+  <text x="1011" y="268" class="body" style="fill:#23834d">A</text>
+  <text x="1044" y="268" class="small">開始なら緑</text>
+  <rect x="1000" y="292" width="36" height="28" rx="7" fill="#3E7EAD" stroke="#D7EEFB" stroke-width="2"/>
+  <text x="1011" y="312" class="body" style="fill:#F7FCFF">A</text>
+  <text x="1044" y="312" class="small">終了なら青</text>
+  <text x="1000" y="360" class="small">AIは塗りません。</text>
+  <text x="1000" y="384" class="small">カルテットハブが塗る。</text>
+
+  <rect x="24" y="432" width="1152" height="200" rx="16" fill="#ffffff" stroke="#bed7c9" stroke-width="2"/>
+  <text x="48" y="466" class="heading">3番は、フックのプログラムとカルテットハブの通信です</text>
+  <text x="48" y="498" class="body">通信は Windows の名前付きパイプです。フックのプログラムが、同じパソコンのカルテットハブへ一方的に1回書きます。</text>
+  <rect x="48" y="518" width="36" height="28" rx="7" fill="#eef8f1" stroke="#39aa6b" stroke-width="3"/>
+  <text x="59" y="538" class="body" style="fill:#23834d">A</text>
+  <text x="96" y="538" class="body">「開始」なら、カルテットハブが緑にします。確認中も緑の明滅です。</text>
+  <rect x="48" y="558" width="36" height="28" rx="7" fill="#3E7EAD" stroke="#D7EEFB" stroke-width="2"/>
+  <text x="59" y="578" class="body" style="fill:#F7FCFF">A</text>
+  <text x="96" y="578" class="body">「終わった」なら、カルテットハブが薄い青にします。成功かは判定しません。</text>
+  <text x="48" y="612" class="small">カルテットハブを閉じていると、3番の受け口がありません。光は変わらず、あとから届き直しもしません。</text>
+</svg>

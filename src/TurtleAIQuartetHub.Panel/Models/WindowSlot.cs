@@ -563,8 +563,6 @@ public sealed class WindowSlot : INotifyPropertyChanged
     public string? AiActivityToolTip => AiTracker.State switch
     {
         AiActivityState.Working => $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中",
-        AiActivityState.Done when AiTracker.LastWasAttentionRequest =>
-            $"{GetAiToolDisplayName(AiTracker.LastTool)} が操作を待っています（フォーカス表示を切り替えると消えます）",
         AiActivityState.Done => $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
         _ => null
     };
@@ -587,6 +585,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
         "claude" => "Claude Code",
         "codex" => "Codex",
         "copilot" => "GitHub Copilot",
+        "grok" => "Grok",
         "" => "AI",
         _ => tool
     };

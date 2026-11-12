@@ -14,7 +14,7 @@ Turtle AI Code Quartet Hub は、4つの開発ワークスペースを A-D ス�
 
 AI 実行状態の推定、VS Code UI Automation 走査、VS Code 拡張ログの読み取りは行いません。
 
-設定の「AI の作業通知」でフックを設定した場合に限り、Claude Code / Codex / GitHub Copilot のフックが、指示の受け取り・応答の完了・許可待ちのたびに、PC 内の名前付きパイプでツール名、イベント名、作業フォルダ、セッション ID をこのアプリへ渡します。プロンプトや応答の内容は受け取らず、保存・送信もしません。フックの設定では、各ツールのユーザー設定（`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.copilot/hooks/turtle-ai-quartet-hub.json`）に通知用の項目だけを追加し、通知スクリプト `~/.turtle-ai-quartet-hub/ai-notify.ps1` を置きます。設定の「フックを解除」で取り除けます。
+設定の「AI の作業通知」でフックを設定した場合に限り、Claude Code / Codex / GitHub Copilot / Grok のフックが、指示の受け取り・応答の完了・許可待ちのたびに、PC 内の名前付きパイプでツール名、イベント名、作業フォルダ、セッション ID をこのアプリへ渡します。プロンプトや応答の内容は受け取らず、保存・送信もしません。フックの設定では、各ツールのユーザー設定（`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.copilot/hooks/turtle-ai-quartet-hub.json`、`~/.grok/hooks/turtle-ai-quartet-hub.json`）に通知用の項目だけを追加し、通知スクリプト `~/.turtle-ai-quartet-hub/ai-notify.ps1` を置きます。設定の「フックを解除」で取り除けます。
 
 ## 保存する情報
 

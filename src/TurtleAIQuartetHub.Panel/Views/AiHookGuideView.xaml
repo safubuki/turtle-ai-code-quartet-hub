@@ -4,6 +4,7 @@
              FontFamily="Segoe UI" FontSize="12" Foreground="#EEF4EF"
              KeyboardNavigation.TabNavigation="Cycle">
   <!-- docs/guides/ai-notification-hooks.md の要約。図は外部画像に依存しないWPFのベクター。 -->
+  <!-- 通知の流れは、AIツール / フックのプログラム / カルテットハブと、名前付きパイプの一方通行を示す。 -->
   <UserControl.Resources>
     <SolidColorBrush x:Key="GuideText" Color="#EEF4EF" />
     <SolidColorBrush x:Key="GuideMuted" Color="#AAB8AF" />
@@ -68,6 +69,13 @@
       <Setter Property="Margin" Value="0,4" />
       <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
+    <Style x:Key="GuideArrowRight" TargetType="Path" BasedOn="{StaticResource GuideArrow}">
+      <Setter Property="Data" Value="M 0,4 L 12,4 M 8,0 L 12,4 L 8,8" />
+      <Setter Property="Width" Value="13" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
   </UserControl.Resources>
 
   <Grid>
@@ -104,42 +112,187 @@
                   HorizontalScrollBarVisibility="Disabled" Padding="0,0,5,0">
       <Grid>
         <StackPanel x:Name="FlowSection">
-          <TextBlock Text="AI ツールのイベントを、同じ PC 内で対象スロットへ届けます。"
-                     Margin="0,0,0,10" Style="{StaticResource GuideBody}" />
-          <Border Style="{StaticResource GuideCard}">
-            <StackPanel>
-              <TextBlock Text="1　AI ツールが開始・応答終了を通知" Style="{StaticResource GuideHeading}" />
-              <UniformGrid Columns="3" Margin="0,7,0,0">
-                <TextBlock Text="Claude Code" Foreground="#CCBAEF" FontSize="11.5" />
-                <TextBlock Text="Codex" Foreground="#B1EACA" FontSize="11.5" />
-                <TextBlock Text="GitHub Copilot" Foreground="#A7D8F2" FontSize="11.5" />
-              </UniformGrid>
-            </StackPanel>
-          </Border>
-          <Path Style="{StaticResource GuideArrow}" />
-          <Border Style="{StaticResource GuideCard}">
-            <StackPanel>
-              <TextBlock Text="2　共通の通知スクリプトが送信" Style="{StaticResource GuideHeading}" />
-              <TextBlock Text="ツール名・イベント・作業フォルダなどを、このアプリへ渡します。"
-                         Margin="0,5,0,0" Style="{StaticResource GuideBody}" />
-            </StackPanel>
-          </Border>
-          <Path Style="{StaticResource GuideArrow}" />
-          <Border Style="{StaticResource GuideCard}">
-            <StackPanel>
-              <TextBlock Text="3　作業フォルダに合うスロットへ反映" Style="{StaticResource GuideHeading}" />
-              <TextBlock Text="通知を受け取ったハブが、対応する A〜D のバッジを更新します。"
-                         Margin="0,5,0,0" Style="{StaticResource GuideBody}" />
-              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <Border Width="31" Height="24" CornerRadius="6" Background="#64D995" BorderBrush="#A4EDC0" BorderThickness="1">
-                  <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#12351F" FontWeight="Bold" />
-                </Border>
-                <TextBlock Text="表示例：応答が終わると、バッジが光る" Margin="9,0,0,0"
-                           VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
+          <TextBlock Text="色を変えるのは、カルテットハブです。AI はバッジを塗りません。"
+                     Margin="0,0,0,8" Style="{StaticResource GuideBody}" />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="20" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="20" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Padding="8,8" Background="#173228" BorderBrush="#3E7A58"
+                    BorderThickness="1" CornerRadius="9">
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="AIツール" Foreground="#C8F5DA" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="判断して、フックの&#x0a;プログラムを起動する" Margin="0,4,0,0"
+                           Foreground="#AAB8AF" FontSize="11" TextWrapping="Wrap" />
               </StackPanel>
+            </Border>
+            <Path Grid.Column="1" Style="{StaticResource GuideArrowRight}" />
+            <Border Grid.Column="2" Padding="8,8" Background="#241F36" BorderBrush="#6E629C"
+                    BorderThickness="1" CornerRadius="9">
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="フックのプログラム" Foreground="#E6DCF8" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="名前付きパイプで、一方的に渡す" Margin="0,4,0,0"
+                           Foreground="#AAB8AF" FontSize="11" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+            <Path Grid.Column="3" Style="{StaticResource GuideArrowRight}" />
+            <Border Grid.Column="4" Padding="8,8" Background="#152A3C" BorderBrush="#4E7EA0"
+                    BorderThickness="1" CornerRadius="9">
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="カルテットハブ" Foreground="#D7EEFB" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="受け取って、自分で色を変える" Margin="0,4,0,0"
+                           Foreground="#AAB8AF" FontSize="11" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </Grid>
+          <TextBlock Text="上の3つが主体です。下は、1から5の順です。"
+                     Margin="0,8,0,8" Style="{StaticResource GuideBody}" />
+
+          <Border Style="{StaticResource GuideCard}" BorderBrush="#3E7A58">
+            <StackPanel>
+              <TextBlock Text="AIツールがすること" Foreground="#C8F5DA" FontSize="11.5" FontWeight="SemiBold" />
+              <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="18" Height="18" CornerRadius="9" Background="#1E4A34" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="1" FontSize="10" FontWeight="SemiBold" Foreground="#C8F5DA"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="開始か、応答の終了かを判断します。" Style="{StaticResource GuideHeading}" FontSize="12.5" />
+                  <TextBlock Text="Claude Code、Codex、GitHub Copilot、Grok で、光り方は同じです。"
+                             Margin="0,3,0,0" Style="{StaticResource GuideBody}" />
+                  <UniformGrid Columns="2" Margin="0,6,0,0">
+                    <TextBlock Text="Claude Code" Foreground="#CCBAEF" FontSize="11.5" Margin="0,0,8,3" />
+                    <TextBlock Text="Codex" Foreground="#B1EACA" FontSize="11.5" Margin="0,0,0,3" />
+                    <TextBlock Text="GitHub Copilot" Foreground="#A7D8F2" FontSize="11.5" Margin="0,0,8,0" />
+                    <TextBlock Text="Grok" Foreground="#D7C8F2" FontSize="11.5" />
+                  </UniformGrid>
+                </StackPanel>
+              </Grid>
+              <Path Style="{StaticResource GuideArrow}" HorizontalAlignment="Left" Margin="5,2,0,2" />
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="18" Height="18" CornerRadius="9" Background="#1E4A34" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="2" FontSize="10" FontWeight="SemiBold" Foreground="#C8F5DA"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="登録済みのフックのプログラムを起動します。" Style="{StaticResource GuideHeading}" FontSize="12.5" TextWrapping="Wrap" />
+                  <TextBlock Text="プログラムの起動がフックです。中身はカルテットハブが用意し、起動するのは AI です。"
+                             Margin="0,3,0,0" Style="{StaticResource GuideBody}" />
+                </StackPanel>
+              </Grid>
             </StackPanel>
           </Border>
-          <TextBlock Text="チャット画面や履歴を読み取って状態を推定する仕組みではありません。ハブ未起動中の通知は、あとから再送されません。"
+
+          <Path Style="{StaticResource GuideArrow}" />
+
+          <Border Style="{StaticResource GuideCard}" BorderBrush="#6E629C">
+            <StackPanel>
+              <TextBlock Text="フックのプログラムがすること" Foreground="#E6DCF8" FontSize="11.5" FontWeight="SemiBold" />
+              <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="18" Height="18" CornerRadius="9" Background="#3A3358" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="3" FontSize="10" FontWeight="SemiBold" Foreground="#E6DCF8"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="同じパソコンのカルテットハブへ、一方的に1回渡します。" Style="{StaticResource GuideHeading}" FontSize="12.5" TextWrapping="Wrap" />
+                  <TextBlock Text="通信は、Windows の名前付きパイプです。" Margin="0,3,0,0" Style="{StaticResource GuideBody}" />
+                  <TextBlock Text="受け口" Margin="0,8,0,2" Style="{StaticResource GuideBody}" />
+                  <TextBlock Text="TurtleAIQuartetHub.Commands" FontFamily="Consolas" FontSize="11.5"
+                             Foreground="#E6DCF8" TextWrapping="Wrap" />
+                  <WrapPanel Margin="0,8,0,0">
+                    <Border Background="#1C1830" BorderBrush="#6E629C" BorderThickness="1" CornerRadius="6" Padding="7,3" Margin="0,0,6,6">
+                      <TextBlock Text="ツール名" FontSize="11" Foreground="#E6DCF8" />
+                    </Border>
+                    <Border Background="#1C1830" BorderBrush="#6E629C" BorderThickness="1" CornerRadius="6" Padding="7,3" Margin="0,0,6,6">
+                      <TextBlock Text="開始または終了" FontSize="11" Foreground="#E6DCF8" />
+                    </Border>
+                    <Border Background="#1C1830" BorderBrush="#6E629C" BorderThickness="1" CornerRadius="6" Padding="7,3" Margin="0,0,0,6">
+                      <TextBlock Text="作業フォルダ" FontSize="11" Foreground="#E6DCF8" />
+                    </Border>
+                  </WrapPanel>
+                  <TextBlock Text="指示文や返答文は渡しません。カルテットハブの返事は待ちません。" Style="{StaticResource GuideBody}" />
+                  <TextBlock Text="AI へは {} を返して終わります。フックのプログラムは、AI の作業を止めません。"
+                             Margin="0,3,0,0" Style="{StaticResource GuideBody}" />
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Path Style="{StaticResource GuideArrow}" />
+
+          <Border Style="{StaticResource GuideCard}" BorderBrush="#4E7EA0">
+            <StackPanel>
+              <TextBlock Text="カルテットハブがすること" Foreground="#D7EEFB" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="18" Height="18" CornerRadius="9" Background="#1A3C56" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="4" FontSize="10" FontWeight="SemiBold" Foreground="#D7EEFB"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="作業フォルダを見て、合う A〜D を自分で選びます。" Style="{StaticResource GuideHeading}" FontSize="12.5" />
+                  <TextBlock Text="どのスロットかを決めるのは、カルテットハブです。AI は色を指定しません。"
+                             Margin="0,3,0,0" Style="{StaticResource GuideBody}" />
+                </StackPanel>
+              </Grid>
+              <Path Style="{StaticResource GuideArrow}" HorizontalAlignment="Left" Margin="5,2,0,2" />
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="18" Height="18" CornerRadius="9" Background="#1A3C56" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="5" FontSize="10" FontWeight="SemiBold" Foreground="#D7EEFB"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="選んだスロットのバッジの光を、カルテットハブが変えます。" Style="{StaticResource GuideHeading}" FontSize="12.5" TextWrapping="Wrap" />
+                  <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="40" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="31" Height="26" CornerRadius="6" BorderBrush="#79ECA8" BorderThickness="2.5" VerticalAlignment="Center" HorizontalAlignment="Left">
+                      <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#B4F9CD" />
+                    </Border>
+                    <TextBlock Grid.Column="1" Text="開始：枠がゆっくり緑に明滅します。許可や質問の確認中も、緑の明滅のままです。"
+                               VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
+                  </Grid>
+                  <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="40" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="31" Height="26" CornerRadius="6" Background="#3E7EAD" BorderBrush="#D7EEFB" BorderThickness="1" VerticalAlignment="Center" HorizontalAlignment="Left">
+                      <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#F7FCFF" FontWeight="Bold" />
+                    </Border>
+                    <TextBlock Grid.Column="1" Text="応答が終わったときだけ、薄い青でぼんやり光ります。"
+                               VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
+                  </Grid>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+          <TextBlock Text="チャット画面や履歴は見ません。カルテットハブが閉じていると受け口が無く、知らせは保存も再送もしません。"
                      Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
         </StackPanel>
 
@@ -160,7 +313,16 @@
               <TextBlock Text="GitHub Copilot" Style="{StaticResource GuideHeading}" />
               <TextBlock Text="~/.copilot/hooks/turtle-ai-quartet-hub.json" FontFamily="Consolas" FontSize="11"
                          Margin="0,6,0,0" Foreground="#BDEBD0" TextWrapping="Wrap" />
-              <TextBlock Text="ハブ専用の JSON を作成します。この専用ファイルは再設定で上書き・解除で削除します。専用ファイルのバックアップはありません。"
+              <TextBlock Text="カルテットハブ専用の JSON を作成します。専用ファイルは再設定で上書き・解除で削除します。専用ファイルのバックアップはありません。"
+                         Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource GuideCard}" Margin="0,0,0,8">
+            <StackPanel>
+              <TextBlock Text="Grok" Style="{StaticResource GuideHeading}" />
+              <TextBlock Text="~/.grok/hooks/turtle-ai-quartet-hub.json" FontFamily="Consolas" FontSize="11"
+                         Margin="0,6,0,0" Foreground="#BDEBD0" TextWrapping="Wrap" />
+              <TextBlock Text="カルテットハブ専用の JSON を追加します。ほかのフックファイルや config.toml は残します。変更前の内容は .turtle-hub-backup に保存し、カルテットハブの項目だけになったファイルは解除時に削除します。色は他のツールと同じです。"
                          Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
             </StackPanel>
           </Border>
@@ -169,16 +331,16 @@
               <TextBlock Text="共通スクリプトと解除" Style="{StaticResource GuideHeading}" />
               <TextBlock Text="~/.turtle-ai-quartet-hub/ai-notify.ps1" FontFamily="Consolas" FontSize="11"
                          Margin="0,6,0,0" Foreground="#BDEBD0" TextWrapping="Wrap" />
-              <TextBlock Text="3ツールが同じ通知スクリプトを使います。解除ではハブ用の登録と専用ファイルを取り除き、共通スクリプトの削除も試みます。"
+              <TextBlock Text="4ツールが同じ通知スクリプトを使います。解除では、カルテットハブ用の登録と専用ファイルを取り除き、共通スクリプトの削除も試みます。"
                          Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
             </StackPanel>
           </Border>
-          <TextBlock Text="Codex は初回に CLI の /hooks で承認してください。設定内容は元の画面の「フォルダ」「設定を見る」から確認できます。"
+          <TextBlock Text="Codex は初回に CLI の /hooks で承認してください。Grok は設定のあと、開いているセッションを開き直してください。未信頼の作業フォルダでは /hooks-trust が必要です。登録したファイルは、設定画面の「フォルダ」と「設定を見る」から確認できます。"
                      Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
         </StackPanel>
 
         <StackPanel x:Name="SignalsSection" Visibility="Collapsed">
-          <TextBlock Text="以下は表示例です。AI の実際の作業状態をここで表示するものではありません。"
+          <TextBlock Text="以下は表示例です。表示例は、AI の実際の作業状態を示すものではありません。"
                      Margin="0,0,0,10" Style="{StaticResource GuideBody}" />
           <Border Style="{StaticResource GuideCard}" Margin="0,0,0,8">
             <Grid>
@@ -200,8 +362,8 @@
                 <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#B4F9CD" />
               </Border>
               <StackPanel Grid.Column="1">
-                <TextBlock Text="作業中：枠がゆっくり明滅" Style="{StaticResource GuideHeading}" />
-                <TextBlock Text="AI ツールから開始の通知を受け取っています。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
+                <TextBlock Text="作業中：枠がゆっくり緑に明滅" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="開始の通知を受け取っています。許可や質問の確認中も、緑の明滅のままです。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
               </StackPanel>
             </Grid>
           </Border>
@@ -209,19 +371,19 @@
           <Border Style="{StaticResource GuideCard}">
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-              <Border Width="31" Height="26" CornerRadius="6" Background="#64D995" BorderBrush="#A4EDC0" BorderThickness="1" VerticalAlignment="Center">
-                <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#12351F" FontWeight="Bold" />
+              <Border Width="31" Height="26" CornerRadius="6" Background="#3E7EAD" BorderBrush="#D7EEFB" BorderThickness="1" VerticalAlignment="Center">
+                <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#F7FCFF" FontWeight="Bold" />
               </Border>
               <StackPanel Grid.Column="1">
-                <TextBlock Text="応答終了・許可待ち：バッジが光る" Style="{StaticResource GuideHeading}" />
-                <TextBlock Text="意味はバッジのツールチップで確認できます。「完了」は、作業やテストの成功を保証する表示ではありません。"
+                <TextBlock Text="応答が終わると、バッジが薄い青で光る" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="「完了」は、作業やテストの成功を保証する表示ではありません。許可の確認中は青くしません。"
                            Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
               </StackPanel>
             </Grid>
           </Border>
-          <TextBlock Text="光は、そのスロットのフォーカス表示（1面 / 4面）を切り替えると消えます。ウィンドウを前面へ出しただけでは消えません。作業中の記録が残っていれば、枠の明滅に戻ります。"
+          <TextBlock Text="光は、光っているスロットのフォーカス表示（1面 / 4面）を切り替えると消えます。ウィンドウを前面へ出しただけでは消えません。作業中の記録が残っていれば、緑の明滅に戻ります。"
                      Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
-          <TextBlock Text="「設定済み」は設定ファイルの確認です。通知が実際に届くことの確認には、ハブで管理中のローカルワークスペースで AI に指示し、バッジの変化を見てください。"
+          <TextBlock Text="「設定済み」は設定ファイルの確認です。通知が実際に届くことの確認には、カルテットハブで管理中のローカルワークスペースで AI に指示し、バッジの変化を見てください。"
                      Margin="0,8,0,0" Style="{StaticResource GuideBody}" />
         </StackPanel>
       </Grid>

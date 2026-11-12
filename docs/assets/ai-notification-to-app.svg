@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">フックの知らせが、同じPCの中でバッジに届くまで</title>
+  <desc id="desc">AIツールがフックを実行し、共通スクリプトがツール名・出来事・作業フォルダだけをカルテットハブへ渡す。カルテットハブはチャットを読まず、一致したスロットのバッジを緑または薄い青にする。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#438163"/></marker>
+    <style>
+      text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #18392b; }
+      .title { font-size: 28px; font-weight: 700; }
+      .heading { font-size: 20px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .small { font-size: 14px; fill: #526b5e; }
+      .card { fill: #ffffff; stroke: #bed7c9; stroke-width: 2; }
+      .line { fill: none; stroke: #438163; stroke-width: 2.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="620" rx="20" fill="#f3f8f5"/>
+  <text x="36" y="48" class="title">色を変えるのは、カルテットハブです</text>
+  <text x="36" y="78" class="body">AI はバッジを塗りません。開始や終了で、カルテットハブが登録したプログラムを一度起動します。</text>
+
+  <rect x="28" y="112" width="250" height="230" rx="16" class="card"/>
+  <text x="46" y="148" class="heading">1　AIが起動</text>
+  <text x="46" y="186" class="body">開始や終了の</text>
+  <text x="46" y="210" class="body">タイミングで、</text>
+  <text x="46" y="234" class="body">登録済みの</text>
+  <text x="46" y="258" class="body">プログラムを起動します。</text>
+  <text x="46" y="296" class="small">Claude / Codex</text>
+  <text x="46" y="316" class="small">Copilot / Grok</text>
+
+  <path d="M278 226 H318" class="line"/>
+
+  <rect x="326" y="112" width="250" height="230" rx="16" fill="#e6f3eb" stroke="#70a88a" stroke-width="2"/>
+  <text x="344" y="148" class="heading" style="font-size:17px">2　カルテットハブへ渡す</text>
+  <text x="344" y="186" class="body">起動中のカルテットハブへ、</text>
+  <text x="344" y="210" class="body">ツール名と出来事と</text>
+  <text x="344" y="234" class="body">作業フォルダだけ渡します。</text>
+  <text x="344" y="270" class="small">指示文や返答文は</text>
+  <text x="344" y="292" class="small">読みません。</text>
+
+  <path d="M576 226 H616" class="line"/>
+
+  <rect x="624" y="112" width="250" height="230" rx="16" class="card"/>
+  <text x="642" y="148" class="heading" style="font-size:17px">3　カルテットハブが判断</text>
+  <text x="642" y="186" class="body">受け取った作業フォルダを、</text>
+  <text x="642" y="210" class="body">管理中の A〜D と</text>
+  <text x="642" y="234" class="body">自分で比べます。</text>
+  <text x="642" y="270" class="small">チャット画面や履歴は</text>
+  <text x="642" y="292" class="small">見にいきません。</text>
+
+  <path d="M874 226 H914" class="line"/>
+
+  <rect x="922" y="112" width="250" height="230" rx="16" class="card"/>
+  <text x="940" y="148" class="heading" style="font-size:17px">4　カルテットハブが変える</text>
+  <rect x="940" y="176" width="36" height="28" rx="7" fill="#eef8f1" stroke="#39aa6b" stroke-width="3"/>
+  <text x="951" y="196" class="body" style="fill:#23834d">A</text>
+  <text x="986" y="196" class="body">作業中は緑</text>
+  <rect x="940" y="220" width="36" height="28" rx="7" fill="#3E7EAD" stroke="#D7EEFB" stroke-width="2"/>
+  <text x="951" y="240" class="body" style="fill:#F7FCFF">A</text>
+  <text x="986" y="240" class="body">終わったときは青</text>
+  <text x="940" y="278" class="small">標準・縮小は名前の枠、</text>
+  <text x="940" y="300" class="small">極小はカード全体です。</text>
+
+  <rect x="28" y="366" width="1144" height="214" rx="16" fill="#ffffff" stroke="#bed7c9" stroke-width="2"/>
+  <text x="48" y="402" class="heading">AI は色を塗らず、カルテットハブが自分で変えます</text>
+  <text x="48" y="440" class="body">届いた作業フォルダに合うスロットだけを変えます。関係のない枠は光らせません。</text>
+  <text x="48" y="472" class="body">カルテットハブを閉じているあいだの知らせは保存しません。あとから開いても、届き直しません。</text>
+  <text x="48" y="504" class="body">通知スクリプトは常に空の結果で終わり、AIの作業を止めたり、無理に続けさせたりしません。</text>
+  <text x="48" y="546" class="small">青い光は、光っているスロットの 1面 / 4面 を切り替えると消えます。ウィンドウを前面へ出すだけでは消えません。</text>
+</svg>

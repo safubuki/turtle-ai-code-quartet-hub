@@ -809,15 +809,17 @@
     </Style>
 
     <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
-         作業中: バッジに重ねた枠だけが、ホタルのようにゆっくり（約 3.6 秒周期）明滅する。目に刺さらないよう、
+         作業中: バッジに重ねた枠だけが、ホタルのようにゆっくり（約 3.6 秒周期）緑へ明滅する。目に刺さらないよう、
                  フレームレートを抑えて正弦波で明るさを変え、真っ暗にも最大輝度にもしない。
-         完了／許可待ち: バッジ全体を淡い緑で塗り、周りをぼんやり光らせる（点滅しない）。フォーカス表示を切り替える（1 面フォーカス⇔4 面表示）と消える。 -->
+         完了: バッジ全体を薄い青で塗り、周りを同じ青でぼんやり光らせる（点滅しない）。許可の確認中は作業中の緑のまま。
+                 作業中の緑とは別色。フォーカス表示を切り替える（1 面フォーカス⇔4 面表示）と消える。 -->
     <Color x:Key="AiGlowColor">#45D483</Color>
-    <SolidColorBrush x:Key="AiDoneBackgroundBrush" Color="#36805A" />
-    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#9AF5C0" />
-    <SolidColorBrush x:Key="AiDoneForegroundBrush" Color="#F4FFF8" />
+    <Color x:Key="AiDoneGlowColor">#B6DFF6</Color>
+    <SolidColorBrush x:Key="AiDoneBackgroundBrush" Color="#3E7EAD" />
+    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#D7EEFB" />
+    <SolidColorBrush x:Key="AiDoneForegroundBrush" Color="#F7FCFF" />
     <DropShadowEffect x:Key="AiDoneGlowEffect"
-                      Color="{StaticResource AiGlowColor}"
+                      Color="{StaticResource AiDoneGlowColor}"
                       BlurRadius="16"
                       ShadowDepth="0"
                       Opacity="1" />
@@ -1221,7 +1223,7 @@
                   </Setter.Value>
                 </Setter>
               </DataTrigger>
-              <!-- AI の完了／許可待ち: カード全体をぼんやり光らせる（フォーカス表示より優先）。 -->
+              <!-- AI の完了: カード全体を薄い青でぼんやり光らせる（フォーカス表示より優先）。許可の確認中は作業中の緑のまま。 -->
               <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
                 <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
                 <Setter TargetName="MicroButtonBorder" Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
@@ -4152,7 +4154,7 @@
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Margin="0,7,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
-                               Text="Codex：初回は CLI の /hooks で承認してください。" TextWrapping="Wrap" />
+                               Text="Codex：初回は CLI の /hooks で承認してください。Grok：設定のあと、開いているセッションを開き直してください。" TextWrapping="Wrap" />
                     <TextBlock x:Name="AiNotifyActionStatusText" Margin="0,6,0,0" Visibility="Collapsed"
                                FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -4176,7 +4178,7 @@
                               Tag="通知の見方と補足" Style="{StaticResource SystemMonitorFolderExpanderStyle}"
                               Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}">
                       <StackPanel Margin="16,5,0,0">
-                        <TextBlock Text="• 作業中：枠がゆっくり明滅。完了・許可待ち：バッジが光ります。" TextWrapping="Wrap" />
+                        <TextBlock Text="• 作業中：枠がゆっくり緑に明滅（許可の確認中も同じ）。完了したときだけ、バッジが薄い青でぼんやり光ります。" TextWrapping="Wrap" />
                         <TextBlock Text="• 光は、そのスロットのフォーカス表示を切り替えると消えます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• VS Code のチャットと CLI の両方が対象です。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• 既存設定の保持やバックアップの扱いは「仕組みを見る」で確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />

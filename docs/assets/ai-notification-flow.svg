@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">AI のフックからスロットのバッジに通知が届くまで</title>
-  <desc id="desc">3つのAIツールがイベントを発火し、共有PowerShellスクリプトが同じPCの名前付きパイプへ通知する。ハブがイベントを解釈して作業フォルダに一致するスロットのバッジを更新する。</desc>
+  <desc id="desc">4つのAIツールがイベントを発火し、共有PowerShellスクリプトが同じPCの名前付きパイプへ通知する。カルテットハブがイベントを解釈して作業フォルダに一致するスロットのバッジを更新する。色はツールごとに変えない。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#438163"/></marker>
     <style>
@@ -15,24 +15,29 @@
     </style>
   </defs>
   <rect width="1200" height="820" rx="20" fill="#f3f8f5"/>
-  <text x="48" y="54" class="title">AI の応答終了は、フックを通してハブに届く</text>
-  <text x="48" y="86" class="body">画面やチャットの監視ではなく、ツールが送る明示的なイベントを使います。</text>
+  <text x="48" y="54" class="title">今の実装では、次の順でカルテットハブに届きます</text>
+  <text x="48" y="86" class="body">画面やチャットは見ません。各ツールの設定ファイルから、同じスクリプトを呼びます。</text>
 
-  <rect x="48" y="120" width="344" height="112" rx="14" class="card"/>
-  <text x="68" y="151" class="heading">1　Claude Code</text>
-  <text x="68" y="179" class="code">~/.claude/settings.json</text>
-  <text x="68" y="207" class="small">開始 / 応答終了 / 許可・質問待ち</text>
-  <rect x="428" y="120" width="344" height="112" rx="14" class="card"/>
-  <text x="448" y="151" class="heading">1　Codex</text>
-  <text x="448" y="179" class="code">~/.codex/hooks.json</text>
-  <text x="448" y="207" class="small">開始 / 応答終了 / 許可待ち / 中断</text>
-  <rect x="808" y="120" width="344" height="112" rx="14" class="card"/>
-  <text x="828" y="151" class="heading">1　GitHub Copilot</text>
-  <text x="828" y="178" class="code">~/.copilot/hooks/</text>
-  <text x="828" y="202" class="code">turtle-ai-quartet-hub.json</text>
-  <text x="828" y="222" class="small">開始 / 応答終了</text>
+  <rect x="48" y="120" width="264" height="112" rx="14" class="card"/>
+  <text x="64" y="148" class="heading">1　Claude Code</text>
+  <text x="64" y="176" class="code" style="font-size:13px">~/.claude/settings.json</text>
+  <text x="64" y="210" class="small">開始 / 終了。確認中は緑</text>
+  <rect x="328" y="120" width="264" height="112" rx="14" class="card"/>
+  <text x="344" y="148" class="heading">1　Codex</text>
+  <text x="344" y="174" class="code">~/.codex/hooks.json</text>
+  <text x="344" y="210" class="small">開始 / 終了。中断は光なし</text>
+  <rect x="608" y="120" width="264" height="112" rx="14" class="card"/>
+  <text x="624" y="148" class="heading">1　GitHub Copilot</text>
+  <text x="624" y="174" class="code" style="font-size:13px">~/.copilot/hooks/</text>
+  <text x="624" y="196" class="code" style="font-size:13px">turtle-ai-quartet-hub.json</text>
+  <text x="624" y="218" class="small">開始 / 応答終了</text>
+  <rect x="888" y="120" width="264" height="112" rx="14" class="card"/>
+  <text x="904" y="148" class="heading">1　Grok</text>
+  <text x="904" y="174" class="code" style="font-size:13px">~/.grok/hooks/</text>
+  <text x="904" y="196" class="code" style="font-size:13px">turtle-ai-quartet-hub.json</text>
+  <text x="904" y="218" class="small">開始 / 終了。確認中は緑</text>
 
-  <path d="M220 232 V256 H600 M980 232 V256 H600 M600 232 V278" fill="none" stroke="#438163" stroke-width="2.5"/>
+  <path d="M180 232 V256 H600 M460 232 V256 H600 M740 232 V256 H600 M1020 232 V256 H600" fill="none" stroke="#438163" stroke-width="2.5"/>
   <path d="M600 256 V278" class="line"/>
   <rect x="250" y="284" width="700" height="104" rx="14" fill="#e6f3eb" stroke="#70a88a" stroke-width="2"/>
   <text x="274" y="316" class="heading">2　共通の通知スクリプトを実行</text>
@@ -48,16 +53,16 @@
   <path d="M392 521 H422" class="line"/>
 
   <rect x="428" y="448" width="344" height="146" rx="14" class="card"/>
-  <text x="448" y="481" class="heading">4　ハブが通知を受け取る</text>
+  <text x="448" y="481" class="heading">4　カルテットハブが受け取る</text>
   <text x="448" y="511" class="code">--ai-event</text>
   <text x="448" y="540" class="body">開始 / 応答終了などに分類</text>
-  <text x="448" y="566" class="small">通知でハブを前面へ出さない</text>
+  <text x="448" y="566" class="small">カルテットハブは前面に出ない</text>
   <path d="M772 521 H802" class="line"/>
 
   <rect x="808" y="448" width="344" height="146" rx="14" class="card"/>
   <text x="828" y="481" class="heading">5　対象スロットを選ぶ</text>
   <text x="828" y="511" class="body">作業フォルダ（cwd）を照合</text>
-  <text x="828" y="540" class="body">同じフォルダ / その配下</text>
+  <text x="828" y="540" class="body">作業フォルダと配下</text>
   <text x="828" y="566" class="small">最も深く一致する管理スロットへ</text>
   <path d="M980 594 V620 H600 V638" class="line"/>
 
@@ -69,10 +74,10 @@
   <rect x="284" y="696" width="42" height="34" rx="7" fill="#254c37" stroke="#77eaa7" stroke-width="3"/>
   <text x="298" y="720" class="body" style="fill:#c8fadd">B</text>
   <text x="342" y="720" class="body" style="fill:#e6fff0">作業中：枠がゆっくり明滅</text>
-  <rect x="650" y="692" width="50" height="42" rx="10" fill="#8bf0b5" opacity="0.20"/>
-  <rect x="654" y="696" width="42" height="34" rx="7" fill="#72dfa1" stroke="#b0f2cd"/>
-  <text x="668" y="720" class="body" style="fill:#11351f">C</text>
-  <text x="712" y="720" class="body" style="fill:#e6fff0">応答終了・許可待ち：光る</text>
+  <rect x="650" y="692" width="50" height="42" rx="10" fill="#B6DFF6" opacity="0.45"/>
+  <rect x="654" y="696" width="42" height="34" rx="7" fill="#3E7EAD" stroke="#D7EEFB"/>
+  <text x="668" y="720" class="body" style="fill:#F7FCFF">C</text>
+  <text x="712" y="720" class="body" style="fill:#E7F5FC">応答が終わると薄い青</text>
 
-  <text x="48" y="793" class="small">ハブ未起動中は送信を終了。通知の保存・再送は行いません。  ／  「完了」は応答終了の通知で、作業の成功判定ではありません。</text>
+  <text x="48" y="793" class="small">カルテットハブを閉じているあいだは再送しません。青い光は応答終了だけ。許可の確認中は緑のままです。</text>
 </svg>

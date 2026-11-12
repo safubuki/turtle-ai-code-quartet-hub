@@ -4,10 +4,11 @@ using TurtleAIQuartetHub.Panel.Services;
 
 namespace TurtleAIQuartetHub.Panel;
 
-// AI の作業状態の表示。AI ツールのフック（Claude Code / Codex / GitHub Copilot）が送る
-// 「指示を受けた」「応答が終わった」「許可を待っている」の明示的な通知だけを使い、画面やログからは推定しない。
-// ・作業中: スロットのバッジ（極小表示はカード）の枠がゆっくり明滅する。
-// ・完了／許可待ち: バッジ全体がぼんやり光る。フォーカス表示中に終わっても光らせ、
+// AI の作業状態の表示。AI ツールのフック（Claude Code / Codex / GitHub Copilot / Grok）が送る
+// 「指示を受けた」「応答が終わった」の明示的な通知だけを使い、画面やログからは推定しない。
+// 許可や質問の確認は作業の途中なので、開始済みの緑の明滅を続け、別の色にはしない。
+// ・作業中: スロットのバッジ（極小表示はカード）の枠が緑でゆっくり明滅する。
+// ・完了: バッジ全体が薄い青でぼんやり光る。フォーカス表示中に終わっても光らせ、
 //   パネル操作などでそのスロットのフォーカス表示が切り替わった（1 面フォーカス⇔4 面表示）ときに消す。
 public partial class MainWindow
 {
@@ -38,7 +39,7 @@ public partial class MainWindow
             {
                 slot.NotifyAiActivityChanged();
             }
-            else if (hookEvent.Kind is AiHookEventKind.Stop or AiHookEventKind.Attention)
+            else if (hookEvent.Kind is AiHookEventKind.Stop)
             {
                 // 状態が同じでも、ツールチップのツール名・文言は最新の通知に合わせる。
                 slot.NotifyAiActivityChanged();

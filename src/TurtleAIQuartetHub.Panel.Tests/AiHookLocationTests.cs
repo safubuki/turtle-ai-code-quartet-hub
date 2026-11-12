@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class AiHookLocationTests
 {
-    public const int Count = 13;
+    public const int Count = 14;
 
     public static void Run(List<string> failures)
     {
@@ -15,10 +15,10 @@ internal static class AiHookLocationTests
             var installer = new AiNotifyHookInstaller(home);
             var missing = installer.GetSettingsLocations();
             Check(failures, "場所確認だけでは未導入のホームや設定フォルダを作成しない",
-                !Directory.Exists(home) && missing.Count == 3
+                !Directory.Exists(home) && missing.Count == 4
                 && missing.All(item => !item.CanOpenFolder && !item.CanViewSettings && item.Status == AiNotifyHookStatus.ToolMissing));
-            Check(failures, "3ツールの表示先はインストーラーと同じ注入ホームの設定ファイル",
-                missing.Select(item => item.SettingsPath).SequenceEqual([installer.ClaudeSettingsPath, installer.CodexHooksPath, installer.CopilotHookPath])
+            Check(failures, "4ツールの表示先はインストーラーと同じ注入ホームの設定ファイル",
+                missing.Select(item => item.SettingsPath).SequenceEqual([installer.ClaudeSettingsPath, installer.CodexHooksPath, installer.CopilotHookPath, installer.GrokHooksPath])
                 && missing.All(item => item.FolderPath == Path.GetDirectoryName(item.SettingsPath)));
 
             var detail = new string('詳', 2000);
@@ -26,13 +26,15 @@ internal static class AiHookLocationTests
             {
                 new AiNotifyHookToolResult("claude", "Claude Code", AiNotifyHookStatus.Error, detail),
                 new AiNotifyHookToolResult("codex", "Codex", AiNotifyHookStatus.Installed, "設定済み"),
-                new AiNotifyHookToolResult("copilot", "GitHub Copilot", AiNotifyHookStatus.NotInstalled, "未設定")
+                new AiNotifyHookToolResult("copilot", "GitHub Copilot", AiNotifyHookStatus.NotInstalled, "未設定"),
+                new AiNotifyHookToolResult("grok", "Grok", AiNotifyHookStatus.ToolMissing, "未インストール")
             };
             var display = installer.GetSettingsLocations(statuses);
             Check(failures, "表示は短い状態とホーム省略パス、長いエラーはツールチップへ分離",
                 display[0].StatusText == "設定エラー" && display[0].StatusDetailToolTip == detail
                 && display[1].StatusText == "設定済み" && display[2].StatusText == "未設定"
-                && display.Select(item => item.DisplayPath).SequenceEqual(["~/.claude/settings.json", "~/.codex/hooks.json", "~/.copilot/hooks/turtle-ai-quartet-hub.json"]));
+                && display[3].StatusText == "未インストール" && display[3].DisplayName == "Grok"
+                && display.Select(item => item.DisplayPath).SequenceEqual(["~/.claude/settings.json", "~/.codex/hooks.json", "~/.copilot/hooks/turtle-ai-quartet-hub.json", "~/.grok/hooks/turtle-ai-quartet-hub.json"]));
 
             Directory.CreateDirectory(Path.GetDirectoryName(installer.ClaudeSettingsPath)!);
             var folderOnly = installer.GetSettingsLocations(statuses)[0];
@@ -80,6 +82,16 @@ internal static class AiHookLocationTests
             var unknown = installer.ReadSettingsPreview(location with { Tool = "other" });
             Check(failures, "知らないツール名から既知パスを渡しても閲覧対象にしない",
                 !unknown.Succeeded && unknown.Content.Length == 0);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(installer.GrokHooksPath)!);
+            const string grokOriginal = "{\r\n  \"hooks\": {}\r\n}\r\n";
+            File.WriteAllText(installer.GrokHooksPath, grokOriginal, new UTF8Encoding(false));
+            var grokBefore = Directory.GetFiles(home, "*", SearchOption.AllDirectories);
+            var grokLocation = installer.GetSettingsLocations().Single(item => item.Tool == "grok");
+            var grokPreview = installer.ReadSettingsPreview(grokLocation);
+            Check(failures, "Grok の専用 JSON は原文のまま読め、閲覧では隣のファイルを作らない",
+                grokLocation.CanViewSettings && grokPreview.Succeeded && grokPreview.Content == grokOriginal
+                && grokBefore.SequenceEqual(Directory.GetFiles(home, "*", SearchOption.AllDirectories)));
 
             using (new FileStream(installer.ClaudeSettingsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {

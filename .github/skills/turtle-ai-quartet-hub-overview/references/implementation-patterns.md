@@ -3,16 +3,16 @@
 更新日: 2026-09-17
 
 ## 1. AI 状態は「フックの明示通知」だけで表示する（推定は戻さない）
-- **方針変更（2026-11-11）**: 以前の AI 状態検出（UI Automation のチャット走査、拡張ログ解析）は不安定なため削除した。現在は、Claude Code / Codex / GitHub Copilot の**フック**が送る明示的な通知（指示を受けた・応答が終わった・許可を待っている）だけで、スロットの作業中・完了を表示する。
+- **方針変更（2026-11-11）**: 以前の AI 状態検出（UI Automation のチャット走査、拡張ログ解析）は不安定なため削除した。現在は、Claude Code / Codex / GitHub Copilot / Grok の**フック**が送る明示的な通知（指示を受けた・応答が終わった・許可を待っている）だけで、スロットの作業中・完了を表示する。色はツールごとに分けない。
 - **引き続き戻さないもの**: UI Automation、拡張ログ、OpenTelemetry、ターミナル出力からの推定と、VS Code 外枠オーバーレイ。Jump List の文言も AI 状態で変えない。`StatusStore.RefreshWindowStatusesAsync` は HWND、タイトル、ワークスペース表示更新の軽量処理として維持する。
 - **ファイル**: `Services/AiActivityTracker.cs`（通知の解釈・スロット単位の状態・cwd からのスロット特定）、`Models/AiActivityState.cs`、`Services/AiNotifyHookInstaller.cs`（フックの設定・解除と通知スクリプト）、`MainWindow.AiActivity.cs`、`Models/WindowSlot.cs`（`AiTracker` / `AiActivity`）、`TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`
 - **流れ**: フック → `~/.turtle-ai-quartet-hub/ai-notify.ps1` → 既存の名前付きパイプ `TurtleAIQuartetHub.Commands` に `["--ai-event", tool, event, cwd, session, notification_type]` → `ExecuteExternalCommand` の先頭で振り分けて `HandleAiHookEvent`。**この経路では `ActivatePanelWindow` を呼ばない**（通知のたびにハブが前面に出ないように）。ハブ未起動時に `--ai-event` 付きで起動されても UI を開かずに終了する。
 - **スロット特定**: フックの `cwd` が、ウィンドウを持つスロットのワークスペース（`CurrentWorkspacePath` / `DisplayPath` / `EffectivePath` など）と同じか配下なら対象。最も深く一致したスロットを選ぶ。フォルダ名の前方一致（`turtle` と `turtle-ai…`）を同一視しない。Git Bash 形式（`/c/...`）も扱う。リモート URI は対象外。
-- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、完了で「完了」（フォーカス表示中でも光らせる）、許可待ち（Claude の `Notification` の `permission_prompt` / `elicitation_dialog`、Codex の `PermissionRequest`）も「完了」と同じ光り方。Claude の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。中断（Codex の `Interrupt`）は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。
-- **解除**: スロットの `IsFocused` が切り替わったとき（`Slot_PropertyChanged`。パネルでの 1 面フォーカス⇔4 面表示のほか、ウィンドウの直接最大化・復元によるフォーカス同期も含む）に光を消す。ウィンドウが前面に来ただけでは消さない（フォーカス表示中に終わっても気づけるように、2026-11-11 利用者要望）。カードの入れ替え中（`StatusStore.IsSwappingSlotContents`）は IsFocused がウィンドウと一緒に移るだけなので消さない。周期更新では、完了通知が来ないまま 60 分たった作業中だけを片付ける。許可待ちを見た後は、セッションが残っていれば作業中へ戻る。ウィンドウが閉じたら（`WindowSlot.ClearWindow`）消す。スロット入れ替えでは `WindowSlot.SwapAiActivity` でワークスペースと一緒に移す。
-- **見た目**: 作業中は `AiWorkingRingStyle` の枠だけを約 3.6 秒周期で明滅（正弦波・30fps・真っ暗／最大輝度にしない）。完了は塗り＋周りのぼんやりした光（点滅しない）。標準・縮小表示はスロット名バッジ（A〜D）、極小表示はカード全体。目が痛くならないことを優先し、速い点滅やチカチカした表現にしない。
-- **フック設定**: 歯車設定の「AI の作業通知」から設定・解除する。`~/.claude/settings.json`（`UserPromptSubmit` / `Stop` / `Notification`）、`~/.codex/hooks.json`（`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt`、初回は CLI の `/hooks` で承認が必要）、`~/.copilot/hooks/turtle-ai-quartet-hub.json`（`userPromptSubmitted` / `agentStop`）。既存の設定や利用者のフックは残し、通知スクリプトのパスを含む項目だけを足し引きする（2 回設定しても重複しない）。書き換え前の内容は `.turtle-hub-backup` に残す。ツールのフォルダが無ければ触らない。Codex の `config.toml` の `notify` は Codex アプリが使うため触らない。
-- **通知スクリプトの注意**: Windows PowerShell 5.1 は BOM なし UTF-8 を ANSI として読むため ASCII だけで書く。`$Event` は自動変数なので引数名は `HookEvent`。AI の動作を変えないよう、必ず `{}` を出して終了コード 0 で終わる（Stop フックの出力は継続指示として解釈されうる）。ハブ未起動時はパイプの有無を見て即終了する。スクリプトは AppData ではなくホーム直下に置く（MSIX 版では AppData がアプリ専用の場所へ振り替えられ、AI ツールから見えないことがあるため）。
+- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、応答終了で「完了」（フォーカス表示中でも光らせる）。許可や質問の確認（`permission_prompt` / `elicitation_dialog` / `PermissionRequest`）は作業の途中なので表示を変えず、緑の明滅を続ける（2026-11-12 に、完了と同じ青にする扱いを取りやめ）。Claude / Grok の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。Grok の `task_complete` と `PermissionDenied` も無視する。Grok の `StopFailure` / `StopCancelled` は完了と同じ光（中断や失敗のあと緑が残らないようにする）。Codex の `Interrupt` は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。ツールごとに状態の色を分けない。
+- **解除**: スロットの `IsFocused` が切り替わったとき（`Slot_PropertyChanged`。パネルでの 1 面フォーカス⇔4 面表示のほか、ウィンドウの直接最大化・復元によるフォーカス同期も含む）に光を消す。ウィンドウが前面に来ただけでは消さない（フォーカス表示中に終わっても気づけるように、2026-11-11 利用者要望）。カードの入れ替え中（`StatusStore.IsSwappingSlotContents`）は IsFocused がウィンドウと一緒に移るだけなので消さない。周期更新では、完了通知が来ないまま 60 分たった作業中だけを片付ける。ウィンドウが閉じたら（`WindowSlot.ClearWindow`）消す。スロット入れ替えでは `WindowSlot.SwapAiActivity` でワークスペースと一緒に移す。
+- **見た目**: 作業中は `AiWorkingRingStyle` の枠だけを約 3.6 秒周期で緑へ明滅（正弦波・30fps・真っ暗／最大輝度にしない）。許可の確認中もこの緑。完了だけが塗り `#3E7EAD`・枠 `#D7EEFB`・周り `#B6DFF6` の薄い青の光（点滅しない。作業中の緑 `AiGlowColor` とは別）。標準・縮小表示はスロット名バッジ（A〜D）、極小表示はカード全体。目が痛くならないことを優先し、速い点滅やチカチカした表現にしない。
+- **フック設定**: 歯車設定の「AI の作業通知」から設定・解除する。`~/.claude/settings.json`（`UserPromptSubmit` / `Stop` / `Notification`）、`~/.codex/hooks.json`（`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt`、初回は CLI の `/hooks` で承認が必要）、`~/.copilot/hooks/turtle-ai-quartet-hub.json`（`userPromptSubmitted` / `agentStop`）、`~/.grok/hooks/turtle-ai-quartet-hub.json`（`UserPromptSubmit` / `Stop` / `StopFailure` / `StopCancelled` / `Notification`。設定後はセッションを開き直す）。既存の設定や利用者のフックは残し、通知スクリプトのパスを含む項目だけを足し引きする（2 回設定しても重複しない）。書き換え前の内容は `.turtle-hub-backup` に残す。ツールのフォルダが無ければ触らない。Codex の `config.toml` の `notify` と Grok の `config.toml` は触らない。
+- **通知スクリプトの注意**: Windows PowerShell 5.1 は BOM なし UTF-8 を ANSI として読むため ASCII だけで書く。`$Event` は自動変数なので引数名は `HookEvent`。AI の動作を変えないよう、必ず `{}` を出して終了コード 0 で終わる（Stop / UserPromptSubmit の出力は継続や拒否として解釈されうる。Grok でも同じ）。標準入力の詳細は `notification_type` と `notificationType` の両方を読む。ハブ未起動時はパイプの有無を見て即終了する。スクリプトは AppData ではなくホーム直下に置く（MSIX 版では AppData がアプリ専用の場所へ振り替えられ、AI ツールから見えないことがあるため）。
 
 ## 2. スロット状態と保存
 - `slots.json` は visible slot と stored panel を同じドキュメントで保持する。
@@ -345,8 +345,8 @@
 - **検証**: フェイクによる終了対象・PID再利用・権限拒否・自然終了・残留の安全性14件を含む回帰259件。本体ビルド警告/エラー0。隔離した非表示WPFで初期全閉・開閉・一覧再生成時の復元・長文確認画面・キャンセルを確認。実ユーザーのプロセス停止は行わない。
 ## AI フック設定の場所一覧と読み取り専用プレビュー（2026-11-12 追加）
 - **ファイル**: `MainWindow.AiActivity.cs`, `MainWindow.AiHookSettings.cs`, `MainWindow.xaml`, `Services/AiNotifyHookInstaller.cs`, `Models/AiNotifyHookLocation.cs`, `TurtleAIQuartetHub.Panel.Tests/AiHookLocationTests.cs`。
-- **場所**: Installerの既存パスを `GetSettingsLocations` で一覧化し、Claudeの `~/.claude/settings.json`、Codexの `~/.codex/hooks.json`、Copilotの `~/.copilot/hooks/turtle-ai-quartet-hub.json` を示す。状態は短い語に固定し、エラー詳細はツールチップへ移す。インストール/解除後は同じ一覧を再取得する。
-- **閲覧**: `ReadSettingsPreview` は既知の3ファイルだけをFileAccess.Readで取得し、原文を保ったまま最大256Ki文字に制限する。BOMを判定し、上限のサロゲートペアを壊さない。未作成・消失・読取拒否を表示用の結果で返し、JSONの整形/保存やフォルダの暗黙作成は行わない。
+- **場所**: Installerの既存パスを `GetSettingsLocations` で一覧化し、Claudeの `~/.claude/settings.json`、Codexの `~/.codex/hooks.json`、Copilotの `~/.copilot/hooks/turtle-ai-quartet-hub.json`、Grokの `~/.grok/hooks/turtle-ai-quartet-hub.json` を示す。状態は短い語に固定し、エラー詳細はツールチップへ移す。インストール/解除後は同じ一覧を再取得する。
+- **閲覧**: `ReadSettingsPreview` は既知の4ファイルだけをFileAccess.Readで取得し、原文を保ったまま最大256Ki文字に制限する。BOMを判定し、上限のサロゲートペアを壊さない。未作成・消失・読取拒否を表示用の結果で返し、JSONの整形/保存やフォルダの暗黙作成は行わない。
 - **UI**: `AiHookSettingsPreviewOverlay` は設定画面の上に表示し、パスと内容を読み取り専用TextBoxで示す。縦横スクロール・選択コピーに対応。Escapeはプレビューを先に閉じ、設定画面を残す。閉鎖時は内容を消し、CTSの参照一致で古い読取結果・例外の反映を防ぐ。ファイル内容はログへ出さない。
 - **維持する仕様**: 通知イベントの解釈、バッジ表示、フック追加/解除、バックアップ、Codex初回承認の案内は変更しない。実ホームへの設定変更をUI検証から呼ばない。
 - **実装検証（2026-11-12）**: 場所・閲覧の追加13件を含め回帰272件が合格。本体ビルドは警告・エラー0。650/580 DIP幅の通常・エラー・補足・プレビュー・スクロール・空ファイル・読取失敗・省略・閉じる・Escapeを合成データと非表示WPFで確認。読み取り専用の編集抑止、選択、閉じる時の内容消去も確認。実ホームの設定変更やExplorer起動は検証から呼ばない。
@@ -373,9 +373,51 @@
 - **説明**: 既存フック保持、Claude/Codexバックアップの更新、Copilot専用JSONの上書き/削除とバックアップなし、設定済みと疎通の違い、応答終了と成功判定の違い、未起動時再送なしを説明する。画面の閲覧からReset/Save/Install/Uninstallを呼ばない。
 - **検証**: 本体ビルド警告/エラー0、既存回帰272件合格。隔離した非表示WPFで650/580幅の3頁、ラベルや図の見切れ、切替時の先頭復帰、戻る/×/Escapeで設定枠を保持、元の180DIPスクロール位置への復帰を確認。実キーボードフォーカス自体はShowしない制約のため、戻り先参照と遅延復帰経路を確認する。実フックの設定/解除・本番保存・実ウィンドウ操作は行わない。
 
+## AI 作業通知の完了色（2026-11-12 追加）
+- **ファイル**: `MainWindow.xaml`, `Views/AiHookGuideView.xaml`, `Models/AiActivityState.cs`, `Services/AiActivityTracker.cs`
+- **問題**: 完了の光が作業中と同じ緑系統で、終わったことが見分けにくかった。ツール別に黄色の入力待ちを出す案は、Copilot に対応イベントが無く表示が揃わないため採用しない。
+- **対策**: 作業中の緑の明滅は維持する。完了と許可待ちは同じ薄い青（塗り `#3E7EAD`、枠 `#D7EEFB`、光 `#B6DFF6`、ぼかし 16）で点滅せずに光らせる。`AiGlowColor` は作業中の緑のまま分ける。
+- **注意**: 黄色の入力待ち状態は残さない。`idle_prompt` は無視したまま。画面やログから状態を推定しない。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰278件（AI 作業通知27件）が合格。青の光の目視は起動中の画面では未実施。
+
 ## VS Code 終了のアクセス拒否（2026-11-12 追加）
 - **ファイル**: `Services/VscodeProcessRecoveryService.cs`, `Services/VscodeProcessRecoveryElevation.cs`, `App.xaml.cs`, `MainWindow.xaml.cs`, `MainWindow.VscodeProcessRecovery.cs`
 - **問題**: 「VS Code の終了・復旧」で「アクセスが拒否された」となる。ユーザー版（`%LOCALAPPDATA%\Programs`）はハブと同じ整合性レベルなら終了できる。システム版（`C:\Program Files\Microsoft VS Code`）や管理者として起動した VS Code は高い整合性レベルになり、通常権限のハブから `PROCESS_TERMINATE` が Win32 エラー 5 で拒否される。加えて `Process.Kill` は内部で `PROCESS_ALL_ACCESS` のハンドルを保持して再利用するため、終了権限だけでは足りる相手でも拒否される。
 - **対策**: `Process.Kill` と `Process.SafeHandle` を使わない。`PROCESS_TERMINATE | SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION` を開き、エラー 5 のときだけ `TERMINATE | QUERY_LIMITED`、さらに `TERMINATE` のみへ落とす。直接終了できた対象は昇格しない。拒否された対象だけを `%LOCALAPPDATA%\TurtleAIQuartetHub\recovery\` の確認情報として渡し、`--vscode-recovery-elevated` で一度だけ管理者確認を出す。昇格側は OS から PID・開始時刻・パス・SID・セッションを読み直し、`Code.exe` / `Code - Insiders.exe` 以外、別ユーザー、別セッションは終了しない。キャンセル（Win32 1223）は対象を残し、「管理者の確認がキャンセルされたため終了できませんでした。」と返す。
 - **注意**: アプリの manifest は `asInvoker` のまま。昇格プロセスは単一インスタンス mutex（`Local\TurtleAIQuartetHub.SingleInstance`）へ入る前に処理して終了する。既存インスタンスへ転送すると、権限のない側が終了を担当して再び拒否される。メモリ回収・キャッシュ回収・通常のウィンドウ終了へ強制終了を広げない。子プロセスツリーは終了しない。第11節の既定強制終了禁止は維持する。
 - **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰278件（終了・復旧20件）が合格。同じユーザーの犠牲プロセス（`ping.exe`）だけを終了権限で停止し、実行中の VS Code は停止していない。
+
+## AI 作業通知へ Grok を追加（2026-11-12 追加）
+- **ファイル**: `Services/AiNotifyHookInstaller.cs`, `Services/AiActivityTracker.cs`, `Models/WindowSlot.cs`, `Views/AiHookGuideView.xaml`, `MainWindow.xaml`, `TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`, `TurtleAIQuartetHub.Panel.Tests/AiHookLocationTests.cs`
+- **問題**: Grok には Claude と同じフックがあるが、ハブは登録していなかった。
+- **対策**: 既存の名前付きパイプと状態機械をそのまま使う。専用ファイル `~/.grok/hooks/turtle-ai-quartet-hub.json` に `UserPromptSubmit` / `Stop` / `StopFailure` / `StopCancelled` / `Notification` を書く。失敗と中断も完了と同じ薄い青。許可待ちは `permission_prompt` と `elicitation_dialog` だけ。作業中の緑は変えない。
+- **注意**: `~/.grok` が無いときは未インストールとし、フォルダを作らない。`config.toml` とほかの `~/.grok/hooks/*.json` は触らない。解除で専用ファイルが空オブジェクトになったときだけ削除し、`.turtle-hub-backup` は残す。利用者のキーが残っていればファイルも残す。スクリプトは `{}` と終了コード 0 のまま（`Stop` と `UserPromptSubmit` を止めない）。`idle_prompt` は無視したまま。Grok は Claude 互換で `~/.claude/settings.json` も実行することがあり、その通知はツールチップが Claude Code になる。色は同じ。`config.toml` では止めない。`StopCancelled` は次の開始より遅れて届くことがあり、そのとき完了の光が付く。設定後のセッションは開き直すまで新しいファイルを読まない。未信頼の作業フォルダでは `/hooks-trust` が必要。ホーム直下は信頼済み。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰284件（AI 作業通知32件、保存先・閲覧14件）が合格。一時ホームだけで確認し、実ホームのフックと実行中のセッションは変更していない。光の目視は未実施。
+
+## フックガイドの図は分類と揃える（2026-11-12 追加）
+- **ファイル**: `docs/guides/ai-notification-hooks.md`, `docs/assets/ai-notification-hooks-basics.svg`, `docs/assets/ai-notification-to-app.svg`, `docs/assets/ai-notification-flow.svg`, `docs/index.md`
+- **問題**: ガイドが設定手順から始まっており、どの瞬間にフックが動き、その知らせがバッジへどう届くかが先に分からなかった。実装経路図の完了バッジも、古い緑の光のままだった。
+- **対策**: 基本、AIの状態とフック、アプリへの届き方、画面の見え方、使い方、今の実装の順に書き直した。状態とフック、届き方のSVGを追加し、実装経路図の完了バッジを同じ薄い青にした。
+- **注意**: 図は分類器と一致させる。作業中と許可の確認中は緑、青い光は応答終了だけ。`idle_prompt` / `task_complete` / `PermissionDenied` は光らせない。チャット本文、黄色、ツールごとの別色は描かない。アプリ内「仕組みを見る」は3項目のまま。実ホームのフックと実行中セッションは変更しない。状態図の戻り矢印は、説明ラベルで線を隠さず、箱の辺から箱の辺へつなぐ。
+- **確認**: 4つのSVGをUTF-8のXMLとして解析し、幅1200で描画して文字の見切れと重なりを確認した。アプリの挙動は変えていないため、回帰284件は再実行していない。
+
+## 許可の確認中は緑のまま（2026-11-12 見直し）
+- **ファイル**: `Services/AiActivityTracker.cs`, `Models/AiActivityState.cs`, `Models/WindowSlot.cs`, `MainWindow.AiActivity.cs`, `MainWindow.xaml`, `Views/AiHookGuideView.xaml`, `docs/guides/ai-notification-hooks.md`, `docs/assets/ai-notification-states.svg`, `docs/assets/ai-notification-hooks-basics.svg`
+- **問題**: 許可や質問の確認を完了と同じ薄い青にしていた。確認は作業の途中なので、緑の明滅が正しい。状態図の戻り矢印は説明の帯に隠れ、箱の辺まで届いていなかった。
+- **対策**: `permission_prompt`、`elicitation_dialog`、`PermissionRequest` は表示を変えない。開始済みなら緑の明滅が続く。青い光は `Stop` / `agentStop` / `StopFailure` / `StopCancelled` だけ。`Attention` と「操作を待っています」のツールチップは外した。状態図の戻り矢印は、青い箱の下辺から出て、作業中または待機の下辺で終わる。
+- **注意**: フックの登録自体は残す。知らせは届くが、バッジは変えない。黄色やツールごとの別色には戻さない。`idle_prompt` は無視したまま。過去の「完了と許可待ちは同じ青」の記録は履歴として残し、現在の仕様はこちら。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰284件（AI 作業通知32件、保存先・閲覧14件）が合格。状態図は幅1200で描画し、進む矢印と戻る矢印が箱の辺でつながっていることを確認した。実ホームのフックと実行中の VS Code は変更していない。光の実機目視は未実施。
+
+## アプリ内「通知の流れ」の主体と通信（2026-11-13 追加）
+- **ファイル**: `Views/AiHookGuideView.xaml`, `docs/guides/ai-notification-hooks.md`
+- **問題**: 設定内の「通知の流れ」が3枚の短いカードで、誰が動き、名前付きパイプで何を渡すのかが分からなかった。
+- **対策**: 同じ3タブのまま、流れタブへ主体（AIツール / フックのプログラム / ハブ）と 1〜5 の順を WPF ベクターで入れた。3番は `TurtleAIQuartetHub.Commands` への一方通行。開始は緑、確認中も緑、終わったときだけ薄い青。外部 SVG は埋め込まない。
+- **注意**: それ以前の「アプリ内は3項目の短い要約のまま」は、この流れタブには当てはまらない。タブ数は3つのまま。設定タブと表示タブの文言は、緑の継続と薄い青の完了と矛盾させない。挙動・フック登録・実ホームは変えない。横5列の図は設定枠（最大610 DIP）に入らない。主体は裸の「ハブ」と書かず、「このアプリ（カルテットハブ）」と書く。
+- **確認**: ガイド文言の回帰テストは無い。挙動を変えていないため、回帰284件は再実行しない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告・エラー 0。隔離した非表示描画で幅 540 と 578 を確認し、主体の3列、下向き矢印、本文、バッジ例は折り返しの中に収まった。実行中のハブと VS Code は起動・終了していない。光の実機目視は未実施。
+
+## 図と説明の「この」「その」を名前にする（2026-11-13 追加）
+- **ファイル**: `Views/AiHookGuideView.xaml`, `docs/guides/ai-notification-hooks.md`, `docs/index.md`, `docs/assets/ai-notification-who-moves.svg`, `docs/assets/ai-notification-to-app.svg`, `docs/assets/ai-notification-hooks-basics.svg`, `docs/assets/ai-notification-flow.svg`, `docs/assets/ai-notification-states.svg`
+- **問題**: 「このアプリ」「そのプログラム」「このフォルダ」「ここでは」では、誰が動き、何を渡しているのかが分からなかった。
+- **対策**: 主体は AIツール、フックのプログラム、カルテットハブと書く。フォルダは作業フォルダ、作業中の光は緑の明滅、消す対象は光っているスロットと書く。裸の「ハブ」と「このアプリ」には戻さない。
+- **注意**: それ以前の「主体は『このアプリ（カルテットハブ）』と書く」は現在の書き方ではない。タブ数は3つのまま。設定枠の横5列にはしない。挙動・フック登録・実ホームは変えない。`MainWindow.xaml` の「ハブ設定へ保存」と「ハブ外で開いている VS Code」は、このガイドの主体名とは別なので変えない。
+- **確認**: ガイド文言の回帰テストは無い。挙動を変えていないため、回帰284件は再実行しない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。5つの SVG は UTF-8 の XML として幅 1200 で解析し、Edge の headless（device scale 1）で描画した。who-moves の「主体：フックのプログラム」「主体：カルテットハブ」「カルテットハブが塗る。」、to-app の「カルテットハブへ渡す」「カルテットハブが判断」「カルテットハブが変える」、flow の「カルテットハブが受け取る」、basics のフッターは、枠の中に収まっていた。states の戻り矢印は箱の辺でつながったまま。隔離した非表示描画で幅 540 の流れ・設定・表示の本文を確認し、折り返しの中に収まった。実行中のハブと VS Code は起動・終了していない。光の実機目視は未実施。

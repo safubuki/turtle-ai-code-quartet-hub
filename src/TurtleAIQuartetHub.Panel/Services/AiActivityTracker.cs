@@ -8,7 +8,6 @@ public enum AiHookEventKind
     Unknown,
     Start,
     Stop,
-    Attention,
     Interrupt
 }
 
@@ -48,26 +47,30 @@ public static class AiHookEventParser
                 return AiHookEventKind.Start;
             case "stop":
             case "agentstop":
+            case "stopfailure":
+            case "stopcancelled":
+                // Grok は完了・API エラー・中断を別イベントで知らせる。どれも同じ完了の光にし、
+                // 中断や失敗のあと作業中の緑が 60 分残らないようにする。
                 return AiHookEventKind.Stop;
             case "permissionrequest":
-                return AiHookEventKind.Attention;
-            case "interrupt":
-                return AiHookEventKind.Interrupt;
+                // Codex の許可確認は作業の途中。開始済みの緑の明滅を続け、青い光にはしない。
+                return AiHookEventKind.Unknown;
             case "notification":
-                // Claude Code の Notification は応答完了後の「入力待ち」(idle_prompt) も含む。
-                // それで光らせ直すとフォーカスで消した光が戻るため、許可・質問の待ちだけを扱う。
+                // permission_prompt / elicitation_dialog は許可や質問の確認で、作業の途中。
+                // idle_prompt は応答のあとの入力待ちで、消した完了の光を戻してしまう。どちらも表示を変えない。
                 return detail.Trim().ToLowerInvariant() switch
                 {
-                    "permission_prompt" or "elicitation_dialog" => AiHookEventKind.Attention,
                     _ => AiHookEventKind.Unknown
                 };
+            case "interrupt":
+                return AiHookEventKind.Interrupt;
             default:
                 return AiHookEventKind.Unknown;
         }
     }
 }
 
-// スロット 1 つ分の AI 状態。作業中のセッションと、まだ見ていない完了（または許可待ち）を別々に持つ。
+// スロット 1 つ分の AI 状態。作業中のセッションと、まだ見ていない完了を別々に持つ。
 public sealed class AiActivityTracker
 {
     // 中断などで完了通知が来ないまま残ったセッションを片付けるまでの時間。
@@ -81,8 +84,6 @@ public sealed class AiActivityTracker
         : _activeSessions.Count > 0 ? AiActivityState.Working : AiActivityState.Idle;
 
     public string LastTool { get; private set; } = string.Empty;
-
-    public bool LastWasAttentionRequest { get; private set; }
 
     // フォーカス表示中（そのウィンドウを見ている最中）に終わっても、終わったことに気づけるよう必ず光らせる。
     public bool Apply(AiHookEvent hookEvent, DateTimeOffset now)
@@ -99,12 +100,6 @@ public sealed class AiActivityTracker
             case AiHookEventKind.Stop:
                 _activeSessions.Remove(key);
                 _needsAttention = true;
-                LastWasAttentionRequest = false;
-                break;
-            case AiHookEventKind.Attention:
-                _activeSessions[key] = now;
-                _needsAttention = true;
-                LastWasAttentionRequest = true;
                 break;
             case AiHookEventKind.Interrupt:
                 _activeSessions.Remove(key);

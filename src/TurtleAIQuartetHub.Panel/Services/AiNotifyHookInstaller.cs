@@ -17,7 +17,7 @@ public enum AiNotifyHookStatus
 
 public sealed record AiNotifyHookToolResult(string Tool, string DisplayName, AiNotifyHookStatus Status, string Message);
 
-// Claude Code / Codex / GitHub Copilot のユーザー設定へ、応答の開始・完了をハブへ知らせるフックを足し引きする。
+// Claude Code / Codex / GitHub Copilot / Grok のユーザー設定へ、応答の開始・完了をハブへ知らせるフックを足し引きする。
 // 既存の設定は残し、ハブが足した項目（通知スクリプトのパスを含むコマンド）だけを扱う。
 public sealed class AiNotifyHookInstaller
 {
@@ -39,10 +39,12 @@ public sealed class AiNotifyHookInstaller
         AllowTrailingCommas = true
     };
 
-    // Claude Code / Codex は同じ形式（event → [{ hooks: [{ type, command, timeout }] }]）。
+    // Claude Code / Codex / Grok は同じ形式（event → [{ hooks: [{ type, command, timeout }] }]）。
     private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "Stop", "Notification"];
     private static readonly string[] CodexEvents = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt"];
     private static readonly string[] CopilotEvents = ["userPromptSubmitted", "agentStop"];
+    // Grok は中断と API エラーを Stop ではなく StopCancelled / StopFailure で知らせる。
+    private static readonly string[] GrokEvents = ["UserPromptSubmit", "Stop", "StopFailure", "StopCancelled", "Notification"];
 
     private readonly string _homeDirectory;
 
@@ -62,6 +64,9 @@ public sealed class AiNotifyHookInstaller
 
     public string CopilotHookPath => Path.Combine(_homeDirectory, ".copilot", "hooks", CopilotHookFileName);
 
+    // 専用ファイル名は Copilot と同じ。ほかの ~/.grok/hooks/*.json や config.toml は触らない。
+    public string GrokHooksPath => Path.Combine(_homeDirectory, ".grok", "hooks", CopilotHookFileName);
+
     // 保存先の確認は読み取りだけ。未導入ツールのフォルダやフックを暗黙に作らない。
     public IReadOnlyList<AiNotifyHookLocation> GetSettingsLocations(IReadOnlyList<AiNotifyHookToolResult>? statuses = null)
     {
@@ -70,7 +75,8 @@ public sealed class AiNotifyHookInstaller
         [
             Location("claude", "Claude Code", ClaudeSettingsPath, "~/.claude/settings.json"),
             Location("codex", "Codex", CodexHooksPath, "~/.codex/hooks.json"),
-            Location("copilot", "GitHub Copilot", CopilotHookPath, $"~/.copilot/hooks/{CopilotHookFileName}")
+            Location("copilot", "GitHub Copilot", CopilotHookPath, $"~/.copilot/hooks/{CopilotHookFileName}"),
+            Location("grok", "Grok", GrokHooksPath, $"~/.grok/hooks/{CopilotHookFileName}")
         ];
 
         AiNotifyHookLocation Location(string tool, string displayName, string path, string displayPath)
@@ -99,6 +105,7 @@ public sealed class AiNotifyHookInstaller
             "claude" => ClaudeSettingsPath,
             "codex" => CodexHooksPath,
             "copilot" => CopilotHookPath,
+            "grok" => GrokHooksPath,
             _ => null
         };
         try
@@ -145,7 +152,8 @@ public sealed class AiNotifyHookInstaller
         [
             ReadStatus("claude", "Claude Code", ClaudeSettingsPath, ".claude"),
             ReadStatus("codex", "Codex", CodexHooksPath, ".codex"),
-            ReadCopilotStatus()
+            ReadCopilotStatus(),
+            ReadStatus("grok", "Grok", GrokHooksPath, ".grok")
         ];
     }
 
@@ -156,7 +164,8 @@ public sealed class AiNotifyHookInstaller
         [
             Run("claude", "Claude Code", ".claude", () => UpdateEventHookFile(ClaudeSettingsPath, "claude", ClaudeEvents, install: true)),
             Run("codex", "Codex", ".codex", () => UpdateEventHookFile(CodexHooksPath, "codex", CodexEvents, install: true)),
-            Run("copilot", "GitHub Copilot", ".copilot", WriteCopilotHookFile)
+            Run("copilot", "GitHub Copilot", ".copilot", WriteCopilotHookFile),
+            Run("grok", "Grok", ".grok", () => UpdateEventHookFile(GrokHooksPath, "grok", GrokEvents, install: true))
         ];
     }
 
@@ -172,6 +181,12 @@ public sealed class AiNotifyHookInstaller
                 {
                     File.Delete(CopilotHookPath);
                 }
+            }),
+            Run("grok", "Grok", ".grok", () =>
+            {
+                UpdateEventHookFile(GrokHooksPath, "grok", GrokEvents, install: false);
+                // 空の {} を残すと Grok が読み続ける。ハブの項目だけだった専用ファイルは消す。
+                DeleteIfEmptyJsonObject(GrokHooksPath);
             })
         };
 
@@ -211,6 +226,7 @@ public sealed class AiNotifyHookInstaller
             {
                 "claude" => ReadStatus(tool, displayName, ClaudeSettingsPath, toolFolder),
                 "codex" => ReadStatus(tool, displayName, CodexHooksPath, toolFolder),
+                "grok" => ReadStatus(tool, displayName, GrokHooksPath, toolFolder),
                 _ => ReadCopilotStatus()
             };
         }
@@ -434,6 +450,20 @@ public sealed class AiNotifyHookInstaller
         File.Move(temporaryPath, path, overwrite: true);
     }
 
+    // 中身が空オブジェクトのときだけ消す。ほかのキーや、同じフォルダの別ファイルは残す。
+    private static void DeleteIfEmptyJsonObject(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        if (JsonNode.Parse(File.ReadAllText(path), documentOptions: ReadOptions) is JsonObject { Count: 0 })
+        {
+            File.Delete(path);
+        }
+    }
+
     private void WriteScript()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ScriptPath)!);
@@ -490,7 +520,7 @@ public sealed class AiNotifyHookInstaller
             if ($data) {
                 if ($data.cwd) { $cwd = [string]$data.cwd }
                 if ($data.session_id) { $session = [string]$data.session_id } elseif ($data.sessionId) { $session = [string]$data.sessionId }
-                if ($data.notification_type) { $detail = [string]$data.notification_type }
+                if ($data.notification_type) { $detail = [string]$data.notification_type } elseif ($data.notificationType) { $detail = [string]$data.notificationType }
             }
             if (-not $cwd) { $cwd = (Get-Location).Path }
             $payload = ConvertTo-Json -Compress -InputObject @('--ai-event', $Tool, $HookEvent, $cwd, $session, $detail)
