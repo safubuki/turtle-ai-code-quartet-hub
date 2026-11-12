@@ -339,7 +339,7 @@
 ## システムモニタの折りたたみと確認付き VS Code 終了（2026-11-12 追加）
 - **UI**: `GroupItem` 内の `Expander` と専用スタイルで、見出し・件数・「開く / 閉じる」を表示。`_expandedSystemMonitorFolderGroups` はモニタを開くときにクリアし、分類の Loaded で復元する。Expanded / Collapsed の処理は分類自身のイベントだけを受け取る。計測の世代管理・期限・キャンセルは既存どおり。
 - **確認**: `VscodeProcessRecoveryConfirmOverlay` で対象の PID・タイトル・実行パスを表示する。初期フォーカスはキャンセル、Escape で閉じて対象を破棄。一覧取得だけでは終了しない。取得中のキャンセルと次の取得の競合は CTS の参照一致とキャンセル状態で成功・例外両経路を保護する。
-- **対象保護**: `Code.exe` / `Code - Insiders.exe` だけを対象とし、ユーザー SID・Windows セッション・実行パス・開始時刻・PID を終了直前に再照合する。限定照会ハンドルを保持して PID 再利用を防ぎ、`Kill(entireProcessTree: false)` で子の他アプリを巻き込まない。取得不能・別ユーザー・別セッション・別 IDE は対象外。
+- **対象保護**: `Code.exe` / `Code - Insiders.exe` だけを対象とし、ユーザー SID・Windows セッション・実行パス・開始時刻・PID を終了直前に再照合する。限定照会ハンドルを保持して PID 再利用を防ぎ、子プロセスツリーは終了しない。`Process.Kill` は使わない（`PROCESS_ALL_ACCESS` を要求し、システム版や管理者起動でアクセス拒否になる。終了権限の開き方は末尾の「VS Code 終了のアクセス拒否」）。取得不能・別ユーザー・別セッション・別 IDE は対象外。
 - **結果**: 終了待機は5秒で打ち切り、再検出結果を表示する。確認後の新規 PID は自動終了しない。アクセス拒否・タイムアウト・取得失敗を「プロセスなし」と区別する。実行前に保存し、実行後は管理窓を再検出して、消えた窓の非表示状態と表示ボタンを更新する。保存済みワークスペースは保持する。
 - **注意**: 自動回収・通常の一括終了へ強制終了を組み込まない。強制終了は本機能の明示確認時だけで、キャッシュやユーザーデータの削除は行わない。第36節の自動キャッシュ回収における強制終了禁止は維持する。
 - **検証**: フェイクによる終了対象・PID再利用・権限拒否・自然終了・残留の安全性14件を含む回帰259件。本体ビルド警告/エラー0。隔離した非表示WPFで初期全閉・開閉・一覧再生成時の復元・長文確認画面・キャンセルを確認。実ユーザーのプロセス停止は行わない。
@@ -372,3 +372,10 @@
 - **リソース**: View内の図はPath/Border/TextBlockのベクター。自己完結のStaticResourceと、親から受け取るボタン用DynamicResourceを使い分け、コンストラクター時の親リソース未解決を防ぐ。既存の共通×スタイルも再利用する。
 - **説明**: 既存フック保持、Claude/Codexバックアップの更新、Copilot専用JSONの上書き/削除とバックアップなし、設定済みと疎通の違い、応答終了と成功判定の違い、未起動時再送なしを説明する。画面の閲覧からReset/Save/Install/Uninstallを呼ばない。
 - **検証**: 本体ビルド警告/エラー0、既存回帰272件合格。隔離した非表示WPFで650/580幅の3頁、ラベルや図の見切れ、切替時の先頭復帰、戻る/×/Escapeで設定枠を保持、元の180DIPスクロール位置への復帰を確認。実キーボードフォーカス自体はShowしない制約のため、戻り先参照と遅延復帰経路を確認する。実フックの設定/解除・本番保存・実ウィンドウ操作は行わない。
+
+## VS Code 終了のアクセス拒否（2026-11-12 追加）
+- **ファイル**: `Services/VscodeProcessRecoveryService.cs`, `Services/VscodeProcessRecoveryElevation.cs`, `App.xaml.cs`, `MainWindow.xaml.cs`, `MainWindow.VscodeProcessRecovery.cs`
+- **問題**: 「VS Code の終了・復旧」で「アクセスが拒否された」となる。ユーザー版（`%LOCALAPPDATA%\Programs`）はハブと同じ整合性レベルなら終了できる。システム版（`C:\Program Files\Microsoft VS Code`）や管理者として起動した VS Code は高い整合性レベルになり、通常権限のハブから `PROCESS_TERMINATE` が Win32 エラー 5 で拒否される。加えて `Process.Kill` は内部で `PROCESS_ALL_ACCESS` のハンドルを保持して再利用するため、終了権限だけでは足りる相手でも拒否される。
+- **対策**: `Process.Kill` と `Process.SafeHandle` を使わない。`PROCESS_TERMINATE | SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION` を開き、エラー 5 のときだけ `TERMINATE | QUERY_LIMITED`、さらに `TERMINATE` のみへ落とす。直接終了できた対象は昇格しない。拒否された対象だけを `%LOCALAPPDATA%\TurtleAIQuartetHub\recovery\` の確認情報として渡し、`--vscode-recovery-elevated` で一度だけ管理者確認を出す。昇格側は OS から PID・開始時刻・パス・SID・セッションを読み直し、`Code.exe` / `Code - Insiders.exe` 以外、別ユーザー、別セッションは終了しない。キャンセル（Win32 1223）は対象を残し、「管理者の確認がキャンセルされたため終了できませんでした。」と返す。
+- **注意**: アプリの manifest は `asInvoker` のまま。昇格プロセスは単一インスタンス mutex（`Local\TurtleAIQuartetHub.SingleInstance`）へ入る前に処理して終了する。既存インスタンスへ転送すると、権限のない側が終了を担当して再び拒否される。メモリ回収・キャッシュ回収・通常のウィンドウ終了へ強制終了を広げない。子プロセスツリーは終了しない。第11節の既定強制終了禁止は維持する。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰278件（終了・復旧20件）が合格。同じユーザーの犠牲プロセス（`ping.exe`）だけを終了権限で停止し、実行中の VS Code は停止していない。

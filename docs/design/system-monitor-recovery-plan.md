@@ -39,3 +39,11 @@
 - 非表示WPF描画で650 / 580 DIP幅の全閉・開閉・再計測相当の一覧再生成・確認取消・長い対象一覧と取得失敗メッセージを確認した。
 - 非表示中のVS Code終了後を合成状態で再現し、全窓が消えたときのスロット・非表示履歴・標準/縮小/極小の表示ボタンの復帰を確認した。
 - 仕様・実装パターン・QAの追記先は編集可能な `.github/skills/turtle-ai-quartet-hub-overview/references/`。`.agents` 側は環境の読み取り専用領域のため変更しない。
+
+## アクセス拒否時の終了（2026-11-12 追記）
+
+- ユーザー版（`%LOCALAPPDATA%\Programs`）の VS Code は、ハブと同じユーザー・同じ整合性レベルなら `PROCESS_TERMINATE` だけで終了できる。
+- システム版（`C:\Program Files\Microsoft VS Code`）や管理者として起動した VS Code は高い整合性レベルになることがあり、通常のハブからは Win32 エラー 5（アクセス拒否）になる。`Process.Kill` が要求する `PROCESS_ALL_ACCESS` でも拒否される。
+- 直接終了できなかった対象だけを確認済みの識別情報として `%LOCALAPPDATA%\TurtleAIQuartetHub\recovery\` に渡し、`--vscode-recovery-elevated` で一度だけ管理者確認を出す。昇格側は OS から識別情報を読み直し、`Code.exe` / `Code - Insiders.exe` 以外は終了しない。キャンセル（Win32 1223）では対象を残す。
+- アプリ本体の manifest は `asInvoker` のまま。単一インスタンスより前で処理し、昇格プロセスはパネルを開かずに終了する。
+- 確認: 回帰278件（終了・復旧20件）が合格。実ユーザーの VS Code は停止していない。

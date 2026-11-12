@@ -6,7 +6,7 @@ namespace TurtleAIQuartetHub.Panel;
 
 public partial class MainWindow
 {
-    private const string VscodeRecoveryWarning = "未保存の編集が失われたり、ターミナルや AI の処理が中断したりする可能性があります。必要な作業を保存してから実行してください。";
+    private const string VscodeRecoveryWarning = "未保存の編集が失われたり、ターミナルや AI の処理が中断したりする可能性があります。必要な作業を保存してから実行してください。システム版や管理者として起動した VS Code は、終了時に Windows の管理者確認が出ます。";
     private VscodeProcessRecoveryService? _vscodeProcessRecoveryService;
     private CancellationTokenSource? _vscodeProcessRecoveryScanCancellation;
     private IReadOnlyList<VscodeProcessInfo> _pendingVscodeProcessRecovery = [];
@@ -96,7 +96,9 @@ public partial class MainWindow
         {
             // ウィンドウが消える前に、現在のワークスペースと復帰に必要な情報を保存する。
             _statusStore.SaveCurrentSettings();
-            var result = await _vscodeProcessRecoveryService.TerminateAsync(confirmed);
+            var result = await _vscodeProcessRecoveryService.TerminateAsync(
+                confirmed,
+                progress: message => Dispatcher.Invoke(() => VscodeProcessRecoveryStatusText.Text = message));
             var summary = $"終了 {result.TerminatedCount} 件・既に終了 {result.AlreadyExitedCount} 件・終了できなかったもの {result.FailedCount} 件。";
             summary += result.HasRemainingProcesses
                 ? $" VS Code が {result.RemainingScan.Processes.Count} プロセス残っています。対象を確認して再実行してください。"

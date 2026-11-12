@@ -538,6 +538,9 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 昇格プロセス専用。既存インスタンスへ転送されてもパネルを前面化したり終了したりしない。
+        if (VscodeProcessRecoveryElevation.IsElevatedRequest(args)) return;
+
         _ = ExecuteExternalCommandAsync(args ?? []);
     }
 

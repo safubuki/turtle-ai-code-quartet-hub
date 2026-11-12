@@ -1,10 +1,12 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Text.Json;
 using TurtleAIQuartetHub.Panel.Models;
 using TurtleAIQuartetHub.Panel.Services;
 
 internal static class VscodeProcessRecoveryTests
 {
-    public const int Count = 14;
+    public const int Count = 20;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -15,6 +17,9 @@ internal static class VscodeProcessRecoveryTests
         await VerifyAlreadyExitedAsync(failures);
         await VerifyFailuresAndTimeoutAsync(failures);
         await VerifyScanFailureAsync(failures);
+        await VerifyElevationFallbackAsync(failures);
+        VerifyElevationRequestGuard(failures);
+        await VerifySameUserTerminateAccessAsync(failures);
     }
 
     private static void VerifyExecutableScope(List<string> failures)
@@ -126,6 +131,103 @@ internal static class VscodeProcessRecoveryTests
             scan.Processes.Count == 0 && scan.Issues.Count == 1 && scan.Issues[0].Contains("一覧を取得できません"));
     }
 
+    private static async Task VerifyElevationFallbackAsync(List<string> failures)
+    {
+        var access = new FakeAccess();
+        var denied = access.Add(Info(50));
+        denied.KillFailure = new Win32Exception(5);
+        var success = access.Add(Info(51));
+        var elevation = new FakeElevation();
+        var result = await new VscodeProcessRecoveryService(access, TimeSpan.FromMilliseconds(40), elevation)
+            .TerminateAsync([denied.Info, success.Info]);
+        Check(failures, "権限拒否の対象だけを管理者終了へ渡し、その結果で置き換える",
+            elevation.Received.Select(process => process.ProcessId).SequenceEqual([50])
+            && result.Results[0].Status == VscodeProcessRecoveryStatus.Terminated
+            && result.Results[0].Message.Contains("管理者", StringComparison.Ordinal)
+            && result.Results[1].Status == VscodeProcessRecoveryStatus.Terminated
+            && denied.KillCalls == 1 && success.KillCalls == 1);
+
+        var quietAccess = new FakeAccess();
+        var quietProcess = quietAccess.Add(Info(52));
+        var quiet = new FakeElevation();
+        await new VscodeProcessRecoveryService(quietAccess, TimeSpan.FromMilliseconds(40), quiet)
+            .TerminateAsync([quietProcess.Info]);
+        Check(failures, "権限拒否が無いときは管理者終了を呼ばない", quiet.Received.Count == 0 && quietProcess.KillCalls == 1);
+
+        var canceled = new FakeElevation { Failure = new VscodeRecoveryElevationCanceledException() };
+        var canceledResult = await new VscodeProcessRecoveryService(access, TimeSpan.FromMilliseconds(40), canceled)
+            .TerminateAsync([denied.Info]);
+        Check(failures, "管理者確認のキャンセルでは対象を終了せず、その旨を返す",
+            canceledResult.Results[0].Status == VscodeProcessRecoveryStatus.AccessDenied
+            && canceledResult.Results[0].Message.Contains("キャンセル", StringComparison.Ordinal)
+            && canceled.Received.Count == 1);
+    }
+
+    private static void VerifyElevationRequestGuard(List<string> failures)
+    {
+        var validId = "0123456789abcdef0123456789abcdef";
+        Check(failures, "昇格引数は32桁の16進だけを受け付ける",
+            VscodeProcessRecoveryElevation.IsElevatedRequest(["--vscode-recovery-elevated", validId])
+            && VscodeProcessRecoveryElevation.IsElevatedRequest(["--VSCODE-RECOVERY-ELEVATED", validId.ToUpperInvariant()])
+            && !VscodeProcessRecoveryElevation.IsElevatedRequest(["--vscode-recovery-elevated", "../secret"])
+            && !VscodeProcessRecoveryElevation.IsElevatedRequest(["--vscode-recovery-elevated", validId, "extra"])
+            && !VscodeProcessRecoveryElevation.IsElevatedRequest(["--activate"]));
+
+        var info = Info(7) with
+        {
+            StartTimeUtc = new DateTime(2026, 11, 12, 1, 2, 3, DateTimeKind.Utc).AddTicks(1234567),
+            ExecutablePath = @"C:\Program Files\Microsoft VS Code\Code.exe"
+        };
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var restored = JsonSerializer.Deserialize<VscodeProcessInfo[]>(JsonSerializer.Serialize(new[] { info }), options);
+        var item = new VscodeProcessRecoveryItem(info, VscodeProcessRecoveryStatus.Terminated, "終了を確認しました。");
+        var restoredItem = JsonSerializer.Deserialize<VscodeProcessRecoveryItem[]>(JsonSerializer.Serialize(new[] { item }), options);
+        Check(failures, "確認情報の開始時刻は昇格用JSONを往復しても一致する",
+            restored is { Length: 1 }
+            && restored[0].StartTimeUtc == info.StartTimeUtc
+            && restored[0].ExecutablePath == info.ExecutablePath
+            && restoredItem is { Length: 1 }
+            && restoredItem[0].Status == VscodeProcessRecoveryStatus.Terminated
+            && restoredItem[0].Process.ProcessId == info.ProcessId
+            && restoredItem[0].Process.StartTimeUtc == info.StartTimeUtc);
+    }
+
+    private static async Task VerifySameUserTerminateAccessAsync(List<string> failures)
+    {
+        using var process = Process.Start(new ProcessStartInfo("ping.exe", "-n 30 127.0.0.1")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true
+        });
+        if (process is null)
+        {
+            Check(failures, "同じユーザーのプロセスは終了権限だけで停止できる", false);
+            return;
+        }
+
+        try
+        {
+            using var handle = WindowsProcessTermination.OpenForTerminate(process.Id, out var canSynchronize);
+            WindowsProcessTermination.Terminate(handle);
+            var exited = process.WaitForExit(3000);
+            Check(failures, "同じユーザーのプロセスは終了権限だけで停止できる", exited && canSynchronize);
+        }
+        catch (Exception ex)
+        {
+            Check(failures, $"同じユーザーのプロセスは終了権限だけで停止できる ({ex.Message})", false);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch (Exception) { }
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
     private static VscodeProcessInfo Info(int id) => new(id, "Code", @"C:\VSCode\Code.exe",
         new DateTime(2026, 11, 12, 0, 0, id, DateTimeKind.Utc), 2, "S-1-current-user", "");
 
@@ -190,5 +292,23 @@ internal static class VscodeProcessRecoveryTests
         public Task WaitForExitAsync(CancellationToken cancellationToken) => state.Exited
             ? Task.CompletedTask : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         public void Dispose() { }
+    }
+
+    private sealed class FakeElevation : IVscodeRecoveryElevation
+    {
+        public List<VscodeProcessInfo> Received { get; } = [];
+        public Exception? Failure { get; init; }
+
+        public Task<IReadOnlyList<VscodeProcessRecoveryItem>> TerminateAsync(
+            IReadOnlyList<VscodeProcessInfo> processes,
+            CancellationToken cancellationToken)
+        {
+            Received.AddRange(processes);
+            if (Failure is not null) throw Failure;
+            IReadOnlyList<VscodeProcessRecoveryItem> results = processes
+                .Select(process => new VscodeProcessRecoveryItem(process, VscodeProcessRecoveryStatus.Terminated, "管理者権限で終了を確認しました。"))
+                .ToArray();
+            return Task.FromResult(results);
+        }
     }
 }

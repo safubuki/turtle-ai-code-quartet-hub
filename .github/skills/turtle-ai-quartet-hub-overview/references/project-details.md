@@ -109,7 +109,8 @@
 - フォルダ分類（表・控え・アプリ・AI エージェントと一時フォルダ）はそれぞれアコーディオン。モニタを開くたび全閉で、同じモニタ内の再計測時は開閉状態を保つ。閉じた分類でも従来の非同期計測は継続する。
 - 「VS Code の終了・復旧」から現在のユーザー・同じ Windows セッションの通常版 / Insiders を列挙し、対象一覧と未保存編集・ターミナル・AI 処理中断の警告を確認した後に強制終了できる。ハブ外の VS Code も含む。
 - 確認済みプロセスだけを終了し、後から起動したものは自動終了しない。終了・既に終了・失敗・残留を結果画面に表示する。VS Code の再起動・更新そのものは行わない。
-- 実装: `MainWindow.VscodeProcessRecovery.cs`, `Models/VscodeProcessRecoveryModels.cs`, `Services/VscodeProcessRecoveryService.cs`。詳細仕様は `docs/design/system-monitor-recovery-plan.md`。
+- ユーザー版のように同じ整合性レベルなら終了権限だけで停止する。システム版や管理者として起動した VS Code でアクセスが拒否された場合だけ、拒否された対象に限り1回の管理者確認で終了する。キャンセル時は残す。
+- 実装: `MainWindow.VscodeProcessRecovery.cs`, `Models/VscodeProcessRecoveryModels.cs`, `Services/VscodeProcessRecoveryService.cs`, `Services/VscodeProcessRecoveryElevation.cs`。詳細仕様は `docs/design/system-monitor-recovery-plan.md`。
 ## AI 作業通知の設定場所・内容確認（2026-11-12 追加）
 - 長い説明を短い概要と補足の折りたたみに整理し、Claude Code / Codex / GitHub Copilot を箇条書きで表示する。各行に設定状態とホーム省略パスを表示し、完全なパスと詳しい状態はツールチップで確認できる。
 - 各行の「フォルダ」から既存の設定フォルダをExplorerで開き、「設定を見る」からアプリ内の読み取り専用画面で実際の設定ファイルを確認できる。ファイル・フォルダの未作成時は対応する操作を無効化する。

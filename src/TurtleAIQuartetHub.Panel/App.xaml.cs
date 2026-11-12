@@ -27,6 +27,24 @@ public partial class App : Application
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         DiagnosticLog.Write(LogLevel.Info, $"Panel starting (version={version}, pid={Environment.ProcessId}).");
 
+        // 昇格終了は単一インスタンスへ入る前に処理する。ここで通常起動へ合流すると、
+        // 権限のない既存プロセスへ要求が転送され、システム版の VS Code を終了できない。
+        if (VscodeProcessRecoveryElevation.IsElevatedRequest(e.Args))
+        {
+            var exitCode = 1;
+            try
+            {
+                exitCode = VscodeProcessRecoveryElevation.RunElevated(e.Args);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+            }
+
+            Shutdown(exitCode);
+            return;
+        }
+
         // OS のシャットダウン/サインアウトによる終了は OnExit まで完走せず「終了マーカー無し」に
         // なることがある。「勝手に落ちた」と区別できるよう、セッション終了要求そのものを記録する。
         SessionEnding += (_, args) =>

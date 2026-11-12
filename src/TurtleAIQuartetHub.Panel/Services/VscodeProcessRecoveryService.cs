@@ -18,17 +18,23 @@ public sealed class VscodeProcessRecoveryService
     private readonly IVscodeRecoveryProcessAccess _processAccess;
     private readonly TimeSpan _exitTimeout;
 
+    private readonly IVscodeRecoveryElevation? _elevation;
+
     public VscodeProcessRecoveryService()
-        : this(new WindowsVscodeRecoveryProcessAccess(), TimeSpan.FromSeconds(5))
+        : this(new WindowsVscodeRecoveryProcessAccess(), TimeSpan.FromSeconds(5), new WindowsVscodeRecoveryElevation())
     {
     }
 
-    internal VscodeProcessRecoveryService(IVscodeRecoveryProcessAccess processAccess, TimeSpan exitTimeout)
+    internal VscodeProcessRecoveryService(
+        IVscodeRecoveryProcessAccess processAccess,
+        TimeSpan exitTimeout,
+        IVscodeRecoveryElevation? elevation = null)
     {
         ArgumentNullException.ThrowIfNull(processAccess);
         if (exitTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(exitTimeout));
         _processAccess = processAccess;
         _exitTimeout = exitTimeout;
+        _elevation = elevation;
     }
 
     public Task<VscodeProcessScan> ScanAsync(CancellationToken cancellationToken = default)
@@ -36,7 +42,8 @@ public sealed class VscodeProcessRecoveryService
 
     public Task<VscodeProcessRecoveryResult> TerminateAsync(
         IReadOnlyList<VscodeProcessInfo> confirmedProcesses,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(confirmedProcesses);
         // 呼び出し元による一覧変更で、確認していない対象が途中から入らないよう固定する。
@@ -44,10 +51,49 @@ public sealed class VscodeProcessRecoveryService
         return Task.Run(async () =>
         {
             var results = await Task.WhenAll(targets.Select(process => TerminateOneAsync(process, cancellationToken)));
+            results = await ElevateDeniedAsync(results, cancellationToken, progress);
             // 残留・確認後に起動したものは報告のみ。再検出したプロセスは自動終了しない。
             var remaining = Scan(CancellationToken.None);
             return new VscodeProcessRecoveryResult(results, remaining);
         }, cancellationToken);
+    }
+
+    private async Task<VscodeProcessRecoveryItem[]> ElevateDeniedAsync(
+        VscodeProcessRecoveryItem[] results,
+        CancellationToken cancellationToken,
+        Action<string>? progress)
+    {
+        if (_elevation is null) return results;
+        var denied = results.Where(result => result.Status == VscodeProcessRecoveryStatus.AccessDenied).Select(result => result.Process).ToArray();
+        if (denied.Length == 0) return results;
+
+        progress?.Invoke("現在の権限では終了できない VS Code があります。管理者の確認を表示します。");
+        IReadOnlyList<VscodeProcessRecoveryItem> elevated;
+        try
+        {
+            elevated = await _elevation.TerminateAsync(denied, cancellationToken);
+        }
+        catch (VscodeRecoveryElevationCanceledException)
+        {
+            elevated = denied.Select(process => new VscodeProcessRecoveryItem(
+                process,
+                VscodeProcessRecoveryStatus.AccessDenied,
+                "管理者の確認がキャンセルされたため終了できませんでした。")).ToArray();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            elevated = denied.Select(process => new VscodeProcessRecoveryItem(
+                process,
+                VscodeProcessRecoveryStatus.AccessDenied,
+                $"管理者権限での終了を開始できませんでした: {ex.Message}")).ToArray();
+        }
+
+        var byPid = elevated.GroupBy(item => item.Process.ProcessId).ToDictionary(group => group.Key, group => group.Last());
+        return results.Select(result => byPid.TryGetValue(result.Process.ProcessId, out var updated) ? updated : result).ToArray();
     }
 
     private VscodeProcessScan Scan(CancellationToken cancellationToken)
@@ -243,6 +289,8 @@ internal sealed class WindowsVscodeRecoveryProcess : IVscodeRecoveryProcess
 {
     private readonly Process _process;
     private readonly SafeProcessHandle _queryHandle;
+    private SafeProcessHandle? _terminateHandle;
+    private bool _canWaitOnTerminateHandle;
 
     public WindowsVscodeRecoveryProcess(Process process)
     {
@@ -306,16 +354,50 @@ internal sealed class WindowsVscodeRecoveryProcess : IVscodeRecoveryProcess
 
     public void Kill(bool entireProcessTree)
     {
-        // 限定照会ハンドルが PID を固定している間に、.NET の終了用ハンドルも保持する。
-        _ = _process.SafeHandle;
-        _process.Kill(entireProcessTree);
+        // 子プロセスツリーは終了しない。Process.Kill は SafeHandle 経由で PROCESS_ALL_ACCESS を要求し、
+        // システム版や管理者起動の VS Code では終了権限があってもアクセス拒否になる。
+        _ = entireProcessTree;
+        _terminateHandle = WindowsProcessTermination.OpenForTerminate(_process.Id, out _canWaitOnTerminateHandle);
+        try
+        {
+            WindowsProcessTermination.Terminate(_terminateHandle);
+        }
+        catch
+        {
+            _terminateHandle.Dispose();
+            _terminateHandle = null;
+            throw;
+        }
     }
-    public Task WaitForExitAsync(CancellationToken cancellationToken) => _process.WaitForExitAsync(cancellationToken);
+
+    public async Task WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        if (_terminateHandle is null || _terminateHandle.IsInvalid || !_canWaitOnTerminateHandle)
+        {
+            while (!HasExited)
+            {
+                await Task.Delay(15, cancellationToken).ConfigureAwait(false);
+            }
+            return;
+        }
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var state = WaitForSingleObject(_terminateHandle, 15);
+            if (state == 0) return;
+            if (state != 258) throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
     public void Dispose()
     {
+        _terminateHandle?.Dispose();
         _process.Dispose();
         _queryHandle.Dispose();
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern SafeProcessHandle OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, int processId);
