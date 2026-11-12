@@ -1,5 +1,7 @@
 # Store 掲載文案
 
+[ドキュメント一覧へ](../index.md)
+
 Microsoft Store 申請前の掲載文案です。提出前に、ポリシー、商標表現、スクリーンショット、サポートURL、プライバシーポリシーURLを確認してください。
 
 ## アプリ名
@@ -45,7 +47,7 @@ VS Code、Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプ
 
 このアプリは、管理対象ウィンドウの起動・配置・保存復元に必要なローカル情報を扱います。設定と状態は `%LOCALAPPDATA%\TurtleAIQuartetHub\` に保存されます。アプリ独自のテレメトリ、プロンプト、ソースコード、ワークスペース情報、ログを公開者へ送信しません。
 
-プライバシーポリシー草案: [PRIVACY.md](../PRIVACY.md)
+プライバシーポリシー草案: [PRIVACY.md](../../PRIVACY.md)
 
 ## サポート注記
 
@@ -54,12 +56,12 @@ VS Code、Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプ
 - Antigravity、各 AI CLI、Codex / ChatGPT / Claude の Windows アプリ版を使う場合は、それぞれ別途インストールが必要です。
 - Remote SSH や AI サービスの挙動は、VS Code とインストール済み拡張機能、各ツール側で管理されます。
 
-サポート案内草案: [SUPPORT.md](../SUPPORT.md)
+サポート案内草案: [SUPPORT.md](../../SUPPORT.md)
 リリースノート草案: [release-notes-draft.md](release-notes-draft.md)
 
 ## 画像素材メモ
 
-公開用スクリーンショットは [assets/store/README.md](../assets/store/README.md) のチェックに沿って用意してください。
+公開用スクリーンショットは [assets/store/README.md](../../assets/store/README.md) のチェックに沿って用意してください。
 最低1枚、推奨4枚以上です。個人情報、ローカルパス、未公開コード、APIキー、社内情報が写らないダミーワークスペースで撮影します。
 
 パッケージ用ロゴ画像は `src/TurtleAIQuartetHub.Package/Assets/` に配置済みです。Store のスクリーンショットとは別物として扱ってください。

@@ -94,9 +94,9 @@ dotnet run --project .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csp
 7. 控えカード（標準・縮小表示のカード、控え一覧のタイル）を右クリックすると、スロット A〜D への表示、フォルダの登録 / 変更、名前の編集、エクスプローラー / GitHub で開く、控えのクリアをまとめて操作できます。
 8. タイトルバーのシステムモニタアイコンは、CPU・メモリ・ディスク空き容量・ページファイルのうち最も悪い状態を色で示します（緑＝正常、黄＝注意、赤＝警告）。ツールチップに原因の項目を表示します。
 9. Pull Request 受信箱アイコンは、GitHub CLI（`gh`）がサインイン済みなら約 3 分ごとに未読の Pull Request 通知（コメント・レビュー・レビュー依頼・CI 結果など）を確認し、新しい更新があると右下に赤丸を出します。受信箱を開くと既読扱いになり赤丸が消えます。
-10. システムモニタの「アプリのデータ（ハブ・IDE）」の各行にある虫眼鏡ボタンで、Hub データ・VS Code・Antigravity IDE のデータの内訳と、容量が増えた原因を解析できます（読み取りのみ）。結果は診断コード（H1・V3 など）と大きさで表示され、意味と対処は [docs/data-folder-diagnostics.md](docs/data-folder-diagnostics.md) にまとめています。
+10. システムモニタの「アプリのデータ（ハブ・IDE）」の各行にある虫眼鏡ボタンで、Hub データ・VS Code・Antigravity IDE のデータの内訳と、容量が増えた原因を解析できます（読み取りのみ）。結果は診断コード（H1・V3 など）と大きさで表示され、意味と対処は [docs/guides/data-folder-diagnostics.md](docs/guides/data-folder-diagnostics.md) にまとめています。
 11. 縮小表示の控えでは、控えカードをクリックして選ぶと上のスロット A〜D が「▶ ここに表示」に変わり、押したスロットにその控えを表示します。もう一度カードを押すか、`取消` / Esc で選択を取り消せます。カードを上のスロットへドラッグしても表示できます。「控え」の右の一覧ボタンで、標準表示と同じ控え一覧を横に出せます（高さは縮小表示のウィンドウに合わせ、一覧で選んだカードも上のスロットの「ここに表示」で配置します）。
-12. AI の作業通知を使うには、歯車設定の「AI の作業通知」で `フックを設定` を押します。インストール済みのツールのユーザー設定（`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.copilot/hooks/`）へ通知用の項目だけを追加し、元の内容は `.turtle-hub-backup` として残します。通知スクリプトは `~/.turtle-ai-quartet-hub/ai-notify.ps1` に置かれます。Codex は初回に CLI の `/hooks` で承認してください。`フックを解除` で追加した項目だけを取り除けます。通知は作業フォルダ（cwd）がスロットのワークスペースと一致したときに、そのスロットへ表示されます。
+12. AI の作業通知を使うには、歯車設定の「AI の作業通知」で `フックを設定` を押します。Codex は初回に CLI の `/hooks` で承認してください。各行の「フォルダ」「設定を見る」から設定場所と内容を確認できます。通知は作業フォルダに対応する管理スロットへ表示されます。設定先・ツールごとのバックアップや解除の扱い・通知の流れは [フック設定の図解ガイド](docs/guides/ai-notification-hooks.md) を参照してください。
 
 ## CLI インストール例
 
@@ -210,7 +210,7 @@ Copy-Item .\config\turtle-ai-quartet-hub.example.json (Join-Path $configDir 'tur
 - `applications`: VS Code、Antigravity IDE、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Claude CLI、Codex / ChatGPT / Claude Windows アプリなどの起動定義と検出候補
 - `slots[].applicationId`: スロットごとの起動対象アプリ
 
-ハブ起動時は、VS Code がすべて終了している場合にキャッシュをバックグラウンドで回収します。ブラウザ保存領域では `CacheStorage` だけを対象とし、設定・サインイン情報・チャット履歴は保持します。窓を閉じても VS Code のプロセスが残っている場合は見送ります。H5 / V10 の警告には CacheStorage の容量を表示します。詳細は [容量の解析と診断コード](docs/data-folder-diagnostics.md) を参照してください。
+ハブ起動時は、VS Code がすべて終了している場合にキャッシュをバックグラウンドで回収します。ブラウザ保存領域では `CacheStorage` だけを対象とし、設定・サインイン情報・チャット履歴は保持します。窓を閉じても VS Code のプロセスが残っている場合は見送ります。H5 / V10 の警告には CacheStorage の容量を表示します。詳細は [容量の解析と診断コード](docs/guides/data-folder-diagnostics.md) を参照してください。
 
 `applications[].command` には、実行ファイルのフルパスまたはコマンド名を指定できます。未指定または検出できない場合は、PATH、App Paths、スタートメニュー、WindowsApps、一般的なインストール先から検出します。CLI については、npm / pnpm / Volta の shim 置き場、`%LOCALAPPDATA%\agy\bin`、`~\.gemini\bin`、`~\.local\bin` も探索します。旧設定の `gemini` アプリ ID は読み込み時に `antigravity-cli` へ移行されます。
 
@@ -265,7 +265,7 @@ Get-AuthenticodeSignature .\dist\turtle-ai-quartet-hub\TurtleAIQuartetHub.exe
 
 `--sign` は証明書の用途、有効期限、信頼チェーン、失効状態を確認し、SHA-256 で署名・タイムスタンプ後に署名を検証します。証明書がない場合や署名に失敗した場合は配布成功と表示しません。署名後に exe を変更すると署名が無効になるため、ファイルの加工は署名前に済ませてください。署名済みでも別のセキュリティ判定が行われる可能性があるため、配布前には Smart App Control が有効な端末で起動を確認します。
 
-Microsoft Store の MSIX として公開する場合は Store 側で署名されます。Store 用の準備は [MSIX パッケージング手順](docs/msix-packaging-guide.md) を参照してください。
+Microsoft Store の MSIX として公開する場合は Store 側で署名されます。Store 用の準備は [MSIX パッケージング手順](docs/release/msix-packaging-guide.md) を参照してください。
 
 手動で発行する場合は次のコマンドも使えます。
 
@@ -275,14 +275,16 @@ dotnet publish .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj -c
 
 ## 関連ドキュメント
 
+- [ドキュメント一覧](docs/index.md): 目的別の資料案内と、各ファイルの内容
+- [AI の作業通知：フック設定と通知の流れ](docs/guides/ai-notification-hooks.md): 設定場所・アプリへの通知経路・バッジ表示を SVG 図で解説
 - [PRIVACY.md](PRIVACY.md): プライバシーポリシー草案
 - [SUPPORT.md](SUPPORT.md): サポート案内草案
-- [docs/multi-application-launcher-spec.md](docs/multi-application-launcher-spec.md): 複数アプリケーション起動対応 仕様書
-- [docs/store-release-todo.md](docs/store-release-todo.md): Store 公開 TODO / 現状把握（ソフト面・リリース面の進捗一覧）
-- [docs/store-readiness.md](docs/store-readiness.md): Microsoft Store 公開前チェック
-- [docs/store-listing-draft.md](docs/store-listing-draft.md): Store 掲載文案
-- [docs/msix-packaging-guide.md](docs/msix-packaging-guide.md): MSIX パッケージング手順
-- [docs/release-notes-draft.md](docs/release-notes-draft.md): リリースノート草案
+- [docs/design/multi-application-launcher-spec.md](docs/design/multi-application-launcher-spec.md): 複数アプリケーション起動対応 仕様書
+- [docs/release/store-release-todo.md](docs/release/store-release-todo.md): Store 公開 TODO / 現状把握（ソフト面・リリース面の進捗一覧）
+- [docs/release/store-readiness.md](docs/release/store-readiness.md): Microsoft Store 公開前チェック
+- [docs/release/store-listing-draft.md](docs/release/store-listing-draft.md): Store 掲載文案
+- [docs/release/msix-packaging-guide.md](docs/release/msix-packaging-guide.md): MSIX パッケージング手順
+- [docs/release/release-notes-draft.md](docs/release/release-notes-draft.md): リリースノート草案
 - [assets/store/README.md](assets/store/README.md): Store 画像素材チェック
 
 ## ライセンス

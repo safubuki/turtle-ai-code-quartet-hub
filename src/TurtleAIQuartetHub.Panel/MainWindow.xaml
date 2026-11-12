@@ -608,6 +608,59 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <Style x:Key="CloseIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+      <Setter Property="Content" Value="×" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#D8E7DE" />
+      <Setter Property="Background" Value="#1D2822" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="ToolTip" Value="閉じる" />
+      <Setter Property="AutomationProperties.Name" Value="閉じる" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="CloseIconBorder" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="8">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                TextElement.Foreground="{TemplateBinding Foreground}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="CloseIconBorder" Property="Background" Value="#3D2424" />
+                <Setter TargetName="CloseIconBorder" Property="BorderBrush" Value="#A6655C" />
+                <Setter Property="Foreground" Value="#FFF0ED" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="CloseIconBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="CloseIconBorder" Property="Background" Value="#522B28" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ModalCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseIconButtonStyle}" />
+
+    <!-- 本体のタイトル行は高さ26のため、押下範囲の高さは既存の24に収める。 -->
+    <Style x:Key="TitleBarCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseIconButtonStyle}">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <Style x:Key="TinyPill" TargetType="Border">
       <Setter Property="Background" Value="#242B27" />
       <Setter Property="BorderBrush" Value="#3A463F" />
@@ -1239,6 +1292,70 @@
           <Setter Property="BorderBrush" Value="#3E5148" />
         </Trigger>
       </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SystemMonitorFolderExpanderStyle" TargetType="Expander">
+      <Setter Property="IsExpanded" Value="False" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Expander">
+            <StackPanel>
+              <ToggleButton IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                            Content="{TemplateBinding Header}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.Name="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                            ToolTip="クリックまたは Space キーで開閉">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="HeaderBorder" Padding="10,9" CornerRadius="7"
+                            Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
+                            Cursor="Hand">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ContentPresenter VerticalAlignment="Center" />
+                        <TextBlock x:Name="ActionText" Grid.Column="1" Text="開く"
+                                   Margin="10,0,8,0" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{StaticResource MutedTextBrush}" />
+                        <Path x:Name="Chevron" Grid.Column="2" Data="M 1 0 L 5 4 L 1 8"
+                              Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.5"
+                              Width="6" Height="8" VerticalAlignment="Center"
+                              RenderTransformOrigin="0.5,0.5" />
+                      </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="ActionText" Property="Text" Value="閉じる" />
+                        <Setter TargetName="Chevron" Property="RenderTransform">
+                          <Setter.Value><RotateTransform Angle="90" /></Setter.Value>
+                        </Setter>
+                      </Trigger>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="HeaderBorder" Property="Background" Value="#243029" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="HeaderBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <ContentPresenter x:Name="FolderContent" ContentSource="Content"
+                                Margin="8,0,8,2" Visibility="Collapsed" />
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsExpanded" Value="True">
+                <Setter TargetName="FolderContent" Property="Visibility" Value="Visible" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style x:Key="StoredPanelsExpanderStyle" TargetType="Expander">
@@ -2819,15 +2936,13 @@
 
           <DockPanel Margin="0,0,0,6">
             <Button DockPanel.Dock="Right"
-                    Content="&#xE711;"
-                    FontFamily="Segoe MDL2 Assets"
-                    FontSize="10"
-                    Width="26"
-                    Height="24"
+                    FontSize="20"
+                    Width="28"
+                    Height="26"
                     ToolTip="一覧を閉じる"
                     AutomationProperties.Name="控えの一覧を閉じる"
                     Click="CloseStoredOverviewButton_Click"
-                    Style="{StaticResource ChromeButton}" />
+                    Style="{StaticResource CloseIconButtonStyle}" />
             <TextBlock x:Name="StoredOverviewTitleText"
                        Text="控え一覧"
                        DockPanel.Dock="Left"
@@ -2975,13 +3090,10 @@
                 Click="MinimizeButton_Click"
                 Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="CloseButton"
-                Content="&#xE8BB;"
-                FontFamily="Segoe MDL2 Assets"
-                FontSize="10"
                 ToolTip="パネルを閉じる"
                 AutomationProperties.Name="パネルを閉じる"
                 Click="CloseButton_Click"
-                Style="{StaticResource TitleBarChromeButton}" />
+                Style="{StaticResource TitleBarCloseButtonStyle}" />
       </StackPanel>
     </Grid>
 
@@ -3974,10 +4086,10 @@
                            TextWrapping="Wrap" />
               </StackPanel>
               <Button Grid.Column="1"
-                      Content="X"
                       ToolTip="閉じる"
+                      AutomationProperties.Name="設定を閉じる"
                       Click="CloseSettingsButton_Click"
-                      Style="{StaticResource ChromeButton}" />
+                      Style="{StaticResource ModalCloseButtonStyle}" />
             </Grid>
 
             <ScrollViewer Grid.Row="1"
@@ -3995,15 +4107,57 @@
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" />
                     <TextBlock Margin="0,4,0,8"
-                               Text="Claude Code・Codex・GitHub Copilot のフック機能で、AI が作業中はスロットのバッジの枠がゆっくり明滅し、応答が終わるとバッジがぼんやり光ります（そのスロットのフォーカス表示を切り替えると消えます）。VS Code のチャット欄・CLI のどちらで使っても通知されます。設定すると、各ツールのユーザー設定（~/.claude/settings.json、~/.codex/hooks.json、~/.copilot/hooks/）へ通知用の項目だけを追加し、元のファイルは .turtle-hub-backup として残します。Codex は初回に CLI の /hooks で承認が必要です。"
+                               Text="AI の作業中・完了を、スロットのバッジでお知らせします。"
                                Foreground="{StaticResource MutedTextBrush}"
                                TextWrapping="Wrap" />
-                    <TextBlock x:Name="AiNotifyStatusText"
-                               Margin="0,0,0,8"
-                               FontSize="11"
-                               Foreground="{StaticResource TextBrush}"
-                               TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal">
+                    <ItemsControl x:Name="AiNotifyHookLocationsItemsControl">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Padding="0,6" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1">
+                            <Grid>
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+                              <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                              </Grid.RowDefinitions>
+                              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="•" Margin="0,0,6,0" Foreground="{StaticResource AccentBrush}" />
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextBrush}" />
+                                <TextBlock Text="{Binding StatusText}" FontSize="10.5" Margin="8,0,0,0"
+                                           ToolTip="{Binding StatusDetailToolTip}" Foreground="{StaticResource MutedTextBrush}" />
+                              </StackPanel>
+                              <Button Grid.Column="1" Grid.RowSpan="2" Margin="8,0,0,0" Padding="8,4" FontSize="11"
+                                      VerticalAlignment="Center" Content="フォルダ"
+                                      Tag="{Binding}" IsEnabled="{Binding CanOpenFolder}"
+                                      ToolTip="{Binding FolderToolTip}"
+                                      ToolTipService.ShowOnDisabled="True"
+                                      AutomationProperties.Name="{Binding DisplayName, StringFormat={}{0} の設定フォルダを開く}"
+                                      Click="AiNotifySettingsFolderButton_Click" Style="{StaticResource BaseButton}" />
+                              <Button Grid.Column="2" Grid.RowSpan="2" Margin="6,0,0,0" Padding="8,4" FontSize="11"
+                                      VerticalAlignment="Center" Content="設定を見る"
+                                      Tag="{Binding}" IsEnabled="{Binding CanViewSettings}"
+                                      ToolTip="{Binding SettingsToolTip}"
+                                      ToolTipService.ShowOnDisabled="True"
+                                      AutomationProperties.Name="{Binding DisplayName, StringFormat={}{0} のフック設定を見る}"
+                                      Click="AiNotifyViewSettingsButton_Click" Style="{StaticResource BaseButton}" />
+                              <TextBlock Grid.Row="1" Text="{Binding DisplayPath}" FontSize="10.5" Margin="12,3,0,0"
+                                         TextTrimming="CharacterEllipsis" ToolTip="{Binding SettingsPath}"
+                                         Foreground="{StaticResource MutedTextBrush}" />
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Margin="0,7,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
+                               Text="Codex：初回は CLI の /hooks で承認してください。" TextWrapping="Wrap" />
+                    <TextBlock x:Name="AiNotifyActionStatusText" Margin="0,6,0,0" Visibility="Collapsed"
+                               FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                       <Button Content="フックを設定"
                               MinWidth="110"
                               Click="InstallAiNotifyHooksButton_Click"
@@ -4016,6 +4170,17 @@
                               Style="{StaticResource BaseButton}"
                               ToolTip="このアプリが追加した通知用のフックだけを取り除く（ほかの設定は残す）" />
                     </StackPanel>
+                    <Expander x:Name="AiNotifyDetailsExpander" Header="通知の見方・補足" IsExpanded="False"
+                              Tag="通知の見方と補足" Style="{StaticResource SystemMonitorFolderExpanderStyle}"
+                              Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}">
+                      <StackPanel Margin="16,5,0,0">
+                        <TextBlock Text="• 作業中：枠がゆっくり明滅。完了・許可待ち：バッジが光ります。" TextWrapping="Wrap" />
+                        <TextBlock Text="• 光は、そのスロットのフォーカス表示を切り替えると消えます。" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="• VS Code のチャットと CLI の両方が対象です。" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="• 設定時は通知用の項目だけを追加し、変更前の内容を .turtle-hub-backup に保存します。" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="• パスの ~ はユーザーのホームフォルダです。完全なパスは行にマウスを合わせると確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Expander>
                   </StackPanel>
                 </Border>
 
@@ -4441,10 +4606,10 @@
                          FontWeight="SemiBold"
                          Foreground="{StaticResource TextBrush}" />
               <Button Grid.Column="1"
-                      Content="X"
                       ToolTip="閉じる"
+                      AutomationProperties.Name="ヘルプを閉じる"
                       Click="CloseHelpButton_Click"
-                      Style="{StaticResource ChromeButton}" />
+                      Style="{StaticResource ModalCloseButtonStyle}" />
             </Grid>
 
             <ScrollViewer Grid.Row="1"
@@ -4632,6 +4797,49 @@
       </Grid>
     </Border>
 
+    <Border x:Name="AiHookSettingsPreviewOverlay" Grid.RowSpan="5" Visibility="Collapsed"
+            Background="#96090B0A" Panel.ZIndex="28" KeyboardNavigation.TabNavigation="Cycle">
+      <Grid>
+        <Border Margin="14" Padding="16" MaxWidth="760"
+                MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource SubtractConverter}, ConverterParameter=44}"
+                Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="1" CornerRadius="12" VerticalAlignment="Center">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="AiHookSettingsPreviewTitleText" Text="フック設定の内容" FontSize="16"
+                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+            <StackPanel Grid.Row="1" Margin="0,6,0,10">
+              <TextBox x:Name="AiHookSettingsPreviewPathTextBox" IsReadOnly="True" BorderThickness="0"
+                       Background="Transparent" Foreground="{StaticResource MutedTextBrush}" Padding="0"
+                       FontSize="10.5" TextWrapping="Wrap" MaxHeight="52" VerticalScrollBarVisibility="Auto" />
+              <TextBlock x:Name="AiHookSettingsPreviewStatusText" Margin="0,5,0,0" FontSize="11"
+                         TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                         Text="読み取り専用です。設定ファイルの内容をそのまま表示します。" />
+            </StackPanel>
+            <Border Grid.Row="2" Padding="6" Background="#111815" BorderThickness="1"
+                    BorderBrush="{StaticResource BorderBrushSoft}" CornerRadius="8">
+              <TextBox x:Name="AiHookSettingsPreviewContentTextBox" IsReadOnly="True" AcceptsReturn="True"
+                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                       BorderThickness="0" Background="Transparent" FontFamily="Consolas" FontSize="11.5"
+                       Foreground="{StaticResource TextBrush}"
+                       AutomationProperties.Name="フック設定ファイルの内容（読み取り専用）" />
+            </Border>
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+              <Button x:Name="AiHookSettingsPreviewOpenFolderButton" Content="フォルダを開く"
+                      Margin="0,0,8,0" Click="AiNotifySettingsFolderButton_Click" Style="{StaticResource BaseButton}" />
+              <Button x:Name="CloseAiHookSettingsPreviewButton" Content="閉じる" MinWidth="88"
+                      Click="CloseAiHookSettingsPreviewButton_Click" Style="{StaticResource BaseButton}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
     <Border x:Name="LogOverlay"
             Grid.RowSpan="5"
             Visibility="Collapsed"
@@ -4679,10 +4887,10 @@
                            TextWrapping="Wrap" />
               </StackPanel>
               <Button Grid.Column="1"
-                      Content="X"
                       ToolTip="閉じる"
+                      AutomationProperties.Name="ログを閉じる"
                       Click="CloseLogButton_Click"
-                      Style="{StaticResource ChromeButton}" />
+                      Style="{StaticResource ModalCloseButtonStyle}" />
             </Grid>
 
             <Border Grid.Row="1"
@@ -4850,10 +5058,10 @@
                       VerticalAlignment="Top" />
               <Button x:Name="CloseSystemMonitorHeaderButton"
                       Grid.Column="2"
-                      Content="X"
                       ToolTip="システムモニタを閉じる"
+                      AutomationProperties.Name="システムモニタを閉じる"
                       Click="CloseSystemMonitorButton_Click"
-                      Style="{StaticResource ChromeButton}"
+                      Style="{StaticResource ModalCloseButtonStyle}"
                       VerticalAlignment="Top" />
             </Grid>
 
@@ -5102,6 +5310,39 @@
                   </Grid>
                 </Border>
 
+                <Border Margin="0,10,0,0" Padding="12,10"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="10">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE777;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"
+                                   Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="VS Code の終了・復旧" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}" />
+                      </StackPanel>
+                      <TextBlock Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 Text="更新を妨げている VS Code の残留プロセスを、確認して終了します。" />
+                      <TextBlock x:Name="VscodeProcessRecoveryStatusText" Margin="0,4,0,0"
+                                 FontSize="11" TextWrapping="Wrap"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 Text="対象は現在のユーザーの VS Code（通常版・Insiders）です。" />
+                    </StackPanel>
+                    <Button x:Name="OpenVscodeProcessRecoveryButton" Grid.Column="1"
+                            Margin="10,0,0,0" Padding="12,5" VerticalAlignment="Center"
+                            Content="確認して終了..."
+                            AutomationProperties.Name="VS Code の終了対象を確認"
+                            Click="OpenVscodeProcessRecoveryButton_Click"
+                            Style="{StaticResource BaseButton}" />
+                  </Grid>
+                </Border>
+
                 <Border Margin="0,10,0,0"
                         Padding="12,10"
                         Background="{StaticResource SurfaceAltBrush}"
@@ -5144,13 +5385,18 @@
                                 <Setter.Value>
                                   <ControlTemplate TargetType="GroupItem">
                                     <Border Margin="0,0,0,10"
-                                            Padding="8,8,8,2"
+                                            Padding="0"
                                             CornerRadius="9"
                                             BorderThickness="1"
                                             Background="#141A17"
                                             BorderBrush="{Binding Items[0].BadgeBorderBrush}">
-                                      <StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="2,0,0,2">
+                                      <Expander Tag="{Binding Name}"
+                                                Style="{StaticResource SystemMonitorFolderExpanderStyle}"
+                                                Loaded="SystemMonitorFolderExpander_Loaded"
+                                                Expanded="SystemMonitorFolderExpander_Changed"
+                                                Collapsed="SystemMonitorFolderExpander_Changed">
+                                        <Expander.Header>
+                                        <StackPanel Orientation="Horizontal">
                                           <Border Width="4"
                                                   Height="14"
                                                   Margin="0,0,7,0"
@@ -5168,13 +5414,16 @@
                                                      VerticalAlignment="Center"
                                                      Foreground="{StaticResource MutedTextBrush}" />
                                         </StackPanel>
+                                        </Expander.Header>
+                                        <StackPanel>
                                         <TextBlock Text="{Binding Items[0].GroupDescriptionText}"
-                                                   Margin="13,0,0,7"
+                                                   Margin="13,10,0,10"
                                                    FontSize="10.5"
                                                    TextWrapping="Wrap"
                                                    Foreground="{StaticResource MutedTextBrush}" />
                                         <ItemsPresenter />
-                                      </StackPanel>
+                                        </StackPanel>
+                                      </Expander>
                                     </Border>
                                   </ControlTemplate>
                                 </Setter.Value>
@@ -5368,10 +5617,10 @@
                       Margin="0,0,8,0"
                       VerticalAlignment="Top" />
               <Button Grid.Column="2"
-                      Content="X"
                       ToolTip="ディスク整理を閉じる"
+                      AutomationProperties.Name="ディスク整理を閉じる"
                       Click="CloseDiskCleanupButton_Click"
-                      Style="{StaticResource ChromeButton}"
+                      Style="{StaticResource ModalCloseButtonStyle}"
                       VerticalAlignment="Top" />
             </Grid>
 
@@ -5515,7 +5764,7 @@
     </Border>
 
     <!-- 容量の解析結果。結論 → 伝えるときのキーワード → 現象・原因・対処 → 容量の多い場所 の順に並べる。
-         キーワード（H1・V3 など）の意味は docs/data-folder-diagnostics.md と対応する。 -->
+         キーワード（H1・V3 など）の意味は docs/guides/data-folder-diagnostics.md と対応する。 -->
     <Border x:Name="DataFolderAnalysisOverlay"
             Grid.RowSpan="5"
             Visibility="Collapsed"
@@ -5574,10 +5823,10 @@
                       Margin="0,0,8,0"
                       VerticalAlignment="Top" />
               <Button Grid.Column="2"
-                      Content="X"
                       ToolTip="解析を閉じる"
+                      AutomationProperties.Name="解析を閉じる"
                       Click="CloseDataFolderAnalysisButton_Click"
-                      Style="{StaticResource ChromeButton}"
+                      Style="{StaticResource ModalCloseButtonStyle}"
                       VerticalAlignment="Top" />
             </Grid>
 
@@ -5766,6 +6015,59 @@
                       Style="{StaticResource BaseButton}"
                       MinWidth="88" />
             </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="VscodeProcessRecoveryConfirmOverlay" Grid.RowSpan="5"
+            Visibility="Collapsed" Background="#96090B0A" Panel.ZIndex="27"
+            KeyboardNavigation.TabNavigation="Cycle">
+      <Grid>
+        <Border Width="550" MaxHeight="440" Padding="20"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="14">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="VscodeProcessRecoveryConfirmTitleText" Text="VS Code を強制終了しますか？" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextBrush}" />
+            <StackPanel Grid.Row="1" Margin="0,8,0,12">
+              <TextBlock x:Name="VscodeProcessRecoveryConfirmMessageText" TextWrapping="Wrap"
+                         Foreground="{StaticResource TextBrush}" />
+              <TextBlock Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         Text="ハブ外で開いている VS Code と、バックグラウンドの VS Code も対象になります。" />
+            </StackPanel>
+            <Border Grid.Row="2" Padding="10,8" Background="#141A17"
+                    BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="140">
+                <StackPanel>
+                <TextBlock x:Name="VscodeProcessRecoveryConfirmDetailText" FontSize="11"
+                           TextWrapping="Wrap" Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="VscodeProcessRecoveryConfirmIssuesText" Margin="0,8,0,0"
+                           FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+            <StackPanel Grid.Row="3" Margin="0,12,0,0">
+              <TextBlock x:Name="VscodeProcessRecoveryWarningText" Text="未保存の編集が失われたり、ターミナルや AI の処理が中断したりする可能性があります。必要な作業を保存してから実行してください。"
+                         TextWrapping="Wrap" Foreground="#F2B7AF" />
+            </StackPanel>
+            <StackPanel Grid.Row="4" Margin="0,16,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="CancelVscodeProcessRecoveryButton" Content="キャンセル"
+                      MinWidth="96" Margin="0,0,8,0" Style="{StaticResource BaseButton}"
+                      Click="CancelVscodeProcessRecoveryButton_Click" />
+              <Button x:Name="ConfirmVscodeProcessRecoveryButton" Content="強制終了する"
+                      IsEnabled="False" Style="{StaticResource DangerButtonStyle}"
+                      Click="ConfirmVscodeProcessRecoveryButton_Click" />
+            </StackPanel>
           </Grid>
         </Border>
       </Grid>

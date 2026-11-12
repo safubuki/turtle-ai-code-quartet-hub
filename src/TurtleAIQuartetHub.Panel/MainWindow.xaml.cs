@@ -91,6 +91,7 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _refreshCancellation = new();
     private CancellationTokenSource? _folderSizeCalculationCancellation;
     private IReadOnlyList<FolderUsageItem> _currentFolderUsageItems = [];
+    private readonly HashSet<string> _expandedSystemMonitorFolderGroups = [];
     private readonly DiskCleanupService _diskCleanupService = new();
     private CancellationTokenSource? _diskCleanupScanCancellation;
     private DiskCleanupScanResult? _diskCleanupScan;
@@ -655,6 +656,8 @@ public partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
+        AiNotifyDetailsExpander.IsExpanded = false;
+        AiNotifyActionStatusText.Visibility = Visibility.Collapsed;
         _statusStore.ResetApplicationPathSettings();
         SettingsConfigPathText.Text = AppConfig.GetUserConfigPath();
         RefreshAiNotifySettingsStatus();
@@ -901,6 +904,7 @@ public partial class MainWindow : Window
 
     private void HideSettingsDialog()
     {
+        HideAiHookSettingsPreviewDialog();
         SettingsOverlay.Visibility = Visibility.Collapsed;
     }
 
@@ -970,6 +974,7 @@ public partial class MainWindow : Window
 
     private void OpenSystemMonitorDialog()
     {
+        _expandedSystemMonitorFolderGroups.Clear();
         SystemMonitorOverlay.Visibility = Visibility.Visible;
         RefreshSystemMonitorAll(forceFolderRecalculation: true);
         StartDiskCleanupScan();
@@ -979,6 +984,7 @@ public partial class MainWindow : Window
 
     private void HideSystemMonitorDialog()
     {
+        HideVscodeProcessRecoveryConfirmDialog();
         _systemMonitorTimer.Stop();
         CancelFolderSizeCalculation();
         HideDataFolderAnalysisDialog();
@@ -1161,6 +1167,32 @@ public partial class MainWindow : Window
         var view = new System.Windows.Data.ListCollectionView(items.ToList());
         view.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(FolderUsageItem.GroupTitle)));
         return view;
+    }
+
+    private void SystemMonitorFolderExpander_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Expander { Tag: string group } expander)
+        {
+            expander.IsExpanded = _expandedSystemMonitorFolderGroups.Contains(group);
+        }
+    }
+
+    private void SystemMonitorFolderExpander_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Expander { Tag: string group } expander || !ReferenceEquals(e.OriginalSource, expander))
+        {
+            return;
+        }
+
+        if (expander.IsExpanded)
+        {
+            _expandedSystemMonitorFolderGroups.Add(group);
+        }
+        else
+        {
+            _expandedSystemMonitorFolderGroups.Remove(group);
+        }
+        e.Handled = true;
     }
 
     private void OpenDiskCleanupButton_Click(object sender, RoutedEventArgs e)
@@ -6113,6 +6145,20 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (AiHookSettingsPreviewOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideAiHookSettingsPreviewDialog();
+            e.Handled = true;
+            return;
+        }
+
+        if (VscodeProcessRecoveryConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideVscodeProcessRecoveryConfirmDialog();
+            e.Handled = true;
+            return;
+        }
+
         if (AppExitConfirmOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideAppExitConfirmDialog();
@@ -6511,6 +6557,7 @@ public partial class MainWindow : Window
         SystemMonitorOverlay.IsEnabled = !busy;
         DiskCleanupOverlay.IsEnabled = !busy;
         DiskCleanupConfirmOverlay.IsEnabled = !busy;
+        VscodeProcessRecoveryConfirmOverlay.IsEnabled = !busy;
         AuxiliaryApplicationPanel.IsEnabled = !busy;
     }
 

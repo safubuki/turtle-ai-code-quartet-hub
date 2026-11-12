@@ -1,5 +1,7 @@
 # リリースノート草案
 
+[ドキュメント一覧へ](../index.md)
+
 Microsoft Store 提出時の「このバージョンの新機能」や GitHub Releases 用の下書きです。
 
 ## 1.0.0

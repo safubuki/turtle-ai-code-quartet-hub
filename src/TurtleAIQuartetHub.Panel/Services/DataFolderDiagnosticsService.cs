@@ -7,7 +7,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 /// <summary>
 /// Hub データ・VS Code / Antigravity IDE のユーザーデータが大きいとき、どこが重く、なぜ増えたのかを判定する。
 /// 起こりうる現象を事前に洗い出した診断コード（H1〜H8、V1〜V11、G1〜G11）で結果を返し、
-/// 利用者が記号と大きさだけを口頭で伝えれば原因が分かるようにする。一覧は docs/data-folder-diagnostics.md。
+/// 利用者が記号と大きさだけを口頭で伝えれば原因が分かるようにする。一覧は docs/guides/data-folder-diagnostics.md。
 /// </summary>
 public static class DataFolderDiagnosticsService
 {

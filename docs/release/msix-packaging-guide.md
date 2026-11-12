@@ -1,5 +1,7 @@
 # MSIX パッケージング手順
 
+[ドキュメント一覧へ](../index.md)
+
 Turtle AI Code Quartet Hub を Microsoft Store へ出すための、リポジトリ側の MSIX 準備メモです。
 Partner Center の値はアカウントごとに異なるため、ここでは固定せず、実際の予約後に Visual Studio 側で設定します。
 

@@ -109,9 +109,16 @@ turtle-ai-quartet-hub/
   config/
     turtle-ai-quartet-hub.example.json
   docs/
-    store-readiness.md
-    release-notes-draft.md
-    store-listing-draft.md
+    index.md
+    guides/
+    design/
+    development/
+    investigations/
+    release/
+      store-readiness.md
+      release-notes-draft.md
+      store-listing-draft.md
+    assets/
 ```
 
 ## 7. QA 方針

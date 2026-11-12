@@ -1,5 +1,7 @@
 # Microsoft Store 公開 TODO / 現状把握
 
+[ドキュメント一覧へ](../index.md)
+
 このドキュメントは、Turtle AI Code Quartet Hub を Microsoft Store に公開するために、
 **いま何ができていて、何が残っているか**を一覧で把握するためのものです。
 
@@ -173,9 +175,9 @@ R7 スクリーンショット ────────────────�
 | [msix-packaging-guide.md](msix-packaging-guide.md) | MSIX パッケージング手順 |
 | [store-listing-draft.md](store-listing-draft.md) | Store 掲載文案（S16 で要更新） |
 | [release-notes-draft.md](release-notes-draft.md) | リリースノート草案 |
-| [../PRIVACY.md](../PRIVACY.md) | プライバシーポリシー草案（R5 で正式化） |
-| [../SUPPORT.md](../SUPPORT.md) | サポート案内草案（R6 で正式化） |
-| [../assets/store/README.md](../assets/store/README.md) | Store 画像素材チェック（R7 / S17） |
+| [../../PRIVACY.md](../../PRIVACY.md) | プライバシーポリシー草案（R5 で正式化） |
+| [../../SUPPORT.md](../../SUPPORT.md) | サポート案内草案（R6 で正式化） |
+| [../../assets/store/README.md](../../assets/store/README.md) | Store 画像素材チェック（R7 / S17） |
 
 ## 7. 公式参考リンク（2026年版で確認したもの）
 

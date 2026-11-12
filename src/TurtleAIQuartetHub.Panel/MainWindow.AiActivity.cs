@@ -94,7 +94,7 @@ public partial class MainWindow
     private void RefreshAiNotifySettingsStatus(IReadOnlyList<AiNotifyHookToolResult>? results = null)
     {
         results ??= _aiNotifyHookInstaller.GetStatus();
-        AiNotifyStatusText.Text = string.Join("　", results.Select(result => $"{result.DisplayName}: {result.Message}"));
+        AiNotifyHookLocationsItemsControl.ItemsSource = _aiNotifyHookInstaller.GetSettingsLocations(results);
     }
 
     private void InstallAiNotifyHooksButton_Click(object sender, RoutedEventArgs e)

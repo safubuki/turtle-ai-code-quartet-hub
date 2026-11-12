@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TurtleAIQuartetHub.Panel.Models;
 
 namespace TurtleAIQuartetHub.Panel.Services;
 
@@ -23,6 +24,7 @@ public sealed class AiNotifyHookInstaller
     public const string ScriptFolderName = ".turtle-ai-quartet-hub";
     public const string ScriptFileName = "ai-notify.ps1";
     public const string CopilotHookFileName = "turtle-ai-quartet-hub.json";
+    public const int SettingsPreviewCharacterLimit = 256 * 1024;
     private const string BackupSuffix = ".turtle-hub-backup";
 
     private static readonly JsonSerializerOptions WriteOptions = new()
@@ -59,6 +61,83 @@ public sealed class AiNotifyHookInstaller
     public string CodexHooksPath => Path.Combine(_homeDirectory, ".codex", "hooks.json");
 
     public string CopilotHookPath => Path.Combine(_homeDirectory, ".copilot", "hooks", CopilotHookFileName);
+
+    // 保存先の確認は読み取りだけ。未導入ツールのフォルダやフックを暗黙に作らない。
+    public IReadOnlyList<AiNotifyHookLocation> GetSettingsLocations(IReadOnlyList<AiNotifyHookToolResult>? statuses = null)
+    {
+        statuses ??= GetStatus();
+        return
+        [
+            Location("claude", "Claude Code", ClaudeSettingsPath, "~/.claude/settings.json"),
+            Location("codex", "Codex", CodexHooksPath, "~/.codex/hooks.json"),
+            Location("copilot", "GitHub Copilot", CopilotHookPath, $"~/.copilot/hooks/{CopilotHookFileName}")
+        ];
+
+        AiNotifyHookLocation Location(string tool, string displayName, string path, string displayPath)
+        {
+            var status = statuses.FirstOrDefault(result => string.Equals(result.Tool, tool, StringComparison.OrdinalIgnoreCase));
+            var statusKind = status?.Status ?? AiNotifyHookStatus.Error;
+            var statusText = statusKind switch
+            {
+                AiNotifyHookStatus.Installed => "設定済み",
+                AiNotifyHookStatus.NotInstalled => "未設定",
+                AiNotifyHookStatus.ToolMissing => "未インストール",
+                _ => "設定エラー"
+            };
+            var folder = Path.GetDirectoryName(path)!;
+            return new AiNotifyHookLocation(tool, displayName, statusKind, statusText,
+                status?.Message ?? "設定状態を確認できませんでした。", path, displayPath, folder,
+                Directory.Exists(folder), File.Exists(path));
+        }
+    }
+
+    public AiNotifyHookSettingsPreview ReadSettingsPreview(AiNotifyHookLocation location)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        var knownPath = location.Tool switch
+        {
+            "claude" => ClaudeSettingsPath,
+            "codex" => CodexHooksPath,
+            "copilot" => CopilotHookPath,
+            _ => null
+        };
+        try
+        {
+            // UI の保存先モデルが差し替わっても、既知のフック設定以外は読まない。
+            if (knownPath is null || !string.Equals(Path.GetFullPath(location.SettingsPath), Path.GetFullPath(knownPath), StringComparison.OrdinalIgnoreCase))
+            {
+                return new AiNotifyHookSettingsPreview(false, string.Empty, "通知フックの設定ファイルではありません。", false);
+            }
+
+            using var stream = new FileStream(knownPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var buffer = new char[SettingsPreviewCharacterLimit + 1];
+            var read = reader.ReadBlock(buffer, 0, buffer.Length);
+            var truncated = read > SettingsPreviewCharacterLimit;
+            var length = Math.Min(read, SettingsPreviewCharacterLimit);
+            // 上限がサロゲートペアの間に来ても、表示文字を壊さない。
+            if (truncated && length > 0 && char.IsHighSurrogate(buffer[length - 1]) && char.IsLowSurrogate(buffer[length])) length--;
+            return new AiNotifyHookSettingsPreview(true, new string(buffer, 0, length),
+                truncated ? $"ファイルが大きいため、先頭 {length:N0} 文字だけを表示しています。" : string.Empty,
+                truncated);
+        }
+        catch (FileNotFoundException)
+        {
+            return new AiNotifyHookSettingsPreview(false, string.Empty, "設定ファイルはまだありません。フックを設定してから確認してください。", false);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return new AiNotifyHookSettingsPreview(false, string.Empty, "設定フォルダはまだありません。フックを設定してから確認してください。", false);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new AiNotifyHookSettingsPreview(false, string.Empty, "設定ファイルを読み取る権限がありません。", false);
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException)
+        {
+            return new AiNotifyHookSettingsPreview(false, string.Empty, "設定ファイルを読み取れませんでした。フォルダからファイルの状態を確認してください。", false);
+        }
+    }
 
     public IReadOnlyList<AiNotifyHookToolResult> GetStatus()
     {

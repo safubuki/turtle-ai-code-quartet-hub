@@ -1,5 +1,7 @@
 # WPF UI 検証ツールの実行方法
 
+[ドキュメント一覧へ](../index.md)
+
 一時的な WPF 描画・操作検証ツールは、`tools/WpfCheckGuard.cs` をコンパイル対象に追加し、STA スレッドの入口を次の形にする。
 
 ```csharp

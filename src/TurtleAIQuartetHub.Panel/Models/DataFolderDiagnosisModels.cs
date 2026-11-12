@@ -22,7 +22,7 @@ public sealed record DataFolderAnalysisContext(
 
 /// <summary>
 /// 見つかった問題 1 件。<see cref="Code"/> は口頭で伝えるための記号（H1、V3 など）で、
-/// 意味は docs/data-folder-diagnostics.md の一覧と対応する。
+/// 意味は docs/guides/data-folder-diagnostics.md の一覧と対応する。
 /// </summary>
 public sealed record DataFolderFinding(
     string Code,

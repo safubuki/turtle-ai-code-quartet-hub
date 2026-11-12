@@ -1,5 +1,7 @@
 # Windowsアプリ Microsoft Store リリース手順
 
+[ドキュメント一覧へ](../index.md)
+
 この文書は、Windows デスクトップアプリを Microsoft Store へリリースするための実務手順です。
 このリポジトリの `Turtle AI Code Quartet Hub` を前提にしつつ、別アプリを公開するときにも流用できる形で整理しています。
 
@@ -143,10 +145,10 @@ Thank you.
 | 済 | ユーザー設定を `%LOCALAPPDATA%` 側から優先読み込み | アプリ実装 |
 | 済 | `LICENSE.txt` をビルド出力に同梱 | `LICENSE.txt` |
 | 済 | README に公開準備関連の導線を追加 | `README.md` |
-| 済 | Store公開準備チェックリスト | `docs/store-readiness.md` |
-| 済 | MSIXパッケージング手順 | `docs/msix-packaging-guide.md` |
-| 済 | Store掲載文案草案 | `docs/store-listing-draft.md` |
-| 済 | リリースノート草案 | `docs/release-notes-draft.md` |
+| 済 | Store公開準備チェックリスト | `docs/release/store-readiness.md` |
+| 済 | MSIXパッケージング手順 | `docs/release/msix-packaging-guide.md` |
+| 済 | Store掲載文案草案 | `docs/release/store-listing-draft.md` |
+| 済 | リリースノート草案 | `docs/release/release-notes-draft.md` |
 | 済 | プライバシー/ローカル情報の扱い | `PRIVACY.md` |
 | 済 | プライバシーポリシー草案 | `PRIVACY.md` |
 | 済 | サポート案内草案 | `SUPPORT.md` |
@@ -202,7 +204,7 @@ Thank you.
 - アプリ独自のテレメトリ、プロンプト、ソースコード、ワークスペース情報、ログを公開者へ送信しない。
 - VS Code内で使用する remote workspace、AIサービス、拡張機能は、それぞれのツール/サービスの仕様とプライバシーポリシーに従う。
 
-掲載文の草案は `docs/store-listing-draft.md` を使う。
+掲載文の草案は `docs/release/store-listing-draft.md` を使う。
 
 ## 6. Store画像を用意する
 
@@ -403,7 +405,7 @@ The app stores user data under %LOCALAPPDATA%\TurtleAIQuartetHub\ and does not u
 更新時の流れ:
 
 1. バージョンを上げる。
-2. 変更点を `docs/release-notes-draft.md` にまとめる。
+2. 変更点を `docs/release/release-notes-draft.md` にまとめる。
 3. Store掲載の `What's new in this version` を書く。
 4. 新しい `.msixupload` を作る。
 5. Partner Center で対象アプリを開く。

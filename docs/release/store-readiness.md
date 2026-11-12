@@ -1,5 +1,7 @@
 ﻿# Microsoft Store 公開準備
 
+[ドキュメント一覧へ](../index.md)
+
 この文書は、Turtle AI Code Quartet Hub を Microsoft Store へ公開する前に、このリポジトリ内で確認・改善する内容を管理するチェックリストです。
 
 ## 配布方針
@@ -23,13 +25,13 @@ Microsoft は Windows アプリのインストール、更新、Store 配布の�
 - [msix-packaging-guide.md](msix-packaging-guide.md) に MSIX パッケージング手順を追加。
 - `src/TurtleAIQuartetHub.Package/Package.appxmanifest` と開発用 Packaging Project を追加。
 - `src/TurtleAIQuartetHub.Package/Assets/` にパッケージ用ロゴ画像を追加。
-- [../scripts/New-LocalMsixPackage.ps1](../scripts/New-LocalMsixPackage.ps1) にローカル確認用 MSIX 生成スクリプトを追加。
-- [../.github/workflows/windows-build.yml](../.github/workflows/windows-build.yml) に Windows ビルドと公開準備チェックの CI を追加。
+- [../../scripts/New-LocalMsixPackage.ps1](../../scripts/New-LocalMsixPackage.ps1) にローカル確認用 MSIX 生成スクリプトを追加。
+- [../../.github/workflows/windows-build.yml](../../.github/workflows/windows-build.yml) に Windows ビルドと公開準備チェックの CI を追加。
 - [release-notes-draft.md](release-notes-draft.md) にリリースノート草案を追加。
-- [../SUPPORT.md](../SUPPORT.md) にサポート案内草案を追加。
-- [../assets/store/README.md](../assets/store/README.md) に Store 画像素材の要件と撮影前チェックを追加。
-- [../scripts/Test-StoreReadiness.ps1](../scripts/Test-StoreReadiness.ps1) にローカル公開準備チェックを追加。
-- [../PRIVACY.md](../PRIVACY.md) にプライバシーポリシー草案を追加。
+- [../../SUPPORT.md](../../SUPPORT.md) にサポート案内草案を追加。
+- [../../assets/store/README.md](../../assets/store/README.md) に Store 画像素材の要件と撮影前チェックを追加。
+- [../../scripts/Test-StoreReadiness.ps1](../../scripts/Test-StoreReadiness.ps1) にローカル公開準備チェックを追加。
+- [../../PRIVACY.md](../../PRIVACY.md) にプライバシーポリシー草案を追加。
 - [store-listing-draft.md](store-listing-draft.md) に Store 掲載文案の草案を追加。
 
 ## 現在の状態
