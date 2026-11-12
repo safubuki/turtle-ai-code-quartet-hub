@@ -6,6 +6,8 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引きを確認する。
 internal static class AiActivityTests
 {
+    public const int Count = 40;
+
     public static void Run(List<string> failures)
     {
         VerifyParser(failures);
@@ -33,6 +35,19 @@ internal static class AiActivityTests
             && AiHookEventParser.TryParse(["--ai-event", "Grok", "StopCancelled", @"C:\work\a", "s1", ""]) is { Tool: "grok", Kind: AiHookEventKind.Stop }
             && AiHookEventParser.Classify("PermissionDenied", "") == AiHookEventKind.Unknown
             && AiHookEventParser.Classify("Notification", "task_complete") == AiHookEventKind.Unknown);
+        var agStart = AiHookEventParser.TryParse(["--ai-event", "antigravity", "PreInvocation", @"C:\work\a", "conv-1", ""]);
+        Check(failures, "通知: Antigravity の PreInvocation / Stop を開始・完了として扱う",
+            agStart is { Tool: "antigravity", Kind: AiHookEventKind.Start, SessionId: "conv-1" }
+            && AiHookEventParser.Classify("Stop", "NO_TOOL_CALL") == AiHookEventKind.Stop
+            && AiHookEventParser.Classify("Stop", "ERROR") == AiHookEventKind.Stop);
+        Check(failures, "通知: Antigravity の USER_CANCELED は中断として扱う",
+            AiHookEventParser.Classify("Stop", "USER_CANCELED") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("Stop", "user_canceled") == AiHookEventKind.Interrupt);
+        var agTracker = new AiActivityTracker();
+        agTracker.Apply(agStart!, DateTimeOffset.UtcNow);
+        agTracker.Apply(AiHookEventParser.TryParse(["--ai-event", "antigravity", "Stop", @"C:\work\a", "conv-1", "USER_CANCELED"])!, DateTimeOffset.UtcNow);
+        Check(failures, "状態: Antigravity の USER_CANCELED は偽の完了（青）を残さず作業中だけを止める",
+            agTracker.State == AiActivityState.Idle);
         Check(failures, "通知: cwd が無い・別コマンドは受け付けない",
             AiHookEventParser.TryParse(["--ai-event", "claude", "Stop", ""]) is null
             && AiHookEventParser.TryParse(["--activate"]) is null);
@@ -144,18 +159,23 @@ internal static class AiActivityTests
                 string.Join(" | ", stopCommands));
             Check(failures, "フック設定: 書き換え前の内容をバックアップに残す",
                 File.Exists(installer.ClaudeSettingsPath + ".turtle-hub-backup"));
-            Check(failures, "フック設定: Codex は hooks.json を作り、Copilot と Grok は未インストールなので触らない",
+            Check(failures, "フック設定: Codex は hooks.json を作り、Copilot / Grok / Antigravity は未インストールなので触らない",
                 File.Exists(installer.CodexHooksPath)
                 && first.Single(result => result.Tool == "codex").Status == AiNotifyHookStatus.Installed
                 && first.Single(result => result.Tool == "copilot").Status == AiNotifyHookStatus.ToolMissing
                 && !File.Exists(installer.CopilotHookPath)
                 && first.Single(result => result.Tool == "grok").Status == AiNotifyHookStatus.ToolMissing
-                && !Directory.Exists(Path.Combine(home, ".grok")));
+                && !Directory.Exists(Path.Combine(home, ".grok"))
+                && first.Single(result => result.Tool == "antigravity").Status == AiNotifyHookStatus.ToolMissing
+                && !Directory.Exists(Path.Combine(home, ".gemini")));
             Check(failures, "フック設定: 通知スクリプトは ASCII だけ（PowerShell 5.1 の文字化け対策）",
                 File.ReadAllText(installer.ScriptPath).All(character => character < 128));
-            Check(failures, "フック設定: 通知詳細は notification_type と notificationType の両方を読む",
+            Check(failures, "フック設定: 通知詳細は各ツールの項目名を読む",
                 AiNotifyHookInstaller.NotifyScript.Contains("notification_type", StringComparison.Ordinal)
-                && AiNotifyHookInstaller.NotifyScript.Contains("notificationType", StringComparison.Ordinal));
+                && AiNotifyHookInstaller.NotifyScript.Contains("notificationType", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("conversationId", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("workspacePaths", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("terminationReason", StringComparison.Ordinal));
             Check(failures, "フック設定: コマンドは / 区切りのパスを引用符で囲む（Git Bash でも動く）",
                 installer.BuildCommand("claude", "Stop").Contains($"\"{installer.ScriptPath.Replace('\\', '/')}\"", StringComparison.Ordinal));
 
@@ -218,6 +238,69 @@ internal static class AiActivityTests
                 && !kept.ToJsonString().Contains(AiNotifyHookInstaller.ScriptFileName, StringComparison.OrdinalIgnoreCase)
                 && siblingBefore.SequenceEqual(File.ReadAllBytes(siblingPath))
                 && tomlBefore.SequenceEqual(File.ReadAllBytes(tomlPath)));
+
+            var geminiRoot = Path.Combine(home, ".gemini");
+            Directory.CreateDirectory(geminiRoot);
+            File.WriteAllText(Path.Combine(geminiRoot, "settings.json"), "{}");
+            var geminiOnlyResult = installer.Install();
+            Check(failures, "フック設定: gemini-cli の設定だけでは Antigravity を設定対象にしない",
+                geminiOnlyResult.Single(result => result.Tool == "antigravity").Status == AiNotifyHookStatus.ToolMissing
+                && !File.Exists(installer.AntigravityHooksPath));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(installer.AntigravityHooksPath)!);
+            File.WriteAllText(installer.AntigravityHooksPath, """
+                {
+                  "lint-checker": {
+                    "enabled": true,
+                    "PostInvocation": [
+                      {
+                        "type": "command",
+                        "command": "echo lint",
+                        "timeout": 5
+                      }
+                    ]
+                  }
+                }
+                """);
+            installer.Install();
+            var agInstalled = installer.Install();
+            var agRoot = JsonNode.Parse(File.ReadAllText(installer.AntigravityHooksPath))!.AsObject();
+            var agHub = agRoot[AiNotifyHookInstaller.AntigravityHookName]!.AsObject();
+            var agPre = agHub["PreInvocation"]!.AsArray();
+            var agStop = agHub["Stop"]!.AsArray();
+            var agPreCmd = agPre[0]!["command"]!.GetValue<string>();
+            var agStopCmd = agStop[0]!["command"]!.GetValue<string>();
+            Check(failures, "フック設定: Antigravity は既存の名前付きフックを残し、平坦配列・無引用コマンドで重複なく書く",
+                agInstalled.Single(result => result.Tool == "antigravity").Status == AiNotifyHookStatus.Installed
+                && agRoot["lint-checker"]!["PostInvocation"]![0]!["command"]!.GetValue<string>() == "echo lint"
+                && agHub["enabled"]!.GetValue<bool>()
+                && agPre.Count == 1 && agStop.Count == 1
+                && agPre[0]!["hooks"] is null && agPre[0]!["matcher"] is null
+                && !agPreCmd.Contains('"', StringComparison.Ordinal) && !agStopCmd.Contains('"', StringComparison.Ordinal)
+                && agPreCmd.Contains("-Tool antigravity -HookEvent PreInvocation", StringComparison.Ordinal)
+                && agStopCmd.Contains("-Tool antigravity -HookEvent Stop", StringComparison.Ordinal)
+                && File.Exists(installer.AntigravityHooksPath + ".turtle-hub-backup"),
+                agRoot.ToJsonString());
+
+            var agRemoved = installer.Uninstall();
+            var agAfter = JsonNode.Parse(File.ReadAllText(installer.AntigravityHooksPath))!.AsObject();
+            var lintPreserved = agAfter["lint-checker"]!["PostInvocation"]![0]!["command"]!.GetValue<string>() == "echo lint"
+                && !agAfter.ContainsKey(AiNotifyHookInstaller.AntigravityHookName)
+                && agRemoved.Single(result => result.Tool == "antigravity").Status == AiNotifyHookStatus.NotInstalled;
+            File.Delete(installer.AntigravityHooksPath);
+            installer.Install();
+            installer.Uninstall();
+            Check(failures, "フック解除: Antigravity の他フックは残し、ハブ項目だけなら空ファイルを消す",
+                lintPreserved
+                && !File.Exists(installer.AntigravityHooksPath)
+                && File.Exists(installer.AntigravityHooksPath + ".turtle-hub-backup"));
+
+            var spaceHome = Path.Combine(Path.GetTempPath(), "turtle ai test " + Guid.NewGuid().ToString("N"));
+            var spaceCmd = new AiNotifyHookInstaller(spaceHome).BuildCommand("antigravity", "PreInvocation");
+            Check(failures, "フック設定: 空白を含むホームでは Antigravity コマンドを相対パスにして引用符を付けない",
+                !spaceCmd.Contains('"', StringComparison.Ordinal)
+                && spaceCmd.Contains("-File ../../.turtle-ai-quartet-hub/ai-notify.ps1 -Tool antigravity -HookEvent PreInvocation", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.IsHubCommand(spaceCmd));
         }
         finally
         {

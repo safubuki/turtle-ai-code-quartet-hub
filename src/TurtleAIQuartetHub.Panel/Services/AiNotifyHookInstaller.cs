@@ -17,13 +17,14 @@ public enum AiNotifyHookStatus
 
 public sealed record AiNotifyHookToolResult(string Tool, string DisplayName, AiNotifyHookStatus Status, string Message);
 
-// Claude Code / Codex / GitHub Copilot / Grok のユーザー設定へ、応答の開始・完了をハブへ知らせるフックを足し引きする。
+// Claude Code / Codex / GitHub Copilot / Grok / Antigravity のユーザー設定へ、応答の開始・完了をハブへ知らせるフックを足し引きする。
 // 既存の設定は残し、ハブが足した項目（通知スクリプトのパスを含むコマンド）だけを扱う。
 public sealed class AiNotifyHookInstaller
 {
     public const string ScriptFolderName = ".turtle-ai-quartet-hub";
     public const string ScriptFileName = "ai-notify.ps1";
     public const string CopilotHookFileName = "turtle-ai-quartet-hub.json";
+    public const string AntigravityHookName = "turtle-ai-quartet-hub";
     public const int SettingsPreviewCharacterLimit = 256 * 1024;
     private const string BackupSuffix = ".turtle-hub-backup";
 
@@ -45,6 +46,10 @@ public sealed class AiNotifyHookInstaller
     private static readonly string[] CopilotEvents = ["userPromptSubmitted", "agentStop"];
     // Grok は中断と API エラーを Stop ではなく StopCancelled / StopFailure で知らせる。
     private static readonly string[] GrokEvents = ["UserPromptSubmit", "Stop", "StopFailure", "StopCancelled", "Notification"];
+    // Antigravity は名前付きフックの下に平坦なイベント配列（PreInvocation / Stop）を持つ。
+    private static readonly string[] AntigravityEvents = ["PreInvocation", "Stop"];
+    // @google/gemini-cli のみの環境（~/.gemini/settings.json のみ）と区別するため、Antigravity 固有フォルダの有無を確認する。
+    private static readonly string[] AntigravityDataDirectories = ["config", "antigravity", "antigravity-cli", "antigravity-ide"];
 
     private readonly string _homeDirectory;
 
@@ -67,6 +72,8 @@ public sealed class AiNotifyHookInstaller
     // 専用ファイル名は Copilot と同じ。ほかの ~/.grok/hooks/*.json や config.toml は触らない。
     public string GrokHooksPath => Path.Combine(_homeDirectory, ".grok", "hooks", CopilotHookFileName);
 
+    public string AntigravityHooksPath => Path.Combine(_homeDirectory, ".gemini", "config", "hooks.json");
+
     // 保存先の確認は読み取りだけ。未導入ツールのフォルダやフックを暗黙に作らない。
     public IReadOnlyList<AiNotifyHookLocation> GetSettingsLocations(IReadOnlyList<AiNotifyHookToolResult>? statuses = null)
     {
@@ -76,7 +83,8 @@ public sealed class AiNotifyHookInstaller
             Location("claude", "Claude Code", ClaudeSettingsPath, "~/.claude/settings.json"),
             Location("codex", "Codex", CodexHooksPath, "~/.codex/hooks.json"),
             Location("copilot", "GitHub Copilot", CopilotHookPath, $"~/.copilot/hooks/{CopilotHookFileName}"),
-            Location("grok", "Grok", GrokHooksPath, $"~/.grok/hooks/{CopilotHookFileName}")
+            Location("grok", "Grok", GrokHooksPath, $"~/.grok/hooks/{CopilotHookFileName}"),
+            Location("antigravity", "Antigravity", AntigravityHooksPath, "~/.gemini/config/hooks.json")
         ];
 
         AiNotifyHookLocation Location(string tool, string displayName, string path, string displayPath)
@@ -106,6 +114,7 @@ public sealed class AiNotifyHookInstaller
             "codex" => CodexHooksPath,
             "copilot" => CopilotHookPath,
             "grok" => GrokHooksPath,
+            "antigravity" => AntigravityHooksPath,
             _ => null
         };
         try
@@ -150,10 +159,11 @@ public sealed class AiNotifyHookInstaller
     {
         return
         [
-            ReadStatus("claude", "Claude Code", ClaudeSettingsPath, ".claude"),
-            ReadStatus("codex", "Codex", CodexHooksPath, ".codex"),
+            ReadStatus("claude", "Claude Code", ClaudeSettingsPath, ".claude", HasStandardHubEntries),
+            ReadStatus("codex", "Codex", CodexHooksPath, ".codex", HasStandardHubEntries),
             ReadCopilotStatus(),
-            ReadStatus("grok", "Grok", GrokHooksPath, ".grok")
+            ReadStatus("grok", "Grok", GrokHooksPath, ".grok", HasStandardHubEntries),
+            ReadStatus("antigravity", "Antigravity", AntigravityHooksPath, ".gemini", HasAntigravityHubEntries)
         ];
     }
 
@@ -165,7 +175,8 @@ public sealed class AiNotifyHookInstaller
             Run("claude", "Claude Code", ".claude", () => UpdateEventHookFile(ClaudeSettingsPath, "claude", ClaudeEvents, install: true)),
             Run("codex", "Codex", ".codex", () => UpdateEventHookFile(CodexHooksPath, "codex", CodexEvents, install: true)),
             Run("copilot", "GitHub Copilot", ".copilot", WriteCopilotHookFile),
-            Run("grok", "Grok", ".grok", () => UpdateEventHookFile(GrokHooksPath, "grok", GrokEvents, install: true))
+            Run("grok", "Grok", ".grok", () => UpdateEventHookFile(GrokHooksPath, "grok", GrokEvents, install: true)),
+            Run("antigravity", "Antigravity", ".gemini", () => UpdateAntigravityHookFile(install: true))
         ];
     }
 
@@ -187,6 +198,12 @@ public sealed class AiNotifyHookInstaller
                 UpdateEventHookFile(GrokHooksPath, "grok", GrokEvents, install: false);
                 // 空の {} を残すと Grok が読み続ける。ハブの項目だけだった専用ファイルは消す。
                 DeleteIfEmptyJsonObject(GrokHooksPath);
+            }),
+            Run("antigravity", "Antigravity", ".gemini", () =>
+            {
+                UpdateAntigravityHookFile(install: false);
+                // 空の {} を残さない。ほかの名前付きフックが残っているときはファイルを残す。
+                DeleteIfEmptyJsonObject(AntigravityHooksPath);
             })
         };
 
@@ -200,6 +217,16 @@ public sealed class AiNotifyHookInstaller
 
     public string BuildCommand(string tool, string hookEvent)
     {
+        if (string.Equals(tool, "antigravity", StringComparison.OrdinalIgnoreCase))
+        {
+            // Antigravity の Windows 実行系は -File "..." の引用符を不正パスとして拒否する。
+            // 空白がないときは無引用の / パス、空白があるときは hooks.json 基準の相対パスを使う。
+            var unquotedScript = ScriptPath.Any(char.IsWhiteSpace)
+                ? $"../../{ScriptFolderName}/{ScriptFileName}"
+                : ScriptPath.Replace('\\', '/');
+            return $"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {unquotedScript} -Tool {tool} -HookEvent {hookEvent}";
+        }
+
         // Claude Code は Windows でも Git Bash 経由で実行するため、パスは / 区切りで引用符に入れる。
         var script = ScriptPath.Replace('\\', '/');
         return $"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{script}\" -Tool {tool} -HookEvent {hookEvent}";
@@ -212,9 +239,20 @@ public sealed class AiNotifyHookInstaller
             && command.Contains(ScriptFileName, StringComparison.OrdinalIgnoreCase);
     }
 
+    private bool IsToolInstalled(string tool, string toolFolder)
+    {
+        if (string.Equals(tool, "antigravity", StringComparison.OrdinalIgnoreCase))
+        {
+            var geminiRoot = Path.Combine(_homeDirectory, ".gemini");
+            return AntigravityDataDirectories.Any(name => Directory.Exists(Path.Combine(geminiRoot, name)));
+        }
+
+        return Directory.Exists(Path.Combine(_homeDirectory, toolFolder));
+    }
+
     private AiNotifyHookToolResult Run(string tool, string displayName, string toolFolder, Action action)
     {
-        if (!Directory.Exists(Path.Combine(_homeDirectory, toolFolder)))
+        if (!IsToolInstalled(tool, toolFolder))
         {
             return new AiNotifyHookToolResult(tool, displayName, AiNotifyHookStatus.ToolMissing, "未インストール");
         }
@@ -224,9 +262,10 @@ public sealed class AiNotifyHookInstaller
             action();
             return tool switch
             {
-                "claude" => ReadStatus(tool, displayName, ClaudeSettingsPath, toolFolder),
-                "codex" => ReadStatus(tool, displayName, CodexHooksPath, toolFolder),
-                "grok" => ReadStatus(tool, displayName, GrokHooksPath, toolFolder),
+                "claude" => ReadStatus(tool, displayName, ClaudeSettingsPath, toolFolder, HasStandardHubEntries),
+                "codex" => ReadStatus(tool, displayName, CodexHooksPath, toolFolder, HasStandardHubEntries),
+                "grok" => ReadStatus(tool, displayName, GrokHooksPath, toolFolder, HasStandardHubEntries),
+                "antigravity" => ReadStatus(tool, displayName, AntigravityHooksPath, toolFolder, HasAntigravityHubEntries),
                 _ => ReadCopilotStatus()
             };
         }
@@ -237,9 +276,9 @@ public sealed class AiNotifyHookInstaller
         }
     }
 
-    private AiNotifyHookToolResult ReadStatus(string tool, string displayName, string path, string toolFolder)
+    private AiNotifyHookToolResult ReadStatus(string tool, string displayName, string path, string toolFolder, Func<JsonObject, bool> hasHubEntries)
     {
-        if (!Directory.Exists(Path.Combine(_homeDirectory, toolFolder)))
+        if (!IsToolInstalled(tool, toolFolder))
         {
             return new AiNotifyHookToolResult(tool, displayName, AiNotifyHookStatus.ToolMissing, "未インストール");
         }
@@ -252,7 +291,7 @@ public sealed class AiNotifyHookInstaller
             }
 
             var root = JsonNode.Parse(File.ReadAllText(path), documentOptions: ReadOptions) as JsonObject;
-            var installed = root?["hooks"] is JsonObject hooks && CountHubEntries(hooks) > 0;
+            var installed = root is not null && hasHubEntries(root);
             return installed && File.Exists(ScriptPath)
                 ? new AiNotifyHookToolResult(tool, displayName, AiNotifyHookStatus.Installed, "設定済み")
                 : new AiNotifyHookToolResult(tool, displayName, AiNotifyHookStatus.NotInstalled, "未設定");
@@ -275,10 +314,8 @@ public sealed class AiNotifyHookInstaller
             : new AiNotifyHookToolResult("copilot", "GitHub Copilot", AiNotifyHookStatus.NotInstalled, "未設定");
     }
 
-    private void UpdateEventHookFile(string path, string tool, IReadOnlyList<string> events, bool install)
+    private static bool TryLoadRootJsonObject(string path, bool createIfMissing, out JsonObject root, out string? originalText)
     {
-        JsonObject root;
-        string? originalText = null;
         if (File.Exists(path))
         {
             originalText = File.ReadAllText(path);
@@ -286,15 +323,19 @@ public sealed class AiNotifyHookInstaller
                 ? new JsonObject()
                 : JsonNode.Parse(originalText, documentOptions: ReadOptions) as JsonObject
                     ?? throw new InvalidOperationException($"{path} が JSON オブジェクトではありません");
+            return true;
         }
-        else
-        {
-            if (!install)
-            {
-                return;
-            }
 
-            root = new JsonObject();
+        originalText = null;
+        root = new JsonObject();
+        return createIfMissing;
+    }
+
+    private void UpdateEventHookFile(string path, string tool, IReadOnlyList<string> events, bool install)
+    {
+        if (!TryLoadRootJsonObject(path, install, out var root, out var originalText))
+        {
+            return;
         }
 
         if (root["hooks"] is not null and not JsonObject)
@@ -350,6 +391,55 @@ public sealed class AiNotifyHookInstaller
         WriteWithBackup(path, originalText, root.ToJsonString(WriteOptions) + Environment.NewLine);
     }
 
+    private void UpdateAntigravityHookFile(bool install)
+    {
+        if (!TryLoadRootJsonObject(AntigravityHooksPath, install, out var root, out var originalText))
+        {
+            return;
+        }
+
+        var removed = RemoveAntigravityHubEntries(root);
+        if (install)
+        {
+            if (root[AntigravityHookName] is not null and not JsonObject)
+            {
+                throw new InvalidOperationException($"{AntigravityHooksPath} の {AntigravityHookName} が想定外の形式です");
+            }
+
+            var hubHook = root[AntigravityHookName] as JsonObject ?? new JsonObject();
+            hubHook["enabled"] = true;
+            foreach (var hookEvent in AntigravityEvents)
+            {
+                if (hubHook[hookEvent] is not JsonArray handlers)
+                {
+                    if (hubHook[hookEvent] is not null)
+                    {
+                        throw new InvalidOperationException($"{AntigravityHooksPath} の {AntigravityHookName}.{hookEvent} が想定外の形式です");
+                    }
+
+                    handlers = [];
+                    hubHook[hookEvent] = handlers;
+                }
+
+                // Antigravity は PreInvocation / Stop の直下にハンドラ配列を取る（matcher / hooks で包まない）。
+                handlers.Add(new JsonObject
+                {
+                    ["type"] = "command",
+                    ["command"] = BuildCommand("antigravity", hookEvent),
+                    ["timeout"] = 10
+                });
+            }
+
+            root[AntigravityHookName] = hubHook;
+        }
+        else if (removed == 0)
+        {
+            return;
+        }
+
+        WriteWithBackup(AntigravityHooksPath, originalText, root.ToJsonString(WriteOptions) + Environment.NewLine);
+    }
+
     private void WriteCopilotHookFile()
     {
         var hooks = new JsonObject();
@@ -395,14 +485,8 @@ public sealed class AiNotifyHookInstaller
                     continue;
                 }
 
-                for (var handlerIndex = handlers.Count - 1; handlerIndex >= 0; handlerIndex--)
-                {
-                    if (handlers[handlerIndex] is JsonObject handler && IsHubCommand(ReadCommand(handler)))
-                    {
-                        handlers.RemoveAt(handlerIndex);
-                        removed++;
-                    }
-                }
+                var count = RemoveMatchingHandlers(handlers);
+                removed += count;
 
                 if (handlers.Count == 0)
                 {
@@ -419,6 +503,64 @@ public sealed class AiNotifyHookInstaller
         return removed;
     }
 
+    internal static int RemoveAntigravityHubEntries(JsonObject root)
+    {
+        var removed = 0;
+        foreach (var (hookName, hookNode) in root.ToList())
+        {
+            if (hookNode is not JsonObject namedHook)
+            {
+                continue;
+            }
+
+            var removedInHook = 0;
+            foreach (var (eventName, eventNode) in namedHook.ToList())
+            {
+                if (eventNode is not JsonArray handlers)
+                {
+                    continue;
+                }
+
+                var count = RemoveMatchingHandlers(handlers);
+                removed += count;
+                removedInHook += count;
+
+                if (handlers.Count == 0)
+                {
+                    namedHook.Remove(eventName);
+                }
+            }
+
+            if (removedInHook > 0 && namedHook.All(pair => string.Equals(pair.Key, "enabled", StringComparison.OrdinalIgnoreCase)))
+            {
+                root.Remove(hookName);
+            }
+        }
+
+        return removed;
+    }
+
+    private static int RemoveMatchingHandlers(JsonArray handlers)
+    {
+        var removed = 0;
+        for (var i = handlers.Count - 1; i >= 0; i--)
+        {
+            if (handlers[i] is JsonObject handler && IsHubCommand(ReadCommand(handler)))
+            {
+                handlers.RemoveAt(i);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    private static bool HasStandardHubEntries(JsonObject root) =>
+        root["hooks"] is JsonObject hooks && CountHubEntries(hooks) > 0;
+
+    private static bool HasAntigravityHubEntries(JsonObject root) =>
+        CountAntigravityHubEntries(root) > 0;
+
     private static int CountHubEntries(JsonObject hooks)
     {
         return hooks
@@ -426,6 +568,17 @@ public sealed class AiNotifyHookInstaller
             .OfType<JsonArray>()
             .SelectMany(groups => groups.OfType<JsonObject>())
             .Select(group => group["hooks"])
+            .OfType<JsonArray>()
+            .SelectMany(handlers => handlers.OfType<JsonObject>())
+            .Count(handler => IsHubCommand(ReadCommand(handler)));
+    }
+
+    private static int CountAntigravityHubEntries(JsonObject root)
+    {
+        return root
+            .Select(pair => pair.Value)
+            .OfType<JsonObject>()
+            .SelectMany(namedHook => namedHook.Select(pair => pair.Value))
             .OfType<JsonArray>()
             .SelectMany(handlers => handlers.OfType<JsonObject>())
             .Count(handler => IsHubCommand(ReadCommand(handler)));
@@ -519,8 +672,18 @@ public sealed class AiNotifyHookInstaller
             $detail = ''
             if ($data) {
                 if ($data.cwd) { $cwd = [string]$data.cwd }
-                if ($data.session_id) { $session = [string]$data.session_id } elseif ($data.sessionId) { $session = [string]$data.sessionId }
-                if ($data.notification_type) { $detail = [string]$data.notification_type } elseif ($data.notificationType) { $detail = [string]$data.notificationType }
+                elseif ($data.workspacePaths) {
+                    foreach ($wp in @($data.workspacePaths)) {
+                        if ($wp) { $cwd = [string]$wp; break }
+                    }
+                }
+                if ($data.session_id) { $session = [string]$data.session_id }
+                elseif ($data.sessionId) { $session = [string]$data.sessionId }
+                elseif ($data.conversationId) { $session = [string]$data.conversationId }
+                elseif ($data.conversation_id) { $session = [string]$data.conversation_id }
+                if ($data.notification_type) { $detail = [string]$data.notification_type }
+                elseif ($data.notificationType) { $detail = [string]$data.notificationType }
+                elseif ($data.terminationReason) { $detail = [string]$data.terminationReason }
             }
             if (-not $cwd) { $cwd = (Get-Location).Path }
             $payload = ConvertTo-Json -Compress -InputObject @('--ai-event', $Tool, $HookEvent, $cwd, $session, $detail)

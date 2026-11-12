@@ -359,3 +359,14 @@
 - **縮小表示の控え一覧**: 縮小表示の「控え」トグルの右に `CompactStoredOverviewButton` を置き、標準表示と同じ `StoredOverviewPopup` を開く。高さは `UpdateStoredOverviewHeight`（`PanelFrameBorder` の高さ）で縮小表示のウィンドウに揃い、左右の配置ルール（`ShouldPlaceStoredOverviewOnLeft`）も同じ。縮小表示では一覧の A〜D パッド（`StoredOverviewTargetPad`）を隠し、タイルで選んだカードも本体のスロットの「ここに表示」で配置する。`ApplyDisplayMode` は表示モードを切り替えるたびに一覧を閉じる（標準表示で控えが開いていれば自動で開き直す）。
 - **縮小表示の一覧の見た目**: `CompactLayout.IsActive`（継承する添付プロパティ）を `StoredOverviewRoot` に立て、タイルは番号・フォルダ名の行（`TileFooter`）を省いた名前だけの表示（最小高さ 34 DIP・文字 11 DIP、2 行まで）にする。ページ見出しは 10.5 DIP、一覧の見出しは 12.5 DIP、案内は 10.5 DIP で、縮小表示の控えカードやタブの文字に揃える。フォルダ名などはタイルのツールチップで見る。
 - **縮小表示の一覧の開き方**: 縮小表示の「控え」トグルで控えを開くと、標準表示の Expander と同じく `ScheduleStoredOverviewAutoOpen` で一覧も横へ引き出し（同じスライド・フェード）、閉じると一緒に閉じる。判定は `IsStoredPanelsAreaOpen`（標準＝Expander、縮小＝`_isCompactStoredPanelsOpen`）に集約し、表示モード切替・終了確認からの復帰・最小化からの復帰でも同じ条件で開き直す。一覧のスクロールバーは `SlimScrollViewerStyle` / `SlimScrollBarStyle`（幅 6・角丸・矢印なし、中身と 5 DIP 離す）。
+
+## 5. Antigravity 作業通知フックの実装パターン（2026-11-13 追加）
+- **設定形式（名前付きフック + 平坦な配列）**:
+  - `AiNotifyHookInstaller.AntigravityHooksPath`（`~/.gemini/config/hooks.json`）では `{ "hooks": { ... } }` や `matcher` ラッパーを使わず、トップレベルに名前付きフック `"turtle-ai-quartet-hub": { "enabled": true, "PreInvocation": [ { "type": "command", "command": ..., "timeout": 10 } ], "Stop": [ ... ] }` を書き込む（Antigravity のパーサー仕様に合わせ、`hooks` ラッパーや `matcher` を入れない）。
+  - 既存の名前付きフック（例: `lint-checker`）はそのまま残し、更新前には `.turtle-hub-backup` を保存する。解除時は `RemoveAntigravityHubEntries` で自前コマンドのみを除去し、`hooks.json` が空 `{}` になった場合は `DeleteIfEmptyJsonObject` で削除する。
+- **Windows の `-File` 引用符制約への対応**:
+  - Antigravity のフック実行系は Windows で `-File "..."` の二重引用符を不正パス文字として拒否する。
+  - `AiNotifyHookInstaller.BuildCommand("antigravity", hookEvent)` では引用符を使わず、スクリプトパスに空白がない場合は無引用の `/` 区切り絶対パス、空白を含む場合は Antigravity が `hooks.json` の親フォルダ（`~/.gemini/config`）をカレントディレクトリとしてフックを起動する仕様を利用し、`../../.turtle-ai-quartet-hub/ai-notify.ps1` を出力する。
+- **ペイロード拡張（`NotifyScript` は ASCII のみ維持）**:
+  - `ai-notify.ps1` は `cwd` が空の場合に `workspacePaths` の先頭要素を参照し、セッション識別子として `session_id` / `sessionId` に加えて `conversationId` / `conversation_id` を、詳細として `notification_type` / `notificationType` に加えて `terminationReason` を読み取る。
+  - `AiHookEventParser.Classify` は `PreInvocation` を `Start`、`Stop` のうち `detail == "USER_CANCELED"`（大文字小文字不問）を `Interrupt`、それ以外の `Stop`（`NO_TOOL_CALL` / `ERROR` / 空など）を `Stop` と判定する。

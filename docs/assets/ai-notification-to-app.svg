@@ -23,8 +23,8 @@
   <text x="46" y="210" class="body">タイミングで、</text>
   <text x="46" y="234" class="body">登録済みの</text>
   <text x="46" y="258" class="body">プログラムを起動します。</text>
-  <text x="46" y="296" class="small">Claude / Codex</text>
-  <text x="46" y="316" class="small">Copilot / Grok</text>
+  <text x="46" y="294" class="small">Claude / Codex / Copilot</text>
+  <text x="46" y="314" class="small">Grok / Antigravity</text>
 
   <path d="M278 226 H318" class="line"/>
 
@@ -50,14 +50,12 @@
 
   <rect x="922" y="112" width="250" height="230" rx="16" class="card"/>
   <text x="940" y="148" class="heading" style="font-size:17px">4　カルテットハブが変える</text>
-  <rect x="940" y="176" width="36" height="28" rx="7" fill="#eef8f1" stroke="#39aa6b" stroke-width="3"/>
-  <text x="951" y="196" class="body" style="fill:#23834d">A</text>
+  <rect x="940" y="176" width="36" height="28" rx="7" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
   <text x="986" y="196" class="body">作業中は緑</text>
-  <rect x="940" y="220" width="36" height="28" rx="7" fill="#3E7EAD" stroke="#D7EEFB" stroke-width="2"/>
-  <text x="951" y="240" class="body" style="fill:#F7FCFF">A</text>
+  <rect x="940" y="220" width="36" height="28" rx="7" fill="#d7eef8" stroke="#7eb4d4" stroke-width="1.5"/>
   <text x="986" y="240" class="body">終わったときは青</text>
-  <text x="940" y="278" class="small">標準・縮小は名前の枠、</text>
-  <text x="940" y="300" class="small">極小はカード全体です。</text>
+  <text x="940" y="278" class="small">光るのはカードの細い枠。</text>
+  <text x="940" y="300" class="small">A〜D の文字は光りません。</text>
 
   <rect x="28" y="366" width="1144" height="214" rx="16" fill="#ffffff" stroke="#bed7c9" stroke-width="2"/>
   <text x="48" y="402" class="heading">AI は色を塗らず、カルテットハブが自分で変えます</text>

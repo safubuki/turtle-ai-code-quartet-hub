@@ -44,8 +44,15 @@ public static class AiHookEventParser
         {
             case "userpromptsubmit":
             case "userpromptsubmitted":
+            case "preinvocation":
+                // Antigravity は毎回のモデル呼び出し前に PreInvocation を送る。作業中への遷移はべき等に保つ。
                 return AiHookEventKind.Start;
             case "stop":
+                // Antigravity の USER_CANCELED はユーザー自身による中断。偽の完了（水色）を残さず、
+                // 確認済みの中断として緑の明滅だけを止める。
+                return detail.Trim().Equals("user_canceled", StringComparison.OrdinalIgnoreCase)
+                    ? AiHookEventKind.Interrupt
+                    : AiHookEventKind.Stop;
             case "agentstop":
             case "stopfailure":
             case "stopcancelled":

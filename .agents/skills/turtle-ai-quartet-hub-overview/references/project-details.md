@@ -117,3 +117,8 @@
 ## 縮小表示の控えの配置方法（2026-11-01 追加・#4）
 - 縮小表示の控えカードから A〜D ボタンをなくし、カードは名前とフォルダ名の 2 行にした。カードを選ぶと上のスロット A〜D が配置先（▶ ここに表示）に変わり、押したスロットに表示する。控えエリアの高さは約 244→約 136 DIP。
 - 縮小表示でも「控え」の右の一覧ボタンで控え一覧を横に出せる。高さは縮小表示のウィンドウに合わせ、画面端での左右の出し分けは標準表示と同じ。一覧で選んだカードも本体のスロットの「ここに表示」で配置する。
+
+## Antigravity の AI 作業通知フック対応（2026-11-13 追加）
+- 「AI の作業通知」の明示フック対象に **Antigravity**（CLI `agy` / Antigravity IDE / Antigravity2 共通の `~/.gemini/config/hooks.json`）を追加（合計 5 ツール: Claude Code / Codex / GitHub Copilot / Grok / Antigravity）。
+- `turtle-ai-quartet-hub` という名前付きフックとして `enabled: true`、`PreInvocation`（開始 → 緑の明滅）、`Stop`（完了 → 薄い青。ただし `terminationReason == "USER_CANCELED"` は `Interrupt` として緑の明滅だけを止め、偽の青を残さない）を平坦なハンドラ配列で登録する。
+- 別製品 `@google/gemini-cli` の `~/.gemini/settings.json` だけが存在する環境を誤認しないよう、`~/.gemini/config`、`antigravity`、`antigravity-cli`、`antigravity-ide` のいずれかがある場合のみインストール済みと判定する。

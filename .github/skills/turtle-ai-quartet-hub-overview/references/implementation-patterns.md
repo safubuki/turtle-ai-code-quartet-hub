@@ -421,3 +421,36 @@
 - **対策**: 主体は AIツール、フックのプログラム、カルテットハブと書く。フォルダは作業フォルダ、作業中の光は緑の明滅、消す対象は光っているスロットと書く。裸の「ハブ」と「このアプリ」には戻さない。
 - **注意**: それ以前の「主体は『このアプリ（カルテットハブ）』と書く」は現在の書き方ではない。タブ数は3つのまま。設定枠の横5列にはしない。挙動・フック登録・実ホームは変えない。`MainWindow.xaml` の「ハブ設定へ保存」と「ハブ外で開いている VS Code」は、このガイドの主体名とは別なので変えない。
 - **確認**: ガイド文言の回帰テストは無い。挙動を変えていないため、回帰284件は再実行しない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。5つの SVG は UTF-8 の XML として幅 1200 で解析し、Edge の headless（device scale 1）で描画した。who-moves の「主体：フックのプログラム」「主体：カルテットハブ」「カルテットハブが塗る。」、to-app の「カルテットハブへ渡す」「カルテットハブが判断」「カルテットハブが変える」、flow の「カルテットハブが受け取る」、basics のフッターは、枠の中に収まっていた。states の戻り矢印は箱の辺でつながったまま。隔離した非表示描画で幅 540 の流れ・設定・表示の本文を確認し、折り返しの中に収まった。実行中のハブと VS Code は起動・終了していない。光の実機目視は未実施。
+
+## 標準表示フッターから設定の保存・読み込みを移す（2026-11-13 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **問題**: 標準表示の下段にあった「設定保存」「設定読み込み」は使われていなかった。空いた場所へ「非表示」を移し、「すべて閉じる」を広く、設定の「クリアする」と同じ赤系にしたい。保存と読み込みは歯車の設定から行う。
+- **対策**: `FooterControlsGrid` の右クラスタ幅は 336 DIP。上段は `*` / 4 / `*` / 4 / `*` で「全ディスプレイ移動」「最前面」「最背面」。下段は `*` / 4 / `2*` で「非表示」と「すべて閉じる」。間隔はボタンの右 Margin ではなく 4 DIP の列にする。`DangerBarButton` は `BarButton` の高さ 24 DIP を維持し、色は「クリアする」と同じ前景 `#FFF4F2`、背景 `#6F2D27`、枠 `#B3574E`。`BaseButton` のホバーは緑になるため、独自テンプレートでホバー背景 `#8A3A32`、枠 `#D07A72`、押下 `#5A241F` にする。`DangerButtonStyle` の `MinHeight` 32 はフッターへ使わない。
+- **設定画面**: `SaveSettingsButton` と `LoadSettingsButton` の名前と Click は維持し、`SettingsScrollViewer` の先頭カード「スロットと控え」へ置く。`SaveCurrentSettings` は `slots.json`（表示中スロット、控え、タイトル、ワークスペース、アプリ ID）。起動コマンドは「パス設定を保存」（`SaveApplicationPathSettings`）。設定のモーダルがステータスバーを覆うため、結果は `PanelStateActionStatusText` に出す。歯車を開くときにその文言は消す。
+- **注意**: メッセージ欄は 10 DIP のまま。コンパクト表示は `FooterControlsGrid` を隠したまま。`SetBusyState` は既存のボタン名で有効と無効を切り替える。ボタンの `DesiredSize` は Margin を含む。保存ボタンの Desired 132 は実幅 124 に右余白 8 を足した値で、文字切れではない。縮小表示の「前」「背」、光、フックは変えない。前面・背面の動作記録は位置が変わっただけで維持する。
+- **確認**: `MainWindow` を生成し、`Loaded` の前に `DispatcherTimer` を止めて、`Show` せず 650×535 DIP で Measure/Arrange した。上段の実幅は 109 / 110 / 109 DIP、下段は 111 / 221 DIP、高さは 24 DIP。「全ディスプレイ移動」の希望幅 95 DIP は実幅に収まる。設定オーバーレイを Visible にして再配置し、先頭カードとフッター（不整合を修復、再検出、ログを表示、パス設定を保存、閉じる）が見えることを確認した。`Loaded` は走らせていないので、管理ウィンドウの再配置はしていない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。レイアウトだけの変更のため、回帰284件は再実行していない。
+
+## 「すべて閉じる」はカードのクリア色（2026-11-13 追加）
+- **ファイル**: `MainWindow.xaml` の `DangerBarButton`
+- **問題**: 最初の赤は確認ダイアログ「クリアする」（`DangerButtonStyle`、地 `#6F2D27`、枠 `#B3574E`）だった。利用者が示したクリアは、カード右上の消しゴムボタンである。
+- **対策**: `SlotClearInfoButtonStyle` と同じ地 `#261816`、枠 `#6A3832`、文字 `#F2B7AF`。ホバーも同じ地 `#33201D`、枠 `#A65348`、文字 `#FFE7E2`。押下は地 `#1C1210`。`BaseButton` のホバーが緑に戻らないよう、独自テンプレートは維持する。
+- **注意**: 確認ダイアログの「クリアする」は `#6F2D27` のまま。フッターの高さ 24 DIP と下段 1/3・2/3 は変えない。
+- **確認**: `Show` せず 650×535 DIP で描画し、「すべて閉じる」とカードのクリアのブラシがどちらも地 `#FF261816`、文字 `#FFF2B7AF`、枠 `#FF6A3832` であることを確認した。実行中のハブは起動していない。
+
+## 作業中と完了の光をカードの枠へ移す（2026-11-13 追加）
+- **ファイル**: `MainWindow.xaml`, `Views/AiHookGuideView.xaml`, `MainWindow.AiActivity.cs`
+- **問題**: 作業中と完了の光が A〜D の小さな文字にあった。利用者は、カードの細い枠が明滅し、枠の外だけが LED のようにぼんやり光る見え方を求めた。枠の線は太くしない。完了時は今の薄い青の枠と、カードの地だけの薄い青。ボタンと IDE / CLI の中は塗らない。
+- **対策**: `AiCardPulseStyle` が太さ 1 の枠を緑で明滅し、完了時は `#D7EEFB` で止める。`AiCardHaloStyle` は太さ 8 の光源を `BlurEffect` Radius 14 でぼかし、カードの裏に置く。輪郭の出る第二の枠にはしない。完了の地は `AiDoneCardBrush` `#203440`。IDE / CLI の地 `#121816` と各ボタンの地は変えない。`ApplicationGroupLabelStyle` の穴あき背景だけ完了時に地へ合わせる。A〜D の文字色とバッジの光は外した。状態機械、フック、フォーカスで消す処理は変えない。
+- **注意**: それ以前の「バッジだけを光らせ、カード全体は塗らない」は現在の見え方ではない。塗るのは完了時の地だけで、ボタンと IDE / CLI の中は含めない。作業中の明滅は約 3.6 秒、正弦、30fps のまま。光の強さは試作用で、見た目の確認後に調整する。
+- **確認**: `Show` せず 650×535 DIP で描画した。スロット A を作業中、B を完了にした。A の文字は通常の緑のまま、細い緑の枠と外側のぼかしが出た。B は細い薄い青の枠と地の薄い青で、ボタンと IDE / CLI の中は暗いまま、B の文字は青くなっていない。C と D は通常の枠。実行中のハブは起動していない。`Loaded` は走らせていない。
+
+## 5. Antigravity 作業通知フックの実装パターン（2026-11-13 追加）
+- **設定形式（名前付きフック + 平坦な配列）**:
+  - `AiNotifyHookInstaller.AntigravityHooksPath`（`~/.gemini/config/hooks.json`）では `{ "hooks": { ... } }` や `matcher` ラッパーを使わず、トップレベルに名前付きフック `"turtle-ai-quartet-hub": { "enabled": true, "PreInvocation": [ { "type": "command", "command": ..., "timeout": 10 } ], "Stop": [ ... ] }` を書き込む（Antigravity のパーサー仕様に合わせ、`hooks` ラッパーや `matcher` を入れない）。
+  - 既存の名前付きフック（例: `lint-checker`）はそのまま残し、更新前には `.turtle-hub-backup` を保存する。解除時は `RemoveAntigravityHubEntries` で自前コマンドのみを除去し、`hooks.json` が空 `{}` になった場合は `DeleteIfEmptyJsonObject` で削除する。
+- **Windows の `-File` 引用符制約への対応**:
+  - Antigravity のフック実行系は Windows で `-File "..."` の二重引用符を不正パス文字として拒否する。
+  - `AiNotifyHookInstaller.BuildCommand("antigravity", hookEvent)` では引用符を使わず、スクリプトパスに空白がない場合は無引用の `/` 区切り絶対パス、空白を含む場合は Antigravity が `hooks.json` の親フォルダ（`~/.gemini/config`）をカレントディレクトリとしてフックを起動する仕様を利用し、`../../.turtle-ai-quartet-hub/ai-notify.ps1` を出力する。
+- **ペイロード拡張（`NotifyScript` は ASCII のみ維持）**:
+  - `ai-notify.ps1` は `cwd` が空の場合に `workspacePaths` の先頭要素を参照し、セッション識別子として `session_id` / `sessionId` に加えて `conversationId` / `conversation_id` を、詳細として `notification_type` / `notificationType` に加えて `terminationReason` を読み取る。
+  - `AiHookEventParser.Classify` は `PreInvocation` を `Start`、`Stop` のうち `detail == "USER_CANCELED"`（大文字小文字不問）を `Interrupt`、それ以外の `Stop`（`NO_TOOL_CALL` / `ERROR` / 空など）を `Stop` と判定する。

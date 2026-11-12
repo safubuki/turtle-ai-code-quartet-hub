@@ -18,17 +18,16 @@
 
   <rect x="48" y="150" width="300" height="176" rx="16" fill="#ffffff" stroke="#bfd3c7" stroke-width="2"/>
   <rect x="72" y="176" width="46" height="38" rx="8" fill="#eef4f0" stroke="#afc5b8" stroke-width="2"/>
-  <text x="87" y="203" class="heading" style="fill:#647d6e">A</text>
+
   <text x="134" y="204" class="heading">待機</text>
   <text x="72" y="252" class="body">作業中の記録なし</text>
   <text x="72" y="281" class="body">未確認の通知なし</text>
-  <text x="72" y="307" class="small">通常のバッジ表示</text>
+  <text x="72" y="307" class="small">通常のカード</text>
 
   <path d="M348 238 H450" class="line"/>
   <text x="399" y="220" class="small" text-anchor="middle">指示を開始</text>
   <rect x="450" y="150" width="300" height="176" rx="16" fill="#ffffff" stroke="#72b48e" stroke-width="2"/>
-  <rect x="474" y="176" width="46" height="38" rx="8" fill="#eef8f1" stroke="#39aa6b" stroke-width="3"/>
-  <text x="489" y="203" class="heading" style="fill:#23834d">A</text>
+  <rect x="474" y="176" width="46" height="38" rx="8" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
   <text x="536" y="204" class="heading">作業中</text>
   <text x="474" y="252" class="body">開始イベントを受信</text>
   <text x="474" y="281" class="body">セッションを記録</text>
@@ -38,8 +37,7 @@
   <text x="801" y="220" class="small" text-anchor="middle">応答終了</text>
   <rect x="852" y="150" width="300" height="176" rx="16" fill="#e8f4fb" stroke="#7eafd0" stroke-width="2"/>
   <rect x="871" y="171" width="56" height="48" rx="12" fill="#9fd0f0" opacity="0.35"/>
-  <rect x="876" y="176" width="46" height="38" rx="8" fill="#3E7EAD" stroke="#D7EEFB" stroke-width="2"/>
-  <text x="891" y="203" class="heading" style="fill:#F7FCFF">A</text>
+  <rect x="876" y="176" width="46" height="38" rx="8" fill="#d7eef8" stroke="#7eb4d4" stroke-width="1.5"/>
   <text x="938" y="204" class="heading">光る</text>
   <text x="876" y="252" class="body">応答が終わった知らせ</text>
   <text x="876" y="281" class="body">成功・失敗の判定はしない</text>
@@ -56,5 +54,5 @@
   <text x="72" y="562" class="body">光っているスロットのフォーカス表示を切り替える（1面表示にする / 4面表示へ戻す）。</text>
   <text x="72" y="590" class="body">ウィンドウを前面へ出すだけでは消えません。残った作業があれば緑へ、なければ待機へ戻ります。</text>
   <text x="72" y="624" class="small">許可の確認中は緑のままです。中断は新しい光を付けません。終了通知が来ない作業中は、60分超で整理します。</text>
-  <text x="48" y="681" class="small">図は標準表示の A バッジを例示。縮小表示はバッジ、極小表示はカード全体に同じ状態を示します。</text>
+  <text x="48" y="681" class="small">図はカードの枠を例示。A〜D の文字は光らせません。標準・縮小・極小とも、細い枠で同じ状態を示します。</text>
 </svg>

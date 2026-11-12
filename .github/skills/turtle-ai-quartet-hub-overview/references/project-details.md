@@ -154,3 +154,28 @@
 - 名前は、AIツール、フックのプログラム、カルテットハブ。フォルダは作業フォルダ。光は緑の明滅。バッジは選んだスロットのバッジ、または光っているスロット。
 - それ以前の「このアプリ（カルテットハブ）」と「主体：このアプリ」は現在の書き方ではない。裸の「ハブ」にも戻さない。カルテットハブは Turtle AI Code Quartet Hub のことである。
 - 挙動、フック登録、実ホームは変えていない。光の実機目視は未実施。
+## 標準表示フッターのボタン配置（2026-11-13 追加）
+- 標準表示の右下は2段。上段は「全ディスプレイ移動」「最前面」「最背面」を同じ幅（1/3）。下段は「非表示」が1/3、「すべて閉じる」が2/3。
+- 「設定を保存」「設定を読み込み」は歯車の設定画面へ移した。スクロールの先頭カード「スロットと控え」から、タイトル、ワークスペース、選択アプリを保存ファイルへ書き込む。起動コマンドのパスは、設定画面下の「パス設定を保存」。
+- 「すべて閉じる」は高さ 24 DIP のまま、設定の「クリアする」と同じ赤系（`DangerBarButton`）。ホバーも赤のまま。
+- 縮小表示の「前」「背」と各カードの非表示は変えない。保存と読み込みの中身も変えない。
+- 650×535 DIP の非表示描画で、上段の実幅は 109 / 110 / 109 DIP、下段は 111 / 221 DIP、高さは 24 DIP。「全ディスプレイ移動」の希望幅 95 DIP は実幅に収まる。設定を開くと先頭カードが見え、「設定を保存」の実幅は 124 DIP、「設定を読み込み」の実幅は 140 DIP。実行中のハブは起動していない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。
+## 「すべて閉じる」の色はカードのクリアに合わせる（2026-11-13 追加）
+- 利用者の指摘により、「すべて閉じる」の色はカード右上のクリア（`SlotClearInfoButtonStyle`）と同じにする。地 `#261816`、枠 `#6A3832`、文字 `#F2B7AF`。ホバーは地 `#33201D`、枠 `#A65348`、文字 `#FFE7E2`。
+- それ以前の「設定の『クリアする』と同じ赤系（`#6F2D27` / `#B3574E`）」は現在の色ではない。確認ダイアログの「クリアする」の色は変えない。高さ 24 DIP と 2/3 幅は維持する。
+## 作業中と完了の光はカードの枠（2026-11-13 追加）
+- A〜D の文字は光らせない。光るのはカードの細い枠（太さ 1）。作業中は枠がゆっくり緑に明滅し、枠の外だけがぼかした光になる。完了は枠が薄い青 `#D7EEFB` になり、点滅しない。カードの地だけを `#203440` にする。
+- ボタン、IDE / CLI の枠の中（地 `#121816`）は塗らない。標準・縮小・極小とも同じ。許可の確認中は緑の明滅のまま。フォーカス表示の切り替えで消える仕組みは変えない。
+- 設定の「仕組みを見る」とフックの図は、A〜D の光る文字をやめて枠の例にする。
+
+
+## Antigravity の AI 作業通知フック対応（2026-11-13 追加）
+- 「AI の作業通知」の明示フック対象に **Antigravity**（CLI `agy` / Antigravity IDE / Antigravity2 共通の `~/.gemini/config/hooks.json`）を追加（合計 5 ツール: Claude Code / Codex / GitHub Copilot / Grok / Antigravity）。
+- `turtle-ai-quartet-hub` という名前付きフックとして `enabled: true`、`PreInvocation`（開始 → 緑の明滅）、`Stop`（完了 → 薄い青。ただし `terminationReason == "USER_CANCELED"` は `Interrupt` として緑の明滅だけを止め、偽の青を残さない）を平坦なハンドラ配列で登録する。
+- 別製品 `@google/gemini-cli` の `~/.gemini/settings.json` だけが存在する環境を誤認しないよう、`~/.gemini/config`、`antigravity`、`antigravity-cli`、`antigravity-ide` のいずれかがある場合のみインストール済みと判定する。
+
+
+## Antigravity の AI 作業通知フック対応（2026-11-13 追加）
+- 「AI の作業通知」の明示フック対象に **Antigravity**（CLI `agy` / Antigravity IDE / Antigravity2 共通の `~/.gemini/config/hooks.json`）を追加（合計 5 ツール: Claude Code / Codex / GitHub Copilot / Grok / Antigravity）。
+- `turtle-ai-quartet-hub` という名前付きフックとして `enabled: true`、`PreInvocation`（開始 → 緑の明滅）、`Stop`（完了 → 薄い青。ただし `terminationReason == "USER_CANCELED"` は `Interrupt` として緑の明滅だけを止め、偽の青を残さない）を平坦なハンドラ配列で登録する。
+- 別製品 `@google/gemini-cli` の `~/.gemini/settings.json` だけが存在する環境を誤認しないよう、`~/.gemini/config`、`antigravity`、`antigravity-cli`、`antigravity-ide` のいずれかがある場合のみインストール済みと判定する。

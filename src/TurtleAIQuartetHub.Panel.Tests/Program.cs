@@ -88,7 +88,7 @@ Console.WriteLine("ディスク整理・ページファイル表示のチェッ�
 Console.WriteLine($"メモリ警告・アイコン色の整合チェックに合格しました ({MemoryWarningTests.Count}/{MemoryWarningTests.Count})。");
 Console.WriteLine("タイトルバーの状態表示・控えのフォルダ変更のチェックに合格しました (16/16)。");
 Console.WriteLine($"容量の解析（診断コード）のチェックに合格しました ({DataFolderDiagnosticsTests.Count}/{DataFolderDiagnosticsTests.Count})。");
-Console.WriteLine("AI の作業通知（状態・スロット特定・フック設定）のチェックに合格しました (32/32)。");
+Console.WriteLine($"AI の作業通知（状態・スロット特定・フック設定）のチェックに合格しました ({AiActivityTests.Count}/{AiActivityTests.Count})。");
 Console.WriteLine($"AI フックの保存先・閲覧チェックに合格しました ({AiHookLocationTests.Count}/{AiHookLocationTests.Count})。");
 return 0;
 

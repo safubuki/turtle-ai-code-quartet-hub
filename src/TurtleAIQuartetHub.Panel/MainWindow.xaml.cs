@@ -662,6 +662,8 @@ public partial class MainWindow : Window
         HideAiHookGuide(restoreFocus: false);
         AiNotifyDetailsExpander.IsExpanded = false;
         AiNotifyActionStatusText.Visibility = Visibility.Collapsed;
+        PanelStateActionStatusText.Visibility = Visibility.Collapsed;
+        PanelStateActionStatusText.Text = string.Empty;
         _statusStore.ResetApplicationPathSettings();
         SettingsConfigPathText.Text = AppConfig.GetUserConfigPath();
         RefreshAiNotifySettingsStatus();
@@ -1561,13 +1563,18 @@ public partial class MainWindow : Window
     {
         _statusStore.SaveCurrentSettings();
         _statusStore.Message = "設定を保存しました。";
+        PanelStateActionStatusText.Text = "スロットと控えを保存しました。";
+        PanelStateActionStatusText.Visibility = Visibility.Visible;
     }
 
     private async void LoadSettingsButton_Click(object sender, RoutedEventArgs e)
     {
+        PanelStateActionStatusText.Text = "保存ファイルを読み込んでいます。";
+        PanelStateActionStatusText.Visibility = Visibility.Visible;
         _statusStore.LoadSavedSettings();
         await RefreshSlotsAsync(allowDuringBusy: true);
         _statusStore.Message = "設定を読み込みました。";
+        PanelStateActionStatusText.Text = "保存済みのスロットと控えを読み込みました。";
     }
 
     private void CloseAllButton_Click(object sender, RoutedEventArgs e)

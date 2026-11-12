@@ -35,6 +35,8 @@
     <local:SubtractConverter x:Key="SubtractConverter" />
     <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#101211" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#171B19" />
+    <!-- 完了時にカードの地だけへ乗せる、目にやさしい薄い青。ボタンや IDE / CLI の地には使わない。 -->
+    <SolidColorBrush x:Key="AiDoneCardBrush" Color="#203440" />
     <SolidColorBrush x:Key="SurfaceAltBrush" Color="#1D2420" />
     <SolidColorBrush x:Key="BorderBrushSoft" Color="#2E3832" />
     <SolidColorBrush x:Key="TextBrush" Color="#EEF4EF" />
@@ -325,6 +327,43 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
 
+    <!-- 標準表示フッターの「すべて閉じる」。高さは BarButton のまま、色はカードのクリア（SlotClearInfoButtonStyle）に合わせる。 -->
+    <Style x:Key="DangerBarButton" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="Foreground" Value="#F2B7AF" />
+      <Setter Property="Background" Value="#261816" />
+      <Setter Property="BorderBrush" Value="#6A3832" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="ButtonBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="8">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="#FFE7E2" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#33201D" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#A65348" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Foreground" Value="#FFE7E2" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#1C1210" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#6A3832" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="ApplicationSelectorBaseButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="24" />
@@ -384,6 +423,11 @@
       <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Margin" Value="8,-6,0,0" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Background" Value="{StaticResource AiDoneCardBrush}" />
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -727,6 +771,10 @@
             </Setter.Value>
           </Setter>
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Background" Value="{StaticResource AiDoneCardBrush}" />
+          <Setter Property="Effect" Value="{x:Null}" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -749,15 +797,22 @@
                     BorderBrush="{Binding FocusFrameBrush}"
                     BorderThickness="2"
                     CornerRadius="8">
-              <Border x:Name="CompactButtonBorder"
-                      Background="{TemplateBinding Background}"
-                      BorderBrush="{TemplateBinding BorderBrush}"
-                      BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="7">
-                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                  Margin="{TemplateBinding Padding}" />
-              </Border>
+              <Grid>
+                <Border Margin="-3"
+                        CornerRadius="10"
+                        Style="{StaticResource AiCardHaloStyle}" />
+                <Border x:Name="CompactButtonBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="7">
+                  <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Margin="{TemplateBinding Padding}" />
+                </Border>
+                <Border CornerRadius="7"
+                        Style="{StaticResource AiCardPulseStyle}" />
+              </Grid>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -789,6 +844,10 @@
                   </Setter.Value>
                 </Setter>
               </DataTrigger>
+              <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="{StaticResource AiDoneCardBrush}" />
+                <Setter TargetName="CompactButtonBorder" Property="Effect" Value="{x:Null}" />
+              </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
               </Trigger>
@@ -809,45 +868,38 @@
     </Style>
 
     <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
-         作業中: バッジに重ねた枠だけが、ホタルのようにゆっくり（約 3.6 秒周期）緑へ明滅する。目に刺さらないよう、
-                 フレームレートを抑えて正弦波で明るさを変え、真っ暗にも最大輝度にもしない。
-         完了: バッジ全体を薄い青で塗り、周りを同じ青でぼんやり光らせる（点滅しない）。許可の確認中は作業中の緑のまま。
-                 作業中の緑とは別色。フォーカス表示を切り替える（1 面フォーカス⇔4 面表示）と消える。 -->
+         A〜D の文字は光らせない。光るのはカードの細い枠だけ。枠の太さは 1 のまま。
+         作業中: 細い枠がゆっくり（約 3.6 秒周期）緑へ明滅し、枠の外だけが LED のようにぼんやり光る。
+                 光の輪郭は出さない。許可の確認中もこの緑のまま。
+         完了: 細い枠が薄い青になり、点滅しない。カードの地だけを薄く青くする。
+                 ボタンと IDE / CLI の枠の中は塗らない。フォーカス表示の切り替えで消える。 -->
     <Color x:Key="AiGlowColor">#45D483</Color>
     <Color x:Key="AiDoneGlowColor">#B6DFF6</Color>
-    <SolidColorBrush x:Key="AiDoneBackgroundBrush" Color="#3E7EAD" />
     <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#D7EEFB" />
-    <SolidColorBrush x:Key="AiDoneForegroundBrush" Color="#F7FCFF" />
-    <DropShadowEffect x:Key="AiDoneGlowEffect"
-                      Color="{StaticResource AiDoneGlowColor}"
-                      BlurRadius="16"
-                      ShadowDepth="0"
-                      Opacity="1" />
+    <SolidColorBrush x:Key="AiDoneGlowBrush" Color="{StaticResource AiDoneGlowColor}" />
 
-    <Style x:Key="AiWorkingRingStyle" TargetType="Border">
+    <!-- 枠の外側の光源。太い線はぼかして輪郭を消し、カードの地が内側を隠す。 -->
+    <Style x:Key="AiCardHaloStyle" TargetType="Border">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#8AF2B5" />
-      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="BorderBrush" Value="#67E7A4" />
+      <Setter Property="BorderThickness" Value="8" />
       <Setter Property="IsHitTestVisible" Value="False" />
       <Setter Property="Opacity" Value="0" />
       <Setter Property="Visibility" Value="Collapsed" />
       <Setter Property="Effect">
         <Setter.Value>
-          <DropShadowEffect Color="{StaticResource AiGlowColor}"
-                            BlurRadius="7"
-                            ShadowDepth="0"
-                            Opacity="0.9" />
+          <BlurEffect Radius="14" />
         </Setter.Value>
       </Setter>
       <Style.Triggers>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
           <Setter Property="Visibility" Value="Visible" />
           <DataTrigger.EnterActions>
-            <BeginStoryboard x:Name="AiWorkingRingPulse">
+            <BeginStoryboard x:Name="AiCardHaloPulse">
               <Storyboard Timeline.DesiredFrameRate="30">
                 <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                 From="0.12"
-                                 To="0.95"
+                                 From="0.28"
+                                 To="0.82"
                                  Duration="0:0:1.8"
                                  AutoReverse="True"
                                  RepeatBehavior="Forever">
@@ -859,8 +911,52 @@
             </BeginStoryboard>
           </DataTrigger.EnterActions>
           <DataTrigger.ExitActions>
-            <StopStoryboard BeginStoryboardName="AiWorkingRingPulse" />
+            <StopStoryboard BeginStoryboardName="AiCardHaloPulse" />
           </DataTrigger.ExitActions>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneGlowBrush}" />
+          <Setter Property="Opacity" Value="0.55" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- カードと同じ 1px の枠。明滅と完了の色はここに載せ、下の枠の太さは変えない。 -->
+    <Style x:Key="AiCardPulseStyle" TargetType="Border">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#8AF2B5" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard x:Name="AiCardEdgePulse">
+              <Storyboard Timeline.DesiredFrameRate="30">
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 From="0.2"
+                                 To="1"
+                                 Duration="0:0:1.8"
+                                 AutoReverse="True"
+                                 RepeatBehavior="Forever">
+                  <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut" />
+                  </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <StopStoryboard BeginStoryboardName="AiCardEdgePulse" />
+          </DataTrigger.ExitActions>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
+          <Setter Property="Opacity" Value="1" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -873,13 +969,6 @@
       <Setter Property="Background" Value="#223027" />
       <Setter Property="BorderBrush" Value="#335A43" />
       <Setter Property="BorderThickness" Value="1" />
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
-          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
-          <Setter Property="Effect" Value="{StaticResource AiDoneGlowEffect}" />
-        </DataTrigger>
-      </Style.Triggers>
     </Style>
 
     <Style x:Key="SlotNameBadgeTextStyle" TargetType="TextBlock">
@@ -887,11 +976,6 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Foreground" Value="{StaticResource AiDoneForegroundBrush}" />
-        </DataTrigger>
-      </Style.Triggers>
     </Style>
 
     <Style x:Key="CompactSlotBadgeStyle" TargetType="Border">
@@ -912,12 +996,6 @@
           <Setter Property="Background" Value="#2C2414" />
           <Setter Property="BorderBrush" Value="#C49B38" />
         </DataTrigger>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
-          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
-          <Setter Property="Effect" Value="{StaticResource AiDoneGlowEffect}" />
-          <Setter Property="Opacity" Value="1" />
-        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -930,9 +1008,6 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
           <Setter Property="Foreground" Value="#6F7B74" />
-        </DataTrigger>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Foreground" Value="{StaticResource AiDoneForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1191,6 +1266,9 @@
                     BorderThickness="2"
                     CornerRadius="7">
               <Grid>
+                <Border Margin="-3"
+                        CornerRadius="9"
+                        Style="{StaticResource AiCardHaloStyle}" />
                 <Border x:Name="MicroButtonBorder"
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
@@ -1199,9 +1277,8 @@
                   <ContentPresenter HorizontalAlignment="Center"
                                     VerticalAlignment="Center" />
                 </Border>
-                <!-- 極小表示はバッジが無いので、カードの枠を明滅させる。 -->
                 <Border CornerRadius="6"
-                        Style="{StaticResource AiWorkingRingStyle}" />
+                        Style="{StaticResource AiCardPulseStyle}" />
               </Grid>
             </Border>
             <ControlTemplate.Triggers>
@@ -1223,12 +1300,10 @@
                   </Setter.Value>
                 </Setter>
               </DataTrigger>
-              <!-- AI の完了: カード全体を薄い青でぼんやり光らせる（フォーカス表示より優先）。許可の確認中は作業中の緑のまま。 -->
+              <!-- 完了は地だけを薄く青くし、文字色は変えない。枠の色は AiCardPulseStyle が載せる。 -->
               <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-                <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneBackgroundBrush}" />
-                <Setter TargetName="MicroButtonBorder" Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
-                <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{StaticResource AiDoneGlowEffect}" />
-                <Setter Property="Foreground" Value="{StaticResource AiDoneForegroundBrush}" />
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneCardBrush}" />
+                <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{x:Null}" />
               </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
@@ -1710,9 +1785,14 @@
               DragLeave="SlotCard_DragLeave"
               DragOver="SlotCard_DragOver"
               Drop="SlotCard_Drop">
-        <Border x:Name="SlotCardBorder"
-                Style="{StaticResource SlotCardBorderStyle}"
-                Padding="0">
+        <Grid>
+          <Border Margin="-4"
+                  CornerRadius="12"
+                  Style="{StaticResource AiCardHaloStyle}" />
+          <Border x:Name="SlotCardBorder"
+                  Style="{StaticResource SlotCardBorderStyle}"
+                  Padding="0"
+                  ToolTip="{Binding AiActivityToolTip}">
           <Grid Margin="8">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
@@ -1728,15 +1808,11 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <Grid Margin="0,0,8,0"
-                    VerticalAlignment="Center"
-                    ToolTip="{Binding AiActivityToolTip}">
+                    VerticalAlignment="Center">
                 <Border Style="{StaticResource SlotNameBadgeStyle}">
                   <TextBlock Text="{Binding Name}"
                              Style="{StaticResource SlotNameBadgeTextStyle}" />
                 </Border>
-                <Border CornerRadius="8"
-                        BorderThickness="2"
-                        Style="{StaticResource AiWorkingRingStyle}" />
               </Grid>
               <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
               <StackPanel Grid.Column="2"
@@ -1981,7 +2057,10 @@
               </StackPanel>
             </Grid>
           </Grid>
-        </Border>
+          </Border>
+          <Border CornerRadius="8"
+                  Style="{StaticResource AiCardPulseStyle}" />
+        </Grid>
       </Border>
     </DataTemplate>
 
@@ -2046,8 +2125,6 @@
               <TextBlock Text="{Binding Name}"
                          Style="{StaticResource CompactSlotBadgeTextStyle}" />
             </Border>
-            <Border CornerRadius="4"
-                    Style="{StaticResource AiWorkingRingStyle}" />
           </Grid>
 
           <TextBox x:Name="CompactSlotTitleBox"
@@ -3568,65 +3645,51 @@
 
       <StackPanel Grid.Column="1"
                   VerticalAlignment="Center"
-                  Width="290">
+                  Width="336">
         <Grid Margin="0,0,0,4">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="5*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="*" />
           </Grid.ColumnDefinitions>
 
           <Button Grid.Column="0"
-            x:Name="TopmostAllButton"
-            Content="最前面"
-            Click="PinAllTopButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Margin="0,0,4,0" />
-          <Button Grid.Column="1"
-            x:Name="BackmostAllButton"
-            Content="最背面"
-            Click="SendAllBackButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Margin="0,0,4,0" />
+                  x:Name="ToggleMonitorButton"
+                  Content="全ディスプレイ移動"
+                  ToolTip="全パネルをまとめて次のディスプレイへ移動します"
+                  Click="ToggleMonitorButton_Click"
+                  Style="{StaticResource BarButton}" />
           <Button Grid.Column="2"
-            x:Name="ToggleVisibilityButton"
-            Content="非表示"
-            Click="ToggleVisibilityButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Margin="0,0,4,0" />
-          <Button Grid.Column="3"
-            x:Name="ToggleMonitorButton"
-            Content="全ディスプレイ移動"
-            ToolTip="全パネルをまとめて次のディスプレイへ移動します"
-            Click="ToggleMonitorButton_Click"
+                  x:Name="TopmostAllButton"
+                  Content="最前面"
+                  Click="PinAllTopButton_Click"
+                  Style="{StaticResource BarButton}" />
+          <Button Grid.Column="4"
+                  x:Name="BackmostAllButton"
+                  Content="最背面"
+                  Click="SendAllBackButton_Click"
                   Style="{StaticResource BarButton}" />
         </Grid>
 
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="9*" />
-            <ColumnDefinition Width="9*" />
-            <ColumnDefinition Width="10*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="2*" />
           </Grid.ColumnDefinitions>
 
           <Button Grid.Column="0"
-                  x:Name="SaveSettingsButton"
-                  Content="設定保存"
-                  Click="SaveSettingsButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Margin="0,0,4,0" />
-          <Button Grid.Column="1"
-                  x:Name="LoadSettingsButton"
-                  Content="設定読み込み"
-                  Click="LoadSettingsButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Margin="0,0,4,0" />
+                  x:Name="ToggleVisibilityButton"
+                  Content="非表示"
+                  Click="ToggleVisibilityButton_Click"
+                  Style="{StaticResource BarButton}" />
           <Button Grid.Column="2"
                   x:Name="CloseAllButton"
                   Content="すべて閉じる"
                   Click="CloseAllButton_Click"
-                  Style="{StaticResource BarButton}" />
+                  Style="{StaticResource DangerBarButton}" />
         </Grid>
       </StackPanel>
     </Grid>
@@ -4102,12 +4165,57 @@
                         BorderBrush="{StaticResource BorderBrushSoft}"
                         BorderThickness="1"
                         CornerRadius="8">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
+                      <TextBlock Text="スロットと控え"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextBrush}" />
+                      <TextBlock Margin="0,3,0,0"
+                                 FontSize="11"
+                                 Foreground="{StaticResource MutedTextBrush}"
+                                 TextWrapping="Wrap"
+                                 Text="タイトル、ワークスペース、選択アプリを保存ファイルへ書き込みます。起動コマンドのパスは、下の「パス設定を保存」です。" />
+                      <TextBlock x:Name="PanelStateActionStatusText"
+                                 Margin="0,3,0,0"
+                                 FontSize="11"
+                                 Foreground="{StaticResource AccentBrush}"
+                                 TextWrapping="Wrap"
+                                 Visibility="Collapsed" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                      <Button x:Name="SaveSettingsButton"
+                              Content="設定を保存"
+                              MinWidth="124"
+                              Margin="0,0,8,0"
+                              Click="SaveSettingsButton_Click"
+                              Style="{StaticResource BaseButton}"
+                              ToolTip="いまのスロットと控えを保存ファイルへ書き込みます" />
+                      <Button x:Name="LoadSettingsButton"
+                              Content="設定を読み込み"
+                              MinWidth="140"
+                              Click="LoadSettingsButton_Click"
+                              Style="{StaticResource BaseButton}"
+                              ToolTip="保存ファイルのスロットと控えを画面へ戻します" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <Border Padding="10"
+                        Margin="0,0,0,12"
+                        Background="#111815"
+                        BorderBrush="{StaticResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="8">
                   <StackPanel>
                     <TextBlock Text="AI の作業通知"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" />
                     <TextBlock Margin="0,4,0,8"
-                               Text="AI の作業中・完了を、スロットのバッジでお知らせします。"
+                               Text="AI の作業中・完了を、スロットのカードの枠でお知らせします。"
                                Foreground="{StaticResource MutedTextBrush}"
                                TextWrapping="Wrap" />
                     <ItemsControl x:Name="AiNotifyHookLocationsItemsControl">
@@ -4154,7 +4262,7 @@
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Margin="0,7,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
-                               Text="Codex：初回は CLI の /hooks で承認してください。Grok：設定のあと、開いているセッションを開き直してください。" TextWrapping="Wrap" />
+                               Text="Codex：初回は CLI の /hooks で承認してください。Grok・Antigravity：設定のあと、開いているセッションやウィンドウを開き直してください。" TextWrapping="Wrap" />
                     <TextBlock x:Name="AiNotifyActionStatusText" Margin="0,6,0,0" Visibility="Collapsed"
                                FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -4178,9 +4286,9 @@
                               Tag="通知の見方と補足" Style="{StaticResource SystemMonitorFolderExpanderStyle}"
                               Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}">
                       <StackPanel Margin="16,5,0,0">
-                        <TextBlock Text="• 作業中：枠がゆっくり緑に明滅（許可の確認中も同じ）。完了したときだけ、バッジが薄い青でぼんやり光ります。" TextWrapping="Wrap" />
+                        <TextBlock Text="• 作業中：カードの細い枠がゆっくり緑に明滅し、枠の外がぼんやり光ります（許可の確認中も同じ）。完了したときだけ、枠が薄い青になり、ボタンと IDE / CLI の中を除いてカードが薄く青くなります。" TextWrapping="Wrap" />
                         <TextBlock Text="• 光は、そのスロットのフォーカス表示を切り替えると消えます。" Margin="0,3,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="• VS Code のチャットと CLI の両方が対象です。" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="• VS Code や Antigravity のチャットと CLI の両方が対象です。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• 既存設定の保持やバックアップの扱いは「仕組みを見る」で確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• パスの ~ はユーザーのホームフォルダです。完全なパスは行にマウスを合わせると確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                       </StackPanel>

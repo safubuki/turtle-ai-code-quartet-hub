@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -586,6 +586,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
         "codex" => "Codex",
         "copilot" => "GitHub Copilot",
         "grok" => "Grok",
+        "antigravity" => "Antigravity",
         "" => "AI",
         _ => tool
     };

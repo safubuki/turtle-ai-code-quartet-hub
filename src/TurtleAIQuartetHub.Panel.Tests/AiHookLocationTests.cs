@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class AiHookLocationTests
 {
-    public const int Count = 14;
+    public const int Count = 16;
 
     public static void Run(List<string> failures)
     {
@@ -15,10 +15,10 @@ internal static class AiHookLocationTests
             var installer = new AiNotifyHookInstaller(home);
             var missing = installer.GetSettingsLocations();
             Check(failures, "場所確認だけでは未導入のホームや設定フォルダを作成しない",
-                !Directory.Exists(home) && missing.Count == 4
+                !Directory.Exists(home) && missing.Count == 5
                 && missing.All(item => !item.CanOpenFolder && !item.CanViewSettings && item.Status == AiNotifyHookStatus.ToolMissing));
-            Check(failures, "4ツールの表示先はインストーラーと同じ注入ホームの設定ファイル",
-                missing.Select(item => item.SettingsPath).SequenceEqual([installer.ClaudeSettingsPath, installer.CodexHooksPath, installer.CopilotHookPath, installer.GrokHooksPath])
+            Check(failures, "5ツールの表示先はインストーラーと同じ注入ホームの設定ファイル",
+                missing.Select(item => item.SettingsPath).SequenceEqual([installer.ClaudeSettingsPath, installer.CodexHooksPath, installer.CopilotHookPath, installer.GrokHooksPath, installer.AntigravityHooksPath])
                 && missing.All(item => item.FolderPath == Path.GetDirectoryName(item.SettingsPath)));
 
             var detail = new string('詳', 2000);
@@ -27,14 +27,16 @@ internal static class AiHookLocationTests
                 new AiNotifyHookToolResult("claude", "Claude Code", AiNotifyHookStatus.Error, detail),
                 new AiNotifyHookToolResult("codex", "Codex", AiNotifyHookStatus.Installed, "設定済み"),
                 new AiNotifyHookToolResult("copilot", "GitHub Copilot", AiNotifyHookStatus.NotInstalled, "未設定"),
-                new AiNotifyHookToolResult("grok", "Grok", AiNotifyHookStatus.ToolMissing, "未インストール")
+                new AiNotifyHookToolResult("grok", "Grok", AiNotifyHookStatus.ToolMissing, "未インストール"),
+                new AiNotifyHookToolResult("antigravity", "Antigravity", AiNotifyHookStatus.NotInstalled, "未設定")
             };
             var display = installer.GetSettingsLocations(statuses);
             Check(failures, "表示は短い状態とホーム省略パス、長いエラーはツールチップへ分離",
                 display[0].StatusText == "設定エラー" && display[0].StatusDetailToolTip == detail
                 && display[1].StatusText == "設定済み" && display[2].StatusText == "未設定"
                 && display[3].StatusText == "未インストール" && display[3].DisplayName == "Grok"
-                && display.Select(item => item.DisplayPath).SequenceEqual(["~/.claude/settings.json", "~/.codex/hooks.json", "~/.copilot/hooks/turtle-ai-quartet-hub.json", "~/.grok/hooks/turtle-ai-quartet-hub.json"]));
+                && display[4].StatusText == "未設定" && display[4].DisplayName == "Antigravity"
+                && display.Select(item => item.DisplayPath).SequenceEqual(["~/.claude/settings.json", "~/.codex/hooks.json", "~/.copilot/hooks/turtle-ai-quartet-hub.json", "~/.grok/hooks/turtle-ai-quartet-hub.json", "~/.gemini/config/hooks.json"]));
 
             Directory.CreateDirectory(Path.GetDirectoryName(installer.ClaudeSettingsPath)!);
             var folderOnly = installer.GetSettingsLocations(statuses)[0];
@@ -92,6 +94,14 @@ internal static class AiHookLocationTests
             Check(failures, "Grok の専用 JSON は原文のまま読め、閲覧では隣のファイルを作らない",
                 grokLocation.CanViewSettings && grokPreview.Succeeded && grokPreview.Content == grokOriginal
                 && grokBefore.SequenceEqual(Directory.GetFiles(home, "*", SearchOption.AllDirectories)));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(installer.AntigravityHooksPath)!);
+            const string antigravityOriginal = "{\r\n  \"lint-checker\": {\r\n    \"enabled\": true\r\n  }\r\n}\r\n";
+            File.WriteAllText(installer.AntigravityHooksPath, antigravityOriginal, new UTF8Encoding(false));
+            var antigravityLocation = installer.GetSettingsLocations().Single(item => item.Tool == "antigravity");
+            var antigravityPreview = installer.ReadSettingsPreview(antigravityLocation);
+            Check(failures, "Antigravity の hooks.json は原文のまま読める",
+                antigravityLocation.CanViewSettings && antigravityPreview.Succeeded && antigravityPreview.Content == antigravityOriginal);
 
             using (new FileStream(installer.ClaudeSettingsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {

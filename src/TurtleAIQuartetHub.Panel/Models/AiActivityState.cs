@@ -1,6 +1,6 @@
 namespace TurtleAIQuartetHub.Panel.Models;
 
-// AI ツールのフック（Claude Code / Codex / GitHub Copilot / Grok）から届いた明示的な通知だけで決める状態。
+// AI ツールのフック（Claude Code / Codex / GitHub Copilot / Grok / Antigravity）から届いた明示的な通知だけで決める状態。
 // 画面・ログ・チャット UI からの推定はしない。
 public enum AiActivityState
 {

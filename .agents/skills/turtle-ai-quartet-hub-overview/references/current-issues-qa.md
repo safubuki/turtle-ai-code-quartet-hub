@@ -1,4 +1,4 @@
-﻿# 現在の既知課題と QA 方針
+# 現在の既知課題と QA 方針
 
 更新日: 2026-09-17
 
@@ -165,3 +165,8 @@
 - 直接復元は対象窓だけを元の象限へ戻すこと。直接最小化は最小化のまま残り、他窓の直接最大化で復元されないこと。別ディスプレイのフォーカスは維持すること。
 - パネルからの切替・一括非表示復帰・ディスプレイ移動・カード入替の操作を外部操作と誤認しないこと。
 - **自動確認**: 回帰チェック74件と、実ウィンドウを表示せず模擬状態を使ったWPF統合チェック12件が合格。本体ビルドは警告・エラー0。実IDEでの最大化・復元アニメーションと表示順の目視確認は残る。
+
+## Antigravity 作業通知フック QA（2026-11-13 追加）
+- `AiActivityTests` に Antigravity 観点を追加（`PreInvocation` / `Stop` の分類、`USER_CANCELED` が偽の完了（青）を残さず `Idle` に戻る遷移、`@google/gemini-cli` の `~/.gemini/settings.json` のみの環境を `ToolMissing` とする判定、既存の名前付きフック共存と平坦配列・無引用コマンド生成、`.turtle-hub-backup` 保存と空ファイル削除、空白を含むホームパスでの `../../.turtle-ai-quartet-hub/ai-notify.ps1` 相対パス生成、および `ai-notify.ps1` の ASCII 専用維持）。
+- `AiHookLocationTests` を 5 ツール（`~/.claude/settings.json` / `~/.codex/hooks.json` / `~/.copilot/hooks/turtle-ai-quartet-hub.json` / `~/.grok/hooks/turtle-ai-quartet-hub.json` / `~/.gemini/config/hooks.json`）および Antigravity プレビュー確認に対応。
+- `agy.exe -p` 実機検証で、引用符付き `-File "..."` が失敗すること、および無引用パスと `hooks.json` 基準相対パス（上位パスに空白を含む構成含む）が `PreInvocation` / `Stop` とも終了コード 0・標準出力 `{}` で通ることを確認済み。
