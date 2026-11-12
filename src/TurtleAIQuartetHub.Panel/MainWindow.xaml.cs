@@ -656,6 +656,7 @@ public partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
+        HideAiHookGuide(restoreFocus: false);
         AiNotifyDetailsExpander.IsExpanded = false;
         AiNotifyActionStatusText.Visibility = Visibility.Collapsed;
         _statusStore.ResetApplicationPathSettings();
@@ -904,6 +905,7 @@ public partial class MainWindow : Window
 
     private void HideSettingsDialog()
     {
+        HideAiHookGuide(restoreFocus: false);
         HideAiHookSettingsPreviewDialog();
         SettingsOverlay.Visibility = Visibility.Collapsed;
     }
@@ -6207,6 +6209,14 @@ public partial class MainWindow : Window
         if (LogOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             LogOverlay.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            return;
+        }
+
+        if (SettingsOverlay.Visibility == Visibility.Visible
+            && AiHookGuidePanel.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideAiHookGuide();
             e.Handled = true;
             return;
         }

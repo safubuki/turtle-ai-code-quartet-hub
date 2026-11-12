@@ -20,6 +20,18 @@ AI ツールの「フック」は、指示の開始や応答の終了をきっ�
 
 「設定済み」は、登録内容や通知スクリプトが存在することの確認です。実際に通知が届いたかは、手順5のバッジや後述のログで確認してください。ハブはチャット画面を読み取らないため、通知にはツール側がフックを読み込み、対応するイベントを発火する必要があります。
 
+## アプリ内で図を見返す
+
+「AI の作業通知」の **仕組みを見る** を押すと、同じ設定枠の中に簡単なガイドを表示します。
+
+| 項目 | 確認できること |
+|---|---|
+| 通知の流れ | AI ツール → 共通の通知スクリプト → 対象スロット、という流れをベクター図で確認 |
+| 設定で変わること | 設定ファイルの場所、既存フックの保持、バックアップ、Copilot の専用ファイル、解除時の扱い |
+| 表示の見方 | 待機・作業中・応答終了／許可待ちの表示例、光の消し方、実際に通知が届くかの確認方法 |
+
+**設定に戻る**・右上の **×**・**Escape** で元の設定へ戻ります。設定画面の入力内容とスクロール位置を保持するので、そのまま作業を続けられます。ガイドを読むだけで設定ファイルを変更することはありません。アプリ内の図は WPF のベクターで描画され、外部ファイルやネットワーク接続なしで閲覧できます。
+
 ## 応答が終わると、どのように届く？
 
 ![AIツールのイベントから、共有PowerShellスクリプト、名前付きパイプ、スロット照合を経てバッジに届く流れ](../assets/ai-notification-flow.svg)
@@ -115,6 +127,8 @@ Claude の `Notification` でも、応答後の入力待ちを表す `idle_promp
 | [MainWindow.AiActivity.cs](../../src/TurtleAIQuartetHub.Panel/MainWindow.AiActivity.cs) | スロット照合、状態反映、ログ、光を消す処理 |
 | [AiActivityTracker.cs](../../src/TurtleAIQuartetHub.Panel/Services/AiActivityTracker.cs) | イベントの意味、セッション管理、ローカルパス照合 |
 | [MainWindow.AiHookSettings.cs](../../src/TurtleAIQuartetHub.Panel/MainWindow.AiHookSettings.cs) | フォルダを開く・設定の読み取り専用プレビュー |
+| [MainWindow.AiHookGuide.cs](../../src/TurtleAIQuartetHub.Panel/MainWindow.AiHookGuide.cs) | 同じ設定枠でのガイド表示・戻る・スクロール位置の保持 |
+| [AiHookGuideView.xaml](../../src/TurtleAIQuartetHub.Panel/Views/AiHookGuideView.xaml) | アプリ内の3項目の説明と、WPF のベクター図 |
 | [MainWindow.xaml](../../src/TurtleAIQuartetHub.Panel/MainWindow.xaml) | 設定画面とバッジの表示スタイル |
 | [AiActivityTests.cs](../../src/TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs) / [AiHookLocationTests.cs](../../src/TurtleAIQuartetHub.Panel.Tests/AiHookLocationTests.cs) | イベント・状態・照合・設定の保持・閲覧の回帰確認 |
 

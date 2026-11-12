@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:models="clr-namespace:TurtleAIQuartetHub.Panel.Models"
         xmlns:local="clr-namespace:TurtleAIQuartetHub.Panel"
+        xmlns:views="clr-namespace:TurtleAIQuartetHub.Panel.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle AI Code Quartet Hub"
         Width="650"
@@ -608,17 +609,15 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <Style x:Key="CloseIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+    <!-- 元が半角Xだったモーダル用。本体・控え一覧の既存アイコンには適用しない。 -->
+    <Style x:Key="ModalCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
       <Setter Property="Content" Value="×" />
-      <Setter Property="FontFamily" Value="Segoe UI" />
-      <Setter Property="FontSize" Value="22" />
-      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="#D8E7DE" />
       <Setter Property="Background" Value="#1D2822" />
       <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="36" />
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="ToolTip" Value="閉じる" />
       <Setter Property="AutomationProperties.Name" Value="閉じる" />
@@ -628,8 +627,13 @@
             <Border x:Name="CloseIconBorder" Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
                     CornerRadius="8">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                TextElement.Foreground="{TemplateBinding Foreground}" />
+              <!-- 文字の行高・ベースラインに依存せず、線の中心をボタン中央へ合わせる。 -->
+              <Path x:Name="ModalCloseGlyph" Data="M 1,1 L 11,11 M 11,1 L 1,11"
+                    Width="12" Height="12" Stretch="None"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4"
+                    StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                    IsHitTestVisible="False" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -647,18 +651,6 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
-    </Style>
-
-    <Style x:Key="ModalCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseIconButtonStyle}" />
-
-    <!-- 本体のタイトル行は高さ26のため、押下範囲の高さは既存の24に収める。 -->
-    <Style x:Key="TitleBarCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseIconButtonStyle}">
-      <Setter Property="Width" Value="32" />
-      <Setter Property="Height" Value="24" />
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="TinyPill" TargetType="Border">
@@ -2936,13 +2928,15 @@
 
           <DockPanel Margin="0,0,0,6">
             <Button DockPanel.Dock="Right"
-                    FontSize="20"
-                    Width="28"
-                    Height="26"
+                    Content="&#xE711;"
+                    FontFamily="Segoe MDL2 Assets"
+                    FontSize="10"
+                    Width="26"
+                    Height="24"
                     ToolTip="一覧を閉じる"
                     AutomationProperties.Name="控えの一覧を閉じる"
                     Click="CloseStoredOverviewButton_Click"
-                    Style="{StaticResource CloseIconButtonStyle}" />
+                    Style="{StaticResource ChromeButton}" />
             <TextBlock x:Name="StoredOverviewTitleText"
                        Text="控え一覧"
                        DockPanel.Dock="Left"
@@ -3090,10 +3084,13 @@
                 Click="MinimizeButton_Click"
                 Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="CloseButton"
+                Content="&#xE8BB;"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="10"
                 ToolTip="パネルを閉じる"
                 AutomationProperties.Name="パネルを閉じる"
                 Click="CloseButton_Click"
-                Style="{StaticResource TitleBarCloseButtonStyle}" />
+                Style="{StaticResource TitleBarChromeButton}" />
       </StackPanel>
     </Grid>
 
@@ -4063,6 +4060,7 @@
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Center">
           <Grid MaxHeight="{Binding Height, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource SubtractConverter}, ConverterParameter=78}">
+            <Grid x:Name="SettingsMainContentGrid">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
@@ -4092,7 +4090,7 @@
                       Style="{StaticResource ModalCloseButtonStyle}" />
             </Grid>
 
-            <ScrollViewer Grid.Row="1"
+            <ScrollViewer x:Name="SettingsScrollViewer" Grid.Row="1"
                           Margin="0,12,0,0"
                           VerticalScrollBarVisibility="Auto">
               <StackPanel>
@@ -4169,6 +4167,10 @@
                               Click="UninstallAiNotifyHooksButton_Click"
                               Style="{StaticResource BaseButton}"
                               ToolTip="このアプリが追加した通知用のフックだけを取り除く（ほかの設定は残す）" />
+                      <Button x:Name="OpenAiHookGuideButton" Content="仕組みを見る" MinWidth="110"
+                              Margin="8,0,0,0" Click="OpenAiHookGuideButton_Click"
+                              Style="{StaticResource BaseButton}"
+                              ToolTip="通知の流れと、設定・解除で変わる内容を図で確認" />
                     </StackPanel>
                     <Expander x:Name="AiNotifyDetailsExpander" Header="通知の見方・補足" IsExpanded="False"
                               Tag="通知の見方と補足" Style="{StaticResource SystemMonitorFolderExpanderStyle}"
@@ -4177,7 +4179,7 @@
                         <TextBlock Text="• 作業中：枠がゆっくり明滅。完了・許可待ち：バッジが光ります。" TextWrapping="Wrap" />
                         <TextBlock Text="• 光は、そのスロットのフォーカス表示を切り替えると消えます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• VS Code のチャットと CLI の両方が対象です。" Margin="0,3,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="• 設定時は通知用の項目だけを追加し、変更前の内容を .turtle-hub-backup に保存します。" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="• 既存設定の保持やバックアップの扱いは「仕組みを見る」で確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• パスの ~ はユーザーのホームフォルダです。完全なパスは行にマウスを合わせると確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                       </StackPanel>
                     </Expander>
@@ -4569,6 +4571,9 @@
                         MinWidth="86" />
               </StackPanel>
             </Grid>
+            </Grid>
+            <views:AiHookGuideView x:Name="AiHookGuidePanel" Visibility="Collapsed"
+                                   CloseRequested="AiHookGuide_CloseRequested" />
           </Grid>
         </Border>
       </Grid>

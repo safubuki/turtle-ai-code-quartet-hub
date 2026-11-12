@@ -119,3 +119,7 @@
 - 利用ガイド `docs/guides/`、設計・実装計画 `docs/design/`、開発・検証 `docs/development/`、公開・Store `docs/release/`、不具合調査 `docs/investigations/` に分類。ドキュメント用のSVG・画像は `docs/assets/` に置く。
 - AIフックの設定・通知経路・状態表示は `docs/guides/ai-notification-hooks.md`。通知経路図と状態図のSVGを本文から相対パスで参照する。設定済みと通知の疎通、応答終了と作業成功、Claude/CodexのバックアップとCopilot専用JSONの扱いを区別して説明する。
 - 旧docs直下のファイル名は維持してカテゴリ内へ移動した。古いパスを見かけた場合もindex内の同じ名前から移動先を確認できる。
+## 設定内のフック図解ガイド（2026-11-12 追加）
+- 「AI の作業通知」の「仕組みを見る」で、同じ設定枠のガイドページに切り替える。「通知の流れ」「設定で変わること」「表示の見方」を選び、短い説明とWPFベクター図で確認できる。
+- 「設定に戻る」・ガイド右上の×・Escapeで設定画面へ戻り、編集状態とスクロール位置を保持する。ガイドの閲覧から設定保存やフック設定/解除は呼ばない。
+- `Views/AiHookGuideView.xaml` は外部画像・SVGライブラリ・ブラウザに依存しないため、配布版でもオフラインで閲覧できる。本文の詳細は `docs/guides/ai-notification-hooks.md`。

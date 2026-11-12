@@ -1,0 +1,238 @@
+<UserControl x:Class="TurtleAIQuartetHub.Panel.Views.AiHookGuideView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI" FontSize="12" Foreground="#EEF4EF"
+             KeyboardNavigation.TabNavigation="Cycle">
+  <!-- docs/guides/ai-notification-hooks.md の要約。図は外部画像に依存しないWPFのベクター。 -->
+  <UserControl.Resources>
+    <SolidColorBrush x:Key="GuideText" Color="#EEF4EF" />
+    <SolidColorBrush x:Key="GuideMuted" Color="#AAB8AF" />
+    <SolidColorBrush x:Key="GuideAccent" Color="#7AE9A7" />
+    <Style x:Key="GuideBody" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource GuideMuted}" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextTrimming" Value="None" />
+    </Style>
+    <Style x:Key="GuideHeading" TargetType="TextBlock" BasedOn="{StaticResource GuideBody}">
+      <Setter Property="Foreground" Value="{StaticResource GuideText}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="GuideCard" TargetType="Border">
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="Background" Value="#16251D" />
+      <Setter Property="BorderBrush" Value="#365844" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="9" />
+    </Style>
+    <Style x:Key="GuideTab" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="#B9C8BF" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="TabBorder" Background="#141D18" BorderBrush="#34483C"
+                    BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                TextElement.Foreground="{TemplateBinding Foreground}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="TabBorder" Property="Background" Value="#203E2D" />
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#63D791" />
+                <Setter Property="Foreground" Value="#D5FFE4" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#84BE98" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#C0FFDA" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="GuideArrow" TargetType="Path">
+      <Setter Property="Data" Value="M 4,0 L 4,11 M 0,7 L 4,11 L 8,7" />
+      <Setter Property="Stroke" Value="#78C696" />
+      <Setter Property="StrokeThickness" Value="1.8" />
+      <Setter Property="Width" Value="8" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,4" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+  </UserControl.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="フック設定ガイド" FontSize="16" FontWeight="SemiBold" Foreground="#EEF4EF" />
+        <TextBlock Text="通知のしくみと、設定すると変わること。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
+      </StackPanel>
+      <Button x:Name="CloseGuideButton" Grid.Column="1" Margin="8,0,0,0"
+              ToolTip="ガイドを閉じて設定に戻る" AutomationProperties.Name="ガイドを閉じて設定に戻る"
+              Style="{DynamicResource ModalCloseButtonStyle}" Click="ReturnButton_Click" />
+    </Grid>
+
+    <UniformGrid Grid.Row="1" Columns="3" Margin="0,12,0,10">
+      <RadioButton x:Name="GuideFlowTab" Content="通知の流れ" Tag="flow" GroupName="AiHookGuideSections"
+                   Margin="0,0,5,0" Style="{StaticResource GuideTab}" Checked="GuideSection_Checked" />
+      <RadioButton x:Name="GuideSettingsTab" Content="設定で変わること" Tag="settings" GroupName="AiHookGuideSections"
+                   Margin="0,0,5,0" Style="{StaticResource GuideTab}" Checked="GuideSection_Checked" />
+      <RadioButton x:Name="GuideSignalsTab" Content="表示の見方" Tag="signals" GroupName="AiHookGuideSections"
+                   Style="{StaticResource GuideTab}" Checked="GuideSection_Checked" />
+    </UniformGrid>
+
+    <ScrollViewer x:Name="GuideScrollViewer" Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled" Padding="0,0,5,0">
+      <Grid>
+        <StackPanel x:Name="FlowSection">
+          <TextBlock Text="AI ツールのイベントを、同じ PC 内で対象スロットへ届けます。"
+                     Margin="0,0,0,10" Style="{StaticResource GuideBody}" />
+          <Border Style="{StaticResource GuideCard}">
+            <StackPanel>
+              <TextBlock Text="1　AI ツールが開始・応答終了を通知" Style="{StaticResource GuideHeading}" />
+              <UniformGrid Columns="3" Margin="0,7,0,0">
+                <TextBlock Text="Claude Code" Foreground="#CCBAEF" FontSize="11.5" />
+                <TextBlock Text="Codex" Foreground="#B1EACA" FontSize="11.5" />
+                <TextBlock Text="GitHub Copilot" Foreground="#A7D8F2" FontSize="11.5" />
+              </UniformGrid>
+            </StackPanel>
+          </Border>
+          <Path Style="{StaticResource GuideArrow}" />
+          <Border Style="{StaticResource GuideCard}">
+            <StackPanel>
+              <TextBlock Text="2　共通の通知スクリプトが送信" Style="{StaticResource GuideHeading}" />
+              <TextBlock Text="ツール名・イベント・作業フォルダなどを、このアプリへ渡します。"
+                         Margin="0,5,0,0" Style="{StaticResource GuideBody}" />
+            </StackPanel>
+          </Border>
+          <Path Style="{StaticResource GuideArrow}" />
+          <Border Style="{StaticResource GuideCard}">
+            <StackPanel>
+              <TextBlock Text="3　作業フォルダに合うスロットへ反映" Style="{StaticResource GuideHeading}" />
+              <TextBlock Text="通知を受け取ったハブが、対応する A〜D のバッジを更新します。"
+                         Margin="0,5,0,0" Style="{StaticResource GuideBody}" />
+              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Border Width="31" Height="24" CornerRadius="6" Background="#64D995" BorderBrush="#A4EDC0" BorderThickness="1">
+                  <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#12351F" FontWeight="Bold" />
+                </Border>
+                <TextBlock Text="表示例：応答が終わると、バッジが光る" Margin="9,0,0,0"
+                           VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <TextBlock Text="チャット画面や履歴を読み取って状態を推定する仕組みではありません。ハブ未起動中の通知は、あとから再送されません。"
+                     Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
+        </StackPanel>
+
+        <StackPanel x:Name="SettingsSection" Visibility="Collapsed">
+          <TextBlock Text="「フックを設定」で、設定フォルダがあるツールへ通知用の登録を追加します。"
+                     Margin="0,0,0,10" Style="{StaticResource GuideBody}" />
+          <Border Style="{StaticResource GuideCard}" Margin="0,0,0,8">
+            <StackPanel>
+              <TextBlock Text="Claude Code / Codex" Style="{StaticResource GuideHeading}" />
+              <TextBlock Text="~/.claude/settings.json&#x0a;~/.codex/hooks.json" FontFamily="Consolas" FontSize="11.5"
+                         Margin="0,6,0,0" Foreground="#BDEBD0" />
+              <TextBlock Text="ほかの設定・フックを残して通知用の項目を追加します。既存ファイルの変更前の内容は .turtle-hub-backup に保存します（再設定時は更新）。"
+                         Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource GuideCard}" Margin="0,0,0,8">
+            <StackPanel>
+              <TextBlock Text="GitHub Copilot" Style="{StaticResource GuideHeading}" />
+              <TextBlock Text="~/.copilot/hooks/turtle-ai-quartet-hub.json" FontFamily="Consolas" FontSize="11"
+                         Margin="0,6,0,0" Foreground="#BDEBD0" TextWrapping="Wrap" />
+              <TextBlock Text="ハブ専用の JSON を作成します。この専用ファイルは再設定で上書き・解除で削除します。専用ファイルのバックアップはありません。"
+                         Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource GuideCard}">
+            <StackPanel>
+              <TextBlock Text="共通スクリプトと解除" Style="{StaticResource GuideHeading}" />
+              <TextBlock Text="~/.turtle-ai-quartet-hub/ai-notify.ps1" FontFamily="Consolas" FontSize="11"
+                         Margin="0,6,0,0" Foreground="#BDEBD0" TextWrapping="Wrap" />
+              <TextBlock Text="3ツールが同じ通知スクリプトを使います。解除ではハブ用の登録と専用ファイルを取り除き、共通スクリプトの削除も試みます。"
+                         Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
+            </StackPanel>
+          </Border>
+          <TextBlock Text="Codex は初回に CLI の /hooks で承認してください。設定内容は元の画面の「フォルダ」「設定を見る」から確認できます。"
+                     Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
+        </StackPanel>
+
+        <StackPanel x:Name="SignalsSection" Visibility="Collapsed">
+          <TextBlock Text="以下は表示例です。AI の実際の作業状態をここで表示するものではありません。"
+                     Margin="0,0,0,10" Style="{StaticResource GuideBody}" />
+          <Border Style="{StaticResource GuideCard}" Margin="0,0,0,8">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+              <Border Width="31" Height="26" CornerRadius="6" BorderBrush="#91A99A" BorderThickness="1" VerticalAlignment="Center">
+                <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#C7D8CC" />
+              </Border>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="待機：通常のバッジ" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="作業中の記録や、未確認の完了通知がない状態です。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Path Style="{StaticResource GuideArrow}" Margin="0,0,0,8" />
+          <Border Style="{StaticResource GuideCard}" Margin="0,0,0,8">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+              <Border Width="31" Height="26" CornerRadius="6" BorderBrush="#79ECA8" BorderThickness="2.5" VerticalAlignment="Center">
+                <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#B4F9CD" />
+              </Border>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="作業中：枠がゆっくり明滅" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="AI ツールから開始の通知を受け取っています。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Path Style="{StaticResource GuideArrow}" Margin="0,0,0,8" />
+          <Border Style="{StaticResource GuideCard}">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+              <Border Width="31" Height="26" CornerRadius="6" Background="#64D995" BorderBrush="#A4EDC0" BorderThickness="1" VerticalAlignment="Center">
+                <TextBlock Text="A" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#12351F" FontWeight="Bold" />
+              </Border>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="応答終了・許可待ち：バッジが光る" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="意味はバッジのツールチップで確認できます。「完了」は、作業やテストの成功を保証する表示ではありません。"
+                           Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+          <TextBlock Text="光は、そのスロットのフォーカス表示（1面 / 4面）を切り替えると消えます。ウィンドウを前面へ出しただけでは消えません。作業中の記録が残っていれば、枠の明滅に戻ります。"
+                     Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
+          <TextBlock Text="「設定済み」は設定ファイルの確認です。通知が実際に届くことの確認には、ハブで管理中のローカルワークスペースで AI に指示し、バッジの変化を見てください。"
+                     Margin="0,8,0,0" Style="{StaticResource GuideBody}" />
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
+
+    <Grid Grid.Row="3" Margin="0,12,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+      <TextBlock Text="ガイドの閲覧では、設定ファイルを変更しません。" Margin="0,0,10,0"
+                 VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
+      <Button x:Name="ReturnToSettingsButton" Grid.Column="1" Content="設定に戻る"
+              Style="{DynamicResource BaseButton}" Padding="12,6" MinWidth="108" Click="ReturnButton_Click" />
+    </Grid>
+  </Grid>
+</UserControl>
