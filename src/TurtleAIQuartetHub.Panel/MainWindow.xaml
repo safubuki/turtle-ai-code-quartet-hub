@@ -771,9 +771,117 @@
             </Setter.Value>
           </Setter>
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Effect" Value="{x:Null}" />
+        </DataTrigger>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Background" Value="{StaticResource AiDoneCardBrush}" />
           <Setter Property="Effect" Value="{x:Null}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
+         A〜D の文字は光らせない。
+         作業中: 非フォーカス時は 1px 枠と外側の光背がホタルの明滅のようにゆっくり（5.6 秒周期）緑へ明滅する。
+                 フォーカス表示時は太いフォーカス枠を点滅させずに固定し、その外側のぼんやりした光だけを大きく明滅させる。
+                 許可の確認中もこの緑のまま。
+         完了: 細い枠が薄い青になり、点滅しない。カードの地だけを薄く青くする。
+                 ボタンと IDE / CLI の枠の中は塗らない。フォーカス表示の切り替えで消える。 -->
+    <Color x:Key="AiGlowColor">#45D483</Color>
+    <Color x:Key="AiDoneGlowColor">#B6DFF6</Color>
+    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#D7EEFB" />
+    <SolidColorBrush x:Key="AiDoneGlowBrush" Color="{StaticResource AiDoneGlowColor}" />
+
+    <!-- 枠の外側の光源。縁と同じ角丸の面塗りを Quality ブラーで外へ大きく拡散させ、手前のカードで内側を隠すことで境界線を見せない。
+         フォーカス中は Margin を -2 へ広げて 2px フォーカス枠の外縁と揃え、固定されたフォーカス枠の外でも点滅がはっきり見えるようにする。 -->
+    <Style x:Key="AiCardHaloStyle" TargetType="Border">
+      <Setter Property="Margin" Value="-1" />
+      <Setter Property="Background" Value="#67E7A4" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="Effect">
+        <Setter.Value>
+          <BlurEffect Radius="15" RenderingBias="Quality" />
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+          <Setter Property="Margin" Value="-2" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard x:Name="AiCardHaloPulse">
+              <Storyboard Timeline.DesiredFrameRate="30">
+                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity"
+                                               Duration="0:0:5.6"
+                                               RepeatBehavior="Forever">
+                  <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.08" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:0.7" KeySpline="0.3,0,0.7,1" Value="0.10" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:2.4" KeySpline="0.35,0.05,0.25,1" Value="0.82" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:2.8" KeySpline="0.4,0,0.6,1" Value="0.77" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:5.6" KeySpline="0.22,0.08,0.35,1" Value="0.08" />
+                </DoubleAnimationUsingKeyFrames>
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <StopStoryboard BeginStoryboardName="AiCardHaloPulse" />
+          </DataTrigger.ExitActions>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="Background" Value="{StaticResource AiDoneGlowBrush}" />
+          <Setter Property="Opacity" Value="0.68" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- カードと同じ 1px の枠。非フォーカス作業中と完了時だけ表示し、フォーカス作業中は枠を点滅させない。 -->
+    <Style x:Key="AiCardPulseStyle" TargetType="Border">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#8AF2B5" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard x:Name="AiCardEdgePulse">
+              <Storyboard Timeline.DesiredFrameRate="30">
+                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity"
+                                               Duration="0:0:5.6"
+                                               RepeatBehavior="Forever">
+                  <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.18" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:0.7" KeySpline="0.3,0,0.7,1" Value="0.20" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:2.4" KeySpline="0.35,0.05,0.25,1" Value="0.90" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:2.8" KeySpline="0.4,0,0.6,1" Value="0.86" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:5.6" KeySpline="0.22,0.08,0.35,1" Value="0.18" />
+                </DoubleAnimationUsingKeyFrames>
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <StopStoryboard BeginStoryboardName="AiCardEdgePulse" />
+          </DataTrigger.ExitActions>
+        </DataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsFocused}" Value="True" />
+            <Condition Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}" />
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Visibility" Value="Collapsed" />
+        </MultiDataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
+          <Setter Property="Opacity" Value="1" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -798,8 +906,7 @@
                     BorderThickness="2"
                     CornerRadius="8">
               <Grid>
-                <Border Margin="-3"
-                        CornerRadius="10"
+                <Border CornerRadius="8"
                         Style="{StaticResource AiCardHaloStyle}" />
                 <Border x:Name="CompactButtonBorder"
                         Background="{TemplateBinding Background}"
@@ -844,6 +951,9 @@
                   </Setter.Value>
                 </Setter>
               </DataTrigger>
+              <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+                <Setter TargetName="CompactButtonBorder" Property="Effect" Value="{x:Null}" />
+              </DataTrigger>
               <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
                 <Setter TargetName="CompactButtonBorder" Property="Background" Value="{StaticResource AiDoneCardBrush}" />
                 <Setter TargetName="CompactButtonBorder" Property="Effect" Value="{x:Null}" />
@@ -863,100 +973,6 @@
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
           <Setter Property="Background" Value="#241F15" />
           <Setter Property="BorderBrush" Value="#A27E39" />
-        </DataTrigger>
-      </Style.Triggers>
-    </Style>
-
-    <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
-         A〜D の文字は光らせない。光るのはカードの細い枠だけ。枠の太さは 1 のまま。
-         作業中: 細い枠がゆっくり（約 3.6 秒周期）緑へ明滅し、枠の外だけが LED のようにぼんやり光る。
-                 光の輪郭は出さない。許可の確認中もこの緑のまま。
-         完了: 細い枠が薄い青になり、点滅しない。カードの地だけを薄く青くする。
-                 ボタンと IDE / CLI の枠の中は塗らない。フォーカス表示の切り替えで消える。 -->
-    <Color x:Key="AiGlowColor">#45D483</Color>
-    <Color x:Key="AiDoneGlowColor">#B6DFF6</Color>
-    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#D7EEFB" />
-    <SolidColorBrush x:Key="AiDoneGlowBrush" Color="{StaticResource AiDoneGlowColor}" />
-
-    <!-- 枠の外側の光源。太い線はぼかして輪郭を消し、カードの地が内側を隠す。 -->
-    <Style x:Key="AiCardHaloStyle" TargetType="Border">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#67E7A4" />
-      <Setter Property="BorderThickness" Value="8" />
-      <Setter Property="IsHitTestVisible" Value="False" />
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="Visibility" Value="Collapsed" />
-      <Setter Property="Effect">
-        <Setter.Value>
-          <BlurEffect Radius="14" />
-        </Setter.Value>
-      </Setter>
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
-          <Setter Property="Visibility" Value="Visible" />
-          <DataTrigger.EnterActions>
-            <BeginStoryboard x:Name="AiCardHaloPulse">
-              <Storyboard Timeline.DesiredFrameRate="30">
-                <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                 From="0.28"
-                                 To="0.82"
-                                 Duration="0:0:1.8"
-                                 AutoReverse="True"
-                                 RepeatBehavior="Forever">
-                  <DoubleAnimation.EasingFunction>
-                    <SineEase EasingMode="EaseInOut" />
-                  </DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-              </Storyboard>
-            </BeginStoryboard>
-          </DataTrigger.EnterActions>
-          <DataTrigger.ExitActions>
-            <StopStoryboard BeginStoryboardName="AiCardHaloPulse" />
-          </DataTrigger.ExitActions>
-        </DataTrigger>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Visibility" Value="Visible" />
-          <Setter Property="BorderBrush" Value="{StaticResource AiDoneGlowBrush}" />
-          <Setter Property="Opacity" Value="0.55" />
-        </DataTrigger>
-      </Style.Triggers>
-    </Style>
-
-    <!-- カードと同じ 1px の枠。明滅と完了の色はここに載せ、下の枠の太さは変えない。 -->
-    <Style x:Key="AiCardPulseStyle" TargetType="Border">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#8AF2B5" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="IsHitTestVisible" Value="False" />
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="Visibility" Value="Collapsed" />
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
-          <Setter Property="Visibility" Value="Visible" />
-          <DataTrigger.EnterActions>
-            <BeginStoryboard x:Name="AiCardEdgePulse">
-              <Storyboard Timeline.DesiredFrameRate="30">
-                <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                 From="0.2"
-                                 To="1"
-                                 Duration="0:0:1.8"
-                                 AutoReverse="True"
-                                 RepeatBehavior="Forever">
-                  <DoubleAnimation.EasingFunction>
-                    <SineEase EasingMode="EaseInOut" />
-                  </DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-              </Storyboard>
-            </BeginStoryboard>
-          </DataTrigger.EnterActions>
-          <DataTrigger.ExitActions>
-            <StopStoryboard BeginStoryboardName="AiCardEdgePulse" />
-          </DataTrigger.ExitActions>
-        </DataTrigger>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Visibility" Value="Visible" />
-          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
-          <Setter Property="Opacity" Value="1" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1266,8 +1282,7 @@
                     BorderThickness="2"
                     CornerRadius="7">
               <Grid>
-                <Border Margin="-3"
-                        CornerRadius="9"
+                <Border CornerRadius="7"
                         Style="{StaticResource AiCardHaloStyle}" />
                 <Border x:Name="MicroButtonBorder"
                         Background="{TemplateBinding Background}"
@@ -1299,6 +1314,9 @@
                                       Opacity="0.4" />
                   </Setter.Value>
                 </Setter>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+                <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{x:Null}" />
               </DataTrigger>
               <!-- 完了は地だけを薄く青くし、文字色は変えない。枠の色は AiCardPulseStyle が載せる。 -->
               <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
@@ -1786,8 +1804,7 @@
               DragOver="SlotCard_DragOver"
               Drop="SlotCard_Drop">
         <Grid>
-          <Border Margin="-4"
-                  CornerRadius="12"
+          <Border CornerRadius="9"
                   Style="{StaticResource AiCardHaloStyle}" />
           <Border x:Name="SlotCardBorder"
                   Style="{StaticResource SlotCardBorderStyle}"
@@ -3173,14 +3190,17 @@
       </StackPanel>
     </Grid>
 
+    <!-- ScrollContentPresenter のクリップで光の外縁が切れないよう、表示枠だけ外へ広げて内側余白で相殺する。 -->
     <ScrollViewer x:Name="StandardSlotsGrid"
                   Grid.Row="1"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   CanContentScroll="False"
-                  Padding="0,0,4,0">
+                  Margin="-8,-7,-4,-7"
+                  Padding="0">
       <UniformGrid Columns="2"
                    Rows="2"
+                   Margin="8,7,8,7"
                    VerticalAlignment="Top">
         <ContentControl
                         Content="{Binding Slots[0]}"
