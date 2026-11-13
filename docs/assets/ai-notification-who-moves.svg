@@ -75,10 +75,10 @@
   <rect x="984" y="136" width="192" height="280" rx="16" class="card"/>
   <text x="1000" y="168" class="heading">5　色を変える</text>
   <text x="1000" y="194" class="who" style="fill:#1d4e73">主体：カルテットハブ</text>
-  <text x="1000" y="226" class="body">カードの枠だけを光らせる。</text>
+  <text x="1000" y="226" class="body">カードとA〜Dを光らせる。</text>
   <rect x="1000" y="248" width="36" height="28" rx="7" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
   <text x="1044" y="268" class="small">開始なら緑</text>
-  <rect x="1000" y="292" width="36" height="28" rx="7" fill="#d7eef8" stroke="#7eb4d4" stroke-width="1.5"/>
+  <rect x="1000" y="292" width="36" height="28" rx="7" fill="#174F85" stroke="#68C1FF" stroke-width="1.5"/>
   <text x="1044" y="312" class="small">終了なら青</text>
   <text x="1000" y="360" class="small">AIは塗りません。</text>
   <text x="1000" y="384" class="small">カルテットハブが塗る。</text>
@@ -88,7 +88,7 @@
   <text x="48" y="498" class="body">通信は Windows の名前付きパイプです。フックのプログラムが、同じパソコンのカルテットハブへ一方的に1回書きます。</text>
   <rect x="48" y="518" width="36" height="28" rx="7" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
   <text x="96" y="538" class="body">「開始」なら、カルテットハブが緑にします。確認中も緑の明滅です。</text>
-  <rect x="48" y="558" width="36" height="28" rx="7" fill="#d7eef8" stroke="#7eb4d4" stroke-width="1.5"/>
-  <text x="96" y="578" class="body">「終わった」なら、カルテットハブが薄い青にします。成功かは判定しません。</text>
+  <rect x="48" y="558" width="36" height="28" rx="7" fill="#174F85" stroke="#68C1FF" stroke-width="1.5"/>
+  <text x="96" y="578" class="body">「終わった」なら、カルテットハブが青い点灯にします。成功かは判定しません。</text>
   <text x="48" y="612" class="small">カルテットハブを閉じていると、3番の受け口がありません。光は変わらず、あとから届き直しもしません。</text>
 </svg>

@@ -112,7 +112,7 @@
                   HorizontalScrollBarVisibility="Disabled" Padding="0,0,5,0">
       <Grid>
         <StackPanel x:Name="FlowSection">
-          <TextBlock Text="色を変えるのは、カルテットハブです。AI はカードの枠を光らせません。"
+          <TextBlock Text="色を変えるのは、カルテットハブです。AI はカードや A〜D アイコンを光らせません。"
                      Margin="0,0,0,8" Style="{StaticResource GuideBody}" />
           <Grid>
             <Grid.ColumnDefinitions>
@@ -140,10 +140,10 @@
               </StackPanel>
             </Border>
             <Path Grid.Column="3" Style="{StaticResource GuideArrowRight}" />
-            <Border Grid.Column="4" Padding="8,8" Background="#152A3C" BorderBrush="#4E7EA0"
+            <Border Grid.Column="4" Padding="8,8" Background="#112D46" BorderBrush="#3EA3EC"
                     BorderThickness="1" CornerRadius="9">
               <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="カルテットハブ" Foreground="#D7EEFB" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="カルテットハブ" Foreground="#8CD0FF" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
                 <TextBlock Text="受け取って、自分で色を変える" Margin="0,4,0,0"
                            Foreground="#AAB8AF" FontSize="11" TextWrapping="Wrap" />
               </StackPanel>
@@ -237,16 +237,16 @@
 
           <Path Style="{StaticResource GuideArrow}" />
 
-          <Border Style="{StaticResource GuideCard}" BorderBrush="#4E7EA0">
+          <Border Style="{StaticResource GuideCard}" BorderBrush="#3EA3EC">
             <StackPanel>
-              <TextBlock Text="カルテットハブがすること" Foreground="#D7EEFB" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="カルテットハブがすること" Foreground="#8CD0FF" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" />
               <Grid Margin="0,8,0,0">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="24" />
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Width="18" Height="18" CornerRadius="9" Background="#1A3C56" VerticalAlignment="Top" HorizontalAlignment="Left">
-                  <TextBlock Text="4" FontSize="10" FontWeight="SemiBold" Foreground="#D7EEFB"
+                <Border Width="18" Height="18" CornerRadius="9" Background="#174F85" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="4" FontSize="10" FontWeight="SemiBold" Foreground="#F0F8FF"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel Grid.Column="1">
@@ -261,12 +261,12 @@
                   <ColumnDefinition Width="24" />
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Width="18" Height="18" CornerRadius="9" Background="#1A3C56" VerticalAlignment="Top" HorizontalAlignment="Left">
-                  <TextBlock Text="5" FontSize="10" FontWeight="SemiBold" Foreground="#D7EEFB"
+                <Border Width="18" Height="18" CornerRadius="9" Background="#174F85" VerticalAlignment="Top" HorizontalAlignment="Left">
+                  <TextBlock Text="5" FontSize="10" FontWeight="SemiBold" Foreground="#F0F8FF"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel Grid.Column="1">
-                  <TextBlock Text="選んだスロットのカードの枠を、カルテットハブが変えます。" Style="{StaticResource GuideHeading}" FontSize="12.5" TextWrapping="Wrap" />
+                  <TextBlock Text="選んだスロットのカードと A〜D アイコンを、カルテットハブが光らせます。" Style="{StaticResource GuideHeading}" FontSize="12.5" TextWrapping="Wrap" />
                   <Grid Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="44" />
@@ -278,9 +278,12 @@
                           <BlurEffect Radius="6" />
                         </Border.Effect>
                       </Border>
-                      <Border CornerRadius="5" BorderBrush="#8AF2B5" BorderThickness="1" Background="#171B19" />
+                      <Border CornerRadius="5" BorderBrush="#8AF2B5" BorderThickness="1" Background="#171B19">
+                        <Border Width="9" Height="9" CornerRadius="2.5" Background="#223027" BorderBrush="#8AF2B5" BorderThickness="1"
+                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
+                      </Border>
                     </Grid>
-                    <TextBlock Grid.Column="1" Text="開始：細い枠がゆっくり緑に明滅し、枠の外がぼんやり光ります。許可や質問の確認中も同じです。"
+                    <TextBlock Grid.Column="1" Text="開始：カードと A〜D の枠および外側の光背がゆっくり緑に明滅します。許可や質問の確認中も同じです。"
                                VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
                   </Grid>
                   <Grid Margin="0,8,0,0">
@@ -289,14 +292,17 @@
                       <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid Width="34" Height="26" VerticalAlignment="Center" HorizontalAlignment="Left">
-                      <Border Margin="-3" CornerRadius="8" BorderBrush="#B6DFF6" BorderThickness="4" Opacity="0.7">
+                      <Border Margin="-3" CornerRadius="8" BorderBrush="#228BE0" BorderThickness="4" Opacity="0.78">
                         <Border.Effect>
                           <BlurEffect Radius="6" />
                         </Border.Effect>
                       </Border>
-                      <Border CornerRadius="5" BorderBrush="#D7EEFB" BorderThickness="1" Background="#203440" />
+                      <Border CornerRadius="5" BorderBrush="#3EA3EC" BorderThickness="1" Background="#112D46">
+                        <Border Width="9" Height="9" CornerRadius="2.5" Background="#174F85" BorderBrush="#68C1FF" BorderThickness="1"
+                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
+                      </Border>
                     </Grid>
-                    <TextBlock Grid.Column="1" Text="応答が終わったときだけ、細い枠が薄い青になり、カードが薄く青く染まります。"
+                    <TextBlock Grid.Column="1" Text="応答が終わったときだけ、カードが青く染まり、A〜D アイコンも濃い青で点灯します。"
                                VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
                   </Grid>
                 </StackPanel>
@@ -382,10 +388,13 @@
                     <BlurEffect Radius="6" />
                   </Border.Effect>
                 </Border>
-                <Border CornerRadius="5" BorderBrush="#8AF2B5" BorderThickness="1" Background="#171B19" />
+                <Border CornerRadius="5" BorderBrush="#8AF2B5" BorderThickness="1" Background="#171B19">
+                  <Border Width="9" Height="9" CornerRadius="2.5" Background="#223027" BorderBrush="#8AF2B5" BorderThickness="1"
+                          HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
+                </Border>
               </Grid>
               <StackPanel Grid.Column="1">
-                <TextBlock Text="作業中：細い枠がゆっくり緑に明滅" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="作業中：カードと A〜D の枠がゆっくり緑に明滅" Style="{StaticResource GuideHeading}" />
                 <TextBlock Text="開始の通知を受け取っています。許可や質問の確認中も、緑の明滅のままです。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
               </StackPanel>
             </Grid>
@@ -395,15 +404,18 @@
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
               <Grid Width="34" Height="26" VerticalAlignment="Center">
-                <Border Margin="-3" CornerRadius="8" BorderBrush="#B6DFF6" BorderThickness="4" Opacity="0.7">
+                <Border Margin="-3" CornerRadius="8" BorderBrush="#228BE0" BorderThickness="4" Opacity="0.78">
                   <Border.Effect>
                     <BlurEffect Radius="6" />
                   </Border.Effect>
                 </Border>
-                <Border CornerRadius="5" BorderBrush="#D7EEFB" BorderThickness="1" Background="#203440" />
+                <Border CornerRadius="5" BorderBrush="#3EA3EC" BorderThickness="1" Background="#112D46">
+                  <Border Width="9" Height="9" CornerRadius="2.5" Background="#174F85" BorderBrush="#68C1FF" BorderThickness="1"
+                          HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
+                </Border>
               </Grid>
               <StackPanel Grid.Column="1">
-                <TextBlock Text="応答が終わると、枠が薄い青になりカードが薄く染まる" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="応答が終わると、カードと A〜D アイコンが青く点灯" Style="{StaticResource GuideHeading}" />
                 <TextBlock Text="「完了」は、作業やテストの成功を保証する表示ではありません。許可の確認中は青くしません。"
                            Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
               </StackPanel>
@@ -411,7 +423,7 @@
           </Border>
           <TextBlock Text="光は、光っているスロットのフォーカス表示（1面 / 4面）を切り替えると消えます。ウィンドウを前面へ出しただけでは消えません。作業中の記録が残っていれば、緑の明滅に戻ります。"
                      Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
-          <TextBlock Text="「設定済み」は設定ファイルの確認です。通知が実際に届くことの確認には、カルテットハブで管理中のローカルワークスペースで AI に指示し、カードの枠の変化を見てください。"
+          <TextBlock Text="「設定済み」は設定ファイルの確認です。通知が実際に届くことの確認には、カルテットハブで管理中のローカルワークスペースで AI に指示し、カードや A〜D アイコンの変化を見てください。"
                      Margin="0,8,0,0" Style="{StaticResource GuideBody}" />
         </StackPanel>
       </Grid>

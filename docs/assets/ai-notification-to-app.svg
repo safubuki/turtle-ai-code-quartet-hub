@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
   <title id="title">フックの知らせが、同じPCの中でバッジに届くまで</title>
-  <desc id="desc">AIツールがフックを実行し、共通スクリプトがツール名・出来事・作業フォルダだけをカルテットハブへ渡す。カルテットハブはチャットを読まず、一致したスロットのバッジを緑または薄い青にする。</desc>
+  <desc id="desc">AIツールがフックを実行し、共通スクリプトがツール名・出来事・作業フォルダだけをカルテットハブへ渡す。カルテットハブはチャットを読まず、一致したスロットを緑の明滅または青い点灯にする。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#438163"/></marker>
     <style>
@@ -51,11 +51,13 @@
   <rect x="922" y="112" width="250" height="230" rx="16" class="card"/>
   <text x="940" y="148" class="heading" style="font-size:17px">4　カルテットハブが変える</text>
   <rect x="940" y="176" width="36" height="28" rx="7" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
+  <rect x="945" y="181" width="10" height="10" rx="2.5" fill="#223027" stroke="#39aa6b" stroke-width="1.2"/>
   <text x="986" y="196" class="body">作業中は緑</text>
-  <rect x="940" y="220" width="36" height="28" rx="7" fill="#d7eef8" stroke="#7eb4d4" stroke-width="1.5"/>
+  <rect x="940" y="220" width="36" height="28" rx="7" fill="#112D46" stroke="#3EA3EC" stroke-width="1.5"/>
+  <rect x="945" y="225" width="10" height="10" rx="2.5" fill="#174F85" stroke="#68C1FF" stroke-width="1.2"/>
   <text x="986" y="240" class="body">終わったときは青</text>
-  <text x="940" y="278" class="small">光るのはカードの細い枠。</text>
-  <text x="940" y="300" class="small">A〜D の文字は光りません。</text>
+  <text x="940" y="278" class="small">光るのはカードの枠と</text>
+  <text x="940" y="300" class="small">A〜D アイコンの枠と地です。</text>
 
   <rect x="28" y="366" width="1144" height="214" rx="16" fill="#ffffff" stroke="#bed7c9" stroke-width="2"/>
   <text x="48" y="402" class="heading">AI は色を塗らず、カルテットハブが自分で変えます</text>

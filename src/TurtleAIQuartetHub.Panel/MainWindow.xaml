@@ -35,8 +35,8 @@
     <local:SubtractConverter x:Key="SubtractConverter" />
     <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#101211" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#171B19" />
-    <!-- 完了時にカードの地だけへ乗せる、目にやさしい薄い青。ボタンや IDE / CLI の地には使わない。 -->
-    <SolidColorBrush x:Key="AiDoneCardBrush" Color="#203440" />
+    <!-- 完了時にカードの地だけへ乗せる、アプリ色調と調和する深めの青。ボタンや IDE / CLI の地には使わない。 -->
+    <SolidColorBrush x:Key="AiDoneCardBrush" Color="#112D46" />
     <SolidColorBrush x:Key="SurfaceAltBrush" Color="#1D2420" />
     <SolidColorBrush x:Key="BorderBrushSoft" Color="#2E3832" />
     <SolidColorBrush x:Key="TextBrush" Color="#EEF4EF" />
@@ -782,16 +782,24 @@
     </Style>
 
     <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
-         A〜D の文字は光らせない。
-         作業中: 非フォーカス時は 1px 枠と外側の光背がホタルの明滅のようにゆっくり（5.6 秒周期）緑へ明滅する。
-                 フォーカス表示時は太いフォーカス枠を点滅させずに固定し、その外側のぼんやりした光だけを大きく明滅させる。
+         作業中: 非フォーカス時は 1px 枠と外側の光背がホタルの明滅のようにゆっくり（5.6 秒周期）緑へ明滅し、
+                 標準・縮小の A〜D アイコン枠（AiBadgeWorkingRingStyle）も同期して明滅する。
+                 フォーカス表示時は太いフォーカス枠を点滅させずに固定し、その外側のぼんやりした光と A〜D アイコン枠を明滅させる。
                  許可の確認中もこの緑のまま。
-         完了: 細い枠が薄い青になり、点滅しない。カードの地だけを薄く青くする。
+         完了: カードの枠と地を深みのあるブルーへ切り替え、A〜D アイコン（極小表示はカード自体）を少し濃いめの青で点灯する。
                  ボタンと IDE / CLI の枠の中は塗らない。フォーカス表示の切り替えで消える。 -->
     <Color x:Key="AiGlowColor">#45D483</Color>
-    <Color x:Key="AiDoneGlowColor">#B6DFF6</Color>
-    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#D7EEFB" />
+    <Color x:Key="AiDoneGlowColor">#228BE0</Color>
+    <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#3EA3EC" />
     <SolidColorBrush x:Key="AiDoneGlowBrush" Color="{StaticResource AiDoneGlowColor}" />
+    <SolidColorBrush x:Key="AiDoneBadgeBackgroundBrush" Color="#174F85" />
+    <SolidColorBrush x:Key="AiDoneBadgeBorderBrush" Color="#68C1FF" />
+    <SolidColorBrush x:Key="AiDoneBadgeForegroundBrush" Color="#F0F8FF" />
+    <DropShadowEffect x:Key="AiDoneBadgeGlowEffect"
+                      Color="#2E96F0"
+                      BlurRadius="9"
+                      ShadowDepth="0"
+                      Opacity="0.88" />
 
     <!-- 枠の外側の光源。縁と同じ角丸の面塗りを Quality ブラーで外へ大きく拡散させ、手前のカードで内側を隠すことで境界線を見せない。
          フォーカス中は Margin を -2 へ広げて 2px フォーカス枠の外縁と揃え、固定されたフォーカス枠の外でも点滅がはっきり見えるようにする。 -->
@@ -836,7 +844,7 @@
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
           <Setter Property="Background" Value="{StaticResource AiDoneGlowBrush}" />
-          <Setter Property="Opacity" Value="0.68" />
+          <Setter Property="Opacity" Value="0.74" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -882,6 +890,47 @@
           <Setter Property="Visibility" Value="Visible" />
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
           <Setter Property="Opacity" Value="1" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- 標準・縮小表示の A〜D アイコン上に重ねる作業中の明滅リング。カードと同じ 5.6 秒のホタル点滅に揃える。 -->
+    <Style x:Key="AiBadgeWorkingRingStyle" TargetType="Border">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#8AF2B5" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="Effect">
+        <Setter.Value>
+          <DropShadowEffect Color="{StaticResource AiGlowColor}"
+                            BlurRadius="8"
+                            ShadowDepth="0"
+                            Opacity="0.88" />
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard x:Name="AiBadgeWorkingRingPulse">
+              <Storyboard Timeline.DesiredFrameRate="30">
+                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity"
+                                               Duration="0:0:5.6"
+                                               RepeatBehavior="Forever">
+                  <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.18" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:0.7" KeySpline="0.3,0,0.7,1" Value="0.20" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:2.4" KeySpline="0.35,0.05,0.25,1" Value="0.95" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:2.8" KeySpline="0.4,0,0.6,1" Value="0.90" />
+                  <SplineDoubleKeyFrame KeyTime="0:0:5.6" KeySpline="0.22,0.08,0.35,1" Value="0.18" />
+                </DoubleAnimationUsingKeyFrames>
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <StopStoryboard BeginStoryboardName="AiBadgeWorkingRingPulse" />
+          </DataTrigger.ExitActions>
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -977,7 +1026,7 @@
       </Style.Triggers>
     </Style>
 
-    <!-- 標準表示のスロット名バッジ（A〜D）。 -->
+    <!-- 標準表示のスロット名バッジ（A〜D）。完了時はカードより少し濃いめの青で点灯する。 -->
     <Style x:Key="SlotNameBadgeStyle" TargetType="Border">
       <Setter Property="Width" Value="28" />
       <Setter Property="Height" Value="28" />
@@ -985,6 +1034,13 @@
       <Setter Property="Background" Value="#223027" />
       <Setter Property="BorderBrush" Value="#335A43" />
       <Setter Property="BorderThickness" Value="1" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgeBorderBrush}" />
+          <Setter Property="Effect" Value="{StaticResource AiDoneBadgeGlowEffect}" />
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
 
     <Style x:Key="SlotNameBadgeTextStyle" TargetType="TextBlock">
@@ -992,6 +1048,11 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Foreground" Value="{StaticResource AiDoneBadgeForegroundBrush}" />
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
 
     <Style x:Key="CompactSlotBadgeStyle" TargetType="Border">
@@ -1012,6 +1073,12 @@
           <Setter Property="Background" Value="#2C2414" />
           <Setter Property="BorderBrush" Value="#C49B38" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgeBorderBrush}" />
+          <Setter Property="Effect" Value="{StaticResource AiDoneBadgeGlowEffect}" />
+          <Setter Property="Opacity" Value="1" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -1024,6 +1091,9 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}">
           <Setter Property="Foreground" Value="#6F7B74" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Foreground" Value="{StaticResource AiDoneBadgeForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1318,9 +1388,9 @@
               <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
                 <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{x:Null}" />
               </DataTrigger>
-              <!-- 完了は地だけを薄く青くし、文字色は変えない。枠の色は AiCardPulseStyle が載せる。 -->
+              <!-- 完了はボタン全体を少し濃いめの青で点灯させ、外枠と外側の光背を AiCardPulseStyle / AiCardHaloStyle で揃える。 -->
               <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-                <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneCardBrush}" />
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
                 <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{x:Null}" />
               </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">
@@ -1340,6 +1410,9 @@
           <Setter Property="Background" Value="#241F15" />
           <Setter Property="BorderBrush" Value="#A27E39" />
           <Setter Property="Foreground" Value="#F2CA57" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Foreground" Value="{StaticResource AiDoneBadgeForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1825,11 +1898,15 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <Grid Margin="0,0,8,0"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center"
+                    ToolTip="{Binding AiActivityToolTip}">
                 <Border Style="{StaticResource SlotNameBadgeStyle}">
                   <TextBlock Text="{Binding Name}"
                              Style="{StaticResource SlotNameBadgeTextStyle}" />
                 </Border>
+                <Border CornerRadius="8"
+                        BorderThickness="2"
+                        Style="{StaticResource AiBadgeWorkingRingStyle}" />
               </Grid>
               <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
               <StackPanel Grid.Column="2"
@@ -2142,6 +2219,8 @@
               <TextBlock Text="{Binding Name}"
                          Style="{StaticResource CompactSlotBadgeTextStyle}" />
             </Border>
+            <Border CornerRadius="4"
+                    Style="{StaticResource AiBadgeWorkingRingStyle}" />
           </Grid>
 
           <TextBox x:Name="CompactSlotTitleBox"
@@ -4235,7 +4314,7 @@
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" />
                     <TextBlock Margin="0,4,0,8"
-                               Text="AI の作業中・完了を、スロットのカードの枠でお知らせします。"
+                               Text="AI の作業中・完了を、スロットのカードと A〜D アイコンでお知らせします。"
                                Foreground="{StaticResource MutedTextBrush}"
                                TextWrapping="Wrap" />
                     <ItemsControl x:Name="AiNotifyHookLocationsItemsControl">

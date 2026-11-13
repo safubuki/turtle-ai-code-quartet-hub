@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
   <title id="title">AIの状態と、状態ごとに動くフック、カルテットハブの光</title>
-  <desc id="desc">作業開始では緑の明滅。許可や質問の確認中も緑のまま。応答が終わったときだけ薄い青。入力待ちの idle_prompt などは表示を変えない。5つのツールで色は同じ。</desc>
+  <desc id="desc">作業開始では緑の明滅。許可や質問の確認中も緑のまま。応答が終わったときだけカードとアイコンが青く点灯。入力待ちの idle_prompt などは表示を変えない。5つのツールで色は同じ。</desc>
   <defs>
     <style>
       text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #18392b; }
@@ -27,9 +27,10 @@
   <text x="48" y="298" class="code">PreInvocation</text>
   <text x="48" y="324" class="small">ツールにより名前が違います。</text>
   <rect x="48" y="360" width="42" height="34" rx="8" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
+  <rect x="54" y="366" width="11" height="11" rx="3" fill="#223027" stroke="#39aa6b" stroke-width="1.2"/>
   <text x="102" y="384" class="heading">緑に明滅</text>
-  <text x="48" y="422" class="body">カードの細い枠が、ゆっくり</text>
-  <text x="48" y="446" class="body">緑に明滅します。</text>
+  <text x="48" y="422" class="body">カードと A〜D の枠が、</text>
+  <text x="48" y="446" class="body">ゆっくり緑に明滅します。</text>
   <text x="48" y="490" class="small">5ツールとも、作業中の色は</text>
   <text x="48" y="510" class="small">同じ緑です。</text>
 
@@ -43,6 +44,7 @@
   <text x="336" y="282" class="code">elicitation_dialog</text>
   <text x="336" y="304" class="code">PermissionRequest</text>
   <rect x="336" y="348" width="42" height="34" rx="8" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
+  <rect x="342" y="354" width="11" height="11" rx="3" fill="#223027" stroke="#39aa6b" stroke-width="1.2"/>
   <text x="390" y="372" class="heading">緑のまま</text>
   <text x="336" y="414" class="body">緑の明滅が続きます。</text>
   <text x="336" y="442" class="body">青い光にはしません。</text>
@@ -50,7 +52,7 @@
   <text x="336" y="506" class="small">でも、同じ緑です。</text>
 
   <rect x="604" y="104" width="270" height="448" rx="16" class="card"/>
-  <rect x="612" y="122" width="6" height="412" rx="3" fill="#3E7EAD"/>
+  <rect x="612" y="122" width="6" height="412" rx="3" fill="#228BE0"/>
   <text x="624" y="140" class="heading">3　応答が終わる</text>
   <text x="624" y="170" class="body">答えを出した、失敗した、</text>
   <text x="624" y="194" class="body">途中で止まったときです。</text>
@@ -58,8 +60,9 @@
   <text x="624" y="260" class="code">Stop / agentStop</text>
   <text x="624" y="282" class="code">StopFailure</text>
   <text x="624" y="304" class="code">StopCancelled</text>
-  <rect x="624" y="348" width="42" height="34" rx="8" fill="#d7eef8" stroke="#7eb4d4" stroke-width="1.5"/>
-  <text x="678" y="372" class="heading">薄い青</text>
+  <rect x="624" y="348" width="42" height="34" rx="8" fill="#112D46" stroke="#3EA3EC" stroke-width="1.5"/>
+  <rect x="630" y="354" width="11" height="11" rx="3" fill="#174F85" stroke="#68C1FF" stroke-width="1.2"/>
+  <text x="678" y="372" class="heading">青い点灯</text>
   <text x="624" y="414" class="body">成功か失敗かは判定しません。</text>
   <text x="624" y="442" class="body">「終わった」と知らせる光です。</text>
   <text x="624" y="486" class="small">Codex や Antigravity の</text>
