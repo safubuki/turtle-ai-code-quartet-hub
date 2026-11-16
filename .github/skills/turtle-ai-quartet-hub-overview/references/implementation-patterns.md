@@ -519,3 +519,10 @@
   - `ai-notify.ps1`（ASCII 専用維持）は `ConvertFrom-Json` 失敗でも `(Get-Location).Path` フォールバックへ進み、`workspaceRoot` / `workspace_root` / `termination_reason` / `reason` / `recoverable` を吸い上げ、パイプ接続を 1 回だけ短間隔リトライ（400ms×2 + 30ms）する。
   - `AiActivityTracker.Apply` は同一ツールの新規 `Start` で同ツールの古いセッションキーを置き換え（**異なるツール間の並行動作は維持**）、`Stop` / `Interrupt` でも空 `SessionId`・無キー開始分を取り残さない。
   - `ToggleSlotFocus` の外部遮蔽再前面化パスへ `AcknowledgeAiActivityOnFocusChange(slot)` を追加し、`FocusMaximizedOnMonitorAsync` は `SetForegroundWindow(windowHandle) || (IsWindow(windowHandle) && IsZoomed(windowHandle))` を成功とする。なお 4 面でウィンドウを直接クリックしただけでは消さない既存仕様と、Claude CLI の `Esc`/`Ctrl+C` 自体は CLI 側がフックを発行しない外部仕様は維持・明記する。
+
+## 13. タイトルバー「ダウンロードフォルダを開く」と設定内「AI 状態をリセット」（2026-11-17 追加）
+- **ファイル**: `Services/DownloadsFolderResolver.cs`, `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/StatusStore.cs`, `MainWindow.AiActivity.cs`, `TurtleAIQuartetHub.Panel.Tests/SystemMonitorAndCardTitleTests.cs`, `TitleBarIndicatorTests.cs`, `AiActivityTests.cs`
+- **対策**:
+  1. **ダウンロードフォルダボタン**: `TitleBarToolButtonsPanel`（標準表示のみ可視）の `SystemMonitorButton` と `PullRequestInboxButton` の間（＝`PullRequestInboxButton` の左側）に `DownloadsFolderButton`（`Content="&#xE896;"`、`Segoe MDL2 Assets`、26 DIP 幅、`Margin="2,0,0,0"`）を配置した。`DownloadsFolderResolver` は Win32 `SHGetKnownFolderPath(FOLDERID_Downloads)` によりユーザーが別ドライブ等へ移動したダウンロードフォルダを優先解決し、未取得・未存在時のみ `%USERPROFILE%\Downloads` へフォールバックする。Explorer 起動ロジックは `MainWindow.xaml.cs` の `TryOpenFolderInExplorer` へ集約し、他のフォルダボタンとの重複も解消した。
+  2. **AI 状態リセットボタン**: Swarm 等の複数エージェント運用や外部要因で表示状態がずれたとき手動で即座に待機へ戻せるよう、「AI の作業通知」カードヘッダー右端に `ResetAiActivityButton`（「AI 状態をリセット」）を追加し、`StatusStore.ResetAllAiActivity()` を呼ぶようにした（`UninstallAiNotifyHooksButton_Click` も同じメソッドを共有）。設定ファイル・通知スクリプト・実行中プロセスには触れず、結果を `AiNotifyActionStatusText`（設定を開き直すたびに文言・可視状態とも初期化）とステータスバーへ表示する。
+- **注意**: `TitleBarButtonsPanel` 上の並び順（`SystemMonitorButton` → `DownloadsFolderButton` → `PullRequestInboxButton` → `SettingsButton`）は `SystemMonitorAndCardTitleTests` で検証しているため、アイコン追加時はテストも整合させること。また `TitleBarToolButtonsPanel` 内のため縮小・極小表示では非表示となる（既存仕様どおり）。

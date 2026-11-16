@@ -6,6 +6,8 @@ using TurtleAIQuartetHub.Panel.Services;
 // システムモニタのアイコン色の集約、PR 通知の赤丸判定、既読状態の保存、控えのフォルダ変更を確認する。
 internal static class TitleBarIndicatorTests
 {
+    public const int Count = 18;
+
     private static readonly PagefileAssessment NormalPagefile = new(PagefileAssessmentLevel.Normal, "余裕あり", string.Empty);
 
     public static void Run(List<string> failures)
@@ -14,6 +16,7 @@ internal static class TitleBarIndicatorTests
         VerifyPullRequestNotificationParsing(failures);
         VerifyUpdateBadgeStateStore(failures);
         VerifyChangeStoredPanelWorkspace(failures);
+        VerifyDownloadsFolderResolution(failures);
     }
 
     private static void VerifySystemHealthAggregation(List<string> failures)
@@ -160,6 +163,30 @@ internal static class TitleBarIndicatorTests
         {
             if (Directory.Exists(stateDirectory)) Directory.Delete(stateDirectory, recursive: true);
         }
+    }
+
+    private static void VerifyDownloadsFolderResolution(List<string> failures)
+    {
+        var customPath = @"D:\CustomDownloads";
+        var profileDir = @"C:\Users\sample";
+        var fallbackPath = Path.Combine(profileDir, "Downloads");
+
+        var resolvedCustom = DownloadsFolderResolver.ResolvePath(
+            () => customPath,
+            () => profileDir,
+            path => string.Equals(path, customPath, StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(path, fallbackPath, StringComparison.OrdinalIgnoreCase));
+        Check(failures, "ダウンロードフォルダ: Known Folder の移動先が存在すればそちらを優先する",
+            string.Equals(resolvedCustom, customPath, StringComparison.OrdinalIgnoreCase),
+            resolvedCustom);
+
+        var resolvedFallback = DownloadsFolderResolver.ResolvePath(
+            () => @"Z:\MissingDownloads",
+            () => profileDir,
+            path => string.Equals(path, fallbackPath, StringComparison.OrdinalIgnoreCase));
+        Check(failures, "ダウンロードフォルダ: Known Folder が欠けていてもユーザーホーム配下の Downloads へフォールバックする",
+            string.Equals(resolvedFallback, fallbackPath, StringComparison.OrdinalIgnoreCase),
+            resolvedFallback);
     }
 
     private static DriveUsageItem Drive(string root, double percent, bool isFixed = true)

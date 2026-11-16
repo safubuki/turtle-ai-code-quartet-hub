@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 49;
+    public const int Count = 50;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -147,6 +147,39 @@ internal static class AiActivityTests
         unkeyedStartThenKeyedStop.Acknowledge();
         Check(failures, "状態: 開始時に SessionId が空で完了時に付与されても、解除後に作業中へ戻らない",
             unkeyedStartThenKeyedStop.State == AiActivityState.Idle);
+
+        var tempStateDir = Path.Combine(Path.GetTempPath(), "turtle-reset-all-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new StatusStore(new AppConfig { StateDirectory = tempStateDir });
+            store.Slots[0].AiTracker.Apply(Event("antigravity", AiHookEventKind.Start, "swarm-1"), now);
+            store.Slots[1].AiTracker.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
+            store.Slots[1].AiTracker.Apply(Event("claude", AiHookEventKind.Stop, "s1"), now);
+            var changedNames = new List<string>();
+            foreach (var s in store.Slots)
+            {
+                s.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName == nameof(WindowSlot.AiActivity))
+                    {
+                        changedNames.Add(s.Name);
+                    }
+                };
+            }
+
+            var firstReset = store.ResetAllAiActivity();
+            var secondReset = store.ResetAllAiActivity();
+            Check(failures, "状態: 全スロット手動リセットで作業中と完了だけを待機に戻し、再実行は 0 件になる",
+                firstReset == 2
+                && secondReset == 0
+                && store.Slots.All(s => s.AiActivity == AiActivityState.Idle)
+                && changedNames.SequenceEqual([store.Slots[0].Name, store.Slots[1].Name]),
+                $"first={firstReset}, second={secondReset}, changed={string.Join(",", changedNames)}");
+        }
+        finally
+        {
+            try { Directory.Delete(tempStateDir, recursive: true); } catch (IOException) { }
+        }
     }
 
     private static void VerifySlotMatching(List<string> failures)

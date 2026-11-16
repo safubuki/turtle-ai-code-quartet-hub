@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -1757,6 +1757,24 @@ public sealed class StatusStore : INotifyPropertyChanged
 
         field = value;
         OnPropertyChanged(propertyName);
+    }
+
+    /// <summary>
+    /// 全スロットの AI 作業中・完了表示を待機状態へリセットし、状態が変わったスロット数を返す。
+    /// </summary>
+    public int ResetAllAiActivity()
+    {
+        var resetCount = 0;
+        foreach (var slot in Slots)
+        {
+            if (slot.AiTracker.Reset())
+            {
+                slot.NotifyAiActivityChanged();
+                resetCount++;
+            }
+        }
+
+        return resetCount;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

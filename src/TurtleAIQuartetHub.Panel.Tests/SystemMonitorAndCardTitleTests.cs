@@ -5,6 +5,8 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class SystemMonitorAndCardTitleTests
 {
+    public const int Count = 22;
+
     public static void Run(List<string> failures)
     {
         VerifyFormatBytes(failures);
@@ -224,28 +226,48 @@ internal static class SystemMonitorAndCardTitleTests
             compactOverviewButton is not null && (string?)compactOverviewButton.Attribute("Click") == "StoredOverviewButton_Click",
             compactOverviewButton?.ToString() ?? "null");
 
-        // 3. TitleBarButtonsPanel で SystemMonitorButton → PullRequestInboxButton → SettingsButton の順に並ぶこと
+        // 3. TitleBarButtonsPanel で SystemMonitorButton → DownloadsFolderButton → PullRequestInboxButton → SettingsButton の順に並ぶこと
         var titleBarButtonsPanel = root.Descendants()
             .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "TitleBarButtonsPanel");
         Check(failures, "TitleBarButtonsPanel が存在すること", titleBarButtonsPanel is not null, "TitleBarButtonsPanel");
 
         if (titleBarButtonsPanel is not null)
         {
-            var buttonNames = titleBarButtonsPanel.Descendants()
+            var buttons = titleBarButtonsPanel.Descendants()
                 .Where(e => e.Name.LocalName == "Button")
+                .ToList();
+            var buttonNames = buttons
                 .Select(e => (string?)e.Attribute(x + "Name") ?? string.Empty)
                 .ToList();
             var monitorIdx = buttonNames.IndexOf("SystemMonitorButton");
+            var downloadsIdx = buttonNames.IndexOf("DownloadsFolderButton");
             var inboxIdx = buttonNames.IndexOf("PullRequestInboxButton");
             var settingsIdx = buttonNames.IndexOf("SettingsButton");
+            var downloadsButton = downloadsIdx >= 0 ? buttons[downloadsIdx] : null;
             Check(
                 failures,
-                "SystemMonitorButton の右隣に PullRequestInboxButton、その右に SettingsButton が配置されていること",
-                monitorIdx >= 0 && inboxIdx == monitorIdx + 1 && settingsIdx == inboxIdx + 1,
+                "SystemMonitorButton の右に DownloadsFolderButton、PullRequestInboxButton の左隣に DownloadsFolderButton、その右に SettingsButton が配置されていること",
+                monitorIdx >= 0
+                && downloadsIdx == monitorIdx + 1
+                && inboxIdx == downloadsIdx + 1
+                && settingsIdx == inboxIdx + 1
+                && (string?)downloadsButton?.Attribute("Click") == "DownloadsFolderButton_Click",
                 string.Join(", ", buttonNames));
         }
 
-        // 4. SystemMonitorOverlay が存在し、メモリ・CPU・ドライブ・フォルダの各表示コントロールを備えていること
+        // 4. SettingsOverlay の AI 作業通知内に ResetAiActivityButton が配置されていること
+        var settingsOverlay = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "SettingsOverlay");
+        var resetAiButton = settingsOverlay?.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "ResetAiActivityButton");
+        Check(
+            failures,
+            "設定画面の AI 作業通知に ResetAiActivityButton が配置されクリックハンドラが結線されていること",
+            resetAiButton is not null
+            && (string?)resetAiButton.Attribute("Click") == "ResetAiActivityButton_Click",
+            resetAiButton?.ToString() ?? "null");
+
+        // 5. SystemMonitorOverlay が存在し、メモリ・CPU・ドライブ・フォルダの各表示コントロールを備えていること
         var overlay = root.Descendants()
             .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "SystemMonitorOverlay");
         Check(

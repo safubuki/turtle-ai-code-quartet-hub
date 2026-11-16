@@ -111,16 +111,24 @@ public partial class MainWindow
     {
         var results = _aiNotifyHookInstaller.Uninstall();
         RefreshAiNotifySettingsStatus(results);
-        foreach (var slot in _statusStore.Slots)
-        {
-            if (slot.AiTracker.Reset())
-            {
-                slot.NotifyAiActivityChanged();
-            }
-        }
+        _statusStore.ResetAllAiActivity();
 
         DiagnosticLog.Write(
             LogLevel.Info,
             $"AI notify hooks removed: {string.Join(", ", results.Select(result => $"{result.Tool}={result.Status}"))}");
+    }
+
+    private void ResetAiActivityButton_Click(object sender, RoutedEventArgs e)
+    {
+        var resetCount = _statusStore.ResetAllAiActivity();
+        var message = resetCount > 0
+            ? $"{resetCount}個のスロットの AI 状態を待機へリセットしました。"
+            : "すべてのスロットはすでに待機状態です。";
+        ShowAiNotifyAccessMessage(message);
+        _statusStore.Message = message;
+        if (resetCount > 0)
+        {
+            DiagnosticLog.Write(LogLevel.Info, $"AI activity manually reset for {resetCount} slot(s).");
+        }
     }
 }

@@ -3177,7 +3177,7 @@
       <StackPanel x:Name="TitleBarButtonsPanel"
                   HorizontalAlignment="Right"
                   Orientation="Horizontal">
-        <!-- VS Code と同じく、ツール系（モニタ・PR・設定・ヘルプ）は詰めてひとまとまりにし、
+        <!-- VS Code と同じく、ツール系（モニタ・ダウンロード・PR・設定・ヘルプ）は詰めてひとまとまりにし、
              右端の表示切替・最小化・閉じるとは間を空ける。標準表示のときだけ出す（コードで切り替え）。 -->
         <StackPanel x:Name="TitleBarToolButtonsPanel"
                     Orientation="Horizontal"
@@ -3192,6 +3192,17 @@
                   ToolTip="システムモニタ"
                   AutomationProperties.Name="システムモニタ"
                   Click="SystemMonitorButton_Click"
+                  Style="{StaticResource TitleBarChromeButton}" />
+          <Button x:Name="DownloadsFolderButton"
+                  Content="&#xE896;"
+                  Width="26"
+                  Margin="2,0,0,0"
+                  FontFamily="Segoe MDL2 Assets"
+                  FontSize="12"
+                  FontWeight="SemiBold"
+                  ToolTip="ダウンロードフォルダを開く"
+                  AutomationProperties.Name="ダウンロードフォルダを開く"
+                  Click="DownloadsFolderButton_Click"
                   Style="{StaticResource TitleBarChromeButton}" />
           <!-- 未読の PR 通知があると右下に赤丸（local:UpdateBadge.IsActive）を出す。ツールチップはコードで更新する。 -->
           <Button x:Name="PullRequestInboxButton"
@@ -4320,13 +4331,30 @@
                         BorderThickness="1"
                         CornerRadius="8">
                   <StackPanel>
-                    <TextBlock Text="AI の作業通知"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource TextBrush}" />
-                    <TextBlock Margin="0,4,0,8"
-                               Text="AI の作業中・完了を、スロットのカードと A〜D アイコンでお知らせします。"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               TextWrapping="Wrap" />
+                    <Grid Margin="0,0,0,8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBlock Text="AI の作業通知"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}" />
+                        <TextBlock Margin="0,4,0,0"
+                                   Text="AI の作業中・完了を、スロットのカードと A〜D アイコンでお知らせします。"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   TextWrapping="Wrap" />
+                      </StackPanel>
+                      <Button x:Name="ResetAiActivityButton"
+                              Grid.Column="1"
+                              VerticalAlignment="Top"
+                              Padding="10,5"
+                              FontSize="11"
+                              Content="AI 状態をリセット"
+                              Click="ResetAiActivityButton_Click"
+                              Style="{StaticResource BaseButton}"
+                              ToolTip="全スロット（A〜D）の作業中・完了表示を待機状態に戻します（設定ファイルや実行中の AI は変更しません）" />
+                    </Grid>
                     <ItemsControl x:Name="AiNotifyHookLocationsItemsControl">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>

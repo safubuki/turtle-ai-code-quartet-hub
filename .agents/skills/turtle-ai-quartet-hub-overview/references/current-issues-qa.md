@@ -253,3 +253,8 @@
 - 同ツールの古いセッションが未完了のまま別セッションが開始・完了・`Acknowledge()` されても `Working` へ逆戻りしないこと（別ツール並行は維持）、`Done` 状態からフォーカス切替なしで再実行したとき標準・縮小・極小の 3 テンプレートとも完了表示が消えて LED 周回へ切り替わること。
 - 1 面フォーカス中のスロットが管理外ウィンドウに隠れているときのカードクリックで前面化と同時に `AcknowledgeAiActivityOnFocusChange` が呼ばれ `Done` が消灯すること。実ユーザーホームのフックファイルや `%LOCALAPPDATA%\TurtleAIQuartetHub` は自動変更しない。
 - **確認結果**: `dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0・エラー 0、全回帰チェック（`AiActivityTests` 49/49、`AiDoneFireflyTests` 9/9 を含む計 310/310）、`.\scripts\Build-Panel.ps1`、`.\scripts\Test-StoreReadiness.ps1`（`FAIL` 0 件）がいずれも成功。
+
+## タイトルバーのダウンロードボタン・設定の AI 状態リセット QA（2026-11-17 追加）
+- 標準表示タイトルバーで `SystemMonitorButton` の右隣、`PullRequestInboxButton` の左隣に `DownloadsFolderButton` が並び、クリックで実ダウンロードフォルダ（移動先を含む）を Explorer で開くこと（縮小・極小では `TitleBarToolButtonsPanel` ごと非表示）。
+- 設定画面の「AI の作業通知」右上に「AI 状態をリセット」ボタンが配置され、押下で全スロット（A〜D）の作業中・完了表示が待機へ戻り、設定ファイルや実フック・通知スクリプトには触れないこと。歯車を開き直すと結果メッセージが消えること。
+- **確認結果**: `dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0・エラー 0、全 21 スイート（`SystemMonitorAndCardTitleTests` 22/22、`TitleBarIndicatorTests` 18/18、`AiActivityTests` 50/50 ほか計 318/318）、`.\scripts\Build-Panel.ps1`、`.\scripts\Test-StoreReadiness.ps1` が合格（稼働中の `TurtleAIQuartetHub.exe` ロック保護のため `dist` の上書きは未実施）。

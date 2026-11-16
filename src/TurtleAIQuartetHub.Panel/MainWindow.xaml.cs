@@ -662,6 +662,7 @@ public partial class MainWindow : Window
         HideAiHookGuide(restoreFocus: false);
         AiNotifyDetailsExpander.IsExpanded = false;
         AiNotifyActionStatusText.Visibility = Visibility.Collapsed;
+        AiNotifyActionStatusText.Text = string.Empty;
         PanelStateActionStatusText.Visibility = Visibility.Collapsed;
         PanelStateActionStatusText.Text = string.Empty;
         _statusStore.ResetApplicationPathSettings();
@@ -951,21 +952,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = QuoteExplorerArgument(targetPath),
-                UseShellExecute = false
-            });
-            _statusStore.Message = $"フォルダを開きました: {targetPath}";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            DiagnosticLog.Write(ex);
-            _statusStore.Message = $"フォルダを開けませんでした: {targetPath}";
-        }
+        _statusStore.Message = TryOpenFolderInExplorer(targetPath)
+            ? $"フォルダを開きました: {targetPath}"
+            : $"フォルダを開けませんでした: {targetPath}";
     }
 
     private void SystemMonitorTimer_Tick(object? sender, EventArgs e)
@@ -2703,6 +2692,51 @@ public partial class MainWindow : Window
         }
     }
 
+    private void DownloadsFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        var downloadsPath = DownloadsFolderResolver.Resolve();
+        if (string.IsNullOrWhiteSpace(downloadsPath) || !System.IO.Directory.Exists(downloadsPath))
+        {
+            _statusStore.Message = string.IsNullOrWhiteSpace(downloadsPath)
+                ? "ダウンロードフォルダの場所を特定できませんでした。"
+                : $"ダウンロードフォルダが見つかりません: {downloadsPath}";
+            return;
+        }
+
+        if (TryOpenFolderInExplorer(downloadsPath))
+        {
+            _statusStore.Message = $"ダウンロードフォルダを開きました: {downloadsPath}";
+        }
+        else
+        {
+            _statusStore.Message = $"ダウンロードフォルダを開けませんでした: {downloadsPath}";
+        }
+    }
+
+    private bool TryOpenFolderInExplorer(string folderPath)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = QuoteExplorerArgument(folderPath),
+                UseShellExecute = false
+            });
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            DiagnosticLog.Write(ex);
+            return false;
+        }
+    }
+
     private bool OpenInBrowser(string url)
     {
         try
@@ -2737,21 +2771,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = QuoteExplorerArgument(explorerPath),
-                UseShellExecute = false
-            });
-            _statusStore.Message = $"スロット {slot.Name} のフォルダを開きました: {explorerPath}";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            DiagnosticLog.Write(ex);
-            _statusStore.Message = $"フォルダを開けませんでした: {explorerPath}";
-        }
+        _statusStore.Message = TryOpenFolderInExplorer(explorerPath)
+            ? $"スロット {slot.Name} のフォルダを開きました: {explorerPath}"
+            : $"フォルダを開けませんでした: {explorerPath}";
     }
 
     private void ClearSlotPanelInfoButton_Click(object sender, RoutedEventArgs e)
@@ -6563,6 +6585,7 @@ public partial class MainWindow : Window
         LoadSettingsButton.IsEnabled = !busy;
         CloseAllButton.IsEnabled = !busy;
         SystemMonitorButton.IsEnabled = !busy;
+        DownloadsFolderButton.IsEnabled = !busy;
         SettingsButton.IsEnabled = !busy;
         HelpButton.IsEnabled = !busy;
         DisplayModeButton.IsEnabled = !busy;

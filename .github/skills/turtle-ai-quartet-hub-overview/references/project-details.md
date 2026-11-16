@@ -206,3 +206,7 @@
 ## AI 実行状態のスタック・解除漏れ・誤点灯ルート修正（2026-11-17 追加）
 - パイプの単発・1 インスタンス制限による取りこぼし、Claude（`StopFailure` / `SessionEnd`）・Codex（`SessionEnd`）・Copilot（`errorOccurred` / `sessionEnd` / `agentStop.reason`）および Antigravity cancel 表記漏れ、同ツール孤立セッションキーの残存による `Done` 解除後の `Working` 逆戻り、外部ウィンドウ遮蔽下フォーカス再クリック時の未解除、`SetForegroundWindow` 失敗時の最大化未反映をすべて修正した。
 - 詳細と不変条件は `implementation-patterns.md` §12 と `current-issues-qa.md` に記録。既存のフック設定済みの実環境ホームでは、新イベント・強化版 `ai-notify.ps1` を反映するため歯車設定から「フックを設定」の再実行を案内する（自動書換は行わない）。
+
+## ダウンロードフォルダボタン・AI 状態リセット機能追加（2026-11-17 追加）
+- タイトルバーのプルリクエスト受信箱ボタン（`PullRequestInboxButton`）のすぐ左側に、`DownloadsFolderButton`（`&#xE896;`）を追加し、`SHGetKnownFolderPath(FOLDERID_Downloads)` 優先＋フォールバックでダウンロードフォルダを Explorer で開けるようにした（標準表示時のみ表示）。
+- 設定画面の「AI の作業通知」セクション右上に `ResetAiActivityButton`（「AI 状態をリセット」）を追加し、Swarm 利用時などの表示ズレ時に設定ファイルへ触れず全スロット（A〜D）の `AiTracker` 表示状態を待機へ即時リセットできるようにした。詳細は `implementation-patterns.md` §13 と `current-issues-qa.md` に記録。
