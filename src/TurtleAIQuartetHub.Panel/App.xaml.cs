@@ -72,13 +72,15 @@ public partial class App : Application
 
         _singleInstanceCoordinator.CommandReceived += args =>
         {
+            var isAiEvent = args.Length > 0
+                && string.Equals(args[0], Services.AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase);
             _ = Dispatcher.InvokeAsync(() =>
             {
                 if (MainWindow is MainWindow mainWindow)
                 {
                     mainWindow.ExecuteExternalCommand(args);
                 }
-            }, DispatcherPriority.Background);
+            }, isAiEvent ? DispatcherPriority.Normal : DispatcherPriority.Background);
         };
 
         var mainWindow = new MainWindow();

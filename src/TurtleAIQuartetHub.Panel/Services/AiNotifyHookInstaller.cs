@@ -41,9 +41,9 @@ public sealed class AiNotifyHookInstaller
     };
 
     // Claude Code / Codex / Grok は同じ形式（event → [{ hooks: [{ type, command, timeout }] }]）。
-    private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "Stop", "Notification"];
-    private static readonly string[] CodexEvents = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt"];
-    private static readonly string[] CopilotEvents = ["userPromptSubmitted", "agentStop"];
+    private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "Stop", "StopFailure", "SessionEnd", "Notification"];
+    private static readonly string[] CodexEvents = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt", "SessionEnd"];
+    private static readonly string[] CopilotEvents = ["userPromptSubmitted", "agentStop", "errorOccurred", "sessionEnd"];
     // Grok は中断と API エラーを Stop ではなく StopCancelled / StopFailure で知らせる。
     private static readonly string[] GrokEvents = ["UserPromptSubmit", "Stop", "StopFailure", "StopCancelled", "Notification"];
     // Antigravity は名前付きフックの下に平坦なイベント配列（PreInvocation / Stop）を持つ。
@@ -666,7 +666,9 @@ public sealed class AiNotifyHookInstaller
                 $raw = $reader.ReadToEnd()
             }
             $data = $null
-            if ($raw) { $data = $raw | ConvertFrom-Json }
+            if ($raw) {
+                try { $data = $raw | ConvertFrom-Json } catch { $data = $null }
+            }
             $cwd = ''
             $session = ''
             $detail = ''
@@ -677,6 +679,8 @@ public sealed class AiNotifyHookInstaller
                         if ($wp) { $cwd = [string]$wp; break }
                     }
                 }
+                elseif ($data.workspaceRoot) { $cwd = [string]$data.workspaceRoot }
+                elseif ($data.workspace_root) { $cwd = [string]$data.workspace_root }
                 if ($data.session_id) { $session = [string]$data.session_id }
                 elseif ($data.sessionId) { $session = [string]$data.sessionId }
                 elseif ($data.conversationId) { $session = [string]$data.conversationId }
@@ -684,15 +688,31 @@ public sealed class AiNotifyHookInstaller
                 if ($data.notification_type) { $detail = [string]$data.notification_type }
                 elseif ($data.notificationType) { $detail = [string]$data.notificationType }
                 elseif ($data.terminationReason) { $detail = [string]$data.terminationReason }
+                elseif ($data.termination_reason) { $detail = [string]$data.termination_reason }
+                elseif ($data.reason) { $detail = [string]$data.reason }
+                elseif ($null -ne $data.recoverable) {
+                    if ([bool]$data.recoverable) { $detail = 'recoverable' }
+                    else { $detail = 'fatal' }
+                }
             }
             if (-not $cwd) { $cwd = (Get-Location).Path }
             $payload = ConvertTo-Json -Compress -InputObject @('--ai-event', $Tool, $HookEvent, $cwd, $session, $detail)
-            $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::Out)
-            $pipe.Connect(800)
-            $writer = New-Object System.IO.StreamWriter($pipe, (New-Object System.Text.UTF8Encoding($false)))
-            $writer.Write($payload)
-            $writer.Flush()
-            $pipe.Dispose()
+            for ($attempt = 0; $attempt -lt 2; $attempt++) {
+                $pipe = $null
+                try {
+                    $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::Out)
+                    $pipe.Connect(400)
+                    $writer = New-Object System.IO.StreamWriter($pipe, (New-Object System.Text.UTF8Encoding($false)))
+                    $writer.Write($payload)
+                    $writer.Flush()
+                    $pipe.Dispose()
+                    $pipe = $null
+                    break
+                } catch {
+                    if ($pipe) { try { $pipe.Dispose() } catch { } }
+                    if ($attempt -eq 0) { Start-Sleep -Milliseconds 30 }
+                }
+            }
         } catch { }
         Write-Output '{}'
         exit 0

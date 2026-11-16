@@ -1,19 +1,22 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json.Nodes;
 using TurtleAIQuartetHub.Panel.Models;
 using TurtleAIQuartetHub.Panel.Services;
 
-// AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引きを確認する。
+// AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 40;
+    public const int Count = 49;
 
-    public static void Run(List<string> failures)
+    public static async Task RunAsync(List<string> failures)
     {
         VerifyParser(failures);
         VerifyTrackerTransitions(failures);
         VerifySlotMatching(failures);
         VerifyInstaller(failures);
+        await VerifyPipeConcurrencyAsync(failures);
     }
 
     private static void VerifyParser(List<string> failures)
@@ -40,9 +43,22 @@ internal static class AiActivityTests
             agStart is { Tool: "antigravity", Kind: AiHookEventKind.Start, SessionId: "conv-1" }
             && AiHookEventParser.Classify("Stop", "NO_TOOL_CALL") == AiHookEventKind.Stop
             && AiHookEventParser.Classify("Stop", "ERROR") == AiHookEventKind.Stop);
-        Check(failures, "通知: Antigravity の USER_CANCELED は中断として扱う",
+        Check(failures, "通知: Antigravity の USER_CANCELED や cancel / abort 系は中断として扱う",
             AiHookEventParser.Classify("Stop", "USER_CANCELED") == AiHookEventKind.Interrupt
-            && AiHookEventParser.Classify("Stop", "user_canceled") == AiHookEventKind.Interrupt);
+            && AiHookEventParser.Classify("Stop", "user_canceled") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("Stop", "cancel") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("Stop", "cancelled") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("Stop", "aborted") == AiHookEventKind.Interrupt);
+        Check(failures, "通知: Claude / Codex の SessionEnd・StopFailure と Copilot の中止/回復不能エラーを正しく分類する",
+            AiHookEventParser.Classify("SessionEnd", "") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("sessionEnd", "") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("StopFailure", "") == AiHookEventKind.Stop
+            && AiHookEventParser.Classify("agentStop", "complete") == AiHookEventKind.Stop
+            && AiHookEventParser.Classify("agentStop", "abort") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("agentStop", "user_exit") == AiHookEventKind.Interrupt
+            && AiHookEventParser.Classify("errorOccurred", "recoverable") == AiHookEventKind.Unknown
+            && AiHookEventParser.Classify("errorOccurred", "fatal") == AiHookEventKind.Stop
+            && AiHookEventParser.Classify("errorOccurred", "") == AiHookEventKind.Stop);
         var agTracker = new AiActivityTracker();
         agTracker.Apply(agStart!, DateTimeOffset.UtcNow);
         agTracker.Apply(AiHookEventParser.TryParse(["--ai-event", "antigravity", "Stop", @"C:\work\a", "conv-1", "USER_CANCELED"])!, DateTimeOffset.UtcNow);
@@ -99,6 +115,38 @@ internal static class AiActivityTests
             slotA.AiActivity == AiActivityState.Idle && slotB.AiActivity == AiActivityState.Working);
         slotB.ClearWindow();
         Check(failures, "状態: ウィンドウが閉じたら消す", slotB.AiActivity == AiActivityState.Idle);
+
+        var rerun = new AiActivityTracker();
+        rerun.Apply(Event("antigravity", AiHookEventKind.Start, "conv-1"), now);
+        rerun.Apply(Event("antigravity", AiHookEventKind.Stop, "conv-1"), now);
+        var movedToWorkingOnRerun = rerun.State == AiActivityState.Done
+            && rerun.Apply(Event("antigravity", AiHookEventKind.Start, "conv-1"), now.AddSeconds(5))
+            && rerun.State == AiActivityState.Working;
+        Check(failures, "状態: 完了後にフォーカス切替せず同じツールを再実行すると完了を消して作業中へ戻る",
+            movedToWorkingOnRerun);
+
+        var replacedOrphan = new AiActivityTracker();
+        replacedOrphan.Apply(Event("claude", AiHookEventKind.Start, "old-aborted"), now);
+        replacedOrphan.Apply(Event("claude", AiHookEventKind.Start, "new-session"), now.AddSeconds(10));
+        replacedOrphan.Apply(Event("claude", AiHookEventKind.Stop, "new-session"), now.AddSeconds(20));
+        var ackClearedCleanly = replacedOrphan.State == AiActivityState.Done
+            && replacedOrphan.Acknowledge()
+            && replacedOrphan.State == AiActivityState.Idle;
+        Check(failures, "状態: 同ツールの別セッション再開始後に完了を解除しても、古い未完了セッションで作業中へ戻らない",
+            ackClearedCleanly);
+
+        var emptySessionInterrupt = new AiActivityTracker();
+        emptySessionInterrupt.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
+        emptySessionInterrupt.Apply(Event("claude", AiHookEventKind.Interrupt, ""), now.AddSeconds(3));
+        Check(failures, "状態: SessionId が空の Interrupt でも同ツールの作業中を解除する",
+            emptySessionInterrupt.State == AiActivityState.Idle);
+
+        var unkeyedStartThenKeyedStop = new AiActivityTracker();
+        unkeyedStartThenKeyedStop.Apply(Event("antigravity", AiHookEventKind.Start, ""), now);
+        unkeyedStartThenKeyedStop.Apply(Event("antigravity", AiHookEventKind.Stop, "conv-9"), now.AddSeconds(5));
+        unkeyedStartThenKeyedStop.Acknowledge();
+        Check(failures, "状態: 開始時に SessionId が空で完了時に付与されても、解除後に作業中へ戻らない",
+            unkeyedStartThenKeyedStop.State == AiActivityState.Idle);
     }
 
     private static void VerifySlotMatching(List<string> failures)
@@ -170,12 +218,30 @@ internal static class AiActivityTests
                 && !Directory.Exists(Path.Combine(home, ".gemini")));
             Check(failures, "フック設定: 通知スクリプトは ASCII だけ（PowerShell 5.1 の文字化け対策）",
                 File.ReadAllText(installer.ScriptPath).All(character => character < 128));
-            Check(failures, "フック設定: 通知詳細は各ツールの項目名を読む",
+            Check(failures, "フック設定: Claude Code は StopFailure と SessionEnd も含めて登録する",
+                claude["hooks"]!.AsObject().ContainsKey("UserPromptSubmit")
+                && claude["hooks"]!.AsObject().ContainsKey("Stop")
+                && claude["hooks"]!.AsObject().ContainsKey("StopFailure")
+                && claude["hooks"]!.AsObject().ContainsKey("SessionEnd")
+                && claude["hooks"]!.AsObject().ContainsKey("Notification"));
+            var codexHooks = JsonNode.Parse(File.ReadAllText(installer.CodexHooksPath))!.AsObject()["hooks"]!.AsObject();
+            Check(failures, "フック設定: Codex は SessionEnd も含めて登録する",
+                codexHooks.ContainsKey("UserPromptSubmit")
+                && codexHooks.ContainsKey("Stop")
+                && codexHooks.ContainsKey("PermissionRequest")
+                && codexHooks.ContainsKey("Interrupt")
+                && codexHooks.ContainsKey("SessionEnd"));
+            Check(failures, "フック設定: 通知詳細は各ツールの項目名と失敗・理由・リトライにも対応する",
                 AiNotifyHookInstaller.NotifyScript.Contains("notification_type", StringComparison.Ordinal)
                 && AiNotifyHookInstaller.NotifyScript.Contains("notificationType", StringComparison.Ordinal)
                 && AiNotifyHookInstaller.NotifyScript.Contains("conversationId", StringComparison.Ordinal)
                 && AiNotifyHookInstaller.NotifyScript.Contains("workspacePaths", StringComparison.Ordinal)
-                && AiNotifyHookInstaller.NotifyScript.Contains("terminationReason", StringComparison.Ordinal));
+                && AiNotifyHookInstaller.NotifyScript.Contains("workspaceRoot", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("terminationReason", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("termination_reason", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("$data.reason", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("recoverable", StringComparison.Ordinal)
+                && AiNotifyHookInstaller.NotifyScript.Contains("$attempt", StringComparison.Ordinal));
             Check(failures, "フック設定: コマンドは / 区切りのパスを引用符で囲む（Git Bash でも動く）",
                 installer.BuildCommand("claude", "Stop").Contains($"\"{installer.ScriptPath.Replace('\\', '/')}\"", StringComparison.Ordinal));
 
@@ -191,6 +257,19 @@ internal static class AiActivityTests
                 remaining.ToJsonString());
             var codexAfter = JsonNode.Parse(File.ReadAllText(installer.CodexHooksPath))!.AsObject();
             Check(failures, "フック解除: Codex の hooks.json からハブの項目が消える", codexAfter["hooks"] is null);
+
+            Directory.CreateDirectory(Path.Combine(home, ".copilot"));
+            var copilotInstalled = installer.Install();
+            var copilotHooks = JsonNode.Parse(File.ReadAllText(installer.CopilotHookPath))!.AsObject()["hooks"]!.AsObject();
+            Check(failures, "フック設定: GitHub Copilot は errorOccurred と sessionEnd も含めて登録する",
+                copilotInstalled.Single(result => result.Tool == "copilot").Status == AiNotifyHookStatus.Installed
+                && copilotHooks.ContainsKey("userPromptSubmitted")
+                && copilotHooks.ContainsKey("agentStop")
+                && copilotHooks.ContainsKey("errorOccurred")
+                && copilotHooks.ContainsKey("sessionEnd"),
+                copilotHooks.ToJsonString());
+            installer.Uninstall();
+            Directory.Delete(Path.Combine(home, ".copilot"), recursive: true);
 
             var hooksDirectory = Path.Combine(home, ".grok", "hooks");
             Directory.CreateDirectory(hooksDirectory);
@@ -311,6 +390,90 @@ internal static class AiActivityTests
             catch (IOException)
             {
             }
+        }
+    }
+
+    private static async Task VerifyPipeConcurrencyAsync(List<string> failures)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var mutexName = @"Local\TurtleHubTest_" + token;
+        var pipeName = "TurtleHubPipeTest_" + token;
+        var tempScript = Path.Combine(Path.GetTempPath(), $"ai-notify-test-{token}.ps1");
+        try
+        {
+            using var coordinator = new SingleInstanceCoordinator(mutexName, pipeName);
+            var received = new ConcurrentQueue<string[]>();
+            var all16Received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            coordinator.CommandReceived += args =>
+            {
+                received.Enqueue(args);
+                if (received.Count >= 16)
+                {
+                    all16Received.TrySetResult();
+                }
+            };
+
+            const int burstCount = 16;
+            var sendTasks = Enumerable.Range(0, burstCount)
+                .Select(i => coordinator.SendToPrimaryAsync(["--ai-event", "codex", i % 2 == 0 ? "UserPromptSubmit" : "Stop", @"C:\work\a", $"s{i}", ""]))
+                .ToArray();
+            var sendResults = await Task.WhenAll(sendTasks);
+            await Task.WhenAny(all16Received.Task, Task.Delay(3000));
+            Check(failures, "パイプ受信: 同時多発した 16 件のフック通知を 1 件も落とさず受け取れる",
+                sendResults.All(ok => ok) && received.Count == burstCount,
+                $"sent={sendResults.Count(ok => ok)}/{burstCount}, received={received.Count}");
+
+            while (received.TryDequeue(out _)) { }
+            var malformedDelivered = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            coordinator.CommandReceived += args => malformedDelivered.TrySetResult(args);
+
+            var testScriptContent = AiNotifyHookInstaller.NotifyScript.Replace("'TurtleAIQuartetHub.Commands'", $"'{pipeName}'", StringComparison.Ordinal);
+            File.WriteAllText(tempScript, testScriptContent, new System.Text.UTF8Encoding(false));
+
+            var workingDir = Path.Combine(Path.GetTempPath(), "turtle-ps-cwd-" + token);
+            Directory.CreateDirectory(workingDir);
+            try
+            {
+                using var ps = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{tempScript}\" -Tool antigravity -HookEvent Stop",
+                        WorkingDirectory = workingDir,
+                        UseShellExecute = false,
+                        RedirectStandardInput = true,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true
+                    }
+                };
+                ps.Start();
+                await ps.StandardInput.WriteAsync("{invalid-json");
+                ps.StandardInput.Close();
+                var stdout = (await ps.StandardOutput.ReadToEndAsync()).Trim();
+                using var timeoutCts = new CancellationTokenSource(5000);
+                await ps.WaitForExitAsync(timeoutCts.Token);
+                var delivered = await Task.WhenAny(malformedDelivered.Task, Task.Delay(3000)) == malformedDelivered.Task
+                    ? await malformedDelivered.Task
+                    : null;
+
+                Check(failures, "通知スクリプト: 不正 JSON が渡ってもクラッシュせず現在フォルダを補完してパイプ送信できる",
+                    ps.ExitCode == 0
+                    && stdout == "{}"
+                    && delivered is { Length: >= 4 }
+                    && delivered[1] == "antigravity"
+                    && delivered[2] == "Stop"
+                    && string.Equals(delivered[3].TrimEnd('\\'), workingDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase),
+                    $"exit={ps.ExitCode}, stdout={stdout}, delivered={string.Join(",", delivered ?? [])}");
+            }
+            finally
+            {
+                try { Directory.Delete(workingDir, recursive: true); } catch (IOException) { }
+            }
+        }
+        finally
+        {
+            try { File.Delete(tempScript); } catch (IOException) { }
         }
     }
 

@@ -12,7 +12,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // 完了時（Done）の少し早く滑らかなホタル点滅（AiDoneFirefly）および IDE / CLI 枠内非塗りつぶし（GroupHeaderCutout）の回帰を確認する。
 internal static class AiDoneFireflyTests
 {
-    public const int Count = 7;
+    public const int Count = 9;
 
     public static void Run(List<string> failures)
     {
@@ -174,6 +174,41 @@ internal static class AiDoneFireflyTests
             && mTrough.MicroWashOpacity < 0.05 && mPeak.MicroWashOpacity > 0.60
             && mTrough.HaloOpacity < 0.20 && mPeak.HaloOpacity > 0.85,
             $"compactWash={cTrough.CardWashOpacity:F2}->{cPeak.CardWashOpacity:F2}, microWash={mTrough.MicroWashOpacity:F2}->{mPeak.MicroWashOpacity:F2}");
+
+        // 3. 完了(Done)のまま再実行(Working)へ移ったとき、3テンプレートとも完了表示が残り続けず LED 周回へ即切り替わり、
+        //    中断(Interrupt)で即 Idle へ戻ること（フォーカス切替なし遷移の確認）
+        var hosts = new[] { (stdSlot, stdHost), (compactSlot, compactHost), (microSlot, microHost) };
+        var transitionOk = true;
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (slot, host) in hosts)
+        {
+            slot.AiTracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, slot.SavedWorkspacePath, "t"), now);
+            slot.AiTracker.Apply(new AiHookEvent("claude", "Stop", AiHookEventKind.Stop, slot.SavedWorkspacePath, "t"), now);
+            slot.NotifyAiActivityChanged();
+            host.UpdateLayout();
+
+            slot.AiTracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, slot.SavedWorkspacePath, "t"), now.AddSeconds(2));
+            slot.NotifyAiActivityChanged();
+            host.UpdateLayout();
+
+            var orbit = FindVisualChildren<AiCardOrbitGlow>(host).FirstOrDefault();
+            var doneHidden = FindVisualChildren<Border>(host)
+                .Where(b => AiDoneFirefly.GetRole(b) != AiDonePulseRole.None)
+                .All(b => b.Visibility == Visibility.Collapsed);
+            var workingVisible = orbit is not null && orbit.Visibility == Visibility.Visible;
+
+            slot.AiTracker.Apply(new AiHookEvent("claude", "Interrupt", AiHookEventKind.Interrupt, slot.SavedWorkspacePath, "t"), now.AddSeconds(3));
+            slot.NotifyAiActivityChanged();
+            host.UpdateLayout();
+
+            var idleCollapsed = orbit is not null && orbit.Visibility == Visibility.Collapsed;
+            transitionOk &= doneHidden && workingVisible && idleCollapsed;
+        }
+
+        Check(
+            failures,
+            "完了→作業中→待機遷移: フォーカス切替なしで作業中へ移ると完了表示が消え周回へ切り替わり、中断で消灯すること",
+            transitionOk);
     }
 
     private static void VerifyGuideAndXamlWiring(List<string> failures)

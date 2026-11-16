@@ -48,17 +48,23 @@ public static class AiHookEventParser
                 // Antigravity は毎回のモデル呼び出し前に PreInvocation を送る。作業中への遷移はべき等に保つ。
                 return AiHookEventKind.Start;
             case "stop":
-                // Antigravity の USER_CANCELED はユーザー自身による中断。偽の完了（水色）を残さず、
-                // 確認済みの中断として緑の周回だけを止める。
-                return detail.Trim().Equals("user_canceled", StringComparison.OrdinalIgnoreCase)
+            case "agentstop":
+                // Antigravity の USER_CANCELED / cancel 等や Copilot の abort / user_exit は
+                // ユーザー自身による中断。偽の完了（青）を残さず、作業中の緑だけを止める。
+                return IsCancellationReason(detail)
                     ? AiHookEventKind.Interrupt
                     : AiHookEventKind.Stop;
-            case "agentstop":
             case "stopfailure":
             case "stopcancelled":
-                // Grok は完了・API エラー・中断を別イベントで知らせる。どれも同じ完了の光にし、
-                // 中断や失敗のあと作業中の緑が 60 分残らないようにする。
+                // Claude Code / Grok は失敗・中断を Stop 以外のイベントで知らせる。
+                // 作業中の緑が 60 分残らないよう同じ完了表示へ移す。
                 return AiHookEventKind.Stop;
+            case "erroroccurred":
+                // Copilot CLI の回復可能なツールエラーはターン継続中のため無視し、
+                // 非回復の失敗だけが作業中を終了して完了（青）で知らせる。
+                return detail.Trim().Equals("recoverable", StringComparison.OrdinalIgnoreCase)
+                    ? AiHookEventKind.Unknown
+                    : AiHookEventKind.Stop;
             case "permissionrequest":
                 // Codex の許可確認は作業の途中。開始済みの緑の周回を続け、青い光にはしない。
                 return AiHookEventKind.Unknown;
@@ -70,10 +76,28 @@ public static class AiHookEventParser
                     _ => AiHookEventKind.Unknown
                 };
             case "interrupt":
+            case "sessionend":
                 return AiHookEventKind.Interrupt;
             default:
                 return AiHookEventKind.Unknown;
         }
+    }
+
+    private static bool IsCancellationReason(string detail)
+    {
+        return detail.Trim().ToLowerInvariant() switch
+        {
+            "user_canceled"
+            or "user_cancelled"
+            or "cancel"
+            or "canceled"
+            or "cancelled"
+            or "abort"
+            or "aborted"
+            or "user_exit"
+            or "interrupted" => true,
+            _ => false
+        };
     }
 }
 
@@ -100,16 +124,20 @@ public sealed class AiActivityTracker
         switch (hookEvent.Kind)
         {
             case AiHookEventKind.Start:
+                // 同一ツールの別セッションが中断未通知のまま残っていると、後続完了の解除時に
+                // 緑の作業中へ戻ってしまうため、同ツールの古いセッションは置き換える。
+                // 異なるツール（例: Claude と Copilot）は並行動作として残す。
+                RemoveSessionsForTool(hookEvent.Tool, exceptKey: key);
                 _activeSessions[key] = now;
                 // 新しく指示を出した＝そのウィンドウを見ている。前の完了の光は役目を終えている。
                 _needsAttention = false;
                 break;
             case AiHookEventKind.Stop:
-                _activeSessions.Remove(key);
+                RemoveMatchingOrUnkeyedSessions(hookEvent.Tool, hookEvent.SessionId, key);
                 _needsAttention = true;
                 break;
             case AiHookEventKind.Interrupt:
-                _activeSessions.Remove(key);
+                RemoveMatchingOrUnkeyedSessions(hookEvent.Tool, hookEvent.SessionId, key);
                 break;
             default:
                 return false;
@@ -117,6 +145,41 @@ public sealed class AiActivityTracker
 
         LastTool = hookEvent.Tool;
         return before != State;
+    }
+
+    private void RemoveMatchingOrUnkeyedSessions(string tool, string sessionId, string key)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            RemoveSessionsForTool(tool);
+            return;
+        }
+
+        _activeSessions.Remove(key);
+        _activeSessions.Remove(tool);
+    }
+
+    private void RemoveSessionsForTool(string tool, string? exceptKey = null)
+    {
+        if (string.IsNullOrEmpty(tool))
+        {
+            return;
+        }
+
+        var prefix = tool + ":";
+        foreach (var existingKey in _activeSessions.Keys.ToList())
+        {
+            if (exceptKey is not null && string.Equals(existingKey, exceptKey, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (string.Equals(existingKey, tool, StringComparison.OrdinalIgnoreCase)
+                || existingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                _activeSessions.Remove(existingKey);
+            }
+        }
     }
 
     // パネルでフォーカス表示を切り替えた（1 面フォーカスにした／4 面表示へ戻した）ので完了の光を消す。

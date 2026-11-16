@@ -69,8 +69,8 @@ AI ツールとフックのプログラムのあいだは、名前付きパイ�
 |---|---|---|
 | 指示を送って、AI が作業を始めた | `UserPromptSubmit`、Copilot の `userPromptSubmitted`、Antigravity の `PreInvocation` | カードの枠線の上を、緑の LED 光が一周する。ふわっとゆっくり回り、終盤に少し加速 |
 | 許可や質問で止まっている | `permission_prompt`、`elicitation_dialog`、Codex の `PermissionRequest` | 枠を回る緑の光のまま。変えない |
-| 答えを出した、失敗した、途中で止まった | `Stop`、Copilot の `agentStop`、Grok の `StopFailure` / `StopCancelled` | カードと A〜D アイコンが少し早めのホタル点滅で青く光る |
-| 次の入力を待っているだけ | `idle_prompt` など | 変えない |
+| 答えを出した、失敗した、途中で止まった | `Stop` / `StopFailure`、Copilot の `agentStop` / 非回復の `errorOccurred`、Grok の `StopFailure` / `StopCancelled` | カードと A〜D アイコンが少し早めのホタル点滅で青く光る |
+| 次の入力を待っているだけ | `idle_prompt`、回復可能なツールエラー（`errorOccurred` + `recoverable`）など | 変えない |
 
 許可や質問の確認は、作業が始まったあとの続きです。カルテットハブは、許可や質問の確認を特別な状態として見ません。青く光るのは、応答が終わったときだけです。
 
@@ -154,13 +154,13 @@ Antigravity は CLI（`agy`）・IDE・アプリの共通設定 `~/.gemini/confi
 
 Grok は、Claude 用の `~/.claude/settings.json` も実行することがあります。Claude 向けのコマンドとして登録されているため、ツールチップが「Claude Code」になることがあります。光の色は同じです。カルテットハブは Grok の `config.toml` を書き換えないので、Claude 用フックの読み込みは止めません。
 
-| ツール | 開始 → 緑 | 応答終了 → 青いホタル点滅 | 許可・質問の確認 | 中断 |
+| ツール | 開始 → 緑 | 応答終了 → 青いホタル点滅 | 許可・質問の確認 | 中断・終了 |
 |---|---|---|---|---|
-| Claude Code | `UserPromptSubmit` | `Stop` | `permission_prompt` / `elicitation_dialog` は緑のまま | 登録なし |
-| Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Interrupt` は光を付けない |
-| GitHub Copilot | `userPromptSubmitted` | `agentStop` | 知らせ自体がない。緑のまま | 登録なし |
+| Claude Code | `UserPromptSubmit` | `Stop` / `StopFailure` | `permission_prompt` / `elicitation_dialog` は緑のまま | `SessionEnd` で光を付けずに終了（`Ctrl+C`/`Esc` の途中中断は公式仕様上イベントが出ないため直前の作業中が残り、同ツール次セッション開始時に置換） |
+| Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Interrupt` / `SessionEnd` は光を付けずに終了 |
+| GitHub Copilot | `userPromptSubmitted` | `agentStop` / 非回復 `errorOccurred` | 回復可能 `errorOccurred` は緑のまま | `agentStop`（`abort` / `user_exit` 等）・`sessionEnd` は光を付けずに終了 |
 | Grok | `UserPromptSubmit` | `Stop` / `StopFailure` / `StopCancelled` | `permission_prompt` / `elicitation_dialog` は緑のまま | `StopCancelled` も同じ青 |
-| Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED`）は光を付けない |
+| Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED` / `cancel` / `aborted` 系）は光を付けない |
 
 Grok と Antigravity の `Stop`、および開始フックは、フックの出力によって処理を止められます。通知スクリプトは空の `{}` を出して終了コード 0 で終わり、止めたり続けさせたりしません。Grok の `StopCancelled` は、次の指示の開始より遅れて届くことがあります。遅れて届いたときは、すでに始まった作業に対して、完了の光が付くことがあります。Antigravity の Windows フック実行系は `-File "..."` の引用符を拒否するため、空白がないパスは無引用の `/` 区切り、ユーザーホームに空白があるときは `hooks.json` 基準の相対パス `../../.turtle-ai-quartet-hub/ai-notify.ps1` で登録します。
 
@@ -187,9 +187,9 @@ Grok と Antigravity の `Stop`、および開始フックは、フックの出�
 ```
 
 - `tool` と `event` は、カルテットハブが登録した起動コマンドの引数です。
-- 標準入力の JSON から、`cwd`（無い場合は `workspacePaths` の先頭）、`session_id` / `sessionId` / `conversationId` / `conversation_id`、`notification_type` / `notificationType` / `terminationReason` を取り出します。これらも無いときの作業フォルダは、スクリプトの現在フォルダを使います。
-- 送り先は、同じパソコンの名前付きパイプ `TurtleAIQuartetHub.Commands`（`\\.\pipe\TurtleAIQuartetHub.Commands`）です。カルテットハブが受け口を開き、スクリプトが1件書いて切断します。返事は読みません。先にパイプがあるかを確認し、接続の待ちは最大800ミリ秒です。送信に失敗しても AI の結果には影響させず、`{}` を出して終了コード 0 で終わります。スクリプトが終わったことと、カルテットハブへ届いたことは別です。
-- カルテットハブは `tool:session` ごとに作業中の記録を持ちます。セッション番号が空のときは、ツール名をキーにします。
+- 標準入力の JSON から、`cwd`（無い場合は `workspacePaths` の先頭・`workspaceRoot`・`workspace_root`）、`session_id` / `sessionId` / `conversationId` / `conversation_id`、`notification_type` / `notificationType` / `terminationReason` / `termination_reason` / `reason` / `recoverable` を取り出します。JSON が読めないときやフォルダ項目が無いときの作業フォルダは、スクリプトの現在フォルダを使います。
+- 送り先は、同じパソコンの名前付きパイプ `TurtleAIQuartetHub.Commands`（`\\.\pipe\TurtleAIQuartetHub.Commands`）です。カルテットハブは複数接続を受けられる受け口を開き、スクリプトが1件書いて切断します。返事は読みません。先にパイプがあるかを確認し、一時的な接続失敗時は短い待機を挟んで再試行します（最大約830ミリ秒）。送信に失敗しても AI の結果には影響させず、`{}` を出して終了コード 0 で終わります。スクリプトが終わったことと、カルテットハブへ届いたことは別です。
+- カルテットハブはツールごとに作業中セッションを持ち、同じツールで別のセッション番号が開始した場合は古い未完了セッションを置き換えます（異なるツール同士は並行動作として維持）。セッション番号が空の完了・中断でも同じツールの作業中を解除します。また、1面フォーカス中に外部ウィンドウへ隠れていたカードをクリックして前面へ呼び戻した場合も完了を確認済みとして消灯します。
 - 一番深く一致したワークスペースを選びます。同じ深さのパスを複数のスロットが持つときは、一致したスロットのすべてが対象です。Git Bash 形式の `/c/...` は、ローカルの Windows パスとして扱います。
 
 ### 実装を確認する場所

@@ -2218,6 +2218,9 @@ public partial class MainWindow : Window
                 }
 
                 _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
+                // 既に 1 面フォーカス中のカードが外部ウィンドウに隠れていた場合も、
+                // パネルでカードをクリックして前面へ呼び戻した時点で完了通知を確認済みとみなす。
+                AcknowledgeAiActivityOnFocusChange(slot);
                 BringPanelToFrontImmediate();
                 SchedulePanelToFront();
                 RefreshAuxiliaryUi();

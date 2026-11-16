@@ -202,3 +202,7 @@
 - 完了（`AiActivityState.Done`）の青表示を、従来の静的青点灯から、少し早めの 3.0 秒周期ホタル点滅（`AiDoneFirefly` 添付ビヘイビア）へ変更した。カード地・1px 青枠・外周光背・A〜D アイコン（極小はカードタイル自体）が溜めと余韻を持つ非対称カーブで同位相同期して明滅する。
 - 標準表示カードの `IDE` / `CLI` グループ見出しは、`ApplicationGroupLabelStyle` の背景塗りを廃して完全透明化し、`GroupHeaderCutout` により 1px 枠線の上辺見出し部分だけを切り抜くことで、枠内（`#121816`）へカード背景色が食い込まないようにした。
 - 詳細・注意点・QA は `implementation-patterns.md` §11 と `current-issues-qa.md` に記録。
+
+## AI 実行状態のスタック・解除漏れ・誤点灯ルート修正（2026-11-17 追加）
+- パイプの単発・1 インスタンス制限による取りこぼし、Claude（`StopFailure` / `SessionEnd`）・Codex（`SessionEnd`）・Copilot（`errorOccurred` / `sessionEnd` / `agentStop.reason`）および Antigravity cancel 表記漏れ、同ツール孤立セッションキーの残存による `Done` 解除後の `Working` 逆戻り、外部ウィンドウ遮蔽下フォーカス再クリック時の未解除、`SetForegroundWindow` 失敗時の最大化未反映をすべて修正した。
+- 詳細と不変条件は `implementation-patterns.md` §12 と `current-issues-qa.md` に記録。既存のフック設定済みの実環境ホームでは、新イベント・強化版 `ai-notify.ps1` を反映するため歯車設定から「フックを設定」の再実行を案内する（自動書換は行わない）。

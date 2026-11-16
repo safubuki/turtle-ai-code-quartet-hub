@@ -246,3 +246,10 @@
 - 完了時ホタル点滅は全ロールを `UIElement.Opacity` の 2 区間水平接線曲線（3.0 秒周期・1.15s ピーク・ネイティブ FPS）へ統一し、30fps 制限や `ColorAnimation` の 8bit 階段・折れ角を出さないこと。
 - **検証方法**: 本番 `MainWindow` / `StatusStore` や `%LOCALAPPDATA%\TurtleAIQuartetHub` を起動・操作せず、`MainWindow.xaml` のリソースから `SlotCardTemplate` / `CompactSlotTemplate` / `MicroSlotTemplate` を展開する無菌 STA テスト（`AiDoneFireflyTests` 7件）およびオフスクリーン描画確認を用いる。
 - **確認結果**: 滑らか化刷新後、`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0・エラー 0、全回帰テスト（`AiOrbitGlowTests` 8/8、`AiDoneFireflyTests` 7/7 を含む 299/299）が合格。
+
+## AI 実行状態の取りこぼし・誤残存・隠れカード解除漏れ修正 QA（2026-11-17 追加）
+- 名前付きパイプ `TurtleAIQuartetHub.Commands` が同時発火したフック通知（16 件並列送信）を取りこぼさず全件受信すること、また不正 JSON 入力時も `ai-notify.ps1` が `(Get-Location).Path` フォールバックで `{}`・終了コード 0 を返しつつ送信すること（隔離テスト用パイプ名のみ使用し、実パイプや実行中 EXE を妨害しない）。
+- Claude Code (`UserPromptSubmit` / `Stop` / `StopFailure` / `SessionEnd` / `Notification`)、Codex (`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt` / `SessionEnd`)、GitHub Copilot CLI (`userPromptSubmitted` / `agentStop` / `errorOccurred` / `sessionEnd`)、Grok、Antigravity (`PreInvocation` / `Stop`) の開始・完了・中断・エラー分類と、Copilot 回復可能エラー (`recoverable: true`) 無視・Antigravity `cancel` / `cancelled` / `aborted` 中断扱いが期待どおりであること。
+- 同ツールの古いセッションが未完了のまま別セッションが開始・完了・`Acknowledge()` されても `Working` へ逆戻りしないこと（別ツール並行は維持）、`Done` 状態からフォーカス切替なしで再実行したとき標準・縮小・極小の 3 テンプレートとも完了表示が消えて LED 周回へ切り替わること。
+- 1 面フォーカス中のスロットが管理外ウィンドウに隠れているときのカードクリックで前面化と同時に `AcknowledgeAiActivityOnFocusChange` が呼ばれ `Done` が消灯すること。実ユーザーホームのフックファイルや `%LOCALAPPDATA%\TurtleAIQuartetHub` は自動変更しない。
+- **確認結果**: `dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0・エラー 0、全回帰チェック（`AiActivityTests` 49/49、`AiDoneFireflyTests` 9/9 を含む計 310/310）、`.\scripts\Build-Panel.ps1`、`.\scripts\Test-StoreReadiness.ps1`（`FAIL` 0 件）がいずれも成功。

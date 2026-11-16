@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using TurtleAIQuartetHub.Panel.Models;
 
 namespace TurtleAIQuartetHub.Panel.Services;
@@ -711,7 +711,9 @@ public sealed class WindowArranger
                 await Task.Delay(MaximizeStatePollInterval);
             }
 
-            return SetForegroundWindow(windowHandle);
+            // OS のフォアグラウンド取得制限で SetForegroundWindow が false を返しても、
+            // 対象が有効なまま最大化まで完了していればカード側の 1 面フォーカス状態へ反映する。
+            return SetForegroundWindow(windowHandle) || (IsWindow(windowHandle) && IsZoomed(windowHandle));
         }
         finally
         {

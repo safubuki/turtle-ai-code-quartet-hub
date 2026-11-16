@@ -58,7 +58,7 @@ DiskCleanupTests.Run(failures);
 MemoryWarningTests.Run(failures);
 TitleBarIndicatorTests.Run(failures);
 DataFolderDiagnosticsTests.Run(failures);
-AiActivityTests.Run(failures);
+await AiActivityTests.RunAsync(failures);
 AiHookLocationTests.Run(failures);
 AiOrbitGlowTests.Run(failures);
 AiDoneFireflyTests.Run(failures);

@@ -506,3 +506,16 @@
   - `TemplateBinding Background` を持つテンプレート内 `Border` 自体へ `ClearValue(BackgroundProperty)` を呼ぶとバインディングが剥がれるため、`CardSurface`/`MicroSurface` 用の専用オーバーレイ `<Border>` を維持すること。
   - 完了時アニメーションへ `ColorAnimation` や `DropShadowEffect.Opacity` アニメ、あるいは `DesiredFrameRate=30` を戻すと再び暗色青域で 8bit 色階段やコマ落ちが目立つため、`Opacity` 統一とハードウェア合成設計を維持すること。
   - 完了用 `AiDoneFirefly` に `IsVisible` のみを起動条件にすると、ウィンドウ未接続（`PresentationSource == null`）のオフスクリーン検査で開始できないため、通常時は `element.IsVisible` を尊重して省負荷を保ち、検査専用の `FreezeAtPhaseForTesting` 内では祖先可視性（`AreAncestorsVisible`）を許可して静止位相のレンダリングを可能にしている。
+
+## 12. AI 作業状態スタック（取りこぼし・誤残存・隠れカード解除漏れ）の構造対策（2026-11-17 追加）
+- **ファイル**: `Services/SingleInstanceCoordinator.cs`, `App.xaml.cs`, `Services/AiNotifyHookInstaller.cs`, `Services/AiActivityTracker.cs`, `MainWindow.xaml.cs`, `Services/WindowArranger.cs`, `TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`
+- **発生していたルート**:
+  1. **名前付きパイプの 1 本制限と閉鎖空白**: `SingleInstanceCoordinator` が `maxNumberOfServerInstances: 1` の同期読取ループだったため、接続確立〜読取中の同時通知や再生成隙間で `ai-notify.ps1` の単発 `Connect(800)` / `Directory.GetFiles` 判定が空振りし、`Start` 取りこぼし（`Done` のまま）や `Stop`/`Interrupt` 取りこぼし（`Working` 残存）が起き得た。
+  2. **終了・失敗・キャンセル系のフック不足と分類漏れ**: Claude Code の `StopFailure` / `SessionEnd`、Codex の `SessionEnd`、GitHub Copilot CLI の `errorOccurred` / `sessionEnd`（および `agentStop` の `reason` = `abort` / `user_exit` 等）が未登録・未分類で、Antigravity の `termination_reason` や `cancel`/`cancelled`/`aborted` 表記、Grok の `workspaceRoot` も未救済だった。
+  3. **孤立セッションキーの 60 分残存**: 同一ツールで前のターンがフック無送信のまま中断（例: Claude の `Esc`/`Ctrl+C` 等）または `SessionId` 有無が食い違って別セッションが完了・`Acknowledge()` された際、`_activeSessions` に残った同ツールの古いキーが即座に `Working` へ引き戻していた（「カードを開いても完了にならず」「動いていないのに実行表示」の主因）。
+  4. **隠れフォーカスカード再クリックと OS フォーカス制限**: 既に 1 面フォーカス中のスロットが管理外ウィンドウ（ブラウザ等）に覆われているときにカードをクリックすると、`ToggleSlotFocus` が前面化だけで `IsFocused` を変えず early return するため `AcknowledgeAiActivityOnFocusChange` が呼ばれず `Done` が消えなかった。また `FocusMaximizedOnMonitorAsync` が `SetForegroundWindow` の OS 制限で `false` を返した際も、`IsZoomed` 済みでも `IsFocused` 更新・消灯がスキップされていた。
+- **対策と維持すべき不変条件**:
+  - `SingleInstanceCoordinator` は `MaxAllowedServerInstances` を許可し、クライアント接続後すぐ次インスタンスを張って `HandleClientConnectionAsync` へ読取を委譲する（テスト隔離用の `internal SingleInstanceCoordinator(string mutexName, string pipeName)` を提供）。`App.xaml.cs` では `--ai-event` のみを `DispatcherPriority.Normal` で即時処理する。
+  - `ai-notify.ps1`（ASCII 専用維持）は `ConvertFrom-Json` 失敗でも `(Get-Location).Path` フォールバックへ進み、`workspaceRoot` / `workspace_root` / `termination_reason` / `reason` / `recoverable` を吸い上げ、パイプ接続を 1 回だけ短間隔リトライ（400ms×2 + 30ms）する。
+  - `AiActivityTracker.Apply` は同一ツールの新規 `Start` で同ツールの古いセッションキーを置き換え（**異なるツール間の並行動作は維持**）、`Stop` / `Interrupt` でも空 `SessionId`・無キー開始分を取り残さない。
+  - `ToggleSlotFocus` の外部遮蔽再前面化パスへ `AcknowledgeAiActivityOnFocusChange(slot)` を追加し、`FocusMaximizedOnMonitorAsync` は `SetForegroundWindow(windowHandle) || (IsWindow(windowHandle) && IsZoomed(windowHandle))` を成功とする。なお 4 面でウィンドウを直接クリックしただけでは消さない既存仕様と、Claude CLI の `Esc`/`Ctrl+C` 自体は CLI 側がフックを発行しない外部仕様は維持・明記する。
