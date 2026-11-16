@@ -8,9 +8,9 @@
 - **ファイル**: `Services/AiActivityTracker.cs`（通知の解釈・スロット単位の状態・cwd からのスロット特定）、`Models/AiActivityState.cs`、`Services/AiNotifyHookInstaller.cs`（フックの設定・解除と通知スクリプト）、`MainWindow.AiActivity.cs`、`Models/WindowSlot.cs`（`AiTracker` / `AiActivity`）、`TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`
 - **流れ**: フック → `~/.turtle-ai-quartet-hub/ai-notify.ps1` → 既存の名前付きパイプ `TurtleAIQuartetHub.Commands` に `["--ai-event", tool, event, cwd, session, notification_type]` → `ExecuteExternalCommand` の先頭で振り分けて `HandleAiHookEvent`。**この経路では `ActivatePanelWindow` を呼ばない**（通知のたびにハブが前面に出ないように）。ハブ未起動時に `--ai-event` 付きで起動されても UI を開かずに終了する。
 - **スロット特定**: フックの `cwd` が、ウィンドウを持つスロットのワークスペース（`CurrentWorkspacePath` / `DisplayPath` / `EffectivePath` など）と同じか配下なら対象。最も深く一致したスロットを選ぶ。フォルダ名の前方一致（`turtle` と `turtle-ai…`）を同一視しない。Git Bash 形式（`/c/...`）も扱う。リモート URI は対象外。
-- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、応答終了で「完了」（フォーカス表示中でも光らせる）。許可や質問の確認（`permission_prompt` / `elicitation_dialog` / `PermissionRequest`）は作業の途中なので表示を変えず、緑の明滅を続ける（2026-11-12 に、完了と同じ青にする扱いを取りやめ）。Claude / Grok の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。Grok の `task_complete` と `PermissionDenied` も無視する。Grok の `StopFailure` / `StopCancelled` は完了と同じ光（中断や失敗のあと緑が残らないようにする）。Codex の `Interrupt` は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。ツールごとに状態の色を分けない。
+- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、応答終了で「完了」（フォーカス表示中でも光らせる）。許可や質問の確認（`permission_prompt` / `elicitation_dialog` / `PermissionRequest`）は作業の途中なので表示を変えず、枠を回る緑の光を続ける（2026-11-12 に、完了と同じ青にする扱いを取りやめ）。Claude / Grok の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。Grok の `task_complete` と `PermissionDenied` も無視する。Grok の `StopFailure` / `StopCancelled` は完了と同じ光（中断や失敗のあと緑が残らないようにする）。Codex の `Interrupt` は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。ツールごとに状態の色を分けない。
 - **解除**: スロットの `IsFocused` が切り替わったとき（`Slot_PropertyChanged`。パネルでの 1 面フォーカス⇔4 面表示のほか、ウィンドウの直接最大化・復元によるフォーカス同期も含む）に光を消す。ウィンドウが前面に来ただけでは消さない（フォーカス表示中に終わっても気づけるように、2026-11-11 利用者要望）。カードの入れ替え中（`StatusStore.IsSwappingSlotContents`）は IsFocused がウィンドウと一緒に移るだけなので消さない。周期更新では、完了通知が来ないまま 60 分たった作業中だけを片付ける。ウィンドウが閉じたら（`WindowSlot.ClearWindow`）消す。スロット入れ替えでは `WindowSlot.SwapAiActivity` でワークスペースと一緒に移す。
-- **見た目**: 作業中は約 5.6 秒周期（0.7 秒の穏やかな待機→1.7 秒の柔らかな点灯→0.4 秒の頂点→2.8 秒の長い余韻減衰、`DoubleAnimationUsingKeyFrames` / 30fps）でホタル点滅のように緑へ明滅する。非フォーカス時は 1px 枠（`AiCardPulseStyle`）と外側の光背（`AiCardHaloStyle`・`Margin="-1"`・`BlurEffect Radius="15" RenderingBias="Quality"`）および標準・縮小の A〜D アイコン枠（`AiBadgeWorkingRingStyle`）が同期して点滅し、フォーカス時は太い 2px 枠を固定のまま（`AiCardPulseStyle` と静的 `DropShadowEffect` を抑止）外側の光背（`Margin="-2"`）と A〜D アイコン枠だけが点滅する。許可の確認中もこの緑のまま。完了はカード地（`AiDoneCardBrush` `#112D46`）・枠（`AiDoneBorderBrush` `#3EA3EC`）・外側の青い光（`AiDoneGlowBrush` `#228BE0`・`Opacity="0.74"`）に加え、標準・縮小の A〜D アイコン（`SlotNameBadgeStyle` / `CompactSlotBadgeStyle`）と極小表示のカード自体（`MicroSlotButtonStyle`）を少し濃いめの青（`AiDoneBadgeBackgroundBrush` `#174F85`・枠 `#68C1FF`・文字 `#F0F8FF`・`AiDoneBadgeGlowEffect`）で点灯する（点滅しない。ボタンと IDE / CLI の中は塗らない）。目が痛くならないことを優先し、速い点滅や光の境界線を出さない。
+- **見た目**: 作業中は `AiCardOrbitGlow` が、`DrawingVisual` 上に直線と厳密円弧（`ArcTo`）の 28 段グラデーション・トレイル（外周オーラ `#45D483` 〜ボディ `#7FF3B4` 18 段＋LED 芯 `#98FFC8` 〜 `#C8FFE2` 10 段、カード短辺に応じた適応幅）を描き、`BorderThickness="1"` の中心線（`inset=0.5`, 角丸半径 `R - 0.5`）上を緑の LED の一筋の光として周回する。標準約 3.60 秒・縮小約 2.77 秒・極小約 2.45 秒の落ち着いた周期で、前半〜中盤をふわっとゆっくり巡り、終盤（0.80 付近）で速度比約 2.0 倍へ少しだけ心地よく加速し、始点・終点で連続接続する（`Shape` や巨大 `BlurEffect` は使わず、クリップ角の露出を防ぐ。詳説は §10、§6/§8/§9 は過去実装）。完了は `AiDoneFirefly` により、カード地（ベース `#0C2135`＋重ね `#1D5B94`）・枠（`#3EA3EC`）・外側の青い光（`#228BE0`）と、標準・縮小の A〜D アイコン（ベース `#103457`＋重ね `#2371C2`・外枠 `#74CBFF`＋青光背）および極小表示タイル（ベース `#103457`＋重ね `#2577CB`）を、全ロール `UIElement.Opacity` 統一・モニタリフレッシュレート同期・水平接線 2 区間曲線（3.0 秒周期）で滑らかにホタル点滅させる（詳説は §11。ボタンと IDE / CLI の枠内は塗らない）。目が痛くならないことを優先し、急激なチカチカ点滅や光の境界線を出さない。
 - **フック設定**: 歯車設定の「AI の作業通知」から設定・解除する。`~/.claude/settings.json`（`UserPromptSubmit` / `Stop` / `Notification`）、`~/.codex/hooks.json`（`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt`、初回は CLI の `/hooks` で承認が必要）、`~/.copilot/hooks/turtle-ai-quartet-hub.json`（`userPromptSubmitted` / `agentStop`）、`~/.grok/hooks/turtle-ai-quartet-hub.json`（`UserPromptSubmit` / `Stop` / `StopFailure` / `StopCancelled` / `Notification`。設定後はセッションを開き直す）。既存の設定や利用者のフックは残し、通知スクリプトのパスを含む項目だけを足し引きする（2 回設定しても重複しない）。書き換え前の内容は `.turtle-hub-backup` に残す。ツールのフォルダが無ければ触らない。Codex の `config.toml` の `notify` と Grok の `config.toml` は触らない。
 - **通知スクリプトの注意**: Windows PowerShell 5.1 は BOM なし UTF-8 を ANSI として読むため ASCII だけで書く。`$Event` は自動変数なので引数名は `HookEvent`。AI の動作を変えないよう、必ず `{}` を出して終了コード 0 で終わる（Stop / UserPromptSubmit の出力は継続や拒否として解釈されうる。Grok でも同じ）。標準入力の詳細は `notification_type` と `notificationType` の両方を読む。ハブ未起動時はパイプの有無を見て即終了する。スクリプトは AppData ではなくホーム直下に置く（MSIX 版では AppData がアプリ専用の場所へ振り替えられ、AI ツールから見えないことがあるため）。
 
@@ -464,3 +464,45 @@
 ## 7. 完了の青配色見直し・A〜D アイコン点灯の併用（2026-11-13 追加）
 - **完了時のアプリ調和型ブルー**: 白っぽかった `#203440` / `#D7EEFB` / `#B6DFF6` を廃止し、アプリ内の VS Code / AI ボタンと調和する深めのブルーへ統一した。カード地 `AiDoneCardBrush = #112D46`、1px 枠 `AiDoneBorderBrush = #3EA3EC`、外側のぼかし光 `AiDoneGlowColor = #228BE0`（`Opacity="0.74"`）。
 - **A〜D アイコンの点灯・点滅併用**: カード枠＋光背だけでは視認しづらいため、`AiBadgeWorkingRingStyle`（`AiCardPulseStyle` / `AiCardHaloStyle` と同期した 5.6 秒ホタル点滅、フォーカス中も維持）を標準 `SlotNameBadgeStyle`・縮小 `CompactSlotBadgeStyle` の上に重ねて作業中に枠を光らせる。完了時は `AiDoneBadgeBackgroundBrush = #174F85`（カード地より少し濃いめの青）・`AiDoneBadgeBorderBrush = #68C1FF`・`AiDoneBadgeForegroundBrush = #F0F8FF`・`AiDoneBadgeGlowEffect`（`Color="#2E96F0"`, `BlurRadius="9"`）で点灯させ、極小 `MicroSlotButtonStyle` も同様に `#174F85` 地＋ `#F0F8FF` 文字で点灯させる（`CompactSlotBadgeStyle` と `MicroSlotButtonStyle` の完了トリガは `Missing` / `Launching` より後ろに配置して表示優先順位を確保）。
+
+## 8. 作業中は枠を一周する光の筋（2026-11-16 追加）
+- **ファイル**: `AiCardOrbitGlow.cs`, `MainWindow.xaml`, `Views/AiHookGuideView.xaml`
+- **問題**: 5.6 秒で枠全体がゆっくり明滅する見え方は、作業中だと分かりにくかった。利用者は、枠の上を光の筋が一周し、少し止まってからもう一周する動きを求めた。
+- **対策**: `AiCardOrbitGlow` を標準（角丸 8）・縮小（7）・極小（6）のカード枠の上に置く。作業中だけ、角丸矩形の破線を一周分ずらし、1.15 秒で一周、0.5 秒停止、を繰り返す。破線は一区間だけで、残りは隙間。芯は `#F4FFF8`、太さ 2.8。`DropShadowEffect`（`#45D483`、ぼかし 12、深さ 0）は筋だけに付く。常設の 1px 枠は太くしない。
+- **止めたもの**: 作業中の `AiCardHaloStyle` と `AiCardPulseStyle` の透明度アニメーション、フォーカス中に内側の枠を畳む `MultiDataTrigger`、`AiBadgeWorkingRingStyle`。完了時の青い枠と外側の青い光、A〜D の青点灯は残す。太いフォーカス枠は点滅させない。
+- **注意**: `StrokeDashArray` と `StrokeDashOffset` の単位は線の太さ。一周は周長÷太さ。停止位置をちょうど一周分にすると、次の周の開始と見た目が同じになり、飛びがない。状態機械とフックは変えない。§6 のホタル点滅と §7 の作業中アイコン点滅は、作業中の現在の表示ではない。
+- **確認**: `MainWindow` は生成したが `Show` せず、`Loaded` の前に `DispatcherTimer` を止めた。スロット 0 は作業中、1 は完了。標準カードの軌道は 4 件で、見えている作業中は 1 件、破線は `35.71,289.81`（一区間）。完了と待機の軌道は畳んだ。縮小 210×28 と極小 52×44 も破線 2 個で組んだ。オフセット 8.55 の光は左上、163.83 の光は右下で、中心の距離は 285。明るい画素は枠の周の約 2%。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。見た目だけの変更のため、回帰 284 件は再実行していない。実行中のハブは起動していない。
+
+## 9. 作業中の光はぼんやりした緑で加速する（2026-11-16 追加）
+- **ファイル**: `AiCardOrbitGlow.cs`, `MainWindow.xaml`, `Views/AiHookGuideView.xaml`
+- **問題**: 枠を一周する動きは合っていた。利用者は、白い芯のくっきりした線と一定の速度をやめ、旧来のホタル点滅のようにテーマの緑がふわっとぼやけた光が回り、最初はゆっくりで終わりにかけてグッと速くなる見え方を求めた。
+- **対策**: 作業中の `AiCardOrbitGlow` は白い線と `DropShadowEffect` を出さない。外側は `#45D483`（不透明度 0.70、太さ 16、ぼかし 22）、内側はホタルの光背と同じ `#67E7A4`（不透明度 0.38、太さ 7、ぼかし 16）。光の長さは周長の 16% を 58〜92 DIP に収め、一塊のぼやけとして進む。約 1.78 秒で一周し、0.40 秒で 3.5%、1.10 秒で 20%、1.68 秒で 74%、1.78 秒で一周。約 0.44 秒止まってから同じ向きに繰り返す。標準・縮小・極小とも同じ。常設の 1px 枠は太くしない。
+- **維持**: 完了の深い青、許可の確認中もこの緑の周回、状態の判定、フック、フォーカス表示の切り替えで消す処理。§8 の白い芯と一定速度は、作業中の現在の表示ではない。
+- **確認**: `MainWindow` は起動していない。300×170 の軌道を余白付きで描き、0.40 秒の光は左上 (45, 44)、1.10 秒は下 (49, 184)、1.68 秒は上の右寄り (225, 33)。中心の移動は 181。前半の速度は 0.24 周/秒、後半は 0.93 周/秒。いちばん明るい画素は緑（55,146,96 と 53,138,90）で、枠の周に占める緑は約 2%。待機は畳んだ。角丸の枠に入れた描画でも、同じ緑のぼかしが枠の上を移動した。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。見た目だけの変更のため、回帰 284 件は再実行していない。
+
+## 10. 作業中の光は枠線・角丸の中心線上を走る滑らかな LED トレイル（2026-11-16 刷新）
+- **ファイル**: `AiCardOrbitGlow.cs`, `MainWindow.xaml`, `MainWindow.AiActivity.cs`, `Views/AiHookGuideView.xaml`, `TurtleAIQuartetHub.Panel.Tests/AiOrbitGlowTests.cs`
+- **問題（§9 までの課題）**:
+  1. `Shape.Path` + `StrokeDashArray` に太さ 16 / ぼかし 22 の `BlurEffect` を組み合わせた結果、WPF の `Shape.GetLayoutClip` と余白不足により、カード周囲（特に縮小・極小・標準左上）に 90° の四角いクリップ角が露出していた。
+  2. `inset=1` かつ太さが角丸半径（5〜7 DIP）を上回り、さらに `StrokeDashArray` が 2 層で先端位置・丸キャップ形状がズレるため、角丸の枠上を綺麗に追従せず太い霧がぼんやり動く見た目になっていた。
+  3. 1 周 1.78 秒かつ最後 0.10 秒で 26% を飛ばす急加速が視覚的に落ち着かず目障りだった。
+- **対策**:
+  - `Shape` と `BlurEffect` を撤去し、`DrawingVisual` へ `StreamGeometry`（`LineTo` + `ArcTo` の厳密円弧）で 28 段（外周オーラ〜ボディ 18 段＋LED 芯 10 段）の高密度グラデーション・トレイルを描画（先端ほど太く明るく、尾に向かって細く透明へ段差なく減衰）。各スライス `Pen` はサイズ変更時のみ生成・`Freeze()` して毎フレームのアロケーションを抑える。
+  - 中心線オフセットを `BorderThickness="1"` に一致する `inset = 0.5`（角丸半径 `R - 0.5`）へ補正し、カード短辺に応じて線の太さをスケールする（外縁張り出しは縮小/極小で最大 1.7 DIP、標準で 3.2 DIP 以内）。
+  - モーションは 256 分割の周期ガウス加速テーブル（`u = 0.80` 付近ピーク、速度比約 2.0 倍）を用い、周期を周長に応じて標準 ~3.60s / 縮小 ~2.77s / 極小 ~2.45s に設定。終端と始端が速度・位置とも連続に繋がる。
+  - `IsVisibleChanged` / `Unloaded` で非表示モード・閉鎖中のアニメーション時計を止め、負荷を抑える。テスト用に `SetStaticPhase` を備える。
+- **注意**: `AiCardOrbitGlow` 内に `Shape` や大きな `BlurEffect` を戻すと再び `Shape.GetLayoutClip` 等による四角い境界角が露出するため禁止。§8 / §9 の仕様は本節で置き換える。完了時の青い光背（`AiCardHaloStyle`）と `StandardSlotsGrid` の負マージン相殺は維持する。
+
+## 11. 完了時青表示の早めホタル点滅と IDE/CLI 見出し枠線切り抜き（2026-11-16 追加）
+- **ファイル**: `AiDoneFirefly.cs`, `GroupHeaderCutout.cs`, `MainWindow.xaml`, `MainWindow.AiActivity.cs`, `Models/AiActivityState.cs`, `Views/AiHookGuideView.xaml`, `TurtleAIQuartetHub.Panel.Tests/AiDoneFireflyTests.cs`
+- **問題**:
+  1. 完了時（`AiActivityState.Done`）の青表示が静的点灯のままだったため、少し早めのホタル点滅へ変更する要望があった。
+  2. 標準カードの `IDE` / `CLI` ラベル（`ApplicationGroupLabelStyle`）が文字サイズ相当の背景塗り（`AiDoneCardBrush`）を持っていたため、完了時に枠線の内側へ四角い青が食い込んで見えていた。
+- **対策**:
+  - `AiDoneFirefly` 添付ビヘイビア（`CycleDurationSeconds = 3.0`、ピーク 1.15s）を導入し、`Halo`（`0.12↔0.90`）・`CardEdge`（`0.28↔0.98`）・`CardSurface`（`0.00↔0.62`）・`MicroSurface`（`0.00↔0.68`）・`BadgeSurface`（`0.00↔0.66`）・`BadgeGlow`（`0.16↔0.96`）の全 6 ロールを **`UIElement.OpacityProperty` のみのアニメーションへ統一**した。`DesiredFrameRate` の 30fps 制限を排してモニタのネイティブリフレッシュレートへ追従させ、`KeySpline(0.55, 0.0, 0.22, 1.0)` → `KeySpline(0.30, 0.0, 0.55, 1.0)` の水平接線（速度 0 接続）2 区間スプラインと `Stopwatch` 共有位相オフセットにより、8bit RGB 階段バンディング・折れ角・周期境界のカクつきをなくした。
+  - XAML 側は待機用ベーススタイルと完了用オーバーレイ（`AiCardDoneWashStyle`・`AiMicroDoneWashStyle`・`AiBadgeDoneWashStyle`・`AiBadgeDoneGlowStyle`：`Visibility="Collapsed"`、完了時のみ `Visible`）を分離し、`DropShadowEffect` 自体を静止凍結したまま外側の `Border.Opacity` ごとフェードさせる。これにより `Style` 内の Frozen ブラシ例外や `TemplateBinding Background` 剥がれを回避し、非完了時は負荷ゼロで通常スタイルへ戻る。
+  - `IDE` / `CLI` グループは背景専用層（`ApplicationGroupFillStyle`: `#121816`, `Margin="0.5,1,0.5,0.5"`, `CornerRadius="6"`）、1px 枠線専用層（`ApplicationGroupBorderStyle` + `GroupHeaderCutout.Header` で上辺の見出し占有幅だけを `EvenOdd` クリップ除外）、文字ラベル層（`Background="Transparent"`）の 3 層へ分離した。これにより待機時も完了点滅時も枠内へカード地が一切食い込まず、枠外・線隙間の外側だけがカード背景と一致する。
+- **注意**:
+  - `TemplateBinding Background` を持つテンプレート内 `Border` 自体へ `ClearValue(BackgroundProperty)` を呼ぶとバインディングが剥がれるため、`CardSurface`/`MicroSurface` 用の専用オーバーレイ `<Border>` を維持すること。
+  - 完了時アニメーションへ `ColorAnimation` や `DropShadowEffect.Opacity` アニメ、あるいは `DesiredFrameRate=30` を戻すと再び暗色青域で 8bit 色階段やコマ落ちが目立つため、`Opacity` 統一とハードウェア合成設計を維持すること。
+  - 完了用 `AiDoneFirefly` に `IsVisible` のみを起動条件にすると、ウィンドウ未接続（`PresentationSource == null`）のオフスクリーン検査で開始できないため、通常時は `element.IsVisible` を尊重して省負荷を保ち、検査専用の `FreezeAtPhaseForTesting` 内では祖先可視性（`AreAncestorsVisible`）を許可して静止位相のレンダリングを可能にしている。

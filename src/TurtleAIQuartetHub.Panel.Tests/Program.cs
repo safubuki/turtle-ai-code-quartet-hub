@@ -60,6 +60,8 @@ TitleBarIndicatorTests.Run(failures);
 DataFolderDiagnosticsTests.Run(failures);
 AiActivityTests.Run(failures);
 AiHookLocationTests.Run(failures);
+AiOrbitGlowTests.Run(failures);
+AiDoneFireflyTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -90,6 +92,8 @@ Console.WriteLine("タイトルバーの状態表示・控えのフォルダ変�
 Console.WriteLine($"容量の解析（診断コード）のチェックに合格しました ({DataFolderDiagnosticsTests.Count}/{DataFolderDiagnosticsTests.Count})。");
 Console.WriteLine($"AI の作業通知（状態・スロット特定・フック設定）のチェックに合格しました ({AiActivityTests.Count}/{AiActivityTests.Count})。");
 Console.WriteLine($"AI フックの保存先・閲覧チェックに合格しました ({AiHookLocationTests.Count}/{AiHookLocationTests.Count})。");
+Console.WriteLine($"AI 作業中 LED 周回エフェクトのチェックに合格しました ({AiOrbitGlowTests.Count}/{AiOrbitGlowTests.Count})。");
+Console.WriteLine($"AI 完了ホタル点滅・IDE/CLI 枠切り抜きのチェックに合格しました ({AiDoneFireflyTests.Count}/{AiDoneFireflyTests.Count})。");
 return 0;
 
 async Task VerifyAsync(

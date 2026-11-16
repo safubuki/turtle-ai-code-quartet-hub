@@ -273,17 +273,37 @@
                       <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid Width="34" Height="26" VerticalAlignment="Center" HorizontalAlignment="Left">
-                      <Border Margin="-3" CornerRadius="8" BorderBrush="#67E7A4" BorderThickness="4" Opacity="0.75">
-                        <Border.Effect>
-                          <BlurEffect Radius="6" />
-                        </Border.Effect>
-                      </Border>
-                      <Border CornerRadius="5" BorderBrush="#8AF2B5" BorderThickness="1" Background="#171B19">
-                        <Border Width="9" Height="9" CornerRadius="2.5" Background="#223027" BorderBrush="#8AF2B5" BorderThickness="1"
+                      <Border CornerRadius="5" BorderBrush="#3D4E45" BorderThickness="1" Background="#171B19">
+                        <Border Width="9" Height="9" CornerRadius="2.5" Background="#223027" BorderBrush="#3A463F" BorderThickness="1"
                                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
                       </Border>
+                      <Canvas IsHitTestVisible="False">
+                        <Path Data="M 10,0.5 L 29,0.5 A 4.5,4.5 0 0 1 33.5,5 L 33.5,11"
+                              StrokeThickness="3.2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round">
+                          <Path.Stroke>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0.5">
+                              <GradientStop Color="#0045D483" Offset="0" />
+                              <GradientStop Color="#5545D483" Offset="0.6" />
+                              <GradientStop Color="#8867E7A4" Offset="1" />
+                            </LinearGradientBrush>
+                          </Path.Stroke>
+                        </Path>
+                        <Path Data="M 18,0.5 L 29,0.5 A 4.5,4.5 0 0 1 33.5,5 L 33.5,11"
+                              StrokeThickness="1.3"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round">
+                          <Path.Stroke>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0.5">
+                              <GradientStop Color="#00B4FFD7" Offset="0" />
+                              <GradientStop Color="#EEB4FFD7" Offset="1" />
+                            </LinearGradientBrush>
+                          </Path.Stroke>
+                        </Path>
+                      </Canvas>
                     </Grid>
-                    <TextBlock Grid.Column="1" Text="開始：カードと A〜D の枠および外側の光背がゆっくり緑に明滅します。許可や質問の確認中も同じです。"
+                    <TextBlock Grid.Column="1" Text="開始：カードの枠の線の上を、緑の LED の一筋の光が角丸に沿って一周します。ふわっとゆっくり回り、最後の方で少しだけ加速します。許可や質問の確認中も同じです。"
                                VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
                   </Grid>
                   <Grid Margin="0,8,0,0">
@@ -302,7 +322,7 @@
                                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
                       </Border>
                     </Grid>
-                    <TextBlock Grid.Column="1" Text="応答が終わったときだけ、カードが青く染まり、A〜D アイコンも濃い青で点灯します。"
+                    <TextBlock Grid.Column="1" Text="応答が終わったときだけ、カードと A〜D アイコンが少し早めのホタル点滅で青く光ります。"
                                VerticalAlignment="Center" Style="{StaticResource GuideBody}" />
                   </Grid>
                 </StackPanel>
@@ -383,19 +403,39 @@
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
               <Grid Width="34" Height="26" VerticalAlignment="Center">
-                <Border Margin="-3" CornerRadius="8" BorderBrush="#67E7A4" BorderThickness="4" Opacity="0.75">
-                  <Border.Effect>
-                    <BlurEffect Radius="6" />
-                  </Border.Effect>
-                </Border>
-                <Border CornerRadius="5" BorderBrush="#8AF2B5" BorderThickness="1" Background="#171B19">
-                  <Border Width="9" Height="9" CornerRadius="2.5" Background="#223027" BorderBrush="#8AF2B5" BorderThickness="1"
+                <Border CornerRadius="5" BorderBrush="#3D4E45" BorderThickness="1" Background="#171B19">
+                  <Border Width="9" Height="9" CornerRadius="2.5" Background="#223027" BorderBrush="#3A463F" BorderThickness="1"
                           HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" />
                 </Border>
+                <Canvas IsHitTestVisible="False">
+                  <Path Data="M 10,0.5 L 29,0.5 A 4.5,4.5 0 0 1 33.5,5 L 33.5,11"
+                        StrokeThickness="3.2"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round">
+                    <Path.Stroke>
+                      <LinearGradientBrush StartPoint="0,0" EndPoint="1,0.5">
+                        <GradientStop Color="#0045D483" Offset="0" />
+                        <GradientStop Color="#5545D483" Offset="0.6" />
+                        <GradientStop Color="#8867E7A4" Offset="1" />
+                      </LinearGradientBrush>
+                    </Path.Stroke>
+                  </Path>
+                  <Path Data="M 18,0.5 L 29,0.5 A 4.5,4.5 0 0 1 33.5,5 L 33.5,11"
+                        StrokeThickness="1.3"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round">
+                    <Path.Stroke>
+                      <LinearGradientBrush StartPoint="0,0" EndPoint="1,0.5">
+                        <GradientStop Color="#00B4FFD7" Offset="0" />
+                        <GradientStop Color="#EEB4FFD7" Offset="1" />
+                      </LinearGradientBrush>
+                    </Path.Stroke>
+                  </Path>
+                </Canvas>
               </Grid>
               <StackPanel Grid.Column="1">
-                <TextBlock Text="作業中：カードと A〜D の枠がゆっくり緑に明滅" Style="{StaticResource GuideHeading}" />
-                <TextBlock Text="開始の通知を受け取っています。許可や質問の確認中も、緑の明滅のままです。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
+                <TextBlock Text="作業中：緑の LED 光が枠線に沿って一周する" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="ふわっとゆっくり回り、最後の方で少しだけ加速して繰り返します。許可や質問の確認中も、同じ緑の光のままです。" Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
               </StackPanel>
             </Grid>
           </Border>
@@ -415,13 +455,13 @@
                 </Border>
               </Grid>
               <StackPanel Grid.Column="1">
-                <TextBlock Text="応答が終わると、カードと A〜D アイコンが青く点灯" Style="{StaticResource GuideHeading}" />
-                <TextBlock Text="「完了」は、作業やテストの成功を保証する表示ではありません。許可の確認中は青くしません。"
+                <TextBlock Text="応答が終わると、カードと A〜D アイコンが青のホタル点滅に変わる" Style="{StaticResource GuideHeading}" />
+                <TextBlock Text="少し早めのホタル点滅で、完了がひと目で分かります。「完了」は作業やテストの成功を保証する表示ではありません。許可の確認中は青くしません。"
                            Margin="0,4,0,0" Style="{StaticResource GuideBody}" />
               </StackPanel>
             </Grid>
           </Border>
-          <TextBlock Text="光は、光っているスロットのフォーカス表示（1面 / 4面）を切り替えると消えます。ウィンドウを前面へ出しただけでは消えません。作業中の記録が残っていれば、緑の明滅に戻ります。"
+          <TextBlock Text="光は、光っているスロットのフォーカス表示（1面 / 4面）を切り替えると消えます。ウィンドウを前面へ出しただけでは消えません。作業中の記録が残っていれば、枠を回る緑の光に戻ります。"
                      Margin="0,10,0,0" Style="{StaticResource GuideBody}" />
           <TextBlock Text="「設定済み」は設定ファイルの確認です。通知が実際に届くことの確認には、カルテットハブで管理中のローカルワークスペースで AI に指示し、カードや A〜D アイコンの変化を見てください。"
                      Margin="0,8,0,0" Style="{StaticResource GuideBody}" />

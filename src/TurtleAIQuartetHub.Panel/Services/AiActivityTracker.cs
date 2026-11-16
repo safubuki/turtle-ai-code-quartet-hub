@@ -49,7 +49,7 @@ public static class AiHookEventParser
                 return AiHookEventKind.Start;
             case "stop":
                 // Antigravity の USER_CANCELED はユーザー自身による中断。偽の完了（水色）を残さず、
-                // 確認済みの中断として緑の明滅だけを止める。
+                // 確認済みの中断として緑の周回だけを止める。
                 return detail.Trim().Equals("user_canceled", StringComparison.OrdinalIgnoreCase)
                     ? AiHookEventKind.Interrupt
                     : AiHookEventKind.Stop;
@@ -60,7 +60,7 @@ public static class AiHookEventParser
                 // 中断や失敗のあと作業中の緑が 60 分残らないようにする。
                 return AiHookEventKind.Stop;
             case "permissionrequest":
-                // Codex の許可確認は作業の途中。開始済みの緑の明滅を続け、青い光にはしない。
+                // Codex の許可確認は作業の途中。開始済みの緑の周回を続け、青い光にはしない。
                 return AiHookEventKind.Unknown;
             case "notification":
                 // permission_prompt / elicitation_dialog は許可や質問の確認で、作業の途中。

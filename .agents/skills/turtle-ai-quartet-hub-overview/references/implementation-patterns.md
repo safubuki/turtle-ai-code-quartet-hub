@@ -3,16 +3,16 @@
 更新日: 2026-09-17
 
 ## 1. AI 状態は「フックの明示通知」だけで表示する（推定は戻さない）
-- **方針変更（2026-11-11）**: 以前の AI 状態検出（UI Automation のチャット走査、拡張ログ解析）は不安定なため削除した。現在は、Claude Code / Codex / GitHub Copilot の**フック**が送る明示的な通知（指示を受けた・応答が終わった・許可を待っている）だけで、スロットの作業中・完了を表示する。
+- **方針変更（2026-11-11）**: 以前の AI 状態検出（UI Automation のチャット走査、拡張ログ解析）は不安定なため削除した。現在は、Claude Code / Codex / GitHub Copilot / Grok の**フック**が送る明示的な通知（指示を受けた・応答が終わった・許可を待っている）だけで、スロットの作業中・完了を表示する。色はツールごとに分けない。
 - **引き続き戻さないもの**: UI Automation、拡張ログ、OpenTelemetry、ターミナル出力からの推定と、VS Code 外枠オーバーレイ。Jump List の文言も AI 状態で変えない。`StatusStore.RefreshWindowStatusesAsync` は HWND、タイトル、ワークスペース表示更新の軽量処理として維持する。
 - **ファイル**: `Services/AiActivityTracker.cs`（通知の解釈・スロット単位の状態・cwd からのスロット特定）、`Models/AiActivityState.cs`、`Services/AiNotifyHookInstaller.cs`（フックの設定・解除と通知スクリプト）、`MainWindow.AiActivity.cs`、`Models/WindowSlot.cs`（`AiTracker` / `AiActivity`）、`TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`
 - **流れ**: フック → `~/.turtle-ai-quartet-hub/ai-notify.ps1` → 既存の名前付きパイプ `TurtleAIQuartetHub.Commands` に `["--ai-event", tool, event, cwd, session, notification_type]` → `ExecuteExternalCommand` の先頭で振り分けて `HandleAiHookEvent`。**この経路では `ActivatePanelWindow` を呼ばない**（通知のたびにハブが前面に出ないように）。ハブ未起動時に `--ai-event` 付きで起動されても UI を開かずに終了する。
 - **スロット特定**: フックの `cwd` が、ウィンドウを持つスロットのワークスペース（`CurrentWorkspacePath` / `DisplayPath` / `EffectivePath` など）と同じか配下なら対象。最も深く一致したスロットを選ぶ。フォルダ名の前方一致（`turtle` と `turtle-ai…`）を同一視しない。Git Bash 形式（`/c/...`）も扱う。リモート URI は対象外。
-- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、完了で「完了」（フォーカス表示中でも光らせる）、許可待ち（Claude の `Notification` の `permission_prompt` / `elicitation_dialog`、Codex の `PermissionRequest`）も「完了」と同じ光り方。Claude の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。中断（Codex の `Interrupt`）は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。
-- **解除**: スロットの `IsFocused` が切り替わったとき（`Slot_PropertyChanged`。パネルでの 1 面フォーカス⇔4 面表示のほか、ウィンドウの直接最大化・復元によるフォーカス同期も含む）に光を消す。ウィンドウが前面に来ただけでは消さない（フォーカス表示中に終わっても気づけるように、2026-11-11 利用者要望）。カードの入れ替え中（`StatusStore.IsSwappingSlotContents`）は IsFocused がウィンドウと一緒に移るだけなので消さない。周期更新では、完了通知が来ないまま 60 分たった作業中だけを片付ける。許可待ちを見た後は、セッションが残っていれば作業中へ戻る。ウィンドウが閉じたら（`WindowSlot.ClearWindow`）消す。スロット入れ替えでは `WindowSlot.SwapAiActivity` でワークスペースと一緒に移す。
-- **見た目**: 作業中は約 5.6 秒周期（0.7 秒の穏やかな待機→1.7 秒の柔らかな点灯→0.4 秒の頂点→2.8 秒の長い余韻減衰、`DoubleAnimationUsingKeyFrames` / 30fps）でホタル点滅のように緑へ明滅する。非フォーカス時は 1px 枠（`AiCardPulseStyle`）と外側の光背（`AiCardHaloStyle`・`Margin="-1"`・`BlurEffect Radius="15" RenderingBias="Quality"`）および標準・縮小の A〜D アイコン枠（`AiBadgeWorkingRingStyle`）が同期して点滅し、フォーカス時は太い 2px 枠を固定のまま（`AiCardPulseStyle` と静的 `DropShadowEffect` を抑止）外側の光背（`Margin="-2"`）と A〜D アイコン枠だけが点滅する。許可の確認中もこの緑のまま。完了はカード地（`AiDoneCardBrush` `#112D46`）・枠（`AiDoneBorderBrush` `#3EA3EC`）・外側の青い光（`AiDoneGlowBrush` `#228BE0`・`Opacity="0.74"`）に加え、標準・縮小の A〜D アイコン（`SlotNameBadgeStyle` / `CompactSlotBadgeStyle`）と極小表示のカード自体（`MicroSlotButtonStyle`）を少し濃いめの青（`AiDoneBadgeBackgroundBrush` `#174F85`・枠 `#68C1FF`・文字 `#F0F8FF`・`AiDoneBadgeGlowEffect`）で点灯する（点滅しない。ボタンと IDE / CLI の中は塗らない）。目は痛くならないことを優先し、速い点滅や光の境界線を出さない。
-- **フック設定**: 歯車設定の「AI の作業通知」から設定・解除する。`~/.claude/settings.json`（`UserPromptSubmit` / `Stop` / `Notification`）、`~/.codex/hooks.json`（`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt`、初回は CLI の `/hooks` で承認が必要）、`~/.copilot/hooks/turtle-ai-quartet-hub.json`（`userPromptSubmitted` / `agentStop`）。既存の設定や利用者のフックは残し、通知スクリプトのパスを含む項目だけを足し引きする（2 回設定しても重複しない）。書き換え前の内容は `.turtle-hub-backup` に残す。ツールのフォルダが無ければ触らない。Codex の `config.toml` の `notify` は Codex アプリが使うため触らない。
-- **通知スクリプトの注意**: Windows PowerShell 5.1 は BOM なし UTF-8 を ANSI として読むため ASCII だけで書く。`$Event` は自動変数なので引数名は `HookEvent`。AI の動作を変えないよう、必ず `{}` を出して終了コード 0 で終わる（Stop フックの出力は継続指示として解釈されうる）。ハブ未起動時はパイプの有無を見て即終了する。スクリプトは AppData ではなくホーム直下に置く（MSIX 版では AppData がアプリ専用の場所へ振り替えられ、AI ツールから見えないことがあるため）。
+- **状態**: スロットごとに「作業中のセッション（tool:session）」と「未確認の完了」を持つ。開始で作業中、応答終了で「完了」（フォーカス表示中でも光らせる）。許可や質問の確認（`permission_prompt` / `elicitation_dialog` / `PermissionRequest`）は作業の途中なので表示を変えず、枠を回る緑の光を続ける（2026-11-12 に、完了と同じ青にする扱いを取りやめ）。Claude / Grok の `idle_prompt`（応答後の入力待ち）は無視する（消した光が戻るため）。Grok の `task_complete` と `PermissionDenied` も無視する。Grok の `StopFailure` / `StopCancelled` は完了と同じ光（中断や失敗のあと緑が残らないようにする）。Codex の `Interrupt` は光らせずに戻す。完了通知が来ないセッションは 60 分で片付ける。ツールごとに状態の色を分けない。
+- **解除**: スロットの `IsFocused` が切り替わったとき（`Slot_PropertyChanged`。パネルでの 1 面フォーカス⇔4 面表示のほか、ウィンドウの直接最大化・復元によるフォーカス同期も含む）に光を消す。ウィンドウが前面に来ただけでは消さない（フォーカス表示中に終わっても気づけるように、2026-11-11 利用者要望）。カードの入れ替え中（`StatusStore.IsSwappingSlotContents`）は IsFocused がウィンドウと一緒に移るだけなので消さない。周期更新では、完了通知が来ないまま 60 分たった作業中だけを片付ける。ウィンドウが閉じたら（`WindowSlot.ClearWindow`）消す。スロット入れ替えでは `WindowSlot.SwapAiActivity` でワークスペースと一緒に移す。
+- **見た目**: 作業中は `AiCardOrbitGlow` が、`DrawingVisual` 上に直線と厳密円弧（`ArcTo`）の 28 段グラデーション・トレイル（外周オーラ `#45D483` 〜ボディ `#7FF3B4` 18 段＋LED 芯 `#98FFC8` 〜 `#C8FFE2` 10 段、カード短辺に応じた適応幅）を描き、`BorderThickness="1"` の中心線（`inset=0.5`, 角丸半径 `R - 0.5`）上を緑の LED の一筋の光として周回する。標準約 3.60 秒・縮小約 2.77 秒・極小約 2.45 秒の落ち着いた周期で、前半〜中盤をふわっとゆっくり巡り、終盤（0.80 付近）で速度比約 2.0 倍へ少しだけ心地よく加速し、始点・終点で連続接続する（`Shape` や巨大 `BlurEffect` は使わず、クリップ角の露出を防ぐ。詳説は §10、§6/§8/§9 は過去実装）。完了は `AiDoneFirefly` により、カード地（ベース `#0C2135`＋重ね `#1D5B94`）・枠（`#3EA3EC`）・外側の青い光（`#228BE0`）と、標準・縮小の A〜D アイコン（ベース `#103457`＋重ね `#2371C2`・外枠 `#74CBFF`＋青光背）および極小表示タイル（ベース `#103457`＋重ね `#2577CB`）を、全ロール `UIElement.Opacity` 統一・モニタリフレッシュレート同期・水平接線 2 区間曲線（3.0 秒周期）で滑らかにホタル点滅させる（詳説は §11。ボタンと IDE / CLI の枠内は塗らない）。目が痛くならないことを優先し、急激なチカチカ点滅や光の境界線を出さない。
+- **フック設定**: 歯車設定の「AI の作業通知」から設定・解除する。`~/.claude/settings.json`（`UserPromptSubmit` / `Stop` / `Notification`）、`~/.codex/hooks.json`（`UserPromptSubmit` / `Stop` / `PermissionRequest` / `Interrupt`、初回は CLI の `/hooks` で承認が必要）、`~/.copilot/hooks/turtle-ai-quartet-hub.json`（`userPromptSubmitted` / `agentStop`）、`~/.grok/hooks/turtle-ai-quartet-hub.json`（`UserPromptSubmit` / `Stop` / `StopFailure` / `StopCancelled` / `Notification`。設定後はセッションを開き直す）。既存の設定や利用者のフックは残し、通知スクリプトのパスを含む項目だけを足し引きする（2 回設定しても重複しない）。書き換え前の内容は `.turtle-hub-backup` に残す。ツールのフォルダが無ければ触らない。Codex の `config.toml` の `notify` と Grok の `config.toml` は触らない。
+- **通知スクリプトの注意**: Windows PowerShell 5.1 は BOM なし UTF-8 を ANSI として読むため ASCII だけで書く。`$Event` は自動変数なので引数名は `HookEvent`。AI の動作を変えないよう、必ず `{}` を出して終了コード 0 で終わる（Stop / UserPromptSubmit の出力は継続や拒否として解釈されうる。Grok でも同じ）。標準入力の詳細は `notification_type` と `notificationType` の両方を読む。ハブ未起動時はパイプの有無を見て即終了する。スクリプトは AppData ではなくホーム直下に置く（MSIX 版では AppData がアプリ専用の場所へ振り替えられ、AI ツールから見えないことがあるため）。
 
 ## 2. スロット状態と保存
 - `slots.json` は visible slot と stored panel を同じドキュメントで保持する。
@@ -141,7 +141,6 @@
 - **回収**: 共有プロファイル運用では `%LOCALAPPDATA%/TurtleAIQuartetHub/user-data` の残存専用プロファイルを起動時に削除する。専用運用でも各スロット起動前に消すのは再生成キャッシュだけ。
 - **必ず残すもの**: `User`（settings / keybindings / globalStorage / workspaceStorage）、`WebStorage`、`Partitions`、`Local Storage`、`Session Storage`。サインイン状態とチャット履歴は消さない。毎回の再ログインを発生させない。
 - **消してよいもの**: `Crashpad`（実行中でも可）、Cache / CachedData / CachedExtensionVSIXs / logs / agent-host / GPUCache など再生成できるキャッシュのみ。VS Code プロセスが一つも無いときだけ重いキャッシュを削除する。初回起動はキャッシュ再生成のため少し遅くなることがある。
-- **削除の安全性（2026-10-26 追加）**: `TryDeleteDirectoryBestEffort` はリパースポイント（ジャンクション/シンボリックリンク）を辿らず、`Directory.Delete(path, false)` でリンクだけ外す。以前は `EnumerateDirectories` がジャンクションも返すため再帰し、キャッシュ外のリンク先実データまで削除していた。消せなかったフォルダの `IOException` はログへ出さず次回へ回す。
 - **注意**: 専用 user-data-dir を再有効化するとディスクが増える。ウィンドウ識別のため必要でも、キャッシュのコピーや `globalStorage` 丸ごとコピーは戻さない。フォーカス切替中に `storage.json` を書かない。VS Code 実行中は共有プロファイルのキャッシュを触らない。
 
 ## 11. 管理ウィンドウの終了確認とメモリ安全性（2026-08-25 追加）
@@ -228,7 +227,6 @@
 - **配置**: `CompactStoredPanelTemplate` の A-D ボタンは `UniformGrid Columns="2"` で上段 A/B、下段 C/D とする。カード幅を変えず、各ボタンの横幅を確保する。
 - **高さ**: ボタン行は 46 DIP、各ボタンは高さ 21 DIP とし、縮小表示の控えを開いたときは既存の `GetCompactModeHeight` による実測でウィンドウを縦に広げる。
 - **文字**: 控えトグルとカード番号は 11 DIP、タイトルは 11 DIP、フォルダ名は 10.5 DIP。タイトルは番号の横で縦中央に揃え、利用可能な幅に応じて省略表示する。標準表示の控えカードと割り当て処理は変更しない。
-- **注意**: カードごとの A-D ボタンは第38節（#4）で廃止した。
 
 ## 24. 縮小・極小表示のスロットカード入替（2026-09-29 追加）
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
@@ -301,7 +299,7 @@
 - **対策**: HWND ごとの最大化への変化を自動補正より先に取り込み、同じディスプレイの旧フォーカスだけを解除する。420msの遷移猶予後に `ArrangeOnly` で対象だけを非アクティブ・アニメーションなしで象限へ戻す。最小化窓は復元しない。直接復元は自分の象限へ戻し、直接最小化は従来どおりフォーカスだけ解除する。
 - **非同期制御**: 手動切替は古い遅延整列・再適用・起動後リトライをキャンセルする。未完了の復元HWNDを引き継ぎ、すでに最大化している旧窓を再採用しない。パネルからの最大化要求中は同期を保留し、ディスプレイ移動中の一時的な通常状態は入力抑制の猶予後に判定する。
 - **注意**: 同期は既存の状態更新間隔（既定約1秒）で行う。フォーカス変更を取り込む前のZ順補正・全窓の再配置は禁止。通常Z帯と `SWP_NOZORDER` の配置、Win32要求の非同期化を維持する。直接操作に伴う整列で別ディスプレイや最小化窓を復元しない。過去の「手動最大化を取り消す」要望は確認したGit履歴・資料には見つからず、2026-06-07の手動最小化尊重を最大化・復元にも広げる判断。
-- **確認**: 回帰チェック74件（既存62＋追加12）と、表示しないWPF本体・模擬状態による統合チェック12件が合格。本体ビルドは警告・エラー0。実IDEのアニメーション・表示順の目視確認は未実施。経緯と実機手順は `docs/manual-window-focus-analysis-2026-10-12.md` を参照。
+- **確認**: 回帰チェック74件（既存62＋追加12）と、表示しないWPF本体・模擬状態による統合チェック12件が合格。本体ビルドは警告・エラー0。実IDEのアニメーション・表示順の目視確認は未実施。経緯と実機手順は `docs/investigations/manual-window-focus-analysis-2026-10-12.md` を参照。
 
 ## 34. メイン4カードのタイトル視認性向上とシステムモニタ（2026-10-19 追加）
 - **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Models/SystemMonitorModels.cs`, `Services/SystemMonitorService.cs`, `TurtleAIQuartetHub.Panel.Tests/SystemMonitorAndCardTitleTests.cs`
@@ -316,49 +314,135 @@
   - 各フォルダ使用量（スロット A〜D、重複を除いた控えパネル、Hub の `StateDirectory`、VS Code データフォルダ、Antigravity IDE データフォルダ）は `Task.Run` と `CancellationTokenSource` で非同期に走査（`EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint }`）し、完了したフォルダから順次 UI スレッドでサイズ・ファイル数・相対比率バーを更新する。モーダル閉鎖時や「再計測」押下時は即座にキャンセルする。
 - **確認**: 本体ビルド警告・エラー0、回帰テスト全91件（既存74＋新規17）合格。
 
-## 35. ページファイル表示・AI データ容量・ディスク整理（2026-10-27 追加）
-- **ファイル**: `Services/DiskCleanupService.cs`, `Services/FileSystemCleanup.cs`, `Services/SystemMonitorService.cs`, `Models/DiskCleanupModels.cs`, `Models/SystemMonitorModels.cs`, `MainWindow.xaml`, `MainWindow.xaml.cs`, `TurtleAIQuartetHub.Panel.Tests/DiskCleanupTests.cs`
-- **ページファイル**: 専用カードは作らず、メモリ使用量カードの下に `ページファイル 3.0 GB（増加なし）` の 1 行だけを出す（`UpdatePagefileSummary`）。注意文は「注意」以上のときだけ色付きで出し、余裕があるときは出さない。詳細（設定・予約メモリ・上限・拡張までの余裕）は 1 行のツールチップに出す。
-  - 2026-10-27 に一度、帯グラフ付きの専用カードにしたが、「ページファイルを消費しているように見える」「メモリ使用量と同じ情報に見える」「場所を取りすぎ」と指摘されて 1 行にした。帯グラフ・物理メモリの凡例・ディスク使用量の大きな数字を戻さない。拡張は厳密には実メモリ使用量ではなくコミット量で決まるが、利用者向けにはメモリ使用量カードと注意文で足りる。
-  - 1.5 秒周期で呼ぶため WMI は使わない。コミット量は `GlobalMemoryStatusEx`（`ullTotalPageFile` - `ullAvailPageFile`）、`pagefile.sys` の確保量・使用量・ピークは `NtQuerySystemInformation(SystemPageFileInformation=18)`、設定（自動管理/カスタム/なし）は `HKLM\...\Memory Management\PagingFiles` を読む。
-  - 「拡張あり」は、ハブ起動後に観測した確保量の最小値から 256 MB 以上増えたときに出す。最小値はメモリだけに持ち、ファイルへは書かない。PC 起動前の大きさは分からないため、ハブを再起動すると基準もリセットされる。
-  - 評価の優先順は、なし > 拡張あり > 逼迫（90%以上）> 注意（75%以上）> 余裕あり。注意文は半幅カードに収まるよう短く保つ。
-- **AI データ容量**: フォルダ一覧に `workspaceStorage`（チャット履歴など）、`~/.codex`、`~/.copilot`、`~/.claude`、`~/.gemini`、`~/.grok`、Temp を紫バッジ（`Agent`）で追加する。計測のみで削除しない。大きいフォルダは `FolderUsageItem.MeasurementTimeout`（15 秒）で既定の 3 秒より延ばす。「フォルダ計」は `SumWithoutNestedDuplicates` で入れ子（VS Code データ内の workspaceStorage など）を二重に数えない。
-  - 一覧は `CreateGroupedFolderUsageView`（`ListCollectionView` + `FolderUsageItem.GroupTitle`）で、表 / 控え / アプリ / AI エージェントの枠にまとめる。枠線と見出しはバッジと同じ色にする（緑・灰・青・紫）。グループの並びは作成順（`BuildFolderUsageItems` の追加順）に従うので、並べ替えを入れない。
-- **ディスク整理**: システムモニタの「確認して整理...」から開く。対象は次の 2 種類だけ。
-  - Copilot CLI: `~/.copilot/pkg/<platform>/<version>`。版は `System.Version` で数値比較する（文字列比較だと 1.0.9 > 1.0.100 になる）。各 platform の最新版は「保持」にし、`tmp` は対象外にする。`copilot` プロセスか、`pkg` 配下の実行ファイルを使うプロセスがあれば旧版もすべて「保持」にし、削除直前にも再確認する。`universal/1.0.89` 以降はローダーだけで、npm 経由でプラットフォーム別パッケージを起動するため、古い `universal` 版を消してよい。
-  - Temp: `%TEMP%` 直下だけを見る。10 MB 以上のインストーラー（.exe / .msi / .msix / .appx 系）か、インストーラーと 1 MB 以下の付随ファイルだけが入ったフォルダ（サブフォルダなし・20 ファイル以下）を候補にする。24 時間以内に作成・更新されたものは「注意」で既定では選択しない。`FileShare.None` で開けないものは「保持」にする。
-  - 削除は `<path>.turtle-deleting` へ移動してから行う。移動できない＝使用中なのでスキップし、途中まで消して実行中のアプリを壊さない。消し残った退避名は次回スキャンで「安全」として再表示する。許可ルート外のパスは拒否する。リンクは `FileSystemCleanup` で辿らない。
-  - ごみ箱には送らない（容量を空けるのが目的）。確認ダイアログは既存の赤系オーバーレイを使い、WPF 標準の `MessageBox` は使わない。
-- **注意**: 対象を増やすときも、設定・履歴・サインイン情報を含むフォルダ（`workspaceStorage`、`WebStorage`、`~/.gemini/antigravity-browser-profile`、各 CLI のセッション）は候補にしない。npm グローバルや VS Code 拡張内の CLI 本体の重複も、それぞれのインストーラーが管理しているため削除対象にしない。
-- **確認**: 回帰テスト 26 件（`DiskCleanupTests`）を追加。画面は `.build-tmp/disk-cleanup-preview` の非表示描画で確認する（`Show()` しない、周期更新と保存を止める、削除の確定は呼ばない）。全体表示（MaxHeight 解除）の後に通常サイズを描画すると空白になるので、通常サイズを先に描画する。
+## 35. 巨大フォルダによる使用量計測の停滞防止（2026-10-20 追加）
+- **ファイル**: `Services/SystemMonitorService.cs`, `Models/SystemMonitorModels.cs`, `MainWindow.xaml.cs`, `TurtleAIQuartetHub.Panel.Tests/FolderUsageCalculationTests.cs`
+- **原因**: フォルダを逐次走査していたため、控えの `C:\` 全体の列挙が後続の計測を止めていた。項目単位の例外処理もなく、読み取り失敗で残りが「計測中」のままになった。
+- **対策**: ドライブ直下は `DriveInfo.TotalSize - TotalFreeSpace` を取得して「ドライブ使用量」と表示し、ファイル数を数えない。ドライブのバーは容量に対する使用率とし、通常フォルダの相対バーと合計から除外する。通常フォルダは最大2件を並行計測し、1件3秒で「スキップ (時間超過)」、取得失敗は「計測不可」として後続を継続する。完了表示でも未計測件数を明示する。
+- **中断**: `WaitAsync` で待機期限を設け、期限到達・閉鎖・再計測時は走査側のトークンもキャンセルする。OSの同期I/Oそのものは即時中断できないため、遅れて終了した結果をUIへ反映しない。通常走査はディレクトリ/項目ごとにキャンセルを確認し、ジャンクション等の再解析ポイントを辿らない。取得できない子ディレクトリは従来どおり除外するが、対象ルートの失敗を0 Bと誤表示しない。
+- **注意**: 第34節の再帰列挙・逐次処理は本節で置き換える。UI更新はDispatcher上で行い、閉鎖・再計測後のキャンセルトークンと一覧の参照一致を確認する。単にタイムアウトしたTaskを放置して走査を続けたり、部分集計を確定値として表示したりしない。
+- **確認**: 本体とテストのビルド警告・エラー0。回帰テスト102件（既存91＋追加11）が合格。実ドライブの容量取得と後続フォルダ、空/消失フォルダ、遅い先頭項目、並行枠2件の時間超過、読み取り例外、閉鎖/再計測に相当するキャンセルと遅延結果の破棄を確認。
 
-## 36. 控え一覧の高さ・控えの右クリックメニュー・クリア表記・タイトルバーの状態表示（2026-10-30 追加）
-- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `MainWindow.StoredPanelMenu.cs`, `MainWindow.TitleBarIndicators.cs`, `UpdateBadge.cs`, `Models/StoredPanelSlot.cs`, `Models/SystemMonitorModels.cs`, `Services/StatusStore.cs`, `Services/SystemMonitorService.cs`, `Services/PullRequestNotificationService.cs`, `Services/UpdateBadgeStateStore.cs`, `TurtleAIQuartetHub.Panel.Tests/TitleBarIndicatorTests.cs`
-- **控え一覧の高さ（#5）**: `UpdateStoredOverviewHeight` は `StoredOverviewRoot.Height` をパネル（`PanelFrameBorder.ActualHeight`）と同じに固定する。`MinHeight` だけに戻すと、長いタイトルの折り返しで中身が少し大きいだけで一覧の下端がパネルより下へはみ出す。タイルのタイトルは `MaxHeight="32"`（2 行）で省略し、通常は 6 ページがスクロールなしで収まる。入りきらないときだけ一覧部分をスクロールさせる。表示モードを切り替えると一覧は閉じる（縮小表示でも開ける。第38節）。
-- **控えの右クリックメニュー（#8）**: 標準・縮小の控えカードと控え一覧のタイルに `PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"` を付け、メニューは開くたびにコードで組み立てる（`BuildStoredPanelContextMenu`）。直前に `StoredPanelSlot.RefreshWorkspaceLinks()` でフォルダの有無と GitHub リモートを読み直す。名前の編集中（`TextBox.IsReadOnly == false`）は入力欄の標準メニューを優先する。各項目はカード上のボタンと同じ処理（`ShowStoredPanelAsync` / `SelectStoredPanelFolder` / `ShowClearStoredPanelDialog`）を呼ぶ。登録済みの控えの「フォルダを変更」は `StatusStore.ChangeStoredPanelWorkspace` で、利用者が付けた名前と選択アプリを残し、旧フォルダ名から自動で付いた名前（連番付きを含む）だけ新しいフォルダ名にする。タイトル欄の無い控え一覧のタイルから「名前を編集」すると、下の控えパネルを該当タブへ切り替えて、そのカードのタイトル欄で編集を始める。メニューの見た目は `PanelContextMenuStyle`（暗色・角丸、右端の `InputGestureText` に配置先の現在の内容）。
-- **「削除」→「クリア」（#9）**: 控え・スロットのゴミ箱は消しゴム（Segoe MDL2 `&#xE75C;`）にし、ツールチップ・確認ダイアログ・確定ボタンを「クリア」に統一した。両方の確認ダイアログに「※ フォルダやファイル本体は削除されません。」を出す。**「削除」＝ファイルが消える、「クリア」＝登録が消える** の使い分けを守り、ディスク整理など本当にファイルを消す箇所の「削除」とゴミ箱アイコンはそのまま残す。
-- **システムモニタのアイコン色（#7）**: `SystemMonitorService.EvaluateHealth` が CPU / メモリ / ローカル ディスク / ページファイルの最も悪い状態（警告 > 注意 > 正常）と原因の一覧を返し、`ApplySystemHealth` がアイコン色（緑・黄・赤）とツールチップに反映する。しきい値はバーの色と同じ定数（`CpuWarningPercent` など）を使う。モーダルを開いていない間は 5 秒ごとに `Task.Run(CaptureHealth)` で評価し（CPU はこの間の平均）、開いている間は 1.5 秒ごとの更新が同じ値でアイコンも更新する。背景評価は `GetDriveUsages(fixedOnly: true)` でローカル ディスクだけを調べ、応答の遅いネットワークドライブや常に満杯の光学ドライブに触れない。ページファイルの最小観測値は両方の経路から更新するので `_pagefileLock` で守る。
-- **更新バッジ（#6）**: `local:UpdateBadge.IsActive` を `ChromeButton` に付けると右下に赤丸（件数なし）が出る。PR 受信箱以外のアイコンも同じ添付プロパティで使える。既読状態は `UpdateBadgeStateStore`（`StateDirectory/update-badges.json`、キーごとの最終確認時刻だけ）に保存する。
-  - PR の更新は `PullRequestNotificationService` が `gh api notifications?per_page=50`（未読のみ）を 3 分ごとに実行し、`subject.type` が `PullRequest` / `CheckSuite` の未読通知のうち、最終確認時刻より新しいものがあれば赤丸を出す。GitHub 側で既読にした通知は未読一覧から消えるので、次の確認で赤丸も消える。受信箱ボタンを押したら `MarkPullRequestsSeen` で既読にする（PC の時計遅れに備え、受け取った通知の最新時刻も下限にする）。
-  - ハブはトークンを持たず、`gh` が無い・未サインインなら確認しない（ツールチップで案内、ログは状態が変わったときだけ）。設定 `checkPullRequestUpdates: false` で `gh` の起動自体を止める。`gh` は入っているが未サインイン（`CheckResult.RequiresSignIn`）のときだけ、起動後の最初の確認で 1 回ステータス欄に案内する（処理中は出さない）。`gh` が無い人には案内しない。確認できない状態でもアイコンは薄くしない（受信箱は開けるため、無効表示と誤解させない）。ネットワーク利用は PRIVACY.md に記載済み。
-- **確認**: 回帰テスト 16 件（`TitleBarIndicatorTests`）を追加。ユーザー環境で dist 版が起動中（単一インスタンス）のため、実画面での目視確認は未実施。
+## 36. VS Code CacheStorage の停止中回収（2026-11-07 追加）
+- **ファイル**: `Services/SlotUserDataPaths.cs`, `Services/VscodeCacheStorage.cs`, `Services/FileSystemCleanup.cs`, `Services/VscodeLauncher.cs`, `Services/DataFolderDiagnosticsService.cs`
+- **問題**: H5 のブラウザ保存領域内にある CacheStorage が直下キャッシュの回収対象外で、専用スロットごとに蓄積する。窓を閉じてもプロセスが残る環境がある。
+- **対策**: 既存の起動時 Task.Run から標準・専用プロファイルの `WebStorage/<bucket>/CacheStorage`、`Service Worker/CacheStorage` と `Partitions/<partition>` 内の同じ配置を回収する。プロセスが存在する/確認不能なら見送る。清掃中も 200 ms 間隔で確認し、一度起動を検出したらその回収は中止する。ハブの VS Code 起動と清掃は `UserDataMaintenanceGate` で排他し、起動側は非同期待機する。
+- **保護**: 既知の相対配置だけを許可し、ルート外と祖先の reparse point を拒否する。内部リンクを辿らず、ロック中のファイルは次回へ回す。User・Cookies・IndexedDB・未保存データ・Service Worker 登録情報は触らない。第10節の WebStorage 保持に対する例外は CacheStorage のみ。専用無効時の旧 user-data 全体回収は従来仕様だが、プロセス停止条件を追加した。
+- **診断**: H5/V10/G10 に CacheStorage の内訳を表示。G10 は自動回収対象外。既存コード番号・しきい値は維持し、索引を7階層に拡張して専用 Partition 内も数える。H3 の履歴は削除対象にしない。
+- **注意**: 外部起動との完全な排他はできない。強制終了や任意の CacheStorage 名の再帰検索は追加しない。別 PC 固有の増加元の拡張機能は未特定。原因・確認手順は `docs/guides/data-folder-diagnostics.md` を参照。
 
-## 37. 容量の解析と診断コード（2026-10-30 追加）
-- **ファイル**: `Services/DataFolderDiagnosticsService.cs`, `Models/DataFolderDiagnosisModels.cs`, `MainWindow.DataFolderAnalysis.cs`, `MainWindow.xaml`（フォルダ行の虫眼鏡ボタン・`DataFolderAnalysisOverlay`）, `TurtleAIQuartetHub.Panel.Tests/DataFolderDiagnosticsTests.cs`, `docs/data-folder-diagnostics.md`
-- **目的**: 開発環境で再現しない容量の肥大を、利用者が診断コード（H1〜H8 / V1〜V11 / G1〜G11）と大きさだけ伝えれば原因が分かるようにする。コードの意味・しきい値・開発側の改善案は `docs/data-folder-diagnostics.md` が正。コードを聞いたらまずこの一覧を見る。
-- **仕組み**: `FolderSizeIndex` がフォルダを 1 回だけ走査し、5 階層までのフォルダ別合計を持つ（35,913 ファイル・6 GB で約 0.6 秒）。判定は `Evaluate`（純粋関数）で、合成データのテストで現象ごとに確認する。`workspace.json` の参照先が消えたものを「消えたフォルダのデータ」とする。VS Code は `file:///c%3A/...` と書くため `TryGetLocalPath` で自前変換する。`ssh-remote%2B...` のようなリモート URI は .NET で解釈できないので、存在確認せず残っている扱いにする。
-- **注意**: コード番号は既存を変えず、末尾に足す（利用者が覚えた記号の意味を変えない）。解析は読み取りのみで、削除はディスク整理に任せる。
+## 37. メモリ警告を物理メモリのバーへ統一（2026-11-07 追加）
+- **ファイル**: `Services/SystemMonitorService.cs`, `MainWindow.xaml.cs`, `MainWindow.xaml`
+- **原因**: メモリバーは物理使用率、ページファイルの注意文とアイコン色はコミット率を使い、47.5%使用・空き25.1 GBでも警告が出ていた。過去のページファイル拡張を最優先にしていたため、空き回復後も警告が残った。10月27日/31日の既存実装で、直前のCacheStorage対応では変更していない。
+- **対策**: `AssessPagefile` にその回の `MemoryUsagePercent` を渡し、バーと同じ75%/90%で判定する。緑では警告文を空にし、ページファイル拡張・無効設定・高いコミット率だけで色を上げない。開いているモニタと背景評価の両方へ適用する。
+- **注意**: ページファイルの容量と増加量は通常色で維持し、コミット値はツールチップに残す。ユーザー指定の表示方針として、コミット上限だけの接近は警告にしない。CPU・固定ドライブの警告は抑制しない。調査根拠は `docs/investigations/memory-warning-analysis-2026-11-07.md`。
 
-## 38. 縮小表示の控えは「選んで上のスロットへ」（2026-11-01 追加・#4）
-- **ファイル**: `MainWindow.xaml`（`CompactStoredPanelTemplate`・`CompactSlotTemplate`・`CompactSlotButtonStyle`・`CompactStoredAssignHintRow`）, `MainWindow.CompactStoredAssign.cs`, `SlotAssignTarget.cs`
-- **目的**: 縮小表示の控えエリアの高さを減らす。カードごとの A-D ボタン（46 DIP）をやめ、カードは名前とフォルダ名の 2 行にする。控えエリアは約 244→約 136 DIP。
-- **操作**: 控えカードを単クリック（`PreviewMouseLeftButtonDown` の `ClickCount == 1`）で選ぶと、`SlotAssignTarget.IsArmed`（継承する添付プロパティ）を `CompactBarPanel` に立て、上のスロット 4 枚が配置先（緑枠・「▶ ここに表示」）に変わる。押したスロットへ `ShowStoredPanelFromOverviewAsync` で表示し、選択は解除される。選択中はタブ行を案内と `取消` に置き換える（高さは変えない）。Esc・同じカードの再クリック・空きカードのクリック・表示モードの切り替えでも解除する。
-- **選択の共有**: 選択は標準表示の控え一覧と同じ `_selectedOverviewStoredPanel` / `IsOverviewSelected` を使う。`SelectOverviewStoredPanel` が `UpdateCompactStoredAssignState` も呼ぶ。`ApplyDisplayMode` で必ず解除し、モードをまたいで持ち越さない。
-- **注意**: 選択中はスロットの名前欄（`InlineTitleTextBox`）を `IsHitTestVisible=False` にし、IDE 切替・起動ボタンを隠す。名前の単クリックはフォーカス切替のタイマーを動かすため、そのままだと配置ではなくフォーカス切替になる。ドラッグでの配置（`SlotCard_Drop`）と右クリックメニューの「スロット X に表示」はそのまま使える。
-- **縮小表示の控え一覧**: 縮小表示の「控え」トグルの右に `CompactStoredOverviewButton` を置き、標準表示と同じ `StoredOverviewPopup` を開く。高さは `UpdateStoredOverviewHeight`（`PanelFrameBorder` の高さ）で縮小表示のウィンドウに揃い、左右の配置ルール（`ShouldPlaceStoredOverviewOnLeft`）も同じ。縮小表示では一覧の A〜D パッド（`StoredOverviewTargetPad`）を隠し、タイルで選んだカードも本体のスロットの「ここに表示」で配置する。`ApplyDisplayMode` は表示モードを切り替えるたびに一覧を閉じる（標準表示で控えが開いていれば自動で開き直す）。
-- **縮小表示の一覧の見た目**: `CompactLayout.IsActive`（継承する添付プロパティ）を `StoredOverviewRoot` に立て、タイルは番号・フォルダ名の行（`TileFooter`）を省いた名前だけの表示（最小高さ 34 DIP・文字 11 DIP、2 行まで）にする。ページ見出しは 10.5 DIP、一覧の見出しは 12.5 DIP、案内は 10.5 DIP で、縮小表示の控えカードやタブの文字に揃える。フォルダ名などはタイルのツールチップで見る。
-- **縮小表示の一覧の開き方**: 縮小表示の「控え」トグルで控えを開くと、標準表示の Expander と同じく `ScheduleStoredOverviewAutoOpen` で一覧も横へ引き出し（同じスライド・フェード）、閉じると一緒に閉じる。判定は `IsStoredPanelsAreaOpen`（標準＝Expander、縮小＝`_isCompactStoredPanelsOpen`）に集約し、表示モード切替・終了確認からの復帰・最小化からの復帰でも同じ条件で開き直す。一覧のスクロールバーは `SlimScrollViewerStyle` / `SlimScrollBarStyle`（幅 6・角丸・矢印なし、中身と 5 DIP 離す）。
+## システムモニタの折りたたみと確認付き VS Code 終了（2026-11-12 追加）
+- **UI**: `GroupItem` 内の `Expander` と専用スタイルで、見出し・件数・「開く / 閉じる」を表示。`_expandedSystemMonitorFolderGroups` はモニタを開くときにクリアし、分類の Loaded で復元する。Expanded / Collapsed の処理は分類自身のイベントだけを受け取る。計測の世代管理・期限・キャンセルは既存どおり。
+- **確認**: `VscodeProcessRecoveryConfirmOverlay` で対象の PID・タイトル・実行パスを表示する。初期フォーカスはキャンセル、Escape で閉じて対象を破棄。一覧取得だけでは終了しない。取得中のキャンセルと次の取得の競合は CTS の参照一致とキャンセル状態で成功・例外両経路を保護する。
+- **対象保護**: `Code.exe` / `Code - Insiders.exe` だけを対象とし、ユーザー SID・Windows セッション・実行パス・開始時刻・PID を終了直前に再照合する。限定照会ハンドルを保持して PID 再利用を防ぎ、子プロセスツリーは終了しない。`Process.Kill` は使わない（`PROCESS_ALL_ACCESS` を要求し、システム版や管理者起動でアクセス拒否になる。終了権限の開き方は末尾の「VS Code 終了のアクセス拒否」）。取得不能・別ユーザー・別セッション・別 IDE は対象外。
+- **結果**: 終了待機は5秒で打ち切り、再検出結果を表示する。確認後の新規 PID は自動終了しない。アクセス拒否・タイムアウト・取得失敗を「プロセスなし」と区別する。実行前に保存し、実行後は管理窓を再検出して、消えた窓の非表示状態と表示ボタンを更新する。保存済みワークスペースは保持する。
+- **注意**: 自動回収・通常の一括終了へ強制終了を組み込まない。強制終了は本機能の明示確認時だけで、キャッシュやユーザーデータの削除は行わない。第36節の自動キャッシュ回収における強制終了禁止は維持する。
+- **検証**: フェイクによる終了対象・PID再利用・権限拒否・自然終了・残留の安全性14件を含む回帰259件。本体ビルド警告/エラー0。隔離した非表示WPFで初期全閉・開閉・一覧再生成時の復元・長文確認画面・キャンセルを確認。実ユーザーのプロセス停止は行わない。
+## AI フック設定の場所一覧と読み取り専用プレビュー（2026-11-12 追加）
+- **ファイル**: `MainWindow.AiActivity.cs`, `MainWindow.AiHookSettings.cs`, `MainWindow.xaml`, `Services/AiNotifyHookInstaller.cs`, `Models/AiNotifyHookLocation.cs`, `TurtleAIQuartetHub.Panel.Tests/AiHookLocationTests.cs`。
+- **場所**: Installerの既存パスを `GetSettingsLocations` で一覧化し、Claudeの `~/.claude/settings.json`、Codexの `~/.codex/hooks.json`、Copilotの `~/.copilot/hooks/turtle-ai-quartet-hub.json`、Grokの `~/.grok/hooks/turtle-ai-quartet-hub.json` を示す。状態は短い語に固定し、エラー詳細はツールチップへ移す。インストール/解除後は同じ一覧を再取得する。
+- **閲覧**: `ReadSettingsPreview` は既知の4ファイルだけをFileAccess.Readで取得し、原文を保ったまま最大256Ki文字に制限する。BOMを判定し、上限のサロゲートペアを壊さない。未作成・消失・読取拒否を表示用の結果で返し、JSONの整形/保存やフォルダの暗黙作成は行わない。
+- **UI**: `AiHookSettingsPreviewOverlay` は設定画面の上に表示し、パスと内容を読み取り専用TextBoxで示す。縦横スクロール・選択コピーに対応。Escapeはプレビューを先に閉じ、設定画面を残す。閉鎖時は内容を消し、CTSの参照一致で古い読取結果・例外の反映を防ぐ。ファイル内容はログへ出さない。
+- **維持する仕様**: 通知イベントの解釈、バッジ表示、フック追加/解除、バックアップ、Codex初回承認の案内は変更しない。実ホームへの設定変更をUI検証から呼ばない。
+- **実装検証（2026-11-12）**: 場所・閲覧の追加13件を含め回帰272件が合格。本体ビルドは警告・エラー0。650/580 DIP幅の通常・エラー・補足・プレビュー・スクロール・空ファイル・読取失敗・省略・閉じる・Escapeを合成データと非表示WPFで確認。読み取り専用の編集抑止、選択、閉じる時の内容消去も確認。実ホームの設定変更やExplorer起動は検証から呼ばない。
+## フォルダ分類の見出しと説明の余白（2026-11-12 調整）
+- `MainWindow.xaml` の分類説明 `GroupDescriptionText` に上10 DIP・下10 DIPの余白を設け、展開見出し・説明文・フォルダカードの間を分離する。共通Expanderテンプレートの間隔には影響させない。
+- 折りたたみ時の高さや開閉・計測の処理は維持する。余白だけの変更のため、本体ビルドと合成データによる非表示WPF描画で確認する。
+## 半角Xだったモーダルの閉じるボタン（2026-11-12 対象範囲・中央揃えを修正）
+- **対象範囲の訂正**: 変更対象は元がASCIIの `X` だった設定・ヘルプ・ログ・システムモニタ・ディスク整理・容量解析の6モーダルに限定する。元からアイコンだった本体タイトルバーと控え一覧を統一対象へ広げない。
+- **既存表示を保持**: 本体はE8BB / Segoe MDL2 Assets / 文字10 / `TitleBarChromeButton`、控え一覧はE711 / 同フォント / 文字10 / 26×24 / `ChromeButton`。本体の極小幅23・通常幅32の既存制御も維持する。汎用CloseIconButtonStyleや本体専用TitleBarCloseButtonStyleは使用しない。
+- **サイズと中央揃え**: `ModalCloseButtonStyle` は「再計測」の高さに合わせた30×30 DIP。対称な12×12のPath・線幅1.4で十字を描き、ボタンだけでなく記号も比例して縮小する。文字の行高・ベースラインに依存させず、描画中心をボタン中心に合わせる。既存Click/Escape/終了確認・通常フッターは維持する。新規のフックガイドの×も同じモーダル用部品を使う。
+- **確認観点**: 再計測と高さが一致し、幅も同じ正方形であること。十字の描画境界の中心がボタン中心（15,15）に一致することを確認する。依頼対象外の既存アイコン・寸法・スタイルを元の値と照合する。
+- **サイズ調整後の確認**: 6モーダルすべて30×30・描画中心（15,15）を確認し、既存Click結線と端寄りのヒット領域を保持。本体/控え一覧の元の値との照合、本体ビルド警告/エラー0、システムモニタと設定画面の非表示描画でバランスを確認した。
+## docs 整理時の参照と図版（2026-11-12 追加）
+- `README.md` と `docs/index.md` を入口にし、移動した各資料にもindexへの戻りリンクを置く。既存16資料を5分類へ移動し、新しいフックガイドを追加した。調査時点の検証結果やStore草案を、現行状態の保証として扱わない。
+- ファイル移動時は、Markdownの相対リンクだけでなく、`scripts/Test-StoreReadiness.ps1` の必須ファイル4件、README/IMPLEMENTATION_PLANの案内、診断サービス/画面のコメント、overview内のパスも更新する。本文のコマンド例はリポジトリルート起点を維持する。
+- フック図は自己完結SVG（外部画像・スクリプトなし）。図中の日本語と線をブラウザでレンダリングし、キャンバス外にはみ出す文字がないことを確認する。元SVGは `docs/assets/`、一時PNG/検証レポートは `.build-tmp/docs-organization/`。
+- 確認: docs18 Markdown（indexを含む）とREADME/IMPLEMENTATION_PLANのローカルリンク93件で欠落0、全資料がindexに掲載、必須Store文書4件の存在とスクリプト構文に問題なし。SVG2枚はXMLと表示を確認し、外部参照/文字はみ出し0。
+
+## 設定枠内のフックガイドとページ復帰（2026-11-12 追加）
+- **ファイル**: `MainWindow.AiHookGuide.cs`, `MainWindow.xaml`, `MainWindow.xaml.cs`, `Views/AiHookGuideView.xaml(.cs)`。
+- **ページ構成**: SettingsOverlayの同じ枠に `SettingsMainContentGrid` と `AiHookGuidePanel` を置き、Visibilityを切り替える。元の設定モデル/入力コントロールを再生成しない。3つの切替は選択状態を持つRadioButtonで、選択した本文だけを表示し、本文だけをスクロールする。
+- **復帰**: Show時にSettingsScrollViewerの位置と起点ボタンを保持する。戻る/×/EscapeではLoaded優先度のDispatcherで元の位置とフォーカスを復帰する。navigationVersion、親の表示、guideの表示を照合し、閉鎖や再オープン後の古いcallbackを無効化する。設定画面そのものの開閉では `HideAiHookGuide(false)` を使う。
+- **リソース**: View内の図はPath/Border/TextBlockのベクター。自己完結のStaticResourceと、親から受け取るボタン用DynamicResourceを使い分け、コンストラクター時の親リソース未解決を防ぐ。既存の共通×スタイルも再利用する。
+- **説明**: 既存フック保持、Claude/Codexバックアップの更新、Copilot専用JSONの上書き/削除とバックアップなし、設定済みと疎通の違い、応答終了と成功判定の違い、未起動時再送なしを説明する。画面の閲覧からReset/Save/Install/Uninstallを呼ばない。
+- **検証**: 本体ビルド警告/エラー0、既存回帰272件合格。隔離した非表示WPFで650/580幅の3頁、ラベルや図の見切れ、切替時の先頭復帰、戻る/×/Escapeで設定枠を保持、元の180DIPスクロール位置への復帰を確認。実キーボードフォーカス自体はShowしない制約のため、戻り先参照と遅延復帰経路を確認する。実フックの設定/解除・本番保存・実ウィンドウ操作は行わない。
+
+## AI 作業通知の完了色（2026-11-12 追加）
+- **ファイル**: `MainWindow.xaml`, `Views/AiHookGuideView.xaml`, `Models/AiActivityState.cs`, `Services/AiActivityTracker.cs`
+- **問題**: 完了の光が作業中と同じ緑系統で、終わったことが見分けにくかった。ツール別に黄色の入力待ちを出す案は、Copilot に対応イベントが無く表示が揃わないため採用しない。
+- **対策**: 作業中の緑の明滅は維持する。完了と許可待ちは同じ薄い青（塗り `#3E7EAD`、枠 `#D7EEFB`、光 `#B6DFF6`、ぼかし 16）で点滅せずに光らせる。`AiGlowColor` は作業中の緑のまま分ける。
+- **注意**: 黄色の入力待ち状態は残さない。`idle_prompt` は無視したまま。画面やログから状態を推定しない。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰278件（AI 作業通知27件）が合格。青の光の目視は起動中の画面では未実施。
+
+## VS Code 終了のアクセス拒否（2026-11-12 追加）
+- **ファイル**: `Services/VscodeProcessRecoveryService.cs`, `Services/VscodeProcessRecoveryElevation.cs`, `App.xaml.cs`, `MainWindow.xaml.cs`, `MainWindow.VscodeProcessRecovery.cs`
+- **問題**: 「VS Code の終了・復旧」で「アクセスが拒否された」となる。ユーザー版（`%LOCALAPPDATA%\Programs`）はハブと同じ整合性レベルなら終了できる。システム版（`C:\Program Files\Microsoft VS Code`）や管理者として起動した VS Code は高い整合性レベルになり、通常権限のハブから `PROCESS_TERMINATE` が Win32 エラー 5 で拒否される。加えて `Process.Kill` は内部で `PROCESS_ALL_ACCESS` のハンドルを保持して再利用するため、終了権限だけでは足りる相手でも拒否される。
+- **対策**: `Process.Kill` と `Process.SafeHandle` を使わない。`PROCESS_TERMINATE | SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION` を開き、エラー 5 のときだけ `TERMINATE | QUERY_LIMITED`、さらに `TERMINATE` のみへ落とす。直接終了できた対象は昇格しない。拒否された対象だけを `%LOCALAPPDATA%\TurtleAIQuartetHub\recovery\` の確認情報として渡し、`--vscode-recovery-elevated` で一度だけ管理者確認を出す。昇格側は OS から PID・開始時刻・パス・SID・セッションを読み直し、`Code.exe` / `Code - Insiders.exe` 以外、別ユーザー、別セッションは終了しない。キャンセル（Win32 1223）は対象を残し、「管理者の確認がキャンセルされたため終了できませんでした。」と返す。
+- **注意**: アプリの manifest は `asInvoker` のまま。昇格プロセスは単一インスタンス mutex（`Local\TurtleAIQuartetHub.SingleInstance`）へ入る前に処理して終了する。既存インスタンスへ転送すると、権限のない側が終了を担当して再び拒否される。メモリ回収・キャッシュ回収・通常のウィンドウ終了へ強制終了を広げない。子プロセスツリーは終了しない。第11節の既定強制終了禁止は維持する。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰278件（終了・復旧20件）が合格。同じユーザーの犠牲プロセス（`ping.exe`）だけを終了権限で停止し、実行中の VS Code は停止していない。
+
+## AI 作業通知へ Grok を追加（2026-11-12 追加）
+- **ファイル**: `Services/AiNotifyHookInstaller.cs`, `Services/AiActivityTracker.cs`, `Models/WindowSlot.cs`, `Views/AiHookGuideView.xaml`, `MainWindow.xaml`, `TurtleAIQuartetHub.Panel.Tests/AiActivityTests.cs`, `TurtleAIQuartetHub.Panel.Tests/AiHookLocationTests.cs`
+- **問題**: Grok には Claude と同じフックがあるが、ハブは登録していなかった。
+- **対策**: 既存の名前付きパイプと状態機械をそのまま使う。専用ファイル `~/.grok/hooks/turtle-ai-quartet-hub.json` に `UserPromptSubmit` / `Stop` / `StopFailure` / `StopCancelled` / `Notification` を書く。失敗と中断も完了と同じ薄い青。許可待ちは `permission_prompt` と `elicitation_dialog` だけ。作業中の緑は変えない。
+- **注意**: `~/.grok` が無いときは未インストールとし、フォルダを作らない。`config.toml` とほかの `~/.grok/hooks/*.json` は触らない。解除で専用ファイルが空オブジェクトになったときだけ削除し、`.turtle-hub-backup` は残す。利用者のキーが残っていればファイルも残す。スクリプトは `{}` と終了コード 0 のまま（`Stop` と `UserPromptSubmit` を止めない）。`idle_prompt` は無視したまま。Grok は Claude 互換で `~/.claude/settings.json` も実行することがあり、その通知はツールチップが Claude Code になる。色は同じ。`config.toml` では止めない。`StopCancelled` は次の開始より遅れて届くことがあり、そのとき完了の光が付く。設定後のセッションは開き直すまで新しいファイルを読まない。未信頼の作業フォルダでは `/hooks-trust` が必要。ホーム直下は信頼済み。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰284件（AI 作業通知32件、保存先・閲覧14件）が合格。一時ホームだけで確認し、実ホームのフックと実行中のセッションは変更していない。光の目視は未実施。
+
+## フックガイドの図は分類と揃える（2026-11-12 追加）
+- **ファイル**: `docs/guides/ai-notification-hooks.md`, `docs/assets/ai-notification-hooks-basics.svg`, `docs/assets/ai-notification-to-app.svg`, `docs/assets/ai-notification-flow.svg`, `docs/index.md`
+- **問題**: ガイドが設定手順から始まっており、どの瞬間にフックが動き、その知らせがバッジへどう届くかが先に分からなかった。実装経路図の完了バッジも、古い緑の光のままだった。
+- **対策**: 基本、AIの状態とフック、アプリへの届き方、画面の見え方、使い方、今の実装の順に書き直した。状態とフック、届き方のSVGを追加し、実装経路図の完了バッジを同じ薄い青にした。
+- **注意**: 図は分類器と一致させる。作業中と許可の確認中は緑、青い光は応答終了だけ。`idle_prompt` / `task_complete` / `PermissionDenied` は光らせない。チャット本文、黄色、ツールごとの別色は描かない。アプリ内「仕組みを見る」は3項目のまま。実ホームのフックと実行中セッションは変更しない。状態図の戻り矢印は、説明ラベルで線を隠さず、箱の辺から箱の辺へつなぐ。
+- **確認**: 4つのSVGをUTF-8のXMLとして解析し、幅1200で描画して文字の見切れと重なりを確認した。アプリの挙動は変えていないため、回帰284件は再実行していない。
+
+## 許可の確認中は緑のまま（2026-11-12 見直し）
+- **ファイル**: `Services/AiActivityTracker.cs`, `Models/AiActivityState.cs`, `Models/WindowSlot.cs`, `MainWindow.AiActivity.cs`, `MainWindow.xaml`, `Views/AiHookGuideView.xaml`, `docs/guides/ai-notification-hooks.md`, `docs/assets/ai-notification-states.svg`, `docs/assets/ai-notification-hooks-basics.svg`
+- **問題**: 許可や質問の確認を完了と同じ薄い青にしていた。確認は作業の途中なので、緑の明滅が正しい。状態図の戻り矢印は説明の帯に隠れ、箱の辺まで届いていなかった。
+- **対策**: `permission_prompt`、`elicitation_dialog`、`PermissionRequest` は表示を変えない。開始済みなら緑の明滅が続く。青い光は `Stop` / `agentStop` / `StopFailure` / `StopCancelled` だけ。`Attention` と「操作を待っています」のツールチップは外した。状態図の戻り矢印は、青い箱の下辺から出て、作業中または待機の下辺で終わる。
+- **注意**: フックの登録自体は残す。知らせは届くが、バッジは変えない。黄色やツールごとの別色には戻さない。`idle_prompt` は無視したまま。過去の「完了と許可待ちは同じ青」の記録は履歴として残し、現在の仕様はこちら。
+- **確認**: `dotnet run --project .\src\TurtleAIQuartetHub.Panel.Tests\TurtleAIQuartetHub.Panel.Tests.csproj` が終了コード 0。回帰284件（AI 作業通知32件、保存先・閲覧14件）が合格。状態図は幅1200で描画し、進む矢印と戻る矢印が箱の辺でつながっていることを確認した。実ホームのフックと実行中の VS Code は変更していない。光の実機目視は未実施。
+
+## アプリ内「通知の流れ」の主体と通信（2026-11-13 追加）
+- **ファイル**: `Views/AiHookGuideView.xaml`, `docs/guides/ai-notification-hooks.md`
+- **問題**: 設定内の「通知の流れ」が3枚の短いカードで、誰が動き、名前付きパイプで何を渡すのかが分からなかった。
+- **対策**: 同じ3タブのまま、流れタブへ主体（AIツール / フックのプログラム / ハブ）と 1〜5 の順を WPF ベクターで入れた。3番は `TurtleAIQuartetHub.Commands` への一方通行。開始は緑、確認中も緑、終わったときだけ薄い青。外部 SVG は埋め込まない。
+- **注意**: それ以前の「アプリ内は3項目の短い要約のまま」は、この流れタブには当てはまらない。タブ数は3つのまま。設定タブと表示タブの文言は、緑の継続と薄い青の完了と矛盾させない。挙動・フック登録・実ホームは変えない。横5列の図は設定枠（最大610 DIP）に入らない。主体は裸の「ハブ」と書かず、「このアプリ（カルテットハブ）」と書く。
+- **確認**: ガイド文言の回帰テストは無い。挙動を変えていないため、回帰284件は再実行しない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告・エラー 0。隔離した非表示描画で幅 540 と 578 を確認し、主体の3列、下向き矢印、本文、バッジ例は折り返しの中に収まった。実行中のハブと VS Code は起動・終了していない。光の実機目視は未実施。
+
+## 図と説明の「この」「その」を名前にする（2026-11-13 追加）
+- **ファイル**: `Views/AiHookGuideView.xaml`, `docs/guides/ai-notification-hooks.md`, `docs/index.md`, `docs/assets/ai-notification-who-moves.svg`, `docs/assets/ai-notification-to-app.svg`, `docs/assets/ai-notification-hooks-basics.svg`, `docs/assets/ai-notification-flow.svg`, `docs/assets/ai-notification-states.svg`
+- **問題**: 「このアプリ」「そのプログラム」「このフォルダ」「ここでは」では、誰が動き、何を渡しているのかが分からなかった。
+- **対策**: 主体は AIツール、フックのプログラム、カルテットハブと書く。フォルダは作業フォルダ、作業中の光は緑の明滅、消す対象は光っているスロットと書く。裸の「ハブ」と「このアプリ」には戻さない。
+- **注意**: それ以前の「主体は『このアプリ（カルテットハブ）』と書く」は現在の書き方ではない。タブ数は3つのまま。設定枠の横5列にはしない。挙動・フック登録・実ホームは変えない。`MainWindow.xaml` の「ハブ設定へ保存」と「ハブ外で開いている VS Code」は、このガイドの主体名とは別なので変えない。
+- **確認**: ガイド文言の回帰テストは無い。挙動を変えていないため、回帰284件は再実行しない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。5つの SVG は UTF-8 の XML として幅 1200 で解析し、Edge の headless（device scale 1）で描画した。who-moves の「主体：フックのプログラム」「主体：カルテットハブ」「カルテットハブが塗る。」、to-app の「カルテットハブへ渡す」「カルテットハブが判断」「カルテットハブが変える」、flow の「カルテットハブが受け取る」、basics のフッターは、枠の中に収まっていた。states の戻り矢印は箱の辺でつながったまま。隔離した非表示描画で幅 540 の流れ・設定・表示の本文を確認し、折り返しの中に収まった。実行中のハブと VS Code は起動・終了していない。光の実機目視は未実施。
+
+## 標準表示フッターから設定の保存・読み込みを移す（2026-11-13 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`
+- **問題**: 標準表示の下段にあった「設定保存」「設定読み込み」は使われていなかった。空いた場所へ「非表示」を移し、「すべて閉じる」を広く、設定の「クリアする」と同じ赤系にしたい。保存と読み込みは歯車の設定から行う。
+- **対策**: `FooterControlsGrid` の右クラスタ幅は 336 DIP。上段は `*` / 4 / `*` / 4 / `*` で「全ディスプレイ移動」「最前面」「最背面」。下段は `*` / 4 / `2*` で「非表示」と「すべて閉じる」。間隔はボタンの右 Margin ではなく 4 DIP の列にする。`DangerBarButton` は `BarButton` の高さ 24 DIP を維持し、色は「クリアする」と同じ前景 `#FFF4F2`、背景 `#6F2D27`、枠 `#B3574E`。`BaseButton` のホバーは緑になるため、独自テンプレートでホバー背景 `#8A3A32`、枠 `#D07A72`、押下 `#5A241F` にする。`DangerButtonStyle` の `MinHeight` 32 はフッターへ使わない。
+- **設定画面**: `SaveSettingsButton` と `LoadSettingsButton` の名前と Click は維持し、`SettingsScrollViewer` の先頭カード「スロットと控え」へ置く。`SaveCurrentSettings` は `slots.json`（表示中スロット、控え、タイトル、ワークスペース、アプリ ID）。起動コマンドは「パス設定を保存」（`SaveApplicationPathSettings`）。設定のモーダルがステータスバーを覆うため、結果は `PanelStateActionStatusText` に出す。歯車を開くときにその文言は消す。
+- **注意**: メッセージ欄は 10 DIP のまま。コンパクト表示は `FooterControlsGrid` を隠したまま。`SetBusyState` は既存のボタン名で有効と無効を切り替える。ボタンの `DesiredSize` は Margin を含む。保存ボタンの Desired 132 は実幅 124 に右余白 8 を足した値で、文字切れではない。縮小表示の「前」「背」、光、フックは変えない。前面・背面の動作記録は位置が変わっただけで維持する。
+- **確認**: `MainWindow` を生成し、`Loaded` の前に `DispatcherTimer` を止めて、`Show` せず 650×535 DIP で Measure/Arrange した。上段の実幅は 109 / 110 / 109 DIP、下段は 111 / 221 DIP、高さは 24 DIP。「全ディスプレイ移動」の希望幅 95 DIP は実幅に収まる。設定オーバーレイを Visible にして再配置し、先頭カードとフッター（不整合を修復、再検出、ログを表示、パス設定を保存、閉じる）が見えることを確認した。`Loaded` は走らせていないので、管理ウィンドウの再配置はしていない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。レイアウトだけの変更のため、回帰284件は再実行していない。
+
+## 「すべて閉じる」はカードのクリア色（2026-11-13 追加）
+- **ファイル**: `MainWindow.xaml` の `DangerBarButton`
+- **問題**: 最初の赤は確認ダイアログ「クリアする」（`DangerButtonStyle`、地 `#6F2D27`、枠 `#B3574E`）だった。利用者が示したクリアは、カード右上の消しゴムボタンである。
+- **対策**: `SlotClearInfoButtonStyle` と同じ地 `#261816`、枠 `#6A3832`、文字 `#F2B7AF`。ホバーも同じ地 `#33201D`、枠 `#A65348`、文字 `#FFE7E2`。押下は地 `#1C1210`。`BaseButton` のホバーが緑に戻らないよう、独自テンプレートは維持する。
+- **注意**: 確認ダイアログの「クリアする」は `#6F2D27` のまま。フッターの高さ 24 DIP と下段 1/3・2/3 は変えない。
+- **確認**: `Show` せず 650×535 DIP で描画し、「すべて閉じる」とカードのクリアのブラシがどちらも地 `#FF261816`、文字 `#FFF2B7AF`、枠 `#FF6A3832` であることを確認した。実行中のハブは起動していない。
+
+## 作業中と完了の光をカードの枠へ移す（2026-11-13 追加）
+- **ファイル**: `MainWindow.xaml`, `Views/AiHookGuideView.xaml`, `MainWindow.AiActivity.cs`
+- **問題**: 作業中と完了の光が A〜D の小さな文字にあった。利用者は、カードの細い枠が明滅し、枠の外だけが LED のようにぼんやり光る見え方を求めた。枠の線は太くしない。完了時は今の薄い青の枠と、カードの地だけの薄い青。ボタンと IDE / CLI の中は塗らない。
+- **対策（後述 §6 で改良）**: `AiCardPulseStyle` が太さ 1 の枠を緑で明滅し、完了時は `#D7EEFB` で止める。初期実装では `AiCardHaloStyle` を太さ 8 の光源＋`BlurEffect` Radius 14 で置いていたが、クリップ端と外張りで境界線が見えたため §6 の面塗り＋`Margin="0"` 方式へ見直した。完了の地は `AiDoneCardBrush` `#203440`。IDE / CLI の地 `#121816` と各ボタンの地は変えない。`ApplicationGroupLabelStyle` の穴あき背景だけ完了時に地へ合わせる。A〜D の文字色とバッジの光は外した。状態機械、フック、フォーカスで消す処理は変えない。
+- **注意**: それ以前の「バッジだけを光らせ、カード全体は塗らない」は現在の見え方ではない。塗るのは完了時の地だけで、ボタンと IDE / CLI の中は含めない。点滅方式は §6 の 5.6 秒ホタル点滅に更新済み。
+- **確認**: `Show` せず 650×535 DIP で描画した。スロット A を作業中、B を完了にした。A の文字は通常の緑のまま、細い緑の枠と外側のぼかしが出た。B は細い薄い青の枠と地の薄い青で、ボタンと IDE / CLI の中は暗いまま、B の文字は青くなっていない。C と D は通常の枠。実行中のハブは起動していない。`Loaded` は走らせていない。
 
 ## 5. Antigravity 作業通知フックの実装パターン（2026-11-13 追加）
 - **設定形式（名前付きフック + 平坦な配列）**:
@@ -380,3 +464,45 @@
 ## 7. 完了の青配色見直し・A〜D アイコン点灯の併用（2026-11-13 追加）
 - **完了時のアプリ調和型ブルー**: 白っぽかった `#203440` / `#D7EEFB` / `#B6DFF6` を廃止し、アプリ内の VS Code / AI ボタンと調和する深めのブルーへ統一した。カード地 `AiDoneCardBrush = #112D46`、1px 枠 `AiDoneBorderBrush = #3EA3EC`、外側のぼかし光 `AiDoneGlowColor = #228BE0`（`Opacity="0.74"`）。
 - **A〜D アイコンの点灯・点滅併用**: カード枠＋光背だけでは視認しづらいため、`AiBadgeWorkingRingStyle`（`AiCardPulseStyle` / `AiCardHaloStyle` と同期した 5.6 秒ホタル点滅、フォーカス中も維持）を標準 `SlotNameBadgeStyle`・縮小 `CompactSlotBadgeStyle` の上に重ねて作業中に枠を光らせる。完了時は `AiDoneBadgeBackgroundBrush = #174F85`（カード地より少し濃いめの青）・`AiDoneBadgeBorderBrush = #68C1FF`・`AiDoneBadgeForegroundBrush = #F0F8FF`・`AiDoneBadgeGlowEffect`（`Color="#2E96F0"`, `BlurRadius="9"`）で点灯させ、極小 `MicroSlotButtonStyle` も同様に `#174F85` 地＋ `#F0F8FF` 文字で点灯させる（`CompactSlotBadgeStyle` と `MicroSlotButtonStyle` の完了トリガは `Missing` / `Launching` より後ろに配置して表示優先順位を確保）。
+
+## 8. 作業中は枠を一周する光の筋（2026-11-16 追加）
+- **ファイル**: `AiCardOrbitGlow.cs`, `MainWindow.xaml`, `Views/AiHookGuideView.xaml`
+- **問題**: 5.6 秒で枠全体がゆっくり明滅する見え方は、作業中だと分かりにくかった。利用者は、枠の上を光の筋が一周し、少し止まってからもう一周する動きを求めた。
+- **対策**: `AiCardOrbitGlow` を標準（角丸 8）・縮小（7）・極小（6）のカード枠の上に置く。作業中だけ、角丸矩形の破線を一周分ずらし、1.15 秒で一周、0.5 秒停止、を繰り返す。破線は一区間だけで、残りは隙間。芯は `#F4FFF8`、太さ 2.8。`DropShadowEffect`（`#45D483`、ぼかし 12、深さ 0）は筋だけに付く。常設の 1px 枠は太くしない。
+- **止めたもの**: 作業中の `AiCardHaloStyle` と `AiCardPulseStyle` の透明度アニメーション、フォーカス中に内側の枠を畳む `MultiDataTrigger`、`AiBadgeWorkingRingStyle`。完了時の青い枠と外側の青い光、A〜D の青点灯は残す。太いフォーカス枠は点滅させない。
+- **注意**: `StrokeDashArray` と `StrokeDashOffset` の単位は線の太さ。一周は周長÷太さ。停止位置をちょうど一周分にすると、次の周の開始と見た目が同じになり、飛びがない。状態機械とフックは変えない。§6 のホタル点滅と §7 の作業中アイコン点滅は、作業中の現在の表示ではない。
+- **確認**: `MainWindow` は生成したが `Show` せず、`Loaded` の前に `DispatcherTimer` を止めた。スロット 0 は作業中、1 は完了。標準カードの軌道は 4 件で、見えている作業中は 1 件、破線は `35.71,289.81`（一区間）。完了と待機の軌道は畳んだ。縮小 210×28 と極小 52×44 も破線 2 個で組んだ。オフセット 8.55 の光は左上、163.83 の光は右下で、中心の距離は 285。明るい画素は枠の周の約 2%。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。見た目だけの変更のため、回帰 284 件は再実行していない。実行中のハブは起動していない。
+
+## 9. 作業中の光はぼんやりした緑で加速する（2026-11-16 追加）
+- **ファイル**: `AiCardOrbitGlow.cs`, `MainWindow.xaml`, `Views/AiHookGuideView.xaml`
+- **問題**: 枠を一周する動きは合っていた。利用者は、白い芯のくっきりした線と一定の速度をやめ、旧来のホタル点滅のようにテーマの緑がふわっとぼやけた光が回り、最初はゆっくりで終わりにかけてグッと速くなる見え方を求めた。
+- **対策**: 作業中の `AiCardOrbitGlow` は白い線と `DropShadowEffect` を出さない。外側は `#45D483`（不透明度 0.70、太さ 16、ぼかし 22）、内側はホタルの光背と同じ `#67E7A4`（不透明度 0.38、太さ 7、ぼかし 16）。光の長さは周長の 16% を 58〜92 DIP に収め、一塊のぼやけとして進む。約 1.78 秒で一周し、0.40 秒で 3.5%、1.10 秒で 20%、1.68 秒で 74%、1.78 秒で一周。約 0.44 秒止まってから同じ向きに繰り返す。標準・縮小・極小とも同じ。常設の 1px 枠は太くしない。
+- **維持**: 完了の深い青、許可の確認中もこの緑の周回、状態の判定、フック、フォーカス表示の切り替えで消す処理。§8 の白い芯と一定速度は、作業中の現在の表示ではない。
+- **確認**: `MainWindow` は起動していない。300×170 の軌道を余白付きで描き、0.40 秒の光は左上 (45, 44)、1.10 秒は下 (49, 184)、1.68 秒は上の右寄り (225, 33)。中心の移動は 181。前半の速度は 0.24 周/秒、後半は 0.93 周/秒。いちばん明るい画素は緑（55,146,96 と 53,138,90）で、枠の周に占める緑は約 2%。待機は畳んだ。角丸の枠に入れた描画でも、同じ緑のぼかしが枠の上を移動した。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。見た目だけの変更のため、回帰 284 件は再実行していない。
+
+## 10. 作業中の光は枠線・角丸の中心線上を走る滑らかな LED トレイル（2026-11-16 刷新）
+- **ファイル**: `AiCardOrbitGlow.cs`, `MainWindow.xaml`, `MainWindow.AiActivity.cs`, `Views/AiHookGuideView.xaml`, `TurtleAIQuartetHub.Panel.Tests/AiOrbitGlowTests.cs`
+- **問題（§9 までの課題）**:
+  1. `Shape.Path` + `StrokeDashArray` に太さ 16 / ぼかし 22 の `BlurEffect` を組み合わせた結果、WPF の `Shape.GetLayoutClip` と余白不足により、カード周囲（特に縮小・極小・標準左上）に 90° の四角いクリップ角が露出していた。
+  2. `inset=1` かつ太さが角丸半径（5〜7 DIP）を上回り、さらに `StrokeDashArray` が 2 層で先端位置・丸キャップ形状がズレるため、角丸の枠上を綺麗に追従せず太い霧がぼんやり動く見た目になっていた。
+  3. 1 周 1.78 秒かつ最後 0.10 秒で 26% を飛ばす急加速が視覚的に落ち着かず目障りだった。
+- **対策**:
+  - `Shape` と `BlurEffect` を撤去し、`DrawingVisual` へ `StreamGeometry`（`LineTo` + `ArcTo` の厳密円弧）で 28 段（外周オーラ〜ボディ 18 段＋LED 芯 10 段）の高密度グラデーション・トレイルを描画（先端ほど太く明るく、尾に向かって細く透明へ段差なく減衰）。各スライス `Pen` はサイズ変更時のみ生成・`Freeze()` して毎フレームのアロケーションを抑える。
+  - 中心線オフセットを `BorderThickness="1"` に一致する `inset = 0.5`（角丸半径 `R - 0.5`）へ補正し、カード短辺に応じて線の太さをスケールする（外縁張り出しは縮小/極小で最大 1.7 DIP、標準で 3.2 DIP 以内）。
+  - モーションは 256 分割の周期ガウス加速テーブル（`u = 0.80` 付近ピーク、速度比約 2.0 倍）を用い、周期を周長に応じて標準 ~3.60s / 縮小 ~2.77s / 極小 ~2.45s に設定。終端と始端が速度・位置とも連続に繋がる。
+  - `IsVisibleChanged` / `Unloaded` で非表示モード・閉鎖中のアニメーション時計を止め、負荷を抑える。テスト用に `SetStaticPhase` を備える。
+- **注意**: `AiCardOrbitGlow` 内に `Shape` や大きな `BlurEffect` を戻すと再び `Shape.GetLayoutClip` 等による四角い境界角が露出するため禁止。§8 / §9 の仕様は本節で置き換える。完了時の青い光背（`AiCardHaloStyle`）と `StandardSlotsGrid` の負マージン相殺は維持する。
+
+## 11. 完了時青表示の早めホタル点滅と IDE/CLI 見出し枠線切り抜き（2026-11-16 追加）
+- **ファイル**: `AiDoneFirefly.cs`, `GroupHeaderCutout.cs`, `MainWindow.xaml`, `MainWindow.AiActivity.cs`, `Models/AiActivityState.cs`, `Views/AiHookGuideView.xaml`, `TurtleAIQuartetHub.Panel.Tests/AiDoneFireflyTests.cs`
+- **問題**:
+  1. 完了時（`AiActivityState.Done`）の青表示が静的点灯のままだったため、少し早めのホタル点滅へ変更する要望があった。
+  2. 標準カードの `IDE` / `CLI` ラベル（`ApplicationGroupLabelStyle`）が文字サイズ相当の背景塗り（`AiDoneCardBrush`）を持っていたため、完了時に枠線の内側へ四角い青が食い込んで見えていた。
+- **対策**:
+  - `AiDoneFirefly` 添付ビヘイビア（`CycleDurationSeconds = 3.0`、ピーク 1.15s）を導入し、`Halo`（`0.12↔0.90`）・`CardEdge`（`0.28↔0.98`）・`CardSurface`（`0.00↔0.62`）・`MicroSurface`（`0.00↔0.68`）・`BadgeSurface`（`0.00↔0.66`）・`BadgeGlow`（`0.16↔0.96`）の全 6 ロールを **`UIElement.OpacityProperty` のみのアニメーションへ統一**した。`DesiredFrameRate` の 30fps 制限を排してモニタのネイティブリフレッシュレートへ追従させ、`KeySpline(0.55, 0.0, 0.22, 1.0)` → `KeySpline(0.30, 0.0, 0.55, 1.0)` の水平接線（速度 0 接続）2 区間スプラインと `Stopwatch` 共有位相オフセットにより、8bit RGB 階段バンディング・折れ角・周期境界のカクつきをなくした。
+  - XAML 側は待機用ベーススタイルと完了用オーバーレイ（`AiCardDoneWashStyle`・`AiMicroDoneWashStyle`・`AiBadgeDoneWashStyle`・`AiBadgeDoneGlowStyle`：`Visibility="Collapsed"`、完了時のみ `Visible`）を分離し、`DropShadowEffect` 自体を静止凍結したまま外側の `Border.Opacity` ごとフェードさせる。これにより `Style` 内の Frozen ブラシ例外や `TemplateBinding Background` 剥がれを回避し、非完了時は負荷ゼロで通常スタイルへ戻る。
+  - `IDE` / `CLI` グループは背景専用層（`ApplicationGroupFillStyle`: `#121816`, `Margin="0.5,1,0.5,0.5"`, `CornerRadius="6"`）、1px 枠線専用層（`ApplicationGroupBorderStyle` + `GroupHeaderCutout.Header` で上辺の見出し占有幅だけを `EvenOdd` クリップ除外）、文字ラベル層（`Background="Transparent"`）の 3 層へ分離した。これにより待機時も完了点滅時も枠内へカード地が一切食い込まず、枠外・線隙間の外側だけがカード背景と一致する。
+- **注意**:
+  - `TemplateBinding Background` を持つテンプレート内 `Border` 自体へ `ClearValue(BackgroundProperty)` を呼ぶとバインディングが剥がれるため、`CardSurface`/`MicroSurface` 用の専用オーバーレイ `<Border>` を維持すること。
+  - 完了時アニメーションへ `ColorAnimation` や `DropShadowEffect.Opacity` アニメ、あるいは `DesiredFrameRate=30` を戻すと再び暗色青域で 8bit 色階段やコマ落ちが目立つため、`Opacity` 統一とハードウェア合成設計を維持すること。
+  - 完了用 `AiDoneFirefly` に `IsVisible` のみを起動条件にすると、ウィンドウ未接続（`PresentationSource == null`）のオフスクリーン検査で開始できないため、通常時は `element.IsVisible` を尊重して省負荷を保ち、検査専用の `FreezeAtPhaseForTesting` 内では祖先可視性（`AreAncestorsVisible`）を許可して静止位相のレンダリングを可能にしている。

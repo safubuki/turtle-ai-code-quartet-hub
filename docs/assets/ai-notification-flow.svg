@@ -81,11 +81,11 @@
   <text x="130" y="720" class="body" style="fill:#d9e8df">待機</text>
   <rect x="284" y="696" width="42" height="34" rx="7" fill="none" stroke="#77eaa7" stroke-width="1.5"/>
   <rect x="289" y="701" width="11" height="11" rx="3" fill="#223027" stroke="#8af2b5" stroke-width="1.2"/>
-  <text x="342" y="720" class="body" style="fill:#e6fff0">作業中：枠とアイコン枠がゆっくり明滅</text>
+  <text x="342" y="720" class="body" style="fill:#e6fff0">作業中：枠の上を光が一周する</text>
   <rect x="710" y="692" width="50" height="42" rx="10" fill="#228BE0" opacity="0.5"/>
   <rect x="714" y="696" width="42" height="34" rx="7" fill="#112D46" stroke="#3EA3EC" stroke-width="1.5"/>
   <rect x="719" y="701" width="11" height="11" rx="3" fill="#174F85" stroke="#68C1FF" stroke-width="1.2"/>
-  <text x="772" y="720" class="body" style="fill:#E7F5FC">応答が終わると青い点灯</text>
+  <text x="772" y="720" class="body" style="fill:#E7F5FC">応答が終わると青いホタル点滅</text>
 
   <text x="48" y="793" class="small">カルテットハブを閉じているあいだは再送しません。青い光は応答終了だけ。許可の確認中は緑のままです。</text>
 </svg>

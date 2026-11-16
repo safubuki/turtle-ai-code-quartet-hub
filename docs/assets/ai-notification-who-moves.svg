@@ -87,8 +87,8 @@
   <text x="48" y="466" class="heading">3番は、フックのプログラムとカルテットハブの通信です</text>
   <text x="48" y="498" class="body">通信は Windows の名前付きパイプです。フックのプログラムが、同じパソコンのカルテットハブへ一方的に1回書きます。</text>
   <rect x="48" y="518" width="36" height="28" rx="7" fill="none" stroke="#39aa6b" stroke-width="1.5"/>
-  <text x="96" y="538" class="body">「開始」なら、カルテットハブが緑にします。確認中も緑の明滅です。</text>
+  <text x="96" y="538" class="body">「開始」なら、カルテットハブが緑にします。確認中も枠を回る緑です。</text>
   <rect x="48" y="558" width="36" height="28" rx="7" fill="#174F85" stroke="#68C1FF" stroke-width="1.5"/>
-  <text x="96" y="578" class="body">「終わった」なら、カルテットハブが青い点灯にします。成功かは判定しません。</text>
+  <text x="96" y="578" class="body">「終わった」なら、カルテットハブが青いホタル点滅にします。成功かは判定しません。</text>
   <text x="48" y="612" class="small">カルテットハブを閉じていると、3番の受け口がありません。光は変わらず、あとから届き直しもしません。</text>
 </svg>

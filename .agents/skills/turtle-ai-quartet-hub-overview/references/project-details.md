@@ -9,7 +9,7 @@
 - VS Code / Antigravity はワークスペース IDE として、Codex / Claude / GitHub Copilot / Grok Build / Antigravity CLI はワークスペース CLI として各スロットで起動できる。
 - Codex / ChatGPT / Claude / Antigravity2 の Windows アプリ版は CLI とは別に補助ボタン行から起動できる。
 - 通常表示の各スロットにはフォルダボタンがあり、保存済みまたは検出済みのローカルワークスペースを Explorer で開ける。SSH / remote URI のワークスペースではボタンを無効化する。
-- 画面・ログからの AI 状態推定と VS Code 外枠フレームは削除済み。AI の作業中・完了は、Claude Code / Codex / GitHub Copilot / Grok / Antigravity のフックからの明示的な通知だけでスロットに表示する（歯車設定の「AI の作業通知」でフックを設定）。作業中はカードと A〜D アイコンの枠がゆっくり緑に明滅し（許可の確認中も同じ）、完了したときだけカード全体（地 `#112D46`・枠 `#3EA3EC`・光背 `#228BE0`）と少し濃いめの青い A〜D アイコン（`#174F85`・枠 `#68C1FF`・文字 `#F0F8FF`、極小表示はカード自体）が点灯する。色はツールごとに変えない。
+- 画面・ログからの AI 状態推定と VS Code 外枠フレームは削除済み。AI の作業中・完了は、Claude Code / Codex / GitHub Copilot / Grok / Antigravity のフックからの明示的な通知だけでスロットに表示する（歯車設定の「AI の作業通知」でフックを設定）。作業中はカードの枠線（角丸含む）の中心線上を緑の LED の一筋の光がふわっとゆっくり一周し、最後の方で少しだけ加速して滑らかに繰り返す（許可の確認中も同じ）。完了したときだけカード（枠・地・光背）と A〜D アイコン（極小表示はカード自体）が少し早めの 3.0 秒ホタル点滅で青く光る（ボタンと IDE / CLI の枠内は塗らない）。色はツールごとに変えない。
 - `?` ヘルプと README は、Codex / Copilot / Claude / Grok の Windows ネイティブインストーラーを優先して表示し、npm または Bash 系の方法を代替手段として併記する。
 
 ## 技術スタック
@@ -45,10 +45,7 @@
 - `src/TurtleAIQuartetHub.Panel/Services/VscodeLayoutState.cs`: VS Code storage.json からレイアウト保存/復元。
 - `src/TurtleAIQuartetHub.Panel/Services/TaskbarJumpListService.cs`: Jump List 更新。
 - `src/TurtleAIQuartetHub.Panel/Models/SystemMonitorModels.cs`: システムモニタの表示モデル（`SystemResourceSnapshot`、`DriveUsageItem`、`FolderUsageItem`）。
-- `src/TurtleAIQuartetHub.Panel/Services/SystemMonitorService.cs`: メモリ使用量（`GlobalMemoryStatusEx`）、CPU使用率（`GetSystemTimes` 差分計測）、ページファイル（コミット量・`pagefile.sys` の確保量・拡張検出）、各ドライブ使用状況（`DriveInfo`）、各フォルダ（A〜Dワークスペース、控えワークスペース、Hubデータ、VS Code / Antigravity IDEデータ、AI エージェントのデータ、Temp）の使用量計測サービス。
-- `src/TurtleAIQuartetHub.Panel/Services/DiskCleanupService.cs`: システムモニタの「ディスク整理」。Copilot CLI の旧バージョンと Temp の古いインストーラーだけを、安全度（安全/注意/保持）付きで候補にして削除する。
-- `src/TurtleAIQuartetHub.Panel/Services/FileSystemCleanup.cs`: リンクを辿らない共通削除処理。VS Code キャッシュ回収とディスク整理で共用する。
-- `src/TurtleAIQuartetHub.Panel/Models/DiskCleanupModels.cs`: ディスク整理の候補・結果、ページファイルの状態・評価モデル。
+- `src/TurtleAIQuartetHub.Panel/Services/SystemMonitorService.cs`: メモリ使用量（`GlobalMemoryStatusEx`）、CPU使用率（`GetSystemTimes` 差分計測）、各ドライブ使用状況（`DriveInfo`）、各フォルダ（A〜Dワークスペース、控えワークスペース、Hubデータ、VS Code / Antigravity IDEデータ）の使用量計測サービス。
 
 ## 実行時データ
 - `%LOCALAPPDATA%/TurtleAIQuartetHub/slots.json`: visible slot と stored panel の保存状態。
@@ -108,17 +105,100 @@
 - タイトルバーの歯車設定ボタン（`SettingsButton`）のすぐ左にシステムモニタボタン（`SystemMonitorButton`、アイコン `&#xE9D9;`）を追加。
 - クリックするとウィンドウ内モーダル（`SystemMonitorOverlay`）が開き、物理メモリ使用量、CPU使用率、各ドライブの使用状況（1.5秒周期の自動更新＋エクスプローラー起動ボタン付き）、および各フォルダ（スロットA〜D、控えパネル、Hubデータ、VS Code / Antigravity IDEデータ）の使用量（バックグラウンド非同期計測・再計測ボタン・エクスプローラー起動ボタン付き）を表示する。
 
-## 控えの右クリックメニューとタイトルバーの状態表示（2026-10-30 追加）
-- 控えカード（標準・縮小・控え一覧のタイル）を右クリックすると、A〜D への表示、フォルダの登録 / 変更、名前の編集、エクスプローラー / GitHub で開く、控えのクリアを選べる。
-- 控え・スロットの登録解除は「クリア」と表記し、消しゴムアイコンにした（フォルダ本体は消えないことを確認ダイアログでも明示）。
-- システムモニタアイコンは CPU / メモリ / ディスク / ページファイルの最も悪い状態を緑・黄・赤で示し、ツールチップに原因を出す。
-- PR 受信箱アイコンは、`gh` がサインイン済みなら未読の PR 通知があるとき右下に赤丸を出す（`checkPullRequestUpdates` で無効化可）。
+## システムモニタの折りたたみ・VS Code 終了復旧（2026-11-12 追加）
+- フォルダ分類（表・控え・アプリ・AI エージェントと一時フォルダ）はそれぞれアコーディオン。モニタを開くたび全閉で、同じモニタ内の再計測時は開閉状態を保つ。閉じた分類でも従来の非同期計測は継続する。
+- 「VS Code の終了・復旧」から現在のユーザー・同じ Windows セッションの通常版 / Insiders を列挙し、対象一覧と未保存編集・ターミナル・AI 処理中断の警告を確認した後に強制終了できる。ハブ外の VS Code も含む。
+- 確認済みプロセスだけを終了し、後から起動したものは自動終了しない。終了・既に終了・失敗・残留を結果画面に表示する。VS Code の再起動・更新そのものは行わない。
+- ユーザー版のように同じ整合性レベルなら終了権限だけで停止する。システム版や管理者として起動した VS Code でアクセスが拒否された場合だけ、拒否された対象に限り1回の管理者確認で終了する。キャンセル時は残す。
+- 実装: `MainWindow.VscodeProcessRecovery.cs`, `Models/VscodeProcessRecoveryModels.cs`, `Services/VscodeProcessRecoveryService.cs`, `Services/VscodeProcessRecoveryElevation.cs`。詳細仕様は `docs/design/system-monitor-recovery-plan.md`。
+## AI 作業通知の設定場所・内容確認（2026-11-12 追加）
+- 長い説明を短い概要と補足の折りたたみに整理し、Claude Code / Codex / GitHub Copilot を箇条書きで表示する。各行に設定状態とホーム省略パスを表示し、完全なパスと詳しい状態はツールチップで確認できる。
+- 各行の「フォルダ」から既存の設定フォルダをExplorerで開き、「設定を見る」からアプリ内の読み取り専用画面で実際の設定ファイルを確認できる。ファイル・フォルダの未作成時は対応する操作を無効化する。
+- 読み取り専用画面は原文・改行を保持し、選択・コピーと縦横スクロールが可能。表示上限は256Ki文字で、省略時は明記する。閲覧では設定・フォルダ・バックアップを作成しない。閉じると表示内容を破棄する。
+## ドキュメントの入口と配置（2026-11-12 整理）
+- 入口は `docs/index.md`。各ファイルの目的と、資料の年代・草案/調査記録としての位置付けを一覧化する。
+- 利用ガイド `docs/guides/`、設計・実装計画 `docs/design/`、開発・検証 `docs/development/`、公開・Store `docs/release/`、不具合調査 `docs/investigations/` に分類。ドキュメント用のSVG・画像は `docs/assets/` に置く。
+- AIフックの設定・通知経路・状態表示は `docs/guides/ai-notification-hooks.md`。通知経路図と状態図のSVGを本文から相対パスで参照する。設定済みと通知の疎通、応答終了と作業成功、Claude/Codexのバックアップ、Copilot専用JSON、Grok専用JSONの扱いを区別して説明する。
+- 旧docs直下のファイル名は維持してカテゴリ内へ移動した。古いパスを見かけた場合もindex内の同じ名前から移動先を確認できる。
+## 設定内のフック図解ガイド（2026-11-12 追加）
+- 「AI の作業通知」の「仕組みを見る」で、同じ設定枠のガイドページに切り替える。「通知の流れ」「設定で変わること」「表示の見方」を選び、短い説明とWPFベクター図で確認できる。
+- 「設定に戻る」・ガイド右上の×・Escapeで設定画面へ戻り、編集状態とスクロール位置を保持する。ガイドの閲覧から設定保存やフック設定/解除は呼ばない。
+- `Views/AiHookGuideView.xaml` は外部画像・SVGライブラリ・ブラウザに依存しないため、配布版でもオフラインで閲覧できる。本文の詳細は `docs/guides/ai-notification-hooks.md`。
+## AI 作業通知の完了色（2026-11-12 追加）
+- 黄色の入力待ちは採用しない。Claude / Codex / GitHub Copilot で作業中は緑の明滅、完了と許可待ちは同じ薄い青の光。
+- 応答後の `idle_prompt` は使わない。許可を知らせるイベントが無いツールでも、完了時の色は同じ。
+## AI 作業通知へ Grok を追加（2026-11-12 追加）
+- Grok も同じ緑の明滅と、同じ薄い青の光。黄色や Grok だけの色は付けない。
+- 保存先は `~/.grok/hooks/turtle-ai-quartet-hub.json`。`UserPromptSubmit` で作業中、`Stop` / `StopFailure` / `StopCancelled` で完了、`Notification` の `permission_prompt` と `elicitation_dialog` で許可待ち。`idle_prompt`、`task_complete`、`PermissionDenied` は無視する。
+- `~/.grok` が無いときは未インストールとして何も作らない。`config.toml` とほかのフックファイルは変更しない。解除でハブの項目だけになった専用ファイルは削除し、`.turtle-hub-backup` は残す。
+- すでに開いている Grok は、設定のあとセッションを開き直すまで新しいファイルを読まない。未信頼の作業フォルダでは `/hooks-trust` が必要。ホーム直下は信頼済み。
+- 詳細は `docs/guides/ai-notification-hooks.md`。回帰284件（AI 作業通知32件、保存先・閲覧14件）が合格。実ホームのフックと実行中セッションは変更していない。光の目視は未実施。
+## フックガイドの初心者向け図（2026-11-12 追加）
+- `docs/guides/ai-notification-hooks.md` は、フックの基本、AI の状態と光の対応、アプリへの届き方、今の実装の順で説明する。
+- 図は `docs/assets/ai-notification-hooks-basics.svg`（状態とフック）、`ai-notification-to-app.svg`（届き方）、既存の状態図と実装経路図。実装経路図の完了バッジも同じ薄い青。チャットの読み取りや、ツールごとの別色は描かない。
+- アプリ内の「仕組みを見る」は3項目のまま。詳しい基本説明はドキュメント側に置く。
+## 許可の確認中は緑のまま（2026-11-12 見直し）
+- 利用者の指摘により、許可や質問の確認では青く光らせない。作業が始まったあとの続きなので、緑の明滅が続く。青い光は応答が終わったときだけ。
+- それ以前の「完了と許可待ちは同じ薄い青」は現在の仕様ではない。黄色や、ツールごとの別色は使わない。
+- `permission_prompt`、`elicitation_dialog`、Codex の `PermissionRequest` は届いても表示を変えない。`idle_prompt` も無視したまま。
+- 状態図の戻り矢印は、青い箱の下辺から作業中または待機の下辺へつなぐ。説明の帯で線を隠さない。
+- フックガイドの先頭は、AI が小さなプログラムを起動し、開いているハブが受け取って自分でバッジの光を変える、の順で書く。AI はバッジを塗らない。この5段階は `docs/assets/ai-notification-who-moves.svg`。主体は、1と2が AI ツール、3が AI の起動したプログラムからハブへの通信、4と5がハブ。3番は同じパソコンの名前付きパイプ `TurtleAIQuartetHub.Commands` で、一方的に1回書く。
+## アプリ内「通知の流れ」に主体と通信を記載（2026-11-13 追加）
+- 利用者の指摘により、設定内「仕組みを見る」の「通知の流れ」へ、ドキュメントと同じ主体と通信の説明を入れた。3枚の短いカードでは、誰が動き、何で渡しているかが分からなかった。
+- 主体は AIツール、フックのプログラム、ハブ。通信は同じパソコンの名前付きパイプ `TurtleAIQuartetHub.Commands` で、一方的に1回書く。色を変えるのはハブ。開始は緑の明滅（許可や質問の確認中も緑）、応答が終わったときだけ薄い青。
+- タブは「通知の流れ」「設定で変わること」「表示の見方」の3つのまま。図は WPF のベクターで、外部 SVG は埋め込まない。狭い設定枠では横5列にせず、上に3主体、下に1〜5の縦の流れを置く。
+- それ以前の「詳しい基本説明はドキュメント側だけ」は、この流れタブには当てはまらない。ツールごとの出来事の表は、引き続き `docs/guides/ai-notification-hooks.md` に置く。挙動、フック登録、実ホームは変えていない。
+- 図と説明の主体は「ハブ」ではなく「このアプリ（カルテットハブ）」と書く。Turtle AI Code Quartet Hub のことである。4と5の主体表示も「このアプリ」。
+## 図と説明は「この」「その」を使わず名前で書く（2026-11-13 追加）
+- 利用者の指摘により、フックガイド、`docs/assets/ai-notification-*.svg`、設定内「通知の流れ」では、このアプリ、そのプログラム、このフォルダ、そのバッジ、そのスロット、この緑、ここでは、と書かない。
+- 名前は、AIツール、フックのプログラム、カルテットハブ。フォルダは作業フォルダ。光は緑の明滅。バッジは選んだスロットのバッジ、または光っているスロット。
+- それ以前の「このアプリ（カルテットハブ）」と「主体：このアプリ」は現在の書き方ではない。裸の「ハブ」にも戻さない。カルテットハブは Turtle AI Code Quartet Hub のことである。
+- 挙動、フック登録、実ホームは変えていない。光の実機目視は未実施。
+## 標準表示フッターのボタン配置（2026-11-13 追加）
+- 標準表示の右下は2段。上段は「全ディスプレイ移動」「最前面」「最背面」を同じ幅（1/3）。下段は「非表示」が1/3、「すべて閉じる」が2/3。
+- 「設定を保存」「設定を読み込み」は歯車の設定画面へ移した。スクロールの先頭カード「スロットと控え」から、タイトル、ワークスペース、選択アプリを保存ファイルへ書き込む。起動コマンドのパスは、設定画面下の「パス設定を保存」。
+- 「すべて閉じる」は高さ 24 DIP のまま、設定の「クリアする」と同じ赤系（`DangerBarButton`）。ホバーも赤のまま。
+- 縮小表示の「前」「背」と各カードの非表示は変えない。保存と読み込みの中身も変えない。
+- 650×535 DIP の非表示描画で、上段の実幅は 109 / 110 / 109 DIP、下段は 111 / 221 DIP、高さは 24 DIP。「全ディスプレイ移動」の希望幅 95 DIP は実幅に収まる。設定を開くと先頭カードが見え、「設定を保存」の実幅は 124 DIP、「設定を読み込み」の実幅は 140 DIP。実行中のハブは起動していない。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。
+## 「すべて閉じる」の色はカードのクリアに合わせる（2026-11-13 追加）
+- 利用者の指摘により、「すべて閉じる」の色はカード右上のクリア（`SlotClearInfoButtonStyle`）と同じにする。地 `#261816`、枠 `#6A3832`、文字 `#F2B7AF`。ホバーは地 `#33201D`、枠 `#A65348`、文字 `#FFE7E2`。
+- それ以前の「設定の『クリアする』と同じ赤系（`#6F2D27` / `#B3574E`）」は現在の色ではない。確認ダイアログの「クリアする」の色は変えない。高さ 24 DIP と 2/3 幅は維持する。
+## 作業中と完了の光はカード枠と A〜D アイコン（2026-11-13 更新）
+- 作業中はカードと A〜D アイコンの枠（`AiBadgeWorkingRingStyle`）が 5.6 秒周期のホタル点滅でゆっくり緑に明滅し、枠の外が境界のないぼかした光（`AiCardHaloStyle`、`BlurEffect Radius="15"`）になる。フォーカス表示時は太い 2px フォーカス枠を固定のまま、外側の光背と A〜D アイコン枠を明滅させる。
+- 完了は白っぽさを抑えたアプリ調和型のブルーへ刷新し、点滅せずに点灯する。カードは地 `#112D46`・枠 `#3EA3EC`・外側の光 `#228BE0`（`Opacity="0.74"`）、標準・縮小の A〜D アイコンは少し濃いめの `#174F85`・枠 `#68C1FF`・文字 `#F0F8FF`（`AiDoneBadgeGlowEffect`）、極小表示のボタン自体も `#174F85`・文字 `#F0F8FF` で点灯する。
+- ボタン、IDE / CLI の枠の中（地 `#121816`）は塗らない。許可の確認中は緑の明滅のまま。フォーカス表示の切り替えで消える仕組みは変えない。
+- 設定の「仕組みを見る」とフックの図もカード枠＋ A〜D アイコン点灯の新配色に合わせて更新した。
 
-## 縮小表示の控えの配置方法（2026-11-01 追加・#4）
-- 縮小表示の控えカードから A〜D ボタンをなくし、カードは名前とフォルダ名の 2 行にした。カードを選ぶと上のスロット A〜D が配置先（▶ ここに表示）に変わり、押したスロットに表示する。控えエリアの高さは約 244→約 136 DIP。
-- 縮小表示でも「控え」の右の一覧ボタンで控え一覧を横に出せる。高さは縮小表示のウィンドウに合わせ、画面端での左右の出し分けは標準表示と同じ。一覧で選んだカードも本体のスロットの「ここに表示」で配置する。
 
 ## Antigravity の AI 作業通知フック対応（2026-11-13 追加）
 - 「AI の作業通知」の明示フック対象に **Antigravity**（CLI `agy` / Antigravity IDE / Antigravity2 共通の `~/.gemini/config/hooks.json`）を追加（合計 5 ツール: Claude Code / Codex / GitHub Copilot / Grok / Antigravity）。
 - `turtle-ai-quartet-hub` という名前付きフックとして `enabled: true`、`PreInvocation`（開始 → 緑の明滅）、`Stop`（完了 → 薄い青。ただし `terminationReason == "USER_CANCELED"` は `Interrupt` として緑の明滅だけを止め、偽の青を残さない）を平坦なハンドラ配列で登録する。
 - 別製品 `@google/gemini-cli` の `~/.gemini/settings.json` だけが存在する環境を誤認しないよう、`~/.gemini/config`、`antigravity`、`antigravity-cli`、`antigravity-ide` のいずれかがある場合のみインストール済みと判定する。
+
+
+## Antigravity の AI 作業通知フック対応（2026-11-13 追加）
+- 「AI の作業通知」の明示フック対象に **Antigravity**（CLI `agy` / Antigravity IDE / Antigravity2 共通の `~/.gemini/config/hooks.json`）を追加（合計 5 ツール: Claude Code / Codex / GitHub Copilot / Grok / Antigravity）。
+- `turtle-ai-quartet-hub` という名前付きフックとして `enabled: true`、`PreInvocation`（開始 → 緑の明滅）、`Stop`（完了 → 薄い青。ただし `terminationReason == "USER_CANCELED"` は `Interrupt` として緑の明滅だけを止め、偽の青を残さない）を平坦なハンドラ配列で登録する。
+- 別製品 `@google/gemini-cli` の `~/.gemini/settings.json` だけが存在する環境を誤認しないよう、`~/.gemini/config`、`antigravity`、`antigravity-cli`、`antigravity-ide` のいずれかがある場合のみインストール済みと判定する。
+
+## 作業中の光は枠を一周する筋（2026-11-16 追加）
+- 利用者の指摘により、作業中の 5.6 秒ホタル点滅（枠全体と外側の光背、A〜D アイコン枠）は現在の見え方ではない。
+- 作業中は `AiCardOrbitGlow` が、カードの枠の上を一本の緑の光の筋で約 1.15 秒一周し、約 0.5 秒止まってから同じ向きでもう一周する。光は筋だけに付き、LED のようににじむ（芯 `#F4FFF8`、影 `#45D483`）。標準・縮小・極小とも同じ。許可の確認中もこの周回のまま。
+- 完了の深い青（カード地 `#112D46`、枠 `#3EA3EC`、光背 `#228BE0`、A〜D は `#174F85`）は変えない。状態の判定、フック、フォーカス表示の切り替えで消す処理も変えない。
+- それ以前の「枠全体がゆっくり明滅する」「作業中に A〜D の枠が点滅する」は、作業中の現在の表示ではない。
+
+## 作業中の光はぼんやりした緑で加速する（2026-11-16 追加）
+- 利用者の指摘により、白い芯のくっきりした筋と一定速度の周回は現在の見え方ではない。回り方（枠を一周して少し休む）は残す。
+- 作業中は `AiCardOrbitGlow` がテーマの緑をぼかして枠の上を一周する。外側は `#45D483`（不透明度 0.70、太さ 16、ぼかし 22）、内側は `#67E7A4`（不透明度 0.38、太さ 7、ぼかし 16）。白い線は出さない。約 1.78 秒で一周し、最初は遅く終わりにかけて速くなる。約 0.44 秒止まってから同じ向きに繰り返す。標準・縮小・極小とも同じ。許可の確認中もこの周回のまま。
+- 完了の深い青と状態の判定、フック、フォーカス表示の切り替えで消す処理は変えない。
+- 確認は `MainWindow` を起動せず、300×170 の軌道を描いた。0.40 秒は左上、1.68 秒は上の右寄りで、中心の距離は 181。前半 0.24 周/秒、後半 0.93 周/秒。明るい画素は緑で、枠の周の約 2%。`dotnet build .\src\TurtleAIQuartetHub.Panel\TurtleAIQuartetHub.Panel.csproj` は警告 0、エラー 0。回帰 284 件は再実行していない。
+
+## 作業中の光を枠線上の滑らかな LED 周回へ改善（2026-11-16 刷新）
+- 前節の「太さ 16 / ぼかし 22 の `Path` + `StrokeDashArray` + `1.78s` 急加速周回」では、`Shape.GetLayoutClip` 等によりカード周囲に四角いクリップ角が露出し、角丸カーブにも沿わず、終盤の速度が速すぎて目障りになっていたため刷新した。
+- 作業中は `AiCardOrbitGlow`（`DrawingVisual` + 直線・厳密 `ArcTo` による 28 段グラデーション・トレイル）が、`BorderThickness="1"` の中心線（`inset=0.5`, 角丸 `R-0.5`）上を、尾を引きながら消える一筋の緑の LED 光（標準約 3.60 秒 / 縮小約 2.77 秒 / 極小約 2.45 秒）としてふわっとゆっくり巡り、終盤に約 2.0 倍程度へ心地よく少しだけ加速してシームレスに繰り返す。
+- 完了の深い青、状態の判定、フック、フォーカス表示切り替えで消す処理は変えない。`AiOrbitGlowTests`（8件）を回帰テストへ追加。
+
+## 完了時青表示の早めホタル点滅と IDE/CLI 枠内非塗りつぶし（2026-11-16 追加）
+- 完了（`AiActivityState.Done`）の青表示を、従来の静的青点灯から、少し早めの 3.0 秒周期ホタル点滅（`AiDoneFirefly` 添付ビヘイビア）へ変更した。カード地・1px 青枠・外周光背・A〜D アイコン（極小はカードタイル自体）が溜めと余韻を持つ非対称カーブで同位相同期して明滅する。
+- 標準表示カードの `IDE` / `CLI` グループ見出しは、`ApplicationGroupLabelStyle` の背景塗りを廃して完全透明化し、`GroupHeaderCutout` により 1px 枠線の上辺見出し部分だけを切り抜くことで、枠内（`#121816`）へカード背景色が食い込まないようにした。
+- 詳細・注意点・QA は `implementation-patterns.md` §11 と `current-issues-qa.md` に記録。

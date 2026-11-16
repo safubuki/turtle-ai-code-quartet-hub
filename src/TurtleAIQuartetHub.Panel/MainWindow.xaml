@@ -35,8 +35,9 @@
     <local:SubtractConverter x:Key="SubtractConverter" />
     <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#101211" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#171B19" />
-    <!-- 完了時にカードの地だけへ乗せる、アプリ色調と調和する深めの青。ボタンや IDE / CLI の地には使わない。 -->
-    <SolidColorBrush x:Key="AiDoneCardBrush" Color="#112D46" />
+    <!-- 完了時にカードの地だけへ乗せる、アプリ色調と調和する深めの青。ボタンや IDE / CLI の枠内には使わない。 -->
+    <SolidColorBrush x:Key="AiDoneCardBrush" Color="#0C2135" />
+    <SolidColorBrush x:Key="AiDoneCardWashBrush" Color="#1D5B94" />
     <SolidColorBrush x:Key="SurfaceAltBrush" Color="#1D2420" />
     <SolidColorBrush x:Key="BorderBrushSoft" Color="#2E3832" />
     <SolidColorBrush x:Key="TextBrush" Color="#EEF4EF" />
@@ -406,28 +407,31 @@
       </Button>
     </DataTemplate>
 
-    <Style x:Key="ApplicationGroupBorderStyle" TargetType="Border">
+    <Style x:Key="ApplicationGroupFillStyle" TargetType="Border">
       <Setter Property="Background" Value="#121816" />
+      <Setter Property="Margin" Value="0.5,1,0.5,0.5" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+
+    <Style x:Key="ApplicationGroupBorderStyle" TargetType="Border">
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#2B3D34" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="Padding" Value="6,8,6,4" />
+      <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
 
     <Style x:Key="ApplicationGroupLabelStyle" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#A9B7B0" />
-      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="FontSize" Value="10" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Padding" Value="5,0" />
       <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Margin" Value="8,-6,0,0" />
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
-          <Setter Property="Background" Value="{StaticResource AiDoneCardBrush}" />
-        </DataTrigger>
-      </Style.Triggers>
+      <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
 
     <Style x:Key="AuxiliaryApplicationButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
@@ -782,27 +786,88 @@
     </Style>
 
     <!-- AI の作業状態（AI ツールのフックからの明示的な通知だけで決まる。WindowSlot.AiActivity）。
-         作業中: 非フォーカス時は 1px 枠と外側の光背がホタルの明滅のようにゆっくり（5.6 秒周期）緑へ明滅し、
-                 標準・縮小の A〜D アイコン枠（AiBadgeWorkingRingStyle）も同期して明滅する。
-                 フォーカス表示時は太いフォーカス枠を点滅させずに固定し、その外側のぼんやりした光と A〜D アイコン枠を明滅させる。
-                 許可の確認中もこの緑のまま。
-         完了: カードの枠と地を深みのあるブルーへ切り替え、A〜D アイコン（極小表示はカード自体）を少し濃いめの青で点灯する。
+         作業中: 枠全体は点滅させない。AiCardOrbitGlow がカード枠（角丸含む）の中心線上を
+                 一筋の緑の LED 光としてふわっとゆっくり一周させ、終盤に少しだけ加速して滑らかに繰り返す。
+                 標準・縮小・極小とも同じ。太いフォーカス枠は固定のまま。許可の確認中もこの緑の周回。
+         完了: カードの枠・地・外側の光と A〜D アイコン（極小表示はカード自体）を少し早めの 3.0 秒周期のホタル点滅で青く光らせる。
                  ボタンと IDE / CLI の枠の中は塗らない。フォーカス表示の切り替えで消える。 -->
     <Color x:Key="AiGlowColor">#45D483</Color>
     <Color x:Key="AiDoneGlowColor">#228BE0</Color>
     <SolidColorBrush x:Key="AiDoneBorderBrush" Color="#3EA3EC" />
     <SolidColorBrush x:Key="AiDoneGlowBrush" Color="{StaticResource AiDoneGlowColor}" />
-    <SolidColorBrush x:Key="AiDoneBadgeBackgroundBrush" Color="#174F85" />
-    <SolidColorBrush x:Key="AiDoneBadgeBorderBrush" Color="#68C1FF" />
+    <SolidColorBrush x:Key="AiDoneBadgeBackgroundBrush" Color="#103457" />
+    <SolidColorBrush x:Key="AiDoneBadgeBorderBrush" Color="#3B7BB1" />
+    <SolidColorBrush x:Key="AiDoneBadgePeakBorderBrush" Color="#74CBFF" />
+    <SolidColorBrush x:Key="AiDoneBadgeWashBrush" Color="#2371C2" />
+    <SolidColorBrush x:Key="AiDoneMicroWashBrush" Color="#2577CB" />
     <SolidColorBrush x:Key="AiDoneBadgeForegroundBrush" Color="#F0F8FF" />
     <DropShadowEffect x:Key="AiDoneBadgeGlowEffect"
                       Color="#2E96F0"
                       BlurRadius="9"
                       ShadowDepth="0"
-                      Opacity="0.88" />
+                      Opacity="0.90" />
 
-    <!-- 枠の外側の光源。縁と同じ角丸の面塗りを Quality ブラーで外へ大きく拡散させ、手前のカードで内側を隠すことで境界線を見せない。
-         フォーカス中は Margin を -2 へ広げて 2px フォーカス枠の外縁と揃え、固定されたフォーカス枠の外でも点滅がはっきり見えるようにする。 -->
+    <!-- 完了時のカード地・極小タイル・A〜D バッジの滑らかな呼吸用オーバーレイ。Opacity のみをアニメートしてバンディングを抑える。 -->
+    <Style x:Key="AiCardDoneWashStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource AiDoneCardWashBrush}" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="local:AiDoneFirefly.Role" Value="CardSurface" />
+      <Setter Property="local:AiDoneFirefly.Activity" Value="{Binding AiActivity}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="AiMicroDoneWashStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource AiDoneMicroWashBrush}" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="local:AiDoneFirefly.Role" Value="MicroSurface" />
+      <Setter Property="local:AiDoneFirefly.Activity" Value="{Binding AiActivity}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="AiBadgeDoneWashStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource AiDoneBadgeWashBrush}" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="local:AiDoneFirefly.Role" Value="BadgeSurface" />
+      <Setter Property="local:AiDoneFirefly.Activity" Value="{Binding AiActivity}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="AiBadgeDoneGlowStyle" TargetType="Border">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgePeakBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Effect" Value="{StaticResource AiDoneBadgeGlowEffect}" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="local:AiDoneFirefly.Role" Value="BadgeGlow" />
+      <Setter Property="local:AiDoneFirefly.Activity" Value="{Binding AiActivity}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- 完了時だけ出す、枠の外側の青い光（3.0 秒ホタル点滅）。作業中は枠全体を光らせず、AiCardOrbitGlow の光の筋だけを動かす。 -->
     <Style x:Key="AiCardHaloStyle" TargetType="Border">
       <Setter Property="Margin" Value="-1" />
       <Setter Property="Background" Value="#67E7A4" />
@@ -811,6 +876,8 @@
       <Setter Property="IsHitTestVisible" Value="False" />
       <Setter Property="Opacity" Value="0" />
       <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="local:AiDoneFirefly.Role" Value="Halo" />
+      <Setter Property="local:AiDoneFirefly.Activity" Value="{Binding AiActivity}" />
       <Setter Property="Effect">
         <Setter.Value>
           <BlurEffect Radius="15" RenderingBias="Quality" />
@@ -820,27 +887,6 @@
         <DataTrigger Binding="{Binding IsFocused}" Value="True">
           <Setter Property="Margin" Value="-2" />
         </DataTrigger>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
-          <Setter Property="Visibility" Value="Visible" />
-          <DataTrigger.EnterActions>
-            <BeginStoryboard x:Name="AiCardHaloPulse">
-              <Storyboard Timeline.DesiredFrameRate="30">
-                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity"
-                                               Duration="0:0:5.6"
-                                               RepeatBehavior="Forever">
-                  <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.08" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:0.7" KeySpline="0.3,0,0.7,1" Value="0.10" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:2.4" KeySpline="0.35,0.05,0.25,1" Value="0.82" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:2.8" KeySpline="0.4,0,0.6,1" Value="0.77" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:5.6" KeySpline="0.22,0.08,0.35,1" Value="0.08" />
-                </DoubleAnimationUsingKeyFrames>
-              </Storyboard>
-            </BeginStoryboard>
-          </DataTrigger.EnterActions>
-          <DataTrigger.ExitActions>
-            <StopStoryboard BeginStoryboardName="AiCardHaloPulse" />
-          </DataTrigger.ExitActions>
-        </DataTrigger>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
           <Setter Property="Background" Value="{StaticResource AiDoneGlowBrush}" />
@@ -849,7 +895,7 @@
       </Style.Triggers>
     </Style>
 
-    <!-- カードと同じ 1px の枠。非フォーカス作業中と完了時だけ表示し、フォーカス作業中は枠を点滅させない。 -->
+    <!-- 完了時だけ出す 1px の青い枠（3.0 秒ホタル点滅）。作業中の動きは AiCardOrbitGlow が描く。 -->
     <Style x:Key="AiCardPulseStyle" TargetType="Border">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#8AF2B5" />
@@ -857,80 +903,13 @@
       <Setter Property="IsHitTestVisible" Value="False" />
       <Setter Property="Opacity" Value="0" />
       <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="local:AiDoneFirefly.Role" Value="CardEdge" />
+      <Setter Property="local:AiDoneFirefly.Activity" Value="{Binding AiActivity}" />
       <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
-          <Setter Property="Visibility" Value="Visible" />
-          <DataTrigger.EnterActions>
-            <BeginStoryboard x:Name="AiCardEdgePulse">
-              <Storyboard Timeline.DesiredFrameRate="30">
-                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity"
-                                               Duration="0:0:5.6"
-                                               RepeatBehavior="Forever">
-                  <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.18" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:0.7" KeySpline="0.3,0,0.7,1" Value="0.20" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:2.4" KeySpline="0.35,0.05,0.25,1" Value="0.90" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:2.8" KeySpline="0.4,0,0.6,1" Value="0.86" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:5.6" KeySpline="0.22,0.08,0.35,1" Value="0.18" />
-                </DoubleAnimationUsingKeyFrames>
-              </Storyboard>
-            </BeginStoryboard>
-          </DataTrigger.EnterActions>
-          <DataTrigger.ExitActions>
-            <StopStoryboard BeginStoryboardName="AiCardEdgePulse" />
-          </DataTrigger.ExitActions>
-        </DataTrigger>
-        <MultiDataTrigger>
-          <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding IsFocused}" Value="True" />
-            <Condition Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}" />
-          </MultiDataTrigger.Conditions>
-          <Setter Property="Visibility" Value="Collapsed" />
-        </MultiDataTrigger>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
           <Setter Property="Opacity" Value="1" />
-        </DataTrigger>
-      </Style.Triggers>
-    </Style>
-
-    <!-- 標準・縮小表示の A〜D アイコン上に重ねる作業中の明滅リング。カードと同じ 5.6 秒のホタル点滅に揃える。 -->
-    <Style x:Key="AiBadgeWorkingRingStyle" TargetType="Border">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#8AF2B5" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="IsHitTestVisible" Value="False" />
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="Visibility" Value="Collapsed" />
-      <Setter Property="Effect">
-        <Setter.Value>
-          <DropShadowEffect Color="{StaticResource AiGlowColor}"
-                            BlurRadius="8"
-                            ShadowDepth="0"
-                            Opacity="0.88" />
-        </Setter.Value>
-      </Setter>
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
-          <Setter Property="Visibility" Value="Visible" />
-          <DataTrigger.EnterActions>
-            <BeginStoryboard x:Name="AiBadgeWorkingRingPulse">
-              <Storyboard Timeline.DesiredFrameRate="30">
-                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity"
-                                               Duration="0:0:5.6"
-                                               RepeatBehavior="Forever">
-                  <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.18" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:0.7" KeySpline="0.3,0,0.7,1" Value="0.20" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:2.4" KeySpline="0.35,0.05,0.25,1" Value="0.95" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:2.8" KeySpline="0.4,0,0.6,1" Value="0.90" />
-                  <SplineDoubleKeyFrame KeyTime="0:0:5.6" KeySpline="0.22,0.08,0.35,1" Value="0.18" />
-                </DoubleAnimationUsingKeyFrames>
-              </Storyboard>
-            </BeginStoryboard>
-          </DataTrigger.EnterActions>
-          <DataTrigger.ExitActions>
-            <StopStoryboard BeginStoryboardName="AiBadgeWorkingRingPulse" />
-          </DataTrigger.ExitActions>
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -962,12 +941,18 @@
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
                         CornerRadius="7">
-                  <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                    Margin="{TemplateBinding Padding}" />
+                  <Grid>
+                    <Border CornerRadius="6"
+                            Style="{StaticResource AiCardDoneWashStyle}" />
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      Margin="{TemplateBinding Padding}" />
+                  </Grid>
                 </Border>
                 <Border CornerRadius="7"
                         Style="{StaticResource AiCardPulseStyle}" />
+                <local:AiCardOrbitGlow CornerRadius="7"
+                                       Activity="{Binding AiActivity}" />
               </Grid>
             </Border>
             <ControlTemplate.Triggers>
@@ -1026,7 +1011,7 @@
       </Style.Triggers>
     </Style>
 
-    <!-- 標準表示のスロット名バッジ（A〜D）。完了時はカードより少し濃いめの青で点灯する。 -->
+    <!-- 標準表示のスロット名バッジ（A〜D）。完了時はカードと同期した 3.0 秒ホタル点滅で青く光る。 -->
     <Style x:Key="SlotNameBadgeStyle" TargetType="Border">
       <Setter Property="Width" Value="28" />
       <Setter Property="Height" Value="28" />
@@ -1038,7 +1023,6 @@
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgeBorderBrush}" />
-          <Setter Property="Effect" Value="{StaticResource AiDoneBadgeGlowEffect}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1076,7 +1060,6 @@
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgeBorderBrush}" />
-          <Setter Property="Effect" Value="{StaticResource AiDoneBadgeGlowEffect}" />
           <Setter Property="Opacity" Value="1" />
         </DataTrigger>
       </Style.Triggers>
@@ -1359,11 +1342,17 @@
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
                         CornerRadius="6">
-                  <ContentPresenter HorizontalAlignment="Center"
-                                    VerticalAlignment="Center" />
+                  <Grid>
+                    <Border CornerRadius="5"
+                            Style="{StaticResource AiMicroDoneWashStyle}" />
+                    <ContentPresenter HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                  </Grid>
                 </Border>
                 <Border CornerRadius="6"
                         Style="{StaticResource AiCardPulseStyle}" />
+                <local:AiCardOrbitGlow CornerRadius="6"
+                                       Activity="{Binding AiActivity}" />
               </Grid>
             </Border>
             <ControlTemplate.Triggers>
@@ -1883,7 +1872,10 @@
                   Style="{StaticResource SlotCardBorderStyle}"
                   Padding="0"
                   ToolTip="{Binding AiActivityToolTip}">
-          <Grid Margin="8">
+          <Grid>
+            <Border CornerRadius="7"
+                    Style="{StaticResource AiCardDoneWashStyle}" />
+            <Grid Margin="8">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
@@ -1901,12 +1893,15 @@
                     VerticalAlignment="Center"
                     ToolTip="{Binding AiActivityToolTip}">
                 <Border Style="{StaticResource SlotNameBadgeStyle}">
-                  <TextBlock Text="{Binding Name}"
-                             Style="{StaticResource SlotNameBadgeTextStyle}" />
+                  <Grid>
+                    <Border CornerRadius="7"
+                            Style="{StaticResource AiBadgeDoneWashStyle}" />
+                    <TextBlock Text="{Binding Name}"
+                               Style="{StaticResource SlotNameBadgeTextStyle}" />
+                  </Grid>
                 </Border>
                 <Border CornerRadius="8"
-                        BorderThickness="2"
-                        Style="{StaticResource AiBadgeWorkingRingStyle}" />
+                        Style="{StaticResource AiBadgeDoneGlowStyle}" />
               </Grid>
               <Ellipse Grid.Column="1" Style="{StaticResource LedIndicatorStyle}" VerticalAlignment="Center" />
               <StackPanel Grid.Column="2"
@@ -1944,7 +1939,10 @@
 
               <Grid Grid.Column="0"
                     Margin="0,0,6,0">
-                <Border Style="{StaticResource ApplicationGroupBorderStyle}">
+                <Border Style="{StaticResource ApplicationGroupFillStyle}" />
+                <Border Style="{StaticResource ApplicationGroupBorderStyle}"
+                        local:GroupHeaderCutout.Header="{Binding ElementName=IdeGroupHeader}" />
+                <Border Padding="7,9,7,5">
                   <ItemsControl ItemsSource="{Binding IdeApplicationOptions}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -1971,12 +1969,16 @@
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
                 </Border>
-                <TextBlock Text="IDE"
+                <TextBlock x:Name="IdeGroupHeader"
+                           Text="IDE"
                            Style="{StaticResource ApplicationGroupLabelStyle}" />
               </Grid>
 
               <Grid Grid.Column="1">
-                <Border Style="{StaticResource ApplicationGroupBorderStyle}">
+                <Border Style="{StaticResource ApplicationGroupFillStyle}" />
+                <Border Style="{StaticResource ApplicationGroupBorderStyle}"
+                        local:GroupHeaderCutout.Header="{Binding ElementName=CliGroupHeader}" />
+                <Border Padding="7,9,7,5">
                   <Grid>
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
@@ -2016,7 +2018,8 @@
                     </Grid>
                   </Grid>
                 </Border>
-                <TextBlock Text="CLI"
+                <TextBlock x:Name="CliGroupHeader"
+                           Text="CLI"
                            Style="{StaticResource ApplicationGroupLabelStyle}" />
               </Grid>
             </Grid>
@@ -2150,10 +2153,13 @@
                 </Button>
               </StackPanel>
             </Grid>
+            </Grid>
           </Grid>
           </Border>
           <Border CornerRadius="8"
                   Style="{StaticResource AiCardPulseStyle}" />
+          <local:AiCardOrbitGlow CornerRadius="8"
+                                 Activity="{Binding AiActivity}" />
         </Grid>
       </Border>
     </DataTemplate>
@@ -2216,11 +2222,15 @@
                 VerticalAlignment="Center"
                 ToolTip="{Binding AiActivityToolTip}">
             <Border Style="{StaticResource CompactSlotBadgeStyle}">
-              <TextBlock Text="{Binding Name}"
-                         Style="{StaticResource CompactSlotBadgeTextStyle}" />
+              <Grid>
+                <Border CornerRadius="3"
+                        Style="{StaticResource AiBadgeDoneWashStyle}" />
+                <TextBlock Text="{Binding Name}"
+                           Style="{StaticResource CompactSlotBadgeTextStyle}" />
+              </Grid>
             </Border>
             <Border CornerRadius="4"
-                    Style="{StaticResource AiBadgeWorkingRingStyle}" />
+                    Style="{StaticResource AiBadgeDoneGlowStyle}" />
           </Grid>
 
           <TextBox x:Name="CompactSlotTitleBox"
@@ -4385,7 +4395,7 @@
                               Tag="通知の見方と補足" Style="{StaticResource SystemMonitorFolderExpanderStyle}"
                               Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}">
                       <StackPanel Margin="16,5,0,0">
-                        <TextBlock Text="• 作業中：カードの細い枠がゆっくり緑に明滅し、枠の外がぼんやり光ります（許可の確認中も同じ）。完了したときだけ、枠が薄い青になり、ボタンと IDE / CLI の中を除いてカードが薄く青くなります。" TextWrapping="Wrap" />
+                        <TextBlock Text="• 作業中：カードの枠の線の上を、緑の LED の一筋の光が角丸に沿って一周します。ふわっとゆっくり回り、最後の方で少しだけ加速します（許可の確認中も同じ）。完了したときだけ、枠・地・外側の光と A〜D が少し早めのホタル点滅（約 3 秒周期）で青く光ります。ボタンと IDE / CLI の中は塗りません。" TextWrapping="Wrap" />
                         <TextBlock Text="• 光は、そのスロットのフォーカス表示を切り替えると消えます。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• VS Code や Antigravity のチャットと CLI の両方が対象です。" Margin="0,3,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="• 既存設定の保持やバックアップの扱いは「仕組みを見る」で確認できます。" Margin="0,3,0,0" TextWrapping="Wrap" />

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
   <title id="title">フックの知らせが、同じPCの中でバッジに届くまで</title>
-  <desc id="desc">AIツールがフックを実行し、共通スクリプトがツール名・出来事・作業フォルダだけをカルテットハブへ渡す。カルテットハブはチャットを読まず、一致したスロットを緑の明滅または青い点灯にする。</desc>
+  <desc id="desc">AIツールがフックを実行し、共通スクリプトがツール名・出来事・作業フォルダだけをカルテットハブへ渡す。カルテットハブはチャットを読まず、一致したスロットを枠を回る緑または青いホタル点滅にする。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#438163"/></marker>
     <style>
