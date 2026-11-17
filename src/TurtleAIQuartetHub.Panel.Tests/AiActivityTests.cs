@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 62;
+    public const int Count = 63;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -148,6 +148,16 @@ internal static class AiActivityTests
         emptySessionInterrupt.Apply(Event("claude", AiHookEventKind.Interrupt, ""), now.AddSeconds(3));
         Check(failures, "状態: SessionId が空の Interrupt でも同ツールの作業中を解除する",
             emptySessionInterrupt.State == AiActivityState.Idle);
+
+        var mismatchedStop = new AiActivityTracker();
+        mismatchedStop.Apply(Event("copilot", AiHookEventKind.Start, "prompt-id"), now);
+        mismatchedStop.Apply(Event("copilot", AiHookEventKind.Interrupt, "other-id"), now.AddSeconds(5));
+        var interruptCleared = mismatchedStop.State == AiActivityState.Idle;
+        mismatchedStop.Apply(Event("copilot", AiHookEventKind.Start, "prompt-id"), now.AddSeconds(10));
+        mismatchedStop.Apply(Event("copilot", AiHookEventKind.Stop, "other-id"), now.AddSeconds(15));
+        mismatchedStop.Acknowledge();
+        Check(failures, "状態: 完了・中断の SessionId が開始と違っても、同じツールの作業中を残さない",
+            interruptCleared && mismatchedStop.State == AiActivityState.Idle);
 
         var unkeyedStartThenKeyedStop = new AiActivityTracker();
         unkeyedStartThenKeyedStop.Apply(Event("antigravity", AiHookEventKind.Start, ""), now);

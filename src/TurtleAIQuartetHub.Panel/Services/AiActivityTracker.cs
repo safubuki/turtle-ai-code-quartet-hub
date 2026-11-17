@@ -17,7 +17,7 @@ public enum AiHookEventKind
     ToolRunning
 }
 
-public sealed record AiHookEvent(string Tool, string EventName, AiHookEventKind Kind, string Cwd, string SessionId);
+public sealed record AiHookEvent(string Tool, string EventName, AiHookEventKind Kind, string Cwd, string SessionId, string Detail = "");
 
 public static class AiHookEventParser
 {
@@ -41,7 +41,7 @@ public static class AiHookEventParser
             return null;
         }
 
-        return new AiHookEvent(tool, eventName, Classify(eventName, detail), cwd, session);
+        return new AiHookEvent(tool, eventName, Classify(eventName, detail), cwd, session, detail);
     }
 
     public static AiHookEventKind Classify(string eventName, string detail)
@@ -124,7 +124,7 @@ public sealed class AiActivityTracker
     // GitHub Copilot（CLI / VS Code のチャット）は停止ボタンで中断しても終了系のフックを送らない。
     // 作業中はツールの前後（preToolUse / postToolUse）で知らせが続くので、それが途絶えたら止まったとみなす。
     // ツールの実行後（モデルの考え中）に知らせが途絶えた時間。
-    public static readonly TimeSpan QuietSessionTimeout = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan QuietSessionTimeout = TimeSpan.FromMinutes(3);
 
     // ツールの実行中（コマンドの実行や、利用者の許可待ち）に知らせが途絶えた時間。長いビルドなどで誤って消さない。
     public static readonly TimeSpan QuietToolTimeout = TimeSpan.FromMinutes(10);
@@ -162,12 +162,14 @@ public sealed class AiActivityTracker
                 _needsAttention = false;
                 break;
             case AiHookEventKind.Stop:
-                RemoveMatchingOrUnkeyedSessions(hookEvent.Tool, hookEvent.SessionId, key);
+                // 開始で同ツールのセッションは 1 つに置き換わっている。完了・中断の SessionId が開始と違っても
+                // （ツールが付け直す・空で届くなど）作業中が残らないよう、同ツールの作業中をまとめて止める。
+                RemoveSessionsForTool(_activeSessions, hookEvent.Tool);
                 RemoveSessionsForTool(_quietEndedSessions, hookEvent.Tool);
                 _needsAttention = true;
                 break;
             case AiHookEventKind.Interrupt:
-                RemoveMatchingOrUnkeyedSessions(hookEvent.Tool, hookEvent.SessionId, key);
+                RemoveSessionsForTool(_activeSessions, hookEvent.Tool);
                 RemoveSessionsForTool(_quietEndedSessions, hookEvent.Tool);
                 break;
             case AiHookEventKind.Progress:
@@ -214,18 +216,6 @@ public sealed class AiActivityTracker
         }
 
         return true;
-    }
-
-    private void RemoveMatchingOrUnkeyedSessions(string tool, string sessionId, string key)
-    {
-        if (string.IsNullOrEmpty(sessionId))
-        {
-            RemoveSessionsForTool(_activeSessions, tool);
-            return;
-        }
-
-        _activeSessions.Remove(key);
-        _activeSessions.Remove(tool);
     }
 
     private static List<string> FindSessionKeysForTool(Dictionary<string, ActiveSession> sessions, string tool)

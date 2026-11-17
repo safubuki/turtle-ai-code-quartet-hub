@@ -18,8 +18,15 @@ public partial class MainWindow
     private void HandleAiHookEvent(string[] args)
     {
         var hookEvent = AiHookEventParser.TryParse(args);
-        if (hookEvent is null || hookEvent.Kind == AiHookEventKind.Unknown)
+        if (hookEvent is null)
         {
+            return;
+        }
+
+        // 停止ボタンなどで何が届いたかをあとから確かめられるよう、使わなかった知らせも記録する。
+        if (hookEvent.Kind == AiHookEventKind.Unknown)
+        {
+            DiagnosticLog.Write(LogLevel.Info, $"AI event ignored: {DescribeAiHookEvent(hookEvent)}");
             return;
         }
 
@@ -29,6 +36,12 @@ public partial class MainWindow
             hookEvent.Cwd);
         if (targets.Count == 0)
         {
+            // ツールの前後の知らせはツールを使うたびに届くので、記録しない。
+            if (hookEvent.Kind is not (AiHookEventKind.Progress or AiHookEventKind.ToolRunning))
+            {
+                DiagnosticLog.Write(LogLevel.Info, $"AI event unmatched: {DescribeAiHookEvent(hookEvent)} cwd={hookEvent.Cwd}");
+            }
+
             return;
         }
 
@@ -56,7 +69,13 @@ public partial class MainWindow
 
         DiagnosticLog.Write(
             LogLevel.Info,
-            $"AI event: {hookEvent.Tool} {hookEvent.EventName} -> {string.Join(",", targets.Select(slot => $"{slot.Name}:{slot.AiActivity}"))}");
+            $"AI event: {DescribeAiHookEvent(hookEvent)} -> {string.Join(",", targets.Select(slot => $"{slot.Name}:{slot.AiActivity}"))}");
+    }
+
+    private static string DescribeAiHookEvent(AiHookEvent hookEvent)
+    {
+        var detail = string.IsNullOrEmpty(hookEvent.Detail) ? string.Empty : $" ({hookEvent.Detail})";
+        return $"{hookEvent.Tool} {hookEvent.EventName}{detail}";
     }
 
     private static IEnumerable<string> GetAiActivityMatchPaths(WindowSlot slot)

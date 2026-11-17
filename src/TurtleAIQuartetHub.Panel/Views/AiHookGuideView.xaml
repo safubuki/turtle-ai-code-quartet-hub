@@ -350,7 +350,7 @@
               <TextBlock Text="GitHub Copilot" Style="{StaticResource GuideHeading}" />
               <TextBlock Text="~/.copilot/hooks/turtle-ai-quartet-hub.json" FontFamily="Consolas" FontSize="11"
                          Margin="0,6,0,0" Foreground="#BDEBD0" TextWrapping="Wrap" />
-              <TextBlock Text="カルテットハブ専用の JSON を作成します。専用ファイルは再設定で上書き・解除で削除します。専用ファイルのバックアップはありません。停止ボタンで中断しても終了の知らせが来ないため、ツールの前後（preToolUse / postToolUse）の知らせが途絶えたら（約 2 分、ツール実行中は約 10 分）作業中の緑を止めます。古い版の専用ファイルは起動時に今の内容へ揃えます。"
+              <TextBlock Text="カルテットハブ専用の JSON を作成します。専用ファイルは再設定で上書き・解除で削除します。専用ファイルのバックアップはありません。停止ボタンで中断しても終了の知らせが来ないため、ツールの前後（preToolUse / postToolUse）の知らせが途絶えたら（約 3 分、ツール実行中は約 10 分）作業中の緑を止めます。古い版の専用ファイルは起動時に今の内容へ揃えます。"
                          Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
             </StackPanel>
           </Border>
