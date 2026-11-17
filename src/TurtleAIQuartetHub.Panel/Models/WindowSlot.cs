@@ -560,9 +560,22 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public AiActivityState AiActivity => AiTracker.State;
 
+    // 作業中の経過時間（例: 「12分」）。作業中以外は空。表示だけで、時間で状態を変えることはしない。
+    public string AiWorkingElapsedText => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
+        ? AiWorkingElapsed.Format(DateTimeOffset.UtcNow - since)
+        : string.Empty;
+
+    public string? AiWorkingElapsedToolTip => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
+        ? $"作業中の経過時間（{since.ToLocalTime():H:mm} から）。止まっているのに長く続くときは、停止ボタンで表示を止められます。"
+        : null;
+
+    private string _lastAiWorkingElapsedText = string.Empty;
+
     public string? AiActivityToolTip => AiTracker.State switch
     {
-        AiActivityState.Working => $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中",
+        AiActivityState.Working => string.IsNullOrEmpty(AiWorkingElapsedText)
+            ? $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中"
+            : $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中（{AiWorkingElapsedText}）",
         AiActivityState.Done => $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
         _ => null
     };
@@ -571,6 +584,24 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(AiActivity));
         OnPropertyChanged(nameof(AiActivityToolTip));
+        NotifyAiWorkingElapsedChanged();
+    }
+
+    // 周期更新から呼ぶ。表示の文字（分単位）が変わったときだけ知らせる。
+    public void RefreshAiWorkingElapsed()
+    {
+        if (!string.Equals(_lastAiWorkingElapsedText, AiWorkingElapsedText, StringComparison.Ordinal))
+        {
+            NotifyAiWorkingElapsedChanged();
+            OnPropertyChanged(nameof(AiActivityToolTip));
+        }
+    }
+
+    private void NotifyAiWorkingElapsedChanged()
+    {
+        _lastAiWorkingElapsedText = AiWorkingElapsedText;
+        OnPropertyChanged(nameof(AiWorkingElapsedText));
+        OnPropertyChanged(nameof(AiWorkingElapsedToolTip));
     }
 
     // カードの停止ボタン。作業中の表示だけを止める（AI の処理は止めない）。

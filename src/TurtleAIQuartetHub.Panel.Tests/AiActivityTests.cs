@@ -8,12 +8,13 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 60;
+    public const int Count = 62;
 
     public static async Task RunAsync(List<string> failures)
     {
         VerifyParser(failures);
         VerifyTrackerTransitions(failures);
+        VerifyWorkingElapsed(failures);
         VerifySlotMatching(failures);
         VerifyInstaller(failures);
         await VerifyPipeConcurrencyAsync(failures);
@@ -230,6 +231,41 @@ internal static class AiActivityTests
         claudeIdle.Apply(AiHookEventParser.TryParse(["--ai-event", "claude", "Notification", @"C:\work", "s1", "idle_prompt"])!, now.AddSeconds(200));
         Check(failures, "停止ボタン: Claude の Esc 中断後の入力待ちで緑を止め、完了の青は消さず、消した青も戻さない",
             idleStoppedWorking && doneKept && claudeIdle.State == AiActivityState.Idle);
+    }
+
+    // 作業中の経過時間の表示。表示だけに使い、時間で状態を変えないこと。
+    private static void VerifyWorkingElapsed(List<string> failures)
+    {
+        Check(failures, "経過時間: カードの幅に収まる短い書き方にする",
+            AiWorkingElapsed.Format(TimeSpan.FromSeconds(30)) == "<1分"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(12.9)) == "12分"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(60)) == "1時間"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(65)) == "1時間5分"
+            && AiWorkingElapsed.Format(TimeSpan.FromHours(51)) == "2日3時間",
+            string.Join(",", new[] { 0.5, 12.9, 60, 65, 51 * 60 }.Select(m => AiWorkingElapsed.Format(TimeSpan.FromMinutes(m)))));
+
+        var t0 = new DateTimeOffset(2026, 11, 17, 10, 0, 0, TimeSpan.Zero);
+        var tracker = new AiActivityTracker();
+        var noneBefore = tracker.WorkingSince is null;
+        tracker.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", "conv"), t0);
+        tracker.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", "conv"), t0.AddMinutes(5));
+        var keptAcrossModelCalls = tracker.WorkingSince == t0;
+        tracker.Apply(new AiHookEvent("antigravity", "Stop", AiHookEventKind.Stop, @"C:\work", "conv"), t0.AddMinutes(8));
+        var clearedOnStop = tracker.WorkingSince is null && tracker.State == AiActivityState.Done;
+        tracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0.AddMinutes(10));
+        var restartedFromDone = tracker.WorkingSince == t0.AddMinutes(10);
+        tracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0.AddMinutes(30));
+        var resetOnNewPrompt = tracker.WorkingSince == t0.AddMinutes(30);
+        tracker.Apply(new AiHookEvent("copilot", "userPromptSubmitted", AiHookEventKind.Start, @"C:\work", "c1"), t0.AddMinutes(31));
+        tracker.Apply(new AiHookEvent("copilot", "agentStop", AiHookEventKind.Stop, @"C:\work", "c1"), t0.AddMinutes(32));
+        var keptWhileOtherToolWorks = tracker.WorkingSince is not null;
+        tracker.Acknowledge();
+        var stillWorkingAfterHours = tracker.State == AiActivityState.Working;
+        tracker.StopWorking();
+        Check(failures, "経過時間: 作業中になった時刻から数え、モデル呼び出しごとには数え直さず、新しい指示で数え直し、止まったら消す",
+            noneBefore && keptAcrossModelCalls && clearedOnStop && restartedFromDone && resetOnNewPrompt
+            && keptWhileOtherToolWorks && stillWorkingAfterHours && tracker.WorkingSince is null,
+            $"{noneBefore},{keptAcrossModelCalls},{clearedOnStop},{restartedFromDone},{resetOnNewPrompt},{keptWhileOtherToolWorks},{stillWorkingAfterHours}");
     }
 
     private static void VerifySlotMatching(List<string> failures)

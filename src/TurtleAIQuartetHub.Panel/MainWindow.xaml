@@ -579,6 +579,24 @@
       </Style.Triggers>
     </Style>
 
+    <!-- 作業中の経過時間（例: 12分）。作業中のときだけ停止ボタンの左に小さく出す。表示だけで、時間で状態は変えない。
+         色は作業中の緑の LED に寄せ、タイトルより目立たない明るさにする。 -->
+    <Style x:Key="AiWorkingElapsedTextStyle" TargetType="TextBlock">
+      <Setter Property="Text" Value="{Binding AiWorkingElapsedText}" />
+      <Setter Property="ToolTip" Value="{Binding AiWorkingElapsedToolTip}" />
+      <Setter Property="Foreground" Value="#8FD9AE" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="None" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="SlotOpenFolderButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
       <Setter Property="MinWidth" Value="28" />
       <Setter Property="Width" Value="28" />
@@ -1951,6 +1969,8 @@
                           Orientation="Horizontal"
                           VerticalAlignment="Top"
                           Margin="8,0,0,0">
+                <TextBlock Style="{StaticResource AiWorkingElapsedTextStyle}"
+                           Margin="0,0,6,0" />
                 <Button Content="&#xE71A;"
                         Tag="{Binding}"
                         Click="StopSlotAiActivityButton_Click"
@@ -2207,8 +2227,24 @@
               DragLeave="SlotCard_DragLeave"
               DragOver="SlotCard_DragOver"
               Drop="SlotCard_Drop"
-              ToolTip="{Binding DisplayTitle}"
               Style="{StaticResource MicroSlotButtonStyle}">
+        <!-- 極小表示は経過時間を出す幅が無いので、ツールチップに AI の状態（作業中は経過時間つき）を足す。 -->
+        <Button.ToolTip>
+          <StackPanel>
+            <TextBlock Text="{Binding DisplayTitle}" />
+            <TextBlock Text="{Binding AiActivityToolTip}">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Idle}">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+          </StackPanel>
+        </Button.ToolTip>
         <!-- ラベルはタイトル先頭 1〜2 文字（MicroLabel）。全角 2 文字だとセル幅を超えうるので
              Viewbox の DownOnly で溢れた分だけ縮める。1 文字や半角 2 文字は 14pt のまま。
              フォントの descender 領域がセル中央計算に含まれるため、descender を持たない
@@ -2249,6 +2285,7 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
           <Grid Margin="0,0,5,0"
@@ -2274,8 +2311,14 @@
                    MinHeight="0" Height="20" Padding="0"
                    FontSize="13" />
 
+          <!-- 縮小表示は幅が狭いので、作業中だけ名前の右に小さく出す（名前は少し短く切れる）。 -->
+          <TextBlock Grid.Column="2"
+                     Style="{StaticResource AiWorkingElapsedTextStyle}"
+                     FontSize="10"
+                     Margin="4,0,0,0" />
+
           <Button x:Name="CompactSlotIdeToggle"
-                  Grid.Column="2"
+                  Grid.Column="3"
                   Tag="{Binding}"
                   Content="{Binding CompactIdeToggleLabel}"
                   ToolTip="{Binding CompactIdeToggleToolTip}"
@@ -2285,13 +2328,13 @@
                   Click="CompactSlotIdeToggleButton_Click"
                   Style="{StaticResource CompactSlotIdeToggleButtonStyle}" />
           <Button x:Name="CompactSlotPowerToggle"
-                  Grid.Column="3"
+                  Grid.Column="4"
                   Tag="{Binding}"
                   Click="CompactSlotPowerButton_Click"
                   Style="{StaticResource CompactSlotPowerButtonStyle}" />
           <!-- 控えカードを選んでいる間だけ、IDE 切替・起動ボタンの代わりに出す。クリックはカード本体が受ける。 -->
           <Border x:Name="CompactSlotAssignPill"
-                  Grid.Column="2"
+                  Grid.Column="3"
                   Grid.ColumnSpan="2"
                   Visibility="Collapsed"
                   IsHitTestVisible="False"

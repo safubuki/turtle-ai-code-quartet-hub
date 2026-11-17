@@ -117,6 +117,11 @@ public sealed class AiActivityTracker
 
     public string LastTool { get; private set; } = string.Empty;
 
+    // 作業中になった時刻（経過時間の表示用）。表示だけに使い、時間で状態を変えることはしない。
+    // 待機・完了から作業中になったとき、または利用者が新しい指示を送ったときに数え始める。
+    // Antigravity はモデルを呼ぶたびに開始（PreInvocation）を送るため、それだけでは数え直さない。
+    public DateTimeOffset? WorkingSince { get; private set; }
+
     // フォーカス表示中（そのウィンドウを見ている最中）に終わっても、終わったことに気づけるよう必ず光らせる。
     public bool Apply(AiHookEvent hookEvent, DateTimeOffset now)
     {
@@ -125,6 +130,11 @@ public sealed class AiActivityTracker
         switch (hookEvent.Kind)
         {
             case AiHookEventKind.Start:
+                if (_activeSessions.Count == 0 || WorkingSince is null || IsPromptSubmit(hookEvent.EventName))
+                {
+                    WorkingSince = now;
+                }
+
                 // 同一ツールの別セッションが中断未通知のまま残っていると、後続完了の解除時に
                 // 緑の作業中へ戻ってしまうため、同ツールの古いセッションは置き換える。
                 // 異なるツール（例: Claude と Copilot）は並行動作として残す。
@@ -147,7 +157,19 @@ public sealed class AiActivityTracker
         }
 
         LastTool = hookEvent.Tool;
+        ClearWorkingSinceIfIdle();
         return before != State;
+    }
+
+    private static bool IsPromptSubmit(string eventName) =>
+        eventName.Trim().ToLowerInvariant() is "userpromptsubmit" or "userpromptsubmitted";
+
+    private void ClearWorkingSinceIfIdle()
+    {
+        if (_activeSessions.Count == 0)
+        {
+            WorkingSince = null;
+        }
     }
 
     private void RemoveSessionsForTool(string tool, string? exceptKey = null)
@@ -188,6 +210,7 @@ public sealed class AiActivityTracker
         }
 
         _activeSessions.Clear();
+        WorkingSince = null;
         return true;
     }
 
@@ -195,8 +218,33 @@ public sealed class AiActivityTracker
     {
         var before = State;
         _activeSessions.Clear();
+        WorkingSince = null;
         _needsAttention = false;
         return before != State;
+    }
+}
+
+// 作業中の経過時間の表示。カードの限られた幅に収まるよう短く書く。
+public static class AiWorkingElapsed
+{
+    public static string Format(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "<1分";
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            return $"{(int)elapsed.TotalMinutes}分";
+        }
+
+        if (elapsed < TimeSpan.FromDays(1))
+        {
+            return elapsed.Minutes == 0 ? $"{(int)elapsed.TotalHours}時間" : $"{(int)elapsed.TotalHours}時間{elapsed.Minutes}分";
+        }
+
+        return $"{(int)elapsed.TotalDays}日{elapsed.Hours}時間";
     }
 }
 

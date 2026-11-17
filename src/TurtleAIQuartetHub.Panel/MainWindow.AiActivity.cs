@@ -110,6 +110,15 @@ public partial class MainWindow
         }
     }
 
+    // 周期更新から呼ぶ。作業中のカードの経過時間の表示を進める（表示だけで、状態は変えない）。
+    private void RefreshAiWorkingElapsed()
+    {
+        foreach (var slot in _statusStore.Slots)
+        {
+            slot.RefreshAiWorkingElapsed();
+        }
+    }
+
     // カードの停止ボタン。停止ボタンで終了の知らせを送らない AI でも、作業中の表示をすぐ止められるようにする。
     // 表示だけを止め、AI の処理には触れない。
     private void StopSlotAiActivityButton_Click(object sender, RoutedEventArgs e)
