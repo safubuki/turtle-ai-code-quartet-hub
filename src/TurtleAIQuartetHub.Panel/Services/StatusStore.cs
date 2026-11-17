@@ -1400,6 +1400,7 @@ public sealed class StatusStore : INotifyPropertyChanged
                             PreferredLayout = slot.PreferredLayout.HasAnyValue ? slot.PreferredLayout : null,
                             AiDoneTool = pendingCompletion?.Tool,
                             AiDoneAt = pendingCompletion?.CompletedAt,
+                            AiDoneDurationSeconds = pendingCompletion?.Duration?.TotalSeconds,
                             AiDoneWorkspacePath = pendingCompletion?.WorkspacePath
                         };
                     })
@@ -1495,7 +1496,11 @@ public sealed class StatusStore : INotifyPropertyChanged
                 // まだ見ていなかった完了（青）を戻す。そのウィンドウが閉じていれば周期更新で消え、
                 // 別のフォルダを開いていれば DiscardRestoredAiCompletionIfWorkspaceChanged で消える。
                 if (!string.IsNullOrWhiteSpace(state.AiDoneTool) && state.AiDoneAt is { } doneAt
-                    && slot.RestoreAiCompletion(state.AiDoneTool, doneAt, state.AiDoneWorkspacePath))
+                    && slot.RestoreAiCompletion(
+                        state.AiDoneTool,
+                        doneAt,
+                        state.AiDoneWorkspacePath,
+                        state.AiDoneDurationSeconds is { } seconds && double.IsFinite(seconds) && seconds >= 0 ? TimeSpan.FromSeconds(seconds) : null))
                 {
                     DiagnosticLog.Write(LogLevel.Info, $"AI completion restored: slot {slot.Name} {state.AiDoneTool} {doneAt:O}");
                 }

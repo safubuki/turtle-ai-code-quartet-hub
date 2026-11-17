@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 67;
+    public const int Count = 68;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -221,6 +221,8 @@ internal static class AiActivityTests
             var after = new StatusStore(new AppConfig { StateDirectory = restartStateDir });
             var restoredDone = after.Slots[0].AiActivity == AiActivityState.Done
                 && after.Slots[0].AiTracker.CompletedAt == completedAt
+                && after.Slots[0].AiTracker.CompletedDuration == TimeSpan.FromMinutes(2)
+                && after.Slots[0].AiElapsedText == "2:00"
                 && after.Slots[0].AiTracker.LastTool == "codex"
                 && after.Slots[0].AiActivityToolTip?.Contains(completedAt.ToLocalTime().ToString("M/d H:mm"), StringComparison.Ordinal) == true;
             var workingNotRestored = after.Slots[1].AiActivity == AiActivityState.Idle;
@@ -332,6 +334,25 @@ internal static class AiActivityTests
         var clearedOnNextPrompt = tracker.CompletedAt is null;
         Check(failures, "完了の時刻: 完了で記録し、フォーカス切替や次の指示で消す",
             noTimeWhileWorking && stampedOnStop && clearedOnAcknowledge && clearedOnNextPrompt);
+
+        var timed = new AiActivityTracker();
+        timed.Apply(new AiHookEvent("copilot", "userPromptSubmitted", AiHookEventKind.Start, @"C:\work", "c1"), t0);
+        timed.Apply(new AiHookEvent("copilot", "agentStop", AiHookEventKind.Stop, @"C:\work", "c1"), t0.AddSeconds(12 * 60 + 5));
+        var frozen = timed.CompletedDuration == TimeSpan.FromSeconds(12 * 60 + 5) && timed.State == AiActivityState.Done;
+        timed.Apply(new AiHookEvent("copilot", "userPromptSubmitted", AiHookEventKind.Start, @"C:\work", "c1"), t0.AddMinutes(20));
+        var resetOnRestart = timed.CompletedDuration is null && timed.WorkingSince == t0.AddMinutes(20);
+        timed.Apply(new AiHookEvent("copilot", "agentStop", AiHookEventKind.Stop, @"C:\work", "c1"), t0.AddMinutes(21));
+        var secondTask = timed.CompletedDuration == TimeSpan.FromMinutes(1);
+        timed.Acknowledge();
+        var clearedOnFocus = timed.CompletedDuration is null;
+        var unknownStart = new AiActivityTracker();
+        unknownStart.Apply(new AiHookEvent("copilot", "agentStop", AiHookEventKind.Stop, @"C:\work", "c1"), t0);
+        var restoredWithDuration = new AiActivityTracker();
+        restoredWithDuration.RestoreCompletion("codex", t0, TimeSpan.FromSeconds(42));
+        Check(failures, "かかった時間: 完了で時計を止めて残し、次の指示で 0:00 から数え直し、フォーカス切替で消す。開始を知らない完了では出さない",
+            frozen && resetOnRestart && secondTask && clearedOnFocus
+            && unknownStart.CompletedDuration is null
+            && restoredWithDuration.CompletedDuration == TimeSpan.FromSeconds(42));
 
         var restored = new AiActivityTracker();
         var restoredOk = restored.RestoreCompletion("codex", t0)

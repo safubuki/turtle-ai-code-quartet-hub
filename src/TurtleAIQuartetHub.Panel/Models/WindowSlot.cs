@@ -560,24 +560,39 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public AiActivityState AiActivity => AiTracker.State;
 
-    // 作業中の経過時間（例: 「12:05」）。作業中以外は空。表示だけで、時間で状態を変えることはしない。
-    public string AiWorkingElapsedText => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
-        ? AiWorkingElapsed.Format(DateTimeOffset.UtcNow - since)
-        : string.Empty;
+    // 時計の表示（例: 「12:05」）。表示だけで、時間で状態を変えることはしない。
+    // 作業中は進み続け、完了したら止まった時計（そのタスクにかかった時間）を完了の青と一緒に見せ続ける。
+    // フォーカス表示の切り替えで青と一緒に消え、次の指示で 0:00 から数え直す。それ以外は空。
+    public string AiElapsedText => AiTracker.State switch
+    {
+        AiActivityState.Working when AiTracker.WorkingSince is { } since => AiWorkingElapsed.Format(DateTimeOffset.UtcNow - since),
+        AiActivityState.Done when AiTracker.CompletedDuration is { } duration => AiWorkingElapsed.Format(duration),
+        _ => string.Empty
+    };
 
-    public string? AiWorkingElapsedToolTip => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
-        ? $"作業中の経過時間（{since.ToLocalTime():H:mm} から）。止まっているのに長く続くときは、停止ボタンで表示を止められます。"
-        : null;
+    public string? AiElapsedToolTip => AiTracker.State switch
+    {
+        AiActivityState.Working when AiTracker.WorkingSince is { } since =>
+            $"作業中の経過時間（{since.ToLocalTime():H:mm} から）。止まっているのに長く続くときは、停止ボタンで表示を止められます。",
+        AiActivityState.Done when AiTracker.CompletedDuration is { } duration && AiTracker.CompletedAt is { } completedAt =>
+            $"このタスクにかかった時間 {AiWorkingElapsed.Format(duration)}（{(completedAt - duration).ToLocalTime():H:mm} 開始、{completedAt.ToLocalTime():H:mm} 完了）。フォーカス表示を切り替えると消えます。",
+        _ => null
+    };
 
-    private string _lastAiWorkingElapsedText = string.Empty;
+    // 時計を出すか（作業中、または完了してかかった時間が分かっているとき）。
+    public bool HasAiElapsed => !string.IsNullOrEmpty(AiElapsedText);
+
+    private string _lastAiElapsedText = string.Empty;
 
     public string? AiActivityToolTip => AiTracker.State switch
     {
-        AiActivityState.Working => string.IsNullOrEmpty(AiWorkingElapsedText)
+        AiActivityState.Working => string.IsNullOrEmpty(AiElapsedText)
             ? $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中"
-            : $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中（{AiWorkingElapsedText}）",
+            : $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中（{AiElapsedText}）",
         AiActivityState.Done => AiTracker.CompletedAt is { } completedAt
-            ? $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}。フォーカス表示を切り替えると消えます）"
+            ? AiTracker.CompletedDuration is { } duration
+                ? $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}、かかった時間 {AiWorkingElapsed.Format(duration)}。フォーカス表示を切り替えると消えます）"
+                : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}。フォーカス表示を切り替えると消えます）"
             : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
         _ => null
     };
@@ -586,41 +601,42 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(AiActivity));
         OnPropertyChanged(nameof(AiActivityToolTip));
-        NotifyAiWorkingElapsedChanged();
+        NotifyAiElapsedChanged();
     }
 
     // 周期更新（約 1 秒ごと）から呼ぶ。表示の文字（秒単位）が変わったときだけ知らせる。
-    public void RefreshAiWorkingElapsed()
+    public void RefreshAiElapsed()
     {
-        if (!string.Equals(_lastAiWorkingElapsedText, AiWorkingElapsedText, StringComparison.Ordinal))
+        if (!string.Equals(_lastAiElapsedText, AiElapsedText, StringComparison.Ordinal))
         {
-            NotifyAiWorkingElapsedChanged();
+            NotifyAiElapsedChanged();
             OnPropertyChanged(nameof(AiActivityToolTip));
         }
     }
 
-    private void NotifyAiWorkingElapsedChanged()
+    private void NotifyAiElapsedChanged()
     {
-        _lastAiWorkingElapsedText = AiWorkingElapsedText;
-        OnPropertyChanged(nameof(AiWorkingElapsedText));
-        OnPropertyChanged(nameof(AiWorkingElapsedToolTip));
+        _lastAiElapsedText = AiElapsedText;
+        OnPropertyChanged(nameof(AiElapsedText));
+        OnPropertyChanged(nameof(HasAiElapsed));
+        OnPropertyChanged(nameof(AiElapsedToolTip));
     }
 
     // 再起動前に保存した完了を戻したときのワークスペース。ウィンドウが別のフォルダを開いていたら捨てるために使う。
     private string? _restoredAiCompletionWorkspacePath;
 
     // 保存するための、まだ見ていない完了。完了でなければ null。
-    public (string Tool, DateTimeOffset CompletedAt, string WorkspacePath)? GetPendingAiCompletion()
+    public (string Tool, DateTimeOffset CompletedAt, TimeSpan? Duration, string WorkspacePath)? GetPendingAiCompletion()
     {
         return AiTracker.State == AiActivityState.Done && AiTracker.CompletedAt is { } completedAt
-            ? (AiTracker.LastTool, completedAt, EffectivePath)
+            ? (AiTracker.LastTool, completedAt, AiTracker.CompletedDuration, EffectivePath)
             : null;
     }
 
     // カルテットハブの再起動前の完了（青）を戻す。ウィンドウがもう無ければ、周期更新の ClearWindow で消える。
-    public bool RestoreAiCompletion(string tool, DateTimeOffset completedAt, string? workspacePath)
+    public bool RestoreAiCompletion(string tool, DateTimeOffset completedAt, string? workspacePath, TimeSpan? duration = null)
     {
-        if (!AiTracker.RestoreCompletion(tool, completedAt))
+        if (!AiTracker.RestoreCompletion(tool, completedAt, duration))
         {
             return false;
         }
