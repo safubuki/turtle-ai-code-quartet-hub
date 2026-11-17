@@ -43,7 +43,9 @@ public sealed class AiNotifyHookInstaller
     // Claude Code / Codex / Grok は同じ形式（event → [{ hooks: [{ type, command, timeout }] }]）。
     private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "Stop", "StopFailure", "SessionEnd", "Notification"];
     private static readonly string[] CodexEvents = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt", "SessionEnd"];
-    private static readonly string[] CopilotEvents = ["userPromptSubmitted", "agentStop", "errorOccurred", "sessionEnd"];
+    // Copilot は停止ボタンでの中断時に終了系のフックを送らないため、ツールの前後（preToolUse / postToolUse）で
+    // 作業が続いていることを確かめ、知らせが途絶えたら作業中を片付ける。
+    private static readonly string[] CopilotEvents = ["userPromptSubmitted", "preToolUse", "postToolUse", "agentStop", "errorOccurred", "sessionEnd"];
     // Grok は中断と API エラーを Stop ではなく StopCancelled / StopFailure で知らせる。
     private static readonly string[] GrokEvents = ["UserPromptSubmit", "Stop", "StopFailure", "StopCancelled", "Notification"];
     // Antigravity は名前付きフックの下に平坦なイベント配列（PreInvocation / Stop）を持つ。
@@ -440,7 +442,35 @@ public sealed class AiNotifyHookInstaller
         WriteWithBackup(AntigravityHooksPath, originalText, root.ToJsonString(WriteOptions) + Environment.NewLine);
     }
 
+    // ハブ専用のファイル（共通スクリプト・Copilot の専用フック）が古い版の内容なら、今の内容に書き直す。
+    // どちらもハブだけが書くファイルなので、利用者の設定は変わらない。ファイルが無い（未設定・解除済み）ときは作らない。
+    public IReadOnlyList<string> RefreshOwnedFiles()
+    {
+        var refreshed = new List<string>();
+        if (File.Exists(ScriptPath) && !string.Equals(File.ReadAllText(ScriptPath), NotifyScript, StringComparison.Ordinal))
+        {
+            WriteScript();
+            refreshed.Add("script");
+        }
+
+        if (File.Exists(CopilotHookPath)
+            && File.Exists(ScriptPath)
+            && !string.Equals(File.ReadAllText(CopilotHookPath), BuildCopilotHookFileText(), StringComparison.Ordinal))
+        {
+            WriteCopilotHookFile();
+            refreshed.Add("copilot");
+        }
+
+        return refreshed;
+    }
+
     private void WriteCopilotHookFile()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(CopilotHookPath)!);
+        File.WriteAllText(CopilotHookPath, BuildCopilotHookFileText(), new UTF8Encoding(false));
+    }
+
+    private string BuildCopilotHookFileText()
     {
         var hooks = new JsonObject();
         foreach (var hookEvent in CopilotEvents)
@@ -464,8 +494,7 @@ public sealed class AiNotifyHookInstaller
             ["hooks"] = hooks
         };
 
-        Directory.CreateDirectory(Path.GetDirectoryName(CopilotHookPath)!);
-        File.WriteAllText(CopilotHookPath, root.ToJsonString(WriteOptions) + Environment.NewLine, new UTF8Encoding(false));
+        return root.ToJsonString(WriteOptions) + Environment.NewLine;
     }
 
     internal static int RemoveHubEntries(JsonObject hooks)
@@ -690,6 +719,8 @@ public sealed class AiNotifyHookInstaller
                 elseif ($data.terminationReason) { $detail = [string]$data.terminationReason }
                 elseif ($data.termination_reason) { $detail = [string]$data.termination_reason }
                 elseif ($data.reason) { $detail = [string]$data.reason }
+                elseif ($data.stop_reason) { $detail = [string]$data.stop_reason }
+                elseif ($data.stopReason) { $detail = [string]$data.stopReason }
                 elseif ($null -ne $data.recoverable) {
                     if ([bool]$data.recoverable) { $detail = 'recoverable' }
                     else { $detail = 'fatal' }

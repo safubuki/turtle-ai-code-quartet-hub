@@ -175,6 +175,7 @@ public partial class MainWindow : Window
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
         _refreshTimer.Start();
+        RefreshOwnedAiNotifyHookFiles();
 
         _systemMonitorTimer = new DispatcherTimer(DispatcherPriority.Background)
         {

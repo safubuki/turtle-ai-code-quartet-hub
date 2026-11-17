@@ -70,7 +70,8 @@ AI ツールとフックのプログラムのあいだは、名前付きパイ�
 | 指示を送って、AI が作業を始めた | `UserPromptSubmit`、Copilot の `userPromptSubmitted`、Antigravity の `PreInvocation` | カードの枠線の上を、緑の LED 光が一周する。ふわっとゆっくり回り、終盤に少し加速 |
 | 許可や質問で止まっている | `permission_prompt`、`elicitation_dialog`、Codex の `PermissionRequest` | 枠を回る緑の光のまま。変えない |
 | 答えを出した、失敗した、途中で止まった | `Stop` / `StopFailure`、Copilot の `agentStop` / 非回復の `errorOccurred`、Grok の `StopFailure` / `StopCancelled` | カードと A〜D アイコンが少し早めのホタル点滅で青く光る |
-| 次の入力を待っているだけ | `idle_prompt`、回復可能なツールエラー（`errorOccurred` + `recoverable`）など | 変えない |
+| 次の入力を待っているだけ | `idle_prompt` | 残っている緑だけを止める。青は付けない・消さない |
+| ツールを使いながら作業が続いている | Copilot の `preToolUse` / `postToolUse`、回復可能なツールエラー（`errorOccurred` + `recoverable`） | 枠を回る緑の光のまま |
 
 許可や質問の確認は、作業が始まったあとの続きです。カルテットハブは、許可や質問の確認を特別な状態として見ません。青く光るのは、応答が終わったときだけです。
 
@@ -78,7 +79,18 @@ GitHub Copilot と Antigravity には、許可の確認を知らせるフック�
 
 Codex で作業を中断したとき（`Interrupt`）や、Antigravity でユーザー自身がキャンセルしたとき（`Stop` / `USER_CANCELED`）は、新しい光を付けません。Grok の中断（`StopCancelled`）は、枠を回る緑が残らないように、完了と同じ青にします。
 
-`idle_prompt` は「次の入力を待てる状態」です。応答のあとだけでなく、失敗や中断のあとにも届くことがあります。これで光らせると、一度消した光が戻るため、カルテットハブは無視します。`task_complete` と `PermissionDenied`、知らない種類の知らせも無視します。
+`idle_prompt` は「次の入力を待てる状態」です。応答のあとだけでなく、失敗や中断のあとにも届くことがあります。AI はもう動いていないので、`Esc` / `Ctrl+C` の中断で残った緑だけを止めます。青は付けません（一度消した光が戻らないようにするため）。青が光っているときは、青をそのまま残します。`task_complete` と `PermissionDenied`、知らない種類の知らせは無視します。
+
+### 停止ボタンで止めたとき
+
+GitHub Copilot（CLI と VS Code のチャット）は、停止ボタンや `Esc` で中断しても、終了の知らせ（`agentStop` など）を送りません。そのままでは緑が回り続けるため、カルテットハブは Copilot にツールの前後の知らせ（`preToolUse` / `postToolUse`）も登録し、作業が続いていることを確かめます。
+
+- 最後の知らせから約 2 分、何も届かなければ、中断されたとみなして緑を止めます。青は付けません。
+- ツールの実行中（`preToolUse` のあと。長いコマンドや許可の確認を待っているとき）は、約 10 分待ちます。
+- 長く考えていただけで、止めたあとに作業の知らせが届いたときは、緑へ戻ります。応答が終われば、いつもどおり青になります。
+- 古い版のカルテットハブが書いた Copilot の専用ファイルと共通スクリプトは、カルテットハブの起動時に今の内容へ揃えます。フックを解除しているときは、何も作りません。
+
+すぐに消したいときは、歯車設定の「**AI 状態をリセット**」を使えます。
 
 ## フックの知らせは、カルテットハブへどう届くか
 
@@ -108,7 +120,7 @@ Codex で作業を中断したとき（`Interrupt`）や、Antigravity でユー
 - 作業中は標準・縮小・極小のいずれの表示でもカード（極小表示ではタイル）の枠線上に緑の LED 光が出ます。完了時は標準表示と縮小表示ではカード枠・地・外側の光背と A〜D アイコン、極小表示ではカードタイル全体が少し早めのホタル点滅（約 3 秒周期）で青く光ります（ボタンと IDE / CLI の枠内は塗りません）。
 - 光は、光っているスロットを1面表示にする、または4面表示へ戻すと消えます。ウィンドウを手前に出しただけでは消えません。
 - 許可や質問の確認中は、枠を回る緑の光のままです。青く光るのは応答が終わったときだけです。
-- 終了の知らせが来ないまま残った作業中の記録は、始まってから60分を超えると片付けます。AI の処理を止める機能ではありません。
+- 終了の知らせが来ないまま残った作業中の記録は、始まってから60分を超えると片付けます。GitHub Copilot は、作業の知らせが約 2 分（ツール実行中は約 10 分）途絶えた時点で片付けます。AI の処理を止める機能ではありません。
 - また、マルチエージェント（Swarm など）や異常中断の影響で画面上の状態表示が実態とズレたときは、歯車設定の「AI の作業通知」右上にある「**AI 状態をリセット**」ボタンから全スロット（A〜D）の表示だけをいつでも待機状態へ戻せます（フック設定や起動中の AI ツールには影響しません）。
 
 ## 使うには
@@ -157,9 +169,9 @@ Grok は、Claude 用の `~/.claude/settings.json` も実行することがあ�
 
 | ツール | 開始 → 緑 | 応答終了 → 青いホタル点滅 | 許可・質問の確認 | 中断・終了 |
 |---|---|---|---|---|
-| Claude Code | `UserPromptSubmit` | `Stop` / `StopFailure` | `permission_prompt` / `elicitation_dialog` は緑のまま | `SessionEnd` で光を付けずに終了（`Ctrl+C`/`Esc` の途中中断は公式仕様上イベントが出ないため直前の作業中が残り、同ツール次セッション開始時に置換） |
+| Claude Code | `UserPromptSubmit` | `Stop` / `StopFailure` | `permission_prompt` / `elicitation_dialog` は緑のまま | `SessionEnd` で光を付けずに終了（`Ctrl+C`/`Esc` の途中中断は公式仕様上イベントが出ないため、そのあとの入力待ち `idle_prompt` で光を付けずに終了。同ツールの次セッション開始時にも置換） |
 | Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Interrupt` / `SessionEnd` は光を付けずに終了 |
-| GitHub Copilot | `userPromptSubmitted` | `agentStop` / 非回復 `errorOccurred` | 回復可能 `errorOccurred` は緑のまま | `agentStop`（`abort` / `user_exit` 等）・`sessionEnd` は光を付けずに終了 |
+| GitHub Copilot | `userPromptSubmitted`（`preToolUse` / `postToolUse` で継続を確認） | `agentStop` / 非回復 `errorOccurred` | 回復可能 `errorOccurred` は緑のまま | `agentStop`（`abort` / `user_exit` 等）・`sessionEnd` は光を付けずに終了。停止ボタンでは知らせが来ないため、作業の知らせが約 2 分（ツール実行中は約 10 分）途絶えたら光を付けずに終了 |
 | Grok | `UserPromptSubmit` | `Stop` / `StopFailure` / `StopCancelled` | `permission_prompt` / `elicitation_dialog` は緑のまま | `StopCancelled` も同じ青 |
 | Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED` / `cancel` / `aborted` 系）は光を付けない |
 
@@ -188,7 +200,7 @@ Grok と Antigravity の `Stop`、および開始フックは、フックの出�
 ```
 
 - `tool` と `event` は、カルテットハブが登録した起動コマンドの引数です。
-- 標準入力の JSON から、`cwd`（無い場合は `workspacePaths` の先頭・`workspaceRoot`・`workspace_root`）、`session_id` / `sessionId` / `conversationId` / `conversation_id`、`notification_type` / `notificationType` / `terminationReason` / `termination_reason` / `reason` / `recoverable` を取り出します。JSON が読めないときやフォルダ項目が無いときの作業フォルダは、スクリプトの現在フォルダを使います。
+- 標準入力の JSON から、`cwd`（無い場合は `workspacePaths` の先頭・`workspaceRoot`・`workspace_root`）、`session_id` / `sessionId` / `conversationId` / `conversation_id`、`notification_type` / `notificationType` / `terminationReason` / `termination_reason` / `reason` / `stop_reason` / `stopReason` / `recoverable` を取り出します。JSON が読めないときやフォルダ項目が無いときの作業フォルダは、スクリプトの現在フォルダを使います。
 - 送り先は、同じパソコンの名前付きパイプ `TurtleAIQuartetHub.Commands`（`\\.\pipe\TurtleAIQuartetHub.Commands`）です。カルテットハブは複数接続を受けられる受け口を開き、スクリプトが1件書いて切断します。返事は読みません。先にパイプがあるかを確認し、一時的な接続失敗時は短い待機を挟んで再試行します（最大約830ミリ秒）。送信に失敗しても AI の結果には影響させず、`{}` を出して終了コード 0 で終わります。スクリプトが終わったことと、カルテットハブへ届いたことは別です。
 - カルテットハブはツールごとに作業中セッションを持ち、同じツールで別のセッション番号が開始した場合は古い未完了セッションを置き換えます（異なるツール同士は並行動作として維持）。セッション番号が空の完了・中断でも同じツールの作業中を解除します。また、1面フォーカス中に外部ウィンドウへ隠れていたカードをクリックして前面へ呼び戻した場合も完了を確認済みとして消灯します。
 - 一番深く一致したワークスペースを選びます。同じ深さのパスを複数のスロットが持つときは、一致したスロットのすべてが対象です。Git Bash 形式の `/c/...` は、ローカルの Windows パスとして扱います。

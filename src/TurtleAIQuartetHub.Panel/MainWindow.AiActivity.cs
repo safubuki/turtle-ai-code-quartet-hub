@@ -33,10 +33,12 @@ public partial class MainWindow
         }
 
         var now = DateTimeOffset.UtcNow;
+        var anyChanged = false;
         foreach (var slot in targets)
         {
             if (slot.AiTracker.Apply(hookEvent, now))
             {
+                anyChanged = true;
                 slot.NotifyAiActivityChanged();
             }
             else if (hookEvent.Kind is AiHookEventKind.Stop)
@@ -44,6 +46,12 @@ public partial class MainWindow
                 // 状態が同じでも、ツールチップのツール名・文言は最新の通知に合わせる。
                 slot.NotifyAiActivityChanged();
             }
+        }
+
+        // ツールの前後の知らせはツールを使うたびに届くので、表示が変わったときだけ記録する。
+        if ((hookEvent.Kind is AiHookEventKind.Progress or AiHookEventKind.ToolRunning) && !anyChanged)
+        {
+            return;
         }
 
         DiagnosticLog.Write(
@@ -58,7 +66,8 @@ public partial class MainWindow
             .Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
-    // 周期更新から呼ぶ。完了通知が来ないまま長時間たった「作業中」を片付ける。
+    // 周期更新から呼ぶ。完了通知が来ないまま長時間たった「作業中」と、
+    // 停止ボタンで中断されて作業の知らせが途絶えた GitHub Copilot の「作業中」を片付ける。
     private void PruneStaleAiActivity()
     {
         if (_statusStore.Slots.All(slot => slot.AiActivity != AiActivityState.Working))
@@ -72,8 +81,30 @@ public partial class MainWindow
             if (slot.AiTracker.PruneStale(now))
             {
                 slot.NotifyAiActivityChanged();
+                DiagnosticLog.Write(LogLevel.Info, $"AI activity ended without a stop event: slot {slot.Name} -> {slot.AiActivity}");
             }
         }
+    }
+
+    // 古い版のハブが書いた専用ファイル（共通スクリプト・Copilot の専用フック）を今の内容へ揃える。
+    // フックを解除している（ファイルが無い）ときは何も作らない。
+    private void RefreshOwnedAiNotifyHookFiles()
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var refreshed = _aiNotifyHookInstaller.RefreshOwnedFiles();
+                if (refreshed.Count > 0)
+                {
+                    DiagnosticLog.Write(LogLevel.Info, $"AI notify hook files refreshed: {string.Join(", ", refreshed)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+            }
+        });
     }
 
     // スロットのフォーカス表示が切り替わった（1 面フォーカスにした／やめて 4 面表示へ戻した）。
