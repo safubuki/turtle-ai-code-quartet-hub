@@ -302,6 +302,21 @@ public sealed class AiActivityTracker
         return before != State;
     }
 
+    // 利用者がカードの停止ボタンで作業中の表示を止めた。停止ボタンでは終了の知らせが来ないツールがあるため。
+    // 作業中のときだけ働く。止めたあとに届く作業の知らせでは戻さず、次の指示（開始）で作業中になる。
+    // AI の処理そのものは止めない。
+    public bool StopWorking()
+    {
+        if (State != AiActivityState.Working)
+        {
+            return false;
+        }
+
+        _activeSessions.Clear();
+        _quietEndedSessions.Clear();
+        return true;
+    }
+
     public bool Reset()
     {
         var before = State;

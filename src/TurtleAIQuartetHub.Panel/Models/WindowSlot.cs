@@ -573,6 +573,18 @@ public sealed class WindowSlot : INotifyPropertyChanged
         OnPropertyChanged(nameof(AiActivityToolTip));
     }
 
+    // カードの停止ボタン。作業中の表示だけを止める（AI の処理は止めない）。
+    public bool StopAiWorking()
+    {
+        if (!AiTracker.StopWorking())
+        {
+            return false;
+        }
+
+        NotifyAiActivityChanged();
+        return true;
+    }
+
     public static void SwapAiActivity(WindowSlot source, WindowSlot target)
     {
         (source.AiTracker, target.AiTracker) = (target.AiTracker, source.AiTracker);

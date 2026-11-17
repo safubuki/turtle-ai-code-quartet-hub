@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 68;
+    public const int Count = 69;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -299,6 +299,19 @@ internal static class AiActivityTests
             && antigravity.State == AiActivityState.Working
             && antigravity.PruneStale(invokedAgain + AiActivityTracker.AntigravityQuietTimeout + second)
             && antigravity.State == AiActivityState.Idle);
+
+        var manual = new AiActivityTracker();
+        var idleIgnored = !manual.StopWorking();
+        manual.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
+        var stoppedNow = manual.StopWorking() && manual.State == AiActivityState.Idle;
+        var progressIgnored = !manual.Apply(Event("copilot", AiHookEventKind.Progress, "c1"), now.AddSeconds(5))
+            && manual.State == AiActivityState.Idle;
+        manual.Apply(Event("copilot", AiHookEventKind.Start, "c2"), now.AddSeconds(10));
+        var restartedOnPrompt = manual.State == AiActivityState.Working;
+        manual.Apply(Event("copilot", AiHookEventKind.Stop, "c2"), now.AddSeconds(20));
+        Check(failures, "停止ボタン（カード）: 作業中だけをすぐ止め、作業の知らせでは戻さず、次の指示で作業中になり、完了の青は止めない",
+            idleIgnored && stoppedNow && progressIgnored && restartedOnPrompt
+            && !manual.StopWorking() && manual.State == AiActivityState.Done);
 
         var claudeIdle = new AiActivityTracker();
         claudeIdle.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);

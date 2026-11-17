@@ -553,6 +553,32 @@
       </Style.Triggers>
     </Style>
 
+    <!-- カードのクリアの横の停止ボタン。AI が作業中（緑の周回中）のときだけ出し、作業前・完了時は出さない。 -->
+    <Style x:Key="SlotAiStopButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
+      <Setter Property="MinWidth" Value="24" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="#BDEBD0" />
+      <Setter Property="Background" Value="#17271E" />
+      <Setter Property="BorderBrush" Value="#3B604A" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="ToolTip" Value="AI の作業中の表示を止める（AI の処理は止まりません。AI 側で停止したあとに押してください）" />
+      <Setter Property="AutomationProperties.Name" Value="AI の作業中の表示を止める" />
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="#F2FFF8" />
+          <Setter Property="Background" Value="#203629" />
+          <Setter Property="BorderBrush" Value="#6BE49B" />
+        </Trigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="SlotOpenFolderButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
       <Setter Property="MinWidth" Value="28" />
       <Setter Property="Width" Value="28" />
@@ -1921,13 +1947,20 @@
                            FontSize="12.5"
                            Foreground="{StaticResource MutedTextBrush}" />
               </StackPanel>
-              <Button Grid.Column="3"
-                      Content="&#xE75C;"
-                      Tag="{Binding}"
-                      Click="ClearSlotPanelInfoButton_Click"
-                      Style="{StaticResource SlotClearInfoButtonStyle}"
-                      VerticalAlignment="Top"
-                      Margin="8,0,0,0" />
+              <StackPanel Grid.Column="3"
+                          Orientation="Horizontal"
+                          VerticalAlignment="Top"
+                          Margin="8,0,0,0">
+                <Button Content="&#xE71A;"
+                        Tag="{Binding}"
+                        Click="StopSlotAiActivityButton_Click"
+                        Style="{StaticResource SlotAiStopButtonStyle}"
+                        Margin="0,0,4,0" />
+                <Button Content="&#xE75C;"
+                        Tag="{Binding}"
+                        Click="ClearSlotPanelInfoButton_Click"
+                        Style="{StaticResource SlotClearInfoButtonStyle}" />
+              </StackPanel>
             </Grid>
 
             <Grid Grid.Row="1"

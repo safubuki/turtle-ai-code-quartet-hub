@@ -142,6 +142,28 @@ public partial class MainWindow
         }
     }
 
+    // カードの停止ボタン。停止ボタンで終了の知らせを送らない AI でも、作業中の表示をすぐ止められるようにする。
+    // 表示だけを止め、AI の処理には触れない。
+    private void StopSlotAiActivityButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        StopSlotAiActivity(slot);
+    }
+
+    private void StopSlotAiActivity(WindowSlot slot)
+    {
+        if (slot.StopAiWorking())
+        {
+            DiagnosticLog.Write(LogLevel.Info, $"AI activity stopped by user: slot {slot.Name} -> {slot.AiActivity}");
+        }
+    }
+
     private void RefreshAiNotifySettingsStatus(IReadOnlyList<AiNotifyHookToolResult>? results = null)
     {
         results ??= _aiNotifyHookInstaller.GetStatus();
