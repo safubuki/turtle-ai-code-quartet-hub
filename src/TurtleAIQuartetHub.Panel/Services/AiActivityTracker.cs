@@ -222,7 +222,7 @@ public sealed class AiActivityTracker
     }
 
     // 利用者がカードの停止ボタンで作業中の表示を止めた。停止ボタンや Esc で中断しても
-    // 終了の知らせを送らないツール（Copilot / Codex / Claude Code の一部）があるため。
+    // 終了の知らせを送らないツール（Copilot、VS Code 版の Claude Code、Antigravity の一部）があるため。
     // 作業中のときだけ働き、次の指示（開始）でまた作業中になる。AI の処理そのものは止めない。
     public bool StopWorking()
     {
@@ -247,27 +247,20 @@ public sealed class AiActivityTracker
     }
 }
 
-// 作業中の経過時間の表示。カードの限られた幅に収まるよう短く書く。
+// 作業中の経過時間の表示。カードの小さな枠に収まる時計の書き方（0:42、12:05、1:02:33）にする。
 public static class AiWorkingElapsed
 {
     public static string Format(TimeSpan elapsed)
     {
-        if (elapsed < TimeSpan.FromMinutes(1))
+        if (elapsed < TimeSpan.Zero)
         {
-            return "<1分";
+            elapsed = TimeSpan.Zero;
         }
 
-        if (elapsed < TimeSpan.FromHours(1))
-        {
-            return $"{(int)elapsed.TotalMinutes}分";
-        }
-
-        if (elapsed < TimeSpan.FromDays(1))
-        {
-            return elapsed.Minutes == 0 ? $"{(int)elapsed.TotalHours}時間" : $"{(int)elapsed.TotalHours}時間{elapsed.Minutes}分";
-        }
-
-        return $"{(int)elapsed.TotalDays}日{elapsed.Hours}時間";
+        var hours = (long)elapsed.TotalHours;
+        return hours > 0
+            ? $"{hours}:{elapsed.Minutes:00}:{elapsed.Seconds:00}"
+            : $"{elapsed.Minutes}:{elapsed.Seconds:00}";
     }
 }
 

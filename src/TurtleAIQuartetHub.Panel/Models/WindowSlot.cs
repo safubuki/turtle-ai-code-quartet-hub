@@ -560,7 +560,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public AiActivityState AiActivity => AiTracker.State;
 
-    // 作業中の経過時間（例: 「12分」）。作業中以外は空。表示だけで、時間で状態を変えることはしない。
+    // 作業中の経過時間（例: 「12:05」）。作業中以外は空。表示だけで、時間で状態を変えることはしない。
     public string AiWorkingElapsedText => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
         ? AiWorkingElapsed.Format(DateTimeOffset.UtcNow - since)
         : string.Empty;
@@ -589,7 +589,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
         NotifyAiWorkingElapsedChanged();
     }
 
-    // 周期更新から呼ぶ。表示の文字（分単位）が変わったときだけ知らせる。
+    // 周期更新（約 1 秒ごと）から呼ぶ。表示の文字（秒単位）が変わったときだけ知らせる。
     public void RefreshAiWorkingElapsed()
     {
         if (!string.Equals(_lastAiWorkingElapsedText, AiWorkingElapsedText, StringComparison.Ordinal))

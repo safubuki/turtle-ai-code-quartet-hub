@@ -87,11 +87,11 @@ Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユ�
 
 | ツール | 中断したときの知らせ | カルテットハブの表示 |
 |---|---|---|
-| GitHub Copilot（CLI と VS Code のチャット） | 届かない（`agentStop` は応答が終わったときだけ） | 緑のまま。カードの停止ボタンで止める |
-| Codex | 届かない（公式のイベント一覧に中断を知らせるものが無い） | 緑のまま。カードの停止ボタンで止める |
-| Claude Code | `Stop` は届かない（公式仕様）。CLI ではそのあと入力待ちの `idle_prompt` が届く | `idle_prompt` が届けば止まる。届かないとき（VS Code 拡張など）はカードの停止ボタンで止める |
+| GitHub Copilot（CLI と VS Code のチャット） | 届かない。公式の hooks reference で `agentStop` は「ターンを終えたとき」、`stopReason` は `end_turn` だけで、中断のイベントは無い（2026-11-18 に VS Code の実機ログでも確認） | 緑のまま。カードの停止ボタンで止める |
+| Codex | `Interrupt` が届く。Codex のソースの公式イベント一覧に `interrupt` がある（2026-11-18 に VS Code 拡張の実機ログでも確認） | すぐ止まる（青は付けない） |
+| Claude Code | 届かない。公式の hooks reference に「`Stop` はユーザーの中断で止まったときは動かない」とある。`idle_prompt` は「応答を終えて約 60 秒、入力が無いとき」の知らせで、中断のあとに届く保証は無い（2026-11-18 に VS Code の実機ログで何も届かないことを確認） | 緑のまま。カードの停止ボタンで止める（`idle_prompt` が届いたときは止まる） |
 | Grok | `StopCancelled` が届く | すぐ止まる（完了と同じ青） |
-| Antigravity | `Stop`（`USER_CANCELED`）が届く。届かない版もある | すぐ止まる。届かないときはカードの停止ボタンで止める |
+| Antigravity | 届かない。`terminationReason` に `USER_CANCELED` は定義されているが、中断すると `Stop` 自体が動かない不具合が公式リポジトリに報告されている（google-antigravity/antigravity-cli #1348。1.5.10 の変更履歴まで修正の記載なし。2026-11-18 の実機ログでも確認） | 緑のまま。カードの停止ボタンで止める（直って `Stop` が届けばすぐ止まる） |
 
 **作業中の表示は、時間では片付けません。** 長いビルドや長く考えている途中で、緑が勝手に消えたり、完了と紛らわしい表示が出たりしないようにするためです。作業中の緑は、次のどれかで終わります。
 
@@ -144,7 +144,7 @@ Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユ�
 - まだ見ていない完了の青は、カルテットハブを再起動しても戻ります。戻すのは、再起動のあとも**同じウィンドウ**が開いていて、**同じフォルダ**を開いているスロットだけです。ウィンドウが閉じていれば消え、別のフォルダを開いていれば捨てます。作業中の緑は保存しません（閉じているあいだに終わったかが分からないため）。
 - 許可や質問の確認中は、枠を回る緑の光のままです。青く光るのは応答が終わったときだけです。
 - 作業中の表示は、時間では片付けません。終了の知らせが来ないまま止まったときは、カードの停止ボタン（■）で止めます。
-- 作業中は、経過時間（例: `12分`）を出します。標準表示は停止ボタンの左、縮小表示は名前の右、極小表示はツールチップです。表示だけで、時間で状態は変えません。AI 側で止めたはずなのに時間が伸び続けていたら、停止ボタンで止めてください。
+- 作業中は、経過時間を小さなストップウォッチ（角丸の枠に時計の記号と `0:42`・`12:05`・`1:02:33`）で出し、1 秒ごとに進めます。標準表示はフォルダの行の右端（タイトルの幅は削りません）、縮小表示は名前の右（記号なしの低い枠）、極小表示はツールチップです。表示だけで、時間で状態は変えません。AI 側で止めたはずなのに時間が伸び続けていたら、停止ボタンで止めてください。
   - 待機や完了から作業中になったとき、または新しい指示を送ったときに数え始めます。Antigravity のモデル呼び出し（`PreInvocation`）のたびには数え直しません。
 - また、マルチエージェント（Swarm など）や異常中断の影響で画面上の状態表示が実態とズレたときは、歯車設定の「AI の作業通知」右上にある「**AI 状態をリセット**」ボタンから全スロット（A〜D）の表示だけをいつでも待機状態へ戻せます（フック設定や起動中の AI ツールには影響しません）。
 
@@ -195,10 +195,10 @@ Grok は、Claude 用の `~/.claude/settings.json` も実行することがあ�
 | ツール | 開始 → 緑 | 応答終了 → 青いホタル点滅 | 許可・質問の確認 | 中断・終了 |
 |---|---|---|---|---|
 | Claude Code | `UserPromptSubmit` | `Stop` / `StopFailure` | `permission_prompt` / `elicitation_dialog` は緑のまま | `SessionEnd` で光を付けずに終了（`Ctrl+C`/`Esc` の途中中断は公式仕様上 `Stop` が出ないため、そのあとの入力待ち `idle_prompt` で光を付けずに終了。届かないときはカードの停止ボタン） |
-| Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Esc` の中断は知らせが無いため、カードの停止ボタンで止める。`Interrupt` / `SessionEnd` も登録しているが、公式のイベント一覧には無い |
+| Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Interrupt`（`Esc` の中断）・`SessionEnd` は光を付けずに終了 |
 | GitHub Copilot | `userPromptSubmitted` | `agentStop` / 非回復 `errorOccurred` | 回復可能 `errorOccurred` は緑のまま | `agentStop`（`abort` / `user_exit` 等）・`sessionEnd` は光を付けずに終了。停止ボタンでは知らせが来ないため、カードの停止ボタンで止める |
 | Grok | `UserPromptSubmit` | `Stop` / `StopFailure` / `StopCancelled` | `permission_prompt` / `elicitation_dialog` は緑のまま | `StopCancelled` も同じ青 |
-| Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED` / `cancel` / `aborted` 系）は光を付けない。`Stop` が届かないときはカードの停止ボタン |
+| Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED` / `cancel` / `aborted` 系）は光を付けない。中断しても `Stop` が届かないことがあり、そのときはカードの停止ボタン |
 
 Grok と Antigravity の `Stop`、および開始フックは、フックの出力によって処理を止められます。通知スクリプトは空の `{}` を出して終了コード 0 で終わり、止めたり続けさせたりしません。Grok の `StopCancelled` は、次の指示の開始より遅れて届くことがあります。遅れて届いたときは、すでに始まった作業に対して、完了の光が付くことがあります。Antigravity の Windows フック実行系は `-File "..."` の引用符を拒否するため、空白がないパスは無引用の `/` 区切り、ユーザーホームに空白があるときは `hooks.json` 基準の相対パス `../../.turtle-ai-quartet-hub/ai-notify.ps1` で登録します。
 

@@ -220,16 +220,19 @@ internal static class AiDoneFireflyTests
         var idleHost = RenderTemplate(resources, "SlotCardTemplate", idleSlot, 295, 169);
         var workingSlot = CreateMockSlot("A", "作業中", @"c:\git_home\working-check", AiActivityState.Working);
         var workingHost = RenderTemplate(resources, "SlotCardTemplate", workingSlot, 295, 169);
-        var elapsedStyle = (Style)resources["AiWorkingElapsedTextStyle"];
-        TextBlock ElapsedText(FrameworkElement host) => FindVisualChildren<TextBlock>(host)
-            .Single(text => ReferenceEquals(text.Style, elapsedStyle));
+        var elapsedChipStyle = (Style)resources["AiWorkingElapsedChipStyle"];
+        var elapsedTextStyle = (Style)resources["AiWorkingElapsedTextStyle"];
+        Border ElapsedChip(FrameworkElement host) => FindVisualChildren<Border>(host)
+            .Single(border => ReferenceEquals(border.Style, elapsedChipStyle));
+        string ElapsedText(FrameworkElement host) => FindVisualChildren<TextBlock>(ElapsedChip(host))
+            .Single(text => ReferenceEquals(text.Style, elapsedTextStyle)).Text;
         var visibleOnlyWhileWorking = StopButtonVisibility(workingHost) == Visibility.Visible
             && StopButtonVisibility(doneHost) == Visibility.Collapsed
             && StopButtonVisibility(idleHost) == Visibility.Collapsed
-            && ElapsedText(workingHost).Visibility == Visibility.Visible
-            && ElapsedText(workingHost).Text == "<1分"
-            && ElapsedText(doneHost).Visibility == Visibility.Collapsed
-            && ElapsedText(idleHost).Visibility == Visibility.Collapsed;
+            && ElapsedChip(workingHost).Visibility == Visibility.Visible
+            && ElapsedText(workingHost).StartsWith("0:0", StringComparison.Ordinal)
+            && ElapsedChip(doneHost).Visibility == Visibility.Collapsed
+            && ElapsedChip(idleHost).Visibility == Visibility.Collapsed;
         workingSlot.StopAiWorking();
         workingHost.UpdateLayout();
         Check(
@@ -237,7 +240,7 @@ internal static class AiDoneFireflyTests
             "停止ボタン・経過時間（カード）: 作業中だけクリアの横に出し、作業前・完了時は出さず、押すと作業中の表示が消えること",
             visibleOnlyWhileWorking
             && StopButtonVisibility(workingHost) == Visibility.Collapsed
-            && ElapsedText(workingHost).Visibility == Visibility.Collapsed
+            && ElapsedChip(workingHost).Visibility == Visibility.Collapsed
             && workingSlot.AiActivity == AiActivityState.Idle);
     }
 

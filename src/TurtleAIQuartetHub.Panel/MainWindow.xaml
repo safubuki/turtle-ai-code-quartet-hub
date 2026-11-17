@@ -579,22 +579,50 @@
       </Style.Triggers>
     </Style>
 
-    <!-- 作業中の経過時間（例: 12分）。作業中のときだけ停止ボタンの左に小さく出す。表示だけで、時間で状態は変えない。
-         色は作業中の緑の LED に寄せ、タイトルより目立たない明るさにする。 -->
-    <Style x:Key="AiWorkingElapsedTextStyle" TargetType="TextBlock">
-      <Setter Property="Text" Value="{Binding AiWorkingElapsedText}" />
-      <Setter Property="ToolTip" Value="{Binding AiWorkingElapsedToolTip}" />
-      <Setter Property="Foreground" Value="#8FD9AE" />
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontFamily" Value="Segoe UI" />
+    <!-- 作業中の経過時間（小さなストップウォッチ）。作業中のときだけ、標準表示はフォルダの行の右端、縮小表示は名前の右に出す。
+         表示だけで、時間で状態は変えない。
+         角丸の枠に時計の記号と「12:05」を入れる。数字は等幅（Tabular）にして、秒が進んでも文字の位置が揺れないようにする。
+         色は作業中の緑の LED に寄せ、タイトルより控えめにする。縮小表示は枠を低くして記号を省く。 -->
+    <SolidColorBrush x:Key="AiElapsedChipBackgroundBrush" Color="#0F2419" />
+    <SolidColorBrush x:Key="AiElapsedChipBorderBrush" Color="#2D6845" />
+    <SolidColorBrush x:Key="AiElapsedChipForegroundBrush" Color="#D4F7E2" />
+    <SolidColorBrush x:Key="AiElapsedChipIconBrush" Color="#6BE49B" />
+
+    <Style x:Key="AiWorkingElapsedChipStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource AiElapsedChipBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AiElapsedChipBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="Padding" Value="5,0,6,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="TextTrimming" Value="None" />
+      <Setter Property="SnapsToDevicePixels" Value="True" />
+      <Setter Property="ToolTip" Value="{Binding AiWorkingElapsedToolTip}" />
       <Setter Property="Visibility" Value="Collapsed" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
           <Setter Property="Visibility" Value="Visible" />
         </DataTrigger>
       </Style.Triggers>
+    </Style>
+
+    <Style x:Key="AiWorkingElapsedIconStyle" TargetType="TextBlock">
+      <Setter Property="Text" Value="&#xE916;" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="9.5" />
+      <Setter Property="Foreground" Value="{StaticResource AiElapsedChipIconBrush}" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AiWorkingElapsedTextStyle" TargetType="TextBlock">
+      <Setter Property="Text" Value="{Binding AiWorkingElapsedText}" />
+      <Setter Property="Foreground" Value="{StaticResource AiElapsedChipForegroundBrush}" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="SlotOpenFolderButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
@@ -1960,17 +1988,32 @@
                          TextOptions.TextFormattingMode="Ideal"
                          TextOptions.TextRenderingMode="Auto"
                          MaxLength="40" />
-                <TextBlock Text="{Binding ShortPath}"
-                           Margin="2,0,0,0"
-                           FontSize="12.5"
-                           Foreground="{StaticResource MutedTextBrush}" />
+                <!-- 作業中だけ、フォルダの行の右端に小さなストップウォッチを出す（タイトルの幅を削らない）。 -->
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding ShortPath}"
+                             Margin="2,0,0,0"
+                             FontSize="12.5"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource MutedTextBrush}" />
+                  <Border Grid.Column="1"
+                          Style="{StaticResource AiWorkingElapsedChipStyle}"
+                          Margin="6,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Style="{StaticResource AiWorkingElapsedIconStyle}" />
+                      <TextBlock Style="{StaticResource AiWorkingElapsedTextStyle}" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
               </StackPanel>
               <StackPanel Grid.Column="3"
                           Orientation="Horizontal"
                           VerticalAlignment="Top"
                           Margin="8,0,0,0">
-                <TextBlock Style="{StaticResource AiWorkingElapsedTextStyle}"
-                           Margin="0,0,6,0" />
                 <Button Content="&#xE71A;"
                         Tag="{Binding}"
                         Click="StopSlotAiActivityButton_Click"
@@ -2311,11 +2354,16 @@
                    MinHeight="0" Height="20" Padding="0"
                    FontSize="13" />
 
-          <!-- 縮小表示は幅が狭いので、作業中だけ名前の右に小さく出す（名前は少し短く切れる）。 -->
-          <TextBlock Grid.Column="2"
-                     Style="{StaticResource AiWorkingElapsedTextStyle}"
-                     FontSize="10"
-                     Margin="4,0,0,0" />
+          <!-- 縮小表示は幅が狭いので、作業中だけ名前の右に低い枠で小さく出す（記号は省く。名前は少し短く切れる）。 -->
+          <Border Grid.Column="2"
+                  Style="{StaticResource AiWorkingElapsedChipStyle}"
+                  Height="16"
+                  CornerRadius="4"
+                  Padding="4,0"
+                  Margin="4,0,0,0">
+            <TextBlock Style="{StaticResource AiWorkingElapsedTextStyle}"
+                       FontSize="10" />
+          </Border>
 
           <Button x:Name="CompactSlotIdeToggle"
                   Grid.Column="3"
