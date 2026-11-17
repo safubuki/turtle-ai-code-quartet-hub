@@ -18,7 +18,7 @@ public enum AiDonePulseRole
 }
 
 /// <summary>
-/// 完了時（<see cref="AiActivityState.Done"/>）の青表示と、時間切れ（<see cref="AiActivityState.TimedOut"/>）の黄色表示を、通常時より少し早い
+/// 完了時（<see cref="AiActivityState.Done"/>）の青表示を、通常時より少し早い
 /// 3.0 秒周期のホタル点滅で滑らかに脈動させる添付ビヘイビア。
 /// </summary>
 /// <remarks>
@@ -104,7 +104,7 @@ public static class AiDoneFirefly
         var role = GetRole(element);
         var isVisible = element.IsVisible || (allowDetachedForTesting && AreAncestorsVisible(element));
         var shouldRun = role != AiDonePulseRole.None
-            && GetActivity(element) is AiActivityState.Done or AiActivityState.TimedOut
+            && GetActivity(element) == AiActivityState.Done
             && isVisible;
 
         if (shouldRun)

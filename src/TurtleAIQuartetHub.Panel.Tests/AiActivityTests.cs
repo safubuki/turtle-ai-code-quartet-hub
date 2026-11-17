@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 70;
+    public const int Count = 60;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -27,18 +27,15 @@ internal static class AiActivityTests
         Check(failures, "通知: Copilot の userPromptSubmitted / agentStop を開始・完了として扱う",
             AiHookEventParser.Classify("userPromptSubmitted", "") == AiHookEventKind.Start
             && AiHookEventParser.Classify("agentStop", "") == AiHookEventKind.Stop);
-        Check(failures, "通知: 許可や質問の確認は作業中のまま、利用者の操作待ちとして長めに待つ",
-            AiHookEventParser.Classify("Notification", "permission_prompt") == AiHookEventKind.ToolRunning
-            && AiHookEventParser.Classify("Notification", "elicitation_dialog") == AiHookEventKind.ToolRunning
-            && AiHookEventParser.Classify("PermissionRequest", "") == AiHookEventKind.ToolRunning
-            && AiHookEventParser.Classify("Notification", "task_complete") == AiHookEventKind.Unknown);
+        Check(failures, "通知: 許可や質問の確認は表示を変えない",
+            AiHookEventParser.Classify("Notification", "permission_prompt") == AiHookEventKind.Unknown
+            && AiHookEventParser.Classify("Notification", "elicitation_dialog") == AiHookEventKind.Unknown
+            && AiHookEventParser.Classify("PermissionRequest", "") == AiHookEventKind.Unknown);
         Check(failures, "通知: 入力待ち（idle_prompt）は光らせない中断として扱う（Esc / Ctrl+C の中断で緑を残さない）",
             AiHookEventParser.Classify("Notification", "idle_prompt") == AiHookEventKind.Interrupt);
-        Check(failures, "通知: Copilot の preToolUse / postToolUse は作業が続いている知らせとして扱う",
-            AiHookEventParser.Classify("preToolUse", "") == AiHookEventKind.ToolRunning
-            && AiHookEventParser.Classify("postToolUse", "") == AiHookEventKind.Progress
-            && AiHookEventParser.Classify("PreToolUse", "") == AiHookEventKind.ToolRunning
-            && AiHookEventParser.Classify("PostToolUse", "") == AiHookEventKind.Progress);
+        Check(failures, "通知: ツールの前後（古い版で登録した PreToolUse / PostToolUse）は表示を変えない",
+            AiHookEventParser.Classify("preToolUse", "") == AiHookEventKind.Unknown
+            && AiHookEventParser.Classify("PostToolUse", "") == AiHookEventKind.Unknown);
         Check(failures, "通知: Grok の失敗・中断は完了と同じ扱い、拒否と task_complete は無視",
             AiHookEventParser.Classify("StopFailure", "") == AiHookEventKind.Stop
             && AiHookEventParser.Classify("StopCancelled", "") == AiHookEventKind.Stop
@@ -63,7 +60,7 @@ internal static class AiActivityTests
             && AiHookEventParser.Classify("agentStop", "complete") == AiHookEventKind.Stop
             && AiHookEventParser.Classify("agentStop", "abort") == AiHookEventKind.Interrupt
             && AiHookEventParser.Classify("agentStop", "user_exit") == AiHookEventKind.Interrupt
-            && AiHookEventParser.Classify("errorOccurred", "recoverable") == AiHookEventKind.Progress
+            && AiHookEventParser.Classify("errorOccurred", "recoverable") == AiHookEventKind.Unknown
             && AiHookEventParser.Classify("errorOccurred", "fatal") == AiHookEventKind.Stop
             && AiHookEventParser.Classify("errorOccurred", "") == AiHookEventKind.Stop);
         var agTracker = new AiActivityTracker();
@@ -92,7 +89,7 @@ internal static class AiActivityTests
         Check(failures, "状態: 光っていないときの切り替えでは何も変わらない", !tracker.Acknowledge());
 
         tracker.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
-        var permissionKeptWorking = !tracker.Apply(Event("claude", AiHookEventKind.ToolRunning, "s1"), now);
+        var permissionKeptWorking = !tracker.Apply(Event("claude", AiHookEventKind.Unknown, "s1"), now);
         Check(failures, "状態: 許可の確認では緑の作業中のまま",
             permissionKeptWorking && tracker.State == AiActivityState.Working);
         tracker.Apply(Event("claude", AiHookEventKind.Stop, "s1"), now);
@@ -107,12 +104,11 @@ internal static class AiActivityTests
         multi.Apply(Event("claude", AiHookEventKind.Interrupt, "a"), now);
         Check(failures, "状態: 中断は光らせずに元へ戻す", multi.State == AiActivityState.Idle);
 
-        var stale = new AiActivityTracker();
-        stale.Apply(Event("grok", AiHookEventKind.Start, "x"), now);
-        Check(failures, "状態: 完了通知が来ないまま長時間たった作業中は片付ける",
-            !stale.PruneStale(now.AddMinutes(10))
-            && stale.PruneStale(now + AiActivityTracker.StaleSessionTimeout + TimeSpan.FromSeconds(1))
-            && stale.State == AiActivityState.TimedOut);
+        var longRun = new AiActivityTracker();
+        longRun.Apply(Event("copilot", AiHookEventKind.Start, "x"), now);
+        longRun.Apply(Event("copilot", AiHookEventKind.Unknown, "x"), now.AddHours(3));
+        Check(failures, "状態: 作業中は時間では片付けない（長い処理を途中で消さない）",
+            longRun.State == AiActivityState.Working);
 
         VerifyStopButtonWithoutStopEvent(failures, now);
 
@@ -201,143 +197,26 @@ internal static class AiActivityTests
         }
     }
 
-    // Copilot はチャットの停止ボタンで中断しても終了系のフックを送らない。作業の知らせが途絶えたら緑を止める。
+    // Copilot / Codex / Claude Code の一部は停止ボタンや Esc で中断しても終了の知らせを送らない。
+    // 時間では片付けず、カードの停止ボタンと、届く知らせ（idle_prompt など）で止める。
     private static void VerifyStopButtonWithoutStopEvent(List<string> failures, DateTimeOffset now)
     {
-        var quiet = AiActivityTracker.QuietSessionTimeout;
-        var second = TimeSpan.FromSeconds(1);
-
-        var canceled = new AiActivityTracker();
-        canceled.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        Check(failures, "停止ボタン: Copilot の作業の知らせが途絶えたら、青ではなく時間切れの黄色にして作業中を止める",
-            !canceled.PruneStale(now + quiet - second)
-            && canceled.State == AiActivityState.Working
-            && canceled.PruneStale(now + quiet + second)
-            && canceled.State == AiActivityState.TimedOut);
-
-        var progressing = new AiActivityTracker();
-        progressing.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        var progressAt = now + TimeSpan.FromSeconds(90);
-        progressing.Apply(Event("copilot", AiHookEventKind.Progress, "c1"), progressAt);
-        Check(failures, "停止ボタン: ツールの実行後の知らせが続くあいだは作業中のまま",
-            !progressing.PruneStale(progressAt + quiet - second)
-            && progressing.State == AiActivityState.Working
-            && progressing.PruneStale(progressAt + quiet + second)
-            && progressing.State == AiActivityState.TimedOut);
-
-        var toolRunning = new AiActivityTracker();
-        toolRunning.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        var toolAt = now + TimeSpan.FromSeconds(30);
-        toolRunning.Apply(Event("copilot", AiHookEventKind.ToolRunning, "c1"), toolAt);
-        Check(failures, "停止ボタン: ツールの実行中（長いコマンドや許可待ち）は長めに待ってから止める",
-            !toolRunning.PruneStale(toolAt + quiet + second)
-            && toolRunning.State == AiActivityState.Working
-            && toolRunning.PruneStale(toolAt + AiActivityTracker.QuietToolTimeout + second)
-            && toolRunning.State == AiActivityState.TimedOut);
-
-        var revived = new AiActivityTracker();
-        revived.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        revived.PruneStale(now + quiet + second);
-        var revivedToWorking = revived.Apply(Event("copilot", AiHookEventKind.Progress, "c1"), now + quiet + TimeSpan.FromSeconds(20))
-            && revived.State == AiActivityState.Working;
-        revived.Apply(Event("copilot", AiHookEventKind.Stop, "c1"), now + quiet + TimeSpan.FromSeconds(40));
-        Check(failures, "停止ボタン: 長い考え中で止めたあとに作業の知らせが来たら作業中へ戻り、完了で青になる",
-            revivedToWorking && revived.State == AiActivityState.Done);
-
-        var afterStop = new AiActivityTracker();
-        afterStop.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        afterStop.Apply(Event("copilot", AiHookEventKind.Stop, "c1"), now);
-        afterStop.Acknowledge();
-        var afterInterrupt = new AiActivityTracker();
-        afterInterrupt.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        afterInterrupt.PruneStale(now + quiet + second);
-        afterInterrupt.Apply(Event("copilot", AiHookEventKind.Interrupt, "c1"), now + quiet + second);
-        Check(failures, "停止ボタン: 完了・中断のあとや開始を知らない知らせでは作業中に戻さない",
-            !afterStop.Apply(Event("copilot", AiHookEventKind.Progress, "c1"), now.AddSeconds(5))
-            && afterStop.State == AiActivityState.Idle
-            && !afterInterrupt.Apply(Event("copilot", AiHookEventKind.ToolRunning, "c1"), now + quiet + TimeSpan.FromSeconds(5))
-            && afterInterrupt.State == AiActivityState.Idle
-            && !new AiActivityTracker().Apply(Event("copilot", AiHookEventKind.Progress, "c1"), now));
-
-        var unkeyed = new AiActivityTracker();
-        unkeyed.Apply(Event("copilot", AiHookEventKind.Start, ""), now);
-        unkeyed.Apply(Event("copilot", AiHookEventKind.Progress, "c1"), now + TimeSpan.FromSeconds(90));
-        Check(failures, "停止ボタン: 開始と作業の知らせで SessionId の有無が違っても、同じツールの作業として続ける",
-            !unkeyed.PruneStale(now + quiet + second) && unkeyed.State == AiActivityState.Working);
-
-        var mixed = new AiActivityTracker();
-        mixed.Apply(Event("grok", AiHookEventKind.Start, "g1"), now);
-        mixed.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        mixed.PruneStale(now + quiet + second);
-        var mixedYellowWhileGrokWorks = mixed.State == AiActivityState.TimedOut;
-        mixed.Acknowledge();
-        Check(failures, "停止ボタン: 中断を必ず知らせる Grok は知らせの途絶えで止めず、60 分の片付けだけにする",
-            mixedYellowWhileGrokWorks
-            && mixed.State == AiActivityState.Working
-            && mixed.PruneStale(now + AiActivityTracker.StaleSessionTimeout + second)
-            && mixed.State == AiActivityState.TimedOut);
-
-        foreach (var tool in new[] { "claude", "codex" })
-        {
-            var escaped = new AiActivityTracker();
-            escaped.Apply(Event(tool, AiHookEventKind.Start, "s1"), now);
-            var toolAt2 = now + TimeSpan.FromSeconds(20);
-            escaped.Apply(Event(tool, AiHookEventKind.ToolRunning, "s1"), toolAt2);
-            var keptDuringTool = !escaped.PruneStale(toolAt2 + quiet + second);
-            var progressAt2 = toolAt2 + TimeSpan.FromMinutes(5);
-            escaped.Apply(Event(tool, AiHookEventKind.Progress, "s1"), progressAt2);
-            Check(failures, $"停止ボタン: {tool} も Esc の中断で終了の知らせが来ないため、作業の知らせが途絶えたら黄色にして止める",
-                keptDuringTool
-                && !escaped.PruneStale(progressAt2 + quiet - second)
-                && escaped.PruneStale(progressAt2 + quiet + second)
-                && escaped.State == AiActivityState.TimedOut);
-        }
-
-        var antigravity = new AiActivityTracker();
-        antigravity.Apply(Event("antigravity", AiHookEventKind.Start, "conv-1"), now);
-        var invokedAgain = now + TimeSpan.FromMinutes(4);
-        antigravity.Apply(Event("antigravity", AiHookEventKind.Start, "conv-1"), invokedAgain);
-        Check(failures, "停止ボタン: Antigravity はモデル呼び出し（PreInvocation）が約 10 分途絶えたら止める",
-            !antigravity.PruneStale(invokedAgain + quiet + second)
-            && antigravity.State == AiActivityState.Working
-            && antigravity.PruneStale(invokedAgain + AiActivityTracker.AntigravityQuietTimeout + second)
-            && antigravity.State == AiActivityState.TimedOut);
-
-        var yellow = new AiActivityTracker();
-        yellow.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        yellow.PruneStale(now + quiet + second);
-        var yellowAcknowledged = yellow.State == AiActivityState.TimedOut
-            && yellow.LastTool == "copilot"
-            && yellow.Acknowledge()
-            && yellow.State == AiActivityState.Idle;
-        yellow.Apply(Event("copilot", AiHookEventKind.Start, "c2"), now + quiet + TimeSpan.FromSeconds(10));
-        yellow.PruneStale(now + quiet * 2 + TimeSpan.FromSeconds(20));
-        var revivedClearsYellow = yellow.Apply(Event("copilot", AiHookEventKind.Progress, "c2"), now + quiet * 2 + TimeSpan.FromSeconds(30))
-            && yellow.State == AiActivityState.Working;
-        yellow.PruneStale(now + quiet * 3 + TimeSpan.FromSeconds(40));
-        yellow.Apply(Event("copilot", AiHookEventKind.Stop, "c2"), now + quiet * 3 + TimeSpan.FromSeconds(50));
-        var lateStopIsBlue = yellow.State == AiActivityState.Done;
-        yellow.Acknowledge();
-        yellow.Apply(Event("claude", AiHookEventKind.Start, "s1"), now + quiet * 4);
-        yellow.PruneStale(now + quiet * 5 + TimeSpan.FromSeconds(60));
-        yellow.Apply(Event("claude", AiHookEventKind.Interrupt, "s1"), now + quiet * 5 + TimeSpan.FromSeconds(70));
-        var interruptExplainsStop = yellow.State == AiActivityState.Idle;
-        Check(failures, "時間切れ（黄色）: フォーカス切替で消え、作業の知らせで作業中へ戻り、遅れた完了は青、中断の知らせが届けば黄色を出さない",
-            yellowAcknowledged && revivedClearsYellow && lateStopIsBlue && interruptExplainsStop,
-            $"{yellowAcknowledged},{revivedClearsYellow},{lateStopIsBlue},{interruptExplainsStop}");
-
         var manual = new AiActivityTracker();
         var idleIgnored = !manual.StopWorking();
         manual.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
         var stoppedNow = manual.StopWorking() && manual.State == AiActivityState.Idle;
-        var progressIgnored = !manual.Apply(Event("copilot", AiHookEventKind.Progress, "c1"), now.AddSeconds(5))
-            && manual.State == AiActivityState.Idle;
         manual.Apply(Event("copilot", AiHookEventKind.Start, "c2"), now.AddSeconds(10));
         var restartedOnPrompt = manual.State == AiActivityState.Working;
         manual.Apply(Event("copilot", AiHookEventKind.Stop, "c2"), now.AddSeconds(20));
-        Check(failures, "停止ボタン（カード）: 作業中だけをすぐ止め、作業の知らせでは戻さず、次の指示で作業中になり、完了の青は止めない",
-            idleIgnored && stoppedNow && progressIgnored && restartedOnPrompt
+        Check(failures, "停止ボタン（カード）: 作業中だけをすぐ止め、次の指示で作業中になり、完了の青は止めない",
+            idleIgnored && stoppedNow && restartedOnPrompt
             && !manual.StopWorking() && manual.State == AiActivityState.Done);
+
+        var otherTool = new AiActivityTracker();
+        otherTool.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
+        otherTool.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
+        Check(failures, "停止ボタン（カード）: 同じスロットで並行していたほかの AI の作業中もまとめて止める",
+            otherTool.StopWorking() && otherTool.State == AiActivityState.Idle);
 
         var claudeIdle = new AiActivityTracker();
         claudeIdle.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
@@ -422,20 +301,12 @@ internal static class AiActivityTests
                 && !Directory.Exists(Path.Combine(home, ".gemini")));
             Check(failures, "フック設定: 通知スクリプトは ASCII だけ（PowerShell 5.1 の文字化け対策）",
                 File.ReadAllText(installer.ScriptPath).All(character => character < 128));
-            var claudePreToolHandler = claude["hooks"]!["PreToolUse"]!.AsArray()
-                .SelectMany(group => group!["hooks"]!.AsArray())
-                .Single()!.AsObject();
-            Check(failures, "フック設定: Claude Code のツールの前後のフックは裏で動かし（async）、ツールを待たせない",
-                claudePreToolHandler["async"]?.GetValue<bool>() == true
-                && claude["hooks"]!["PostToolUse"]!.AsArray().SelectMany(group => group!["hooks"]!.AsArray()).Single()!["async"]?.GetValue<bool>() == true
-                && claude["hooks"]!["Stop"]!.AsArray().SelectMany(group => group!["hooks"]!.AsArray())
-                    .Where(handler => AiNotifyHookInstaller.IsHubCommand(handler!["command"]!.GetValue<string>()))
-                    .All(handler => handler!["async"] is null),
+            Check(failures, "フック設定: ツールの前後（PreToolUse / PostToolUse）は登録しない（ツールのたびに AI を待たせない）",
+                !claude["hooks"]!.AsObject().ContainsKey("PreToolUse")
+                && !claude["hooks"]!.AsObject().ContainsKey("PostToolUse"),
                 claude["hooks"]!.ToJsonString());
             Check(failures, "フック設定: Claude Code は StopFailure と SessionEnd も含めて登録する",
                 claude["hooks"]!.AsObject().ContainsKey("UserPromptSubmit")
-                && claude["hooks"]!.AsObject().ContainsKey("PreToolUse")
-                && claude["hooks"]!.AsObject().ContainsKey("PostToolUse")
                 && claude["hooks"]!.AsObject().ContainsKey("Stop")
                 && claude["hooks"]!.AsObject().ContainsKey("StopFailure")
                 && claude["hooks"]!.AsObject().ContainsKey("SessionEnd")
@@ -443,8 +314,7 @@ internal static class AiActivityTests
             var codexHooks = JsonNode.Parse(File.ReadAllText(installer.CodexHooksPath))!.AsObject()["hooks"]!.AsObject();
             Check(failures, "フック設定: Codex は SessionEnd も含めて登録する",
                 codexHooks.ContainsKey("UserPromptSubmit")
-                && codexHooks.ContainsKey("PreToolUse")
-                && codexHooks.ContainsKey("PostToolUse")
+                && !codexHooks.ContainsKey("PreToolUse")
                 && codexHooks.ContainsKey("Stop")
                 && codexHooks.ContainsKey("PermissionRequest")
                 && codexHooks.ContainsKey("Interrupt")
@@ -479,40 +349,52 @@ internal static class AiActivityTests
             Directory.CreateDirectory(Path.Combine(home, ".copilot"));
             var copilotInstalled = installer.Install();
             var copilotHooks = JsonNode.Parse(File.ReadAllText(installer.CopilotHookPath))!.AsObject()["hooks"]!.AsObject();
-            Check(failures, "フック設定: GitHub Copilot は preToolUse / postToolUse / errorOccurred / sessionEnd も含めて登録する",
+            Check(failures, "フック設定: GitHub Copilot は errorOccurred と sessionEnd も含めて登録する（ツールの前後は登録しない）",
                 copilotInstalled.Single(result => result.Tool == "copilot").Status == AiNotifyHookStatus.Installed
                 && copilotHooks.ContainsKey("userPromptSubmitted")
-                && copilotHooks.ContainsKey("preToolUse")
-                && copilotHooks.ContainsKey("postToolUse")
+                && !copilotHooks.ContainsKey("preToolUse")
                 && copilotHooks.ContainsKey("agentStop")
                 && copilotHooks.ContainsKey("errorOccurred")
                 && copilotHooks.ContainsKey("sessionEnd"),
                 copilotHooks.ToJsonString());
 
             // 古い版のハブが書いた Copilot 専用ファイルとスクリプトは、起動時に今の内容へ揃える。
-            File.WriteAllText(installer.CopilotHookPath, """{ "version": 1, "hooks": { "userPromptSubmitted": [], "agentStop": [] } }""");
+            File.WriteAllText(installer.CopilotHookPath, """{ "version": 1, "hooks": { "userPromptSubmitted": [], "preToolUse": [], "postToolUse": [], "agentStop": [] } }""");
             File.WriteAllText(installer.ScriptPath, "# old script");
             var refreshed = installer.RefreshOwnedFiles();
             var refreshedHooks = JsonNode.Parse(File.ReadAllText(installer.CopilotHookPath))!.AsObject()["hooks"]!.AsObject();
             var refreshedAgain = installer.RefreshOwnedFiles();
-            Check(failures, "フック更新: 古い Copilot 専用ファイルとスクリプトを今の内容へ揃え、2 回目は何もしない",
+            Check(failures, "フック更新: 古い Copilot 専用ファイル（ツールの前後入り）とスクリプトを今の内容へ揃え、2 回目は何もしない",
                 refreshed.SequenceEqual(["script", "copilot"])
-                && refreshedHooks.ContainsKey("preToolUse")
-                && refreshedHooks.ContainsKey("postToolUse")
+                && !refreshedHooks.ContainsKey("preToolUse")
+                && !refreshedHooks.ContainsKey("postToolUse")
+                && refreshedHooks.ContainsKey("agentStop")
                 && File.ReadAllText(installer.ScriptPath) == AiNotifyHookInstaller.NotifyScript
                 && refreshedAgain.Count == 0,
                 $"{string.Join(",", refreshed)} / {string.Join(",", refreshedAgain)}");
 
-            // 古い版で設定した Claude Code / Codex は、利用者の設定を残してハブの項目だけ足し直す。
-            var claudeHub = installer.BuildCommand("claude", "Stop").Replace("\\", "\\\\").Replace("\"", "\\\"");
+            // 前の版で登録したツールの前後のフック（PreToolUse / PostToolUse）は、利用者の設定を残してハブの項目だけ取り除く。
+            string Escape(string command) => command.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var claudeStopHub = Escape(installer.BuildCommand("claude", "Stop"));
+            var claudePreHub = Escape(installer.BuildCommand("claude", "PreToolUse"));
+            var claudePostHub = Escape(installer.BuildCommand("claude", "PostToolUse"));
             File.WriteAllText(installer.ClaudeSettingsPath, $$"""
                 {
                   "model": "opus",
                   "hooks": {
+                    "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "{{Escape(installer.BuildCommand("claude", "UserPromptSubmit"))}}", "timeout": 10 } ] } ],
+                    "PreToolUse": [
+                      { "hooks": [ { "type": "command", "command": "echo my-pre" } ] },
+                      { "hooks": [ { "type": "command", "command": "{{claudePreHub}}", "timeout": 10, "async": true } ] }
+                    ],
+                    "PostToolUse": [ { "hooks": [ { "type": "command", "command": "{{claudePostHub}}", "timeout": 10, "async": true } ] } ],
                     "Stop": [
                       { "hooks": [ { "type": "command", "command": "echo mine" } ] },
-                      { "hooks": [ { "type": "command", "command": "{{claudeHub}}", "timeout": 10 } ] }
-                    ]
+                      { "hooks": [ { "type": "command", "command": "{{claudeStopHub}}", "timeout": 10 } ] }
+                    ],
+                    "StopFailure": [ { "hooks": [ { "type": "command", "command": "{{Escape(installer.BuildCommand("claude", "StopFailure"))}}", "timeout": 10 } ] } ],
+                    "SessionEnd": [ { "hooks": [ { "type": "command", "command": "{{Escape(installer.BuildCommand("claude", "SessionEnd"))}}", "timeout": 10 } ] } ],
+                    "Notification": [ { "hooks": [ { "type": "command", "command": "{{Escape(installer.BuildCommand("claude", "Notification"))}}", "timeout": 10 } ] } ]
                   }
                 }
                 """);
@@ -522,10 +404,15 @@ internal static class AiActivityTests
                 .SelectMany(group => group!["hooks"]!.AsArray())
                 .Select(handler => handler!["command"]!.GetValue<string>())
                 .ToList();
-            Check(failures, "フック更新: 古い版で設定した Claude Code は利用者の設定を残してツールの前後のフックを足す",
+            var upgradedPre = upgradedClaude["hooks"]!["PreToolUse"]?.AsArray()
+                .SelectMany(group => group!["hooks"]!.AsArray())
+                .Select(handler => handler!["command"]!.GetValue<string>())
+                .ToList() ?? [];
+            Check(failures, "フック更新: 前の版で登録したツールの前後のフックを、利用者のフックと設定を残して取り除く",
                 upgraded.SequenceEqual(["claude"])
                 && upgradedClaude["model"]!.GetValue<string>() == "opus"
-                && upgradedClaude["hooks"]!.AsObject().ContainsKey("PreToolUse")
+                && upgradedPre.SequenceEqual(["echo my-pre"])
+                && !upgradedClaude["hooks"]!.AsObject().ContainsKey("PostToolUse")
                 && upgradedStop.Contains("echo mine")
                 && upgradedStop.Count(AiNotifyHookInstaller.IsHubCommand) == 1
                 && File.Exists(installer.ClaudeSettingsPath + ".turtle-hub-backup")

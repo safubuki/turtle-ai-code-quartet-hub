@@ -7,6 +7,7 @@ namespace TurtleAIQuartetHub.Panel;
 // AI の作業状態の表示。AI ツールのフック（Claude Code / Codex / GitHub Copilot / Grok / Antigravity）が送る
 // 「指示を受けた」「応答が終わった」の明示的な通知だけを使い、画面やログからは推定しない。
 // 許可や質問の確認は作業の途中なので、開始済みの緑の周回を続け、別の色にはしない。
+// 作業中は時間では片付けない。停止ボタンで終了の知らせを送らない AI もあるため、カードの停止ボタンで止められる。
 // ・作業中: カード枠（角丸含む）の中心線上を、一筋の緑の LED 光がふわっとゆっくり一周し、終盤で少しだけ加速して繰り返す。枠全体は点滅させない。
 // ・完了: カードの枠・地・外側の光と A〜D アイコン（極小表示はタイル自体）が少し早めの 3.0 秒ホタル点滅で青く光る。フォーカス表示中に終わっても光らせ、
 //   パネル操作などでそのスロットのフォーカス表示が切り替わった（1 面フォーカス⇔4 面表示）ときに消す。
@@ -36,22 +37,15 @@ public partial class MainWindow
             hookEvent.Cwd);
         if (targets.Count == 0)
         {
-            // ツールの前後の知らせはツールを使うたびに届くので、記録しない。
-            if (hookEvent.Kind is not (AiHookEventKind.Progress or AiHookEventKind.ToolRunning))
-            {
-                DiagnosticLog.Write(LogLevel.Info, $"AI event unmatched: {DescribeAiHookEvent(hookEvent)} cwd={hookEvent.Cwd}");
-            }
-
+            DiagnosticLog.Write(LogLevel.Info, $"AI event unmatched: {DescribeAiHookEvent(hookEvent)} cwd={hookEvent.Cwd}");
             return;
         }
 
         var now = DateTimeOffset.UtcNow;
-        var anyChanged = false;
         foreach (var slot in targets)
         {
             if (slot.AiTracker.Apply(hookEvent, now))
             {
-                anyChanged = true;
                 slot.NotifyAiActivityChanged();
             }
             else if (hookEvent.Kind is AiHookEventKind.Stop)
@@ -59,12 +53,6 @@ public partial class MainWindow
                 // 状態が同じでも、ツールチップのツール名・文言は最新の通知に合わせる。
                 slot.NotifyAiActivityChanged();
             }
-        }
-
-        // ツールの前後の知らせはツールを使うたびに届くので、表示が変わったときだけ記録する。
-        if ((hookEvent.Kind is AiHookEventKind.Progress or AiHookEventKind.ToolRunning) && !anyChanged)
-        {
-            return;
         }
 
         DiagnosticLog.Write(
@@ -83,26 +71,6 @@ public partial class MainWindow
         return new[] { slot.CurrentWorkspacePath, slot.DisplayPath, slot.EffectivePath, slot.SavedWorkspacePath, slot.Path }
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase);
-    }
-
-    // 周期更新から呼ぶ。完了通知が来ないまま長時間たった「作業中」と、
-    // 停止ボタンで中断されて作業の知らせが途絶えた GitHub Copilot の「作業中」を片付ける。
-    private void PruneStaleAiActivity()
-    {
-        if (_statusStore.Slots.All(slot => slot.AiActivity != AiActivityState.Working))
-        {
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        foreach (var slot in _statusStore.Slots)
-        {
-            if (slot.AiTracker.PruneStale(now))
-            {
-                slot.NotifyAiActivityChanged();
-                DiagnosticLog.Write(LogLevel.Info, $"AI activity ended without a stop event: slot {slot.Name} -> {slot.AiActivity}");
-            }
-        }
     }
 
     // 古い版のハブが書いた専用ファイル（共通スクリプト・Copilot の専用フック）を今の内容へ揃える。
