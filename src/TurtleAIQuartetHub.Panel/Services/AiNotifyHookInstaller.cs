@@ -41,13 +41,12 @@ public sealed class AiNotifyHookInstaller
     };
 
     // Claude Code / Codex / Grok は同じ形式（event → [{ hooks: [{ type, command, timeout }] }]）。
-    // Claude Code（Esc / Ctrl+C）・Codex（Esc）・Copilot（停止ボタン）は中断時に終了系のフックを送らないため、
-    // ツールの前後（PreToolUse / PostToolUse）で作業が続いていることを確かめ、知らせが途絶えたら作業中を片付ける。
-    private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "StopFailure", "SessionEnd", "Notification"];
-    private static readonly string[] CodexEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "PermissionRequest", "Interrupt", "SessionEnd"];
-    // Claude Code はツールの前後のフックを裏で動かせる（async）。ツールの実行を待たせない。
-    private static readonly HashSet<string> ClaudeAsyncEvents = new(StringComparer.Ordinal) { "PreToolUse", "PostToolUse" };
-    private static readonly string[] CopilotEvents = ["userPromptSubmitted", "preToolUse", "postToolUse", "agentStop", "errorOccurred", "sessionEnd"];
+    // ツールの前後（PreToolUse / PostToolUse）は登録しない。ツールのたびにスクリプトが起動して AI を遅くするうえ、
+    // 作業中は時間で片付けないため使い道がない。停止ボタンで終了の知らせが来ない AI は、カードの停止ボタンで止める。
+    // 古い版で登録したツールの前後のフックは、起動時の RefreshOwnedFiles で取り除く。
+    private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "Stop", "StopFailure", "SessionEnd", "Notification"];
+    private static readonly string[] CodexEvents = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt", "SessionEnd"];
+    private static readonly string[] CopilotEvents = ["userPromptSubmitted", "agentStop", "errorOccurred", "sessionEnd"];
     // Grok は中断と API エラーを Stop ではなく StopCancelled / StopFailure で知らせる。
     private static readonly string[] GrokEvents = ["UserPromptSubmit", "Stop", "StopFailure", "StopCancelled", "Notification"];
     // Antigravity は名前付きフックの下に平坦なイベント配列（PreInvocation / Stop）を持つ。
@@ -364,20 +363,17 @@ public sealed class AiNotifyHookInstaller
                     hooks[hookEvent] = groups;
                 }
 
-                var handler = new JsonObject
-                {
-                    ["type"] = "command",
-                    ["command"] = BuildCommand(tool, hookEvent),
-                    ["timeout"] = 10
-                };
-                if (string.Equals(tool, "claude", StringComparison.Ordinal) && ClaudeAsyncEvents.Contains(hookEvent))
-                {
-                    handler["async"] = true;
-                }
-
                 groups.Add(new JsonObject
                 {
-                    ["hooks"] = new JsonArray { handler }
+                    ["hooks"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["type"] = "command",
+                            ["command"] = BuildCommand(tool, hookEvent),
+                            ["timeout"] = 10
+                        }
+                    }
                 });
             }
         }

@@ -4084,7 +4084,6 @@ public partial class MainWindow : Window
     {
         try
         {
-            PruneStaleAiActivity();
             await RefreshSlotsAsync();
         }
         catch (Exception ex)
