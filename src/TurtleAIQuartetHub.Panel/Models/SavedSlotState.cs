@@ -23,6 +23,9 @@ public sealed class SavedSlotState
 
     public DateTimeOffset? AiDoneAt { get; set; }
 
+    // 完了したタスクにかかった時間（秒）。止まった時計として戻す。
+    public double? AiDoneDurationSeconds { get; set; }
+
     // 完了したときのワークスペース。再起動後にそのウィンドウが別のフォルダを開いていたら、戻した完了を捨てる。
     public string? AiDoneWorkspacePath { get; set; }
 

@@ -126,6 +126,9 @@ public sealed class AiActivityTracker
     // 古さは時間で判断しない（時刻を見せて利用者が判断する）。
     public DateTimeOffset? CompletedAt { get; private set; }
 
+    // 完了したタスクにかかった時間（作業中になってから完了まで）。完了の青と一緒に、止まった時計として見せ続ける。
+    public TimeSpan? CompletedDuration { get; private set; }
+
     // フォーカス表示中（そのウィンドウを見ている最中）に終わっても、終わったことに気づけるよう必ず光らせる。
     public bool Apply(AiHookEvent hookEvent, DateTimeOffset now)
     {
@@ -147,10 +150,13 @@ public sealed class AiActivityTracker
                 // 新しく指示を出した＝そのウィンドウを見ている。前の完了の光は役目を終えている。
                 _needsAttention = false;
                 CompletedAt = null;
+                CompletedDuration = null;
                 break;
             case AiHookEventKind.Stop:
                 // 開始で同ツールのセッションは 1 つに置き換わっている。完了・中断の SessionId が開始と違っても
                 // （ツールが付け直す・空で届くなど）作業中が残らないよう、同ツールの作業中をまとめて止める。
+                // 作業中の時計を止めて、かかった時間を残す（数え始めを知らない完了では残さない）。
+                CompletedDuration = WorkingSince is { } since && now >= since ? now - since : null;
                 RemoveSessionsForTool(hookEvent.Tool);
                 _needsAttention = true;
                 CompletedAt = now;
@@ -203,12 +209,13 @@ public sealed class AiActivityTracker
 
         _needsAttention = false;
         CompletedAt = null;
+        CompletedDuration = null;
         return true;
     }
 
     // カルテットハブの再起動前に保存しておいた、まだ見ていない完了を戻す。
     // 何も表示していないときだけ戻す（再起動後に届いた知らせを優先する）。
-    public bool RestoreCompletion(string tool, DateTimeOffset completedAt)
+    public bool RestoreCompletion(string tool, DateTimeOffset completedAt, TimeSpan? duration = null)
     {
         if (State != AiActivityState.Idle || string.IsNullOrWhiteSpace(tool))
         {
@@ -217,6 +224,7 @@ public sealed class AiActivityTracker
 
         _needsAttention = true;
         CompletedAt = completedAt;
+        CompletedDuration = duration is { } value && value >= TimeSpan.Zero ? value : null;
         LastTool = tool;
         return true;
     }
@@ -243,11 +251,12 @@ public sealed class AiActivityTracker
         WorkingSince = null;
         _needsAttention = false;
         CompletedAt = null;
+        CompletedDuration = null;
         return before != State;
     }
 }
 
-// 作業中の経過時間の表示。カードの小さな枠に収まる時計の書き方（0:42、12:05、1:02:33）にする。
+// 作業中の経過時間と、完了したタスクにかかった時間の表示。カードの小さな枠に収まる時計の書き方（0:42、12:05、1:02:33）にする。
 public static class AiWorkingElapsed
 {
     public static string Format(TimeSpan elapsed)

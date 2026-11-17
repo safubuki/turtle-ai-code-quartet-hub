@@ -220,28 +220,54 @@ internal static class AiDoneFireflyTests
         var idleHost = RenderTemplate(resources, "SlotCardTemplate", idleSlot, 295, 169);
         var workingSlot = CreateMockSlot("A", "作業中", @"c:\git_home\working-check", AiActivityState.Working);
         var workingHost = RenderTemplate(resources, "SlotCardTemplate", workingSlot, 295, 169);
-        var elapsedChipStyle = (Style)resources["AiWorkingElapsedChipStyle"];
-        var elapsedTextStyle = (Style)resources["AiWorkingElapsedTextStyle"];
+        var elapsedChipStyle = (Style)resources["AiElapsedCardChipStyle"];
+        var elapsedTextStyle = (Style)resources["AiElapsedTextStyle"];
+        var clearStyle = (Style)resources["SlotClearInfoButtonStyle"];
         Border ElapsedChip(FrameworkElement host) => FindVisualChildren<Border>(host)
             .Single(border => ReferenceEquals(border.Style, elapsedChipStyle));
         string ElapsedText(FrameworkElement host) => FindVisualChildren<TextBlock>(ElapsedChip(host))
             .Single(text => ReferenceEquals(text.Style, elapsedTextStyle)).Text;
+        Button ClearButton(FrameworkElement host) => FindVisualChildren<Button>(host)
+            .Single(button => ReferenceEquals(button.Style, clearStyle));
+        double HeaderHeight(FrameworkElement host) => ((FrameworkElement)VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(ElapsedChip(host)))).ActualHeight;
+
+        // 位置: 停止・クリアボタンの下に、クリアボタンと右端をそろえて置く。出し入れでカードの見出しの高さは変わらない。
+        var chip = ElapsedChip(workingHost);
+        var clear = ClearButton(workingHost);
+        var chipBox = chip.TransformToVisual(workingHost).TransformBounds(new Rect(0, 0, chip.ActualWidth, chip.ActualHeight));
+        var clearBox = clear.TransformToVisual(workingHost).TransformBounds(new Rect(0, 0, clear.ActualWidth, clear.ActualHeight));
+        var placedUnderButtons = Math.Abs(chipBox.Right - clearBox.Right) < 0.6
+            && chipBox.Top >= clearBox.Bottom - 0.1
+            && Math.Abs(HeaderHeight(workingHost) - HeaderHeight(idleHost)) < 0.1;
+
         var visibleOnlyWhileWorking = StopButtonVisibility(workingHost) == Visibility.Visible
             && StopButtonVisibility(doneHost) == Visibility.Collapsed
             && StopButtonVisibility(idleHost) == Visibility.Collapsed
             && ElapsedChip(workingHost).Visibility == Visibility.Visible
             && ElapsedText(workingHost).StartsWith("0:0", StringComparison.Ordinal)
-            && ElapsedChip(doneHost).Visibility == Visibility.Collapsed
-            && ElapsedChip(idleHost).Visibility == Visibility.Collapsed;
+            && ElapsedChip(idleHost).Visibility != Visibility.Visible;
+
+        // 完了: 時計を止めて、かかった時間を見せ続ける。フォーカス表示の切り替え（Acknowledge）で消える。
+        var doneShowsFrozenTime = ElapsedChip(doneHost).Visibility == Visibility.Visible
+            && ElapsedText(doneHost) == "0:00";
+        doneSlot.AiTracker.Acknowledge();
+        doneSlot.NotifyAiActivityChanged();
+        doneHost.UpdateLayout();
+        var doneClearedOnAcknowledge = ElapsedChip(doneHost).Visibility != Visibility.Visible;
+
         workingSlot.StopAiWorking();
         workingHost.UpdateLayout();
         Check(
             failures,
-            "停止ボタン・経過時間（カード）: 作業中だけクリアの横に出し、作業前・完了時は出さず、押すと作業中の表示が消えること",
-            visibleOnlyWhileWorking
+            "停止ボタン・経過時間（カード）: 時計は停止・クリアの下に右端をそろえて出し、完了後は止まった時間を見せ、フォーカス切替・停止ボタンで消えること",
+            placedUnderButtons
+            && visibleOnlyWhileWorking
+            && doneShowsFrozenTime
+            && doneClearedOnAcknowledge
             && StopButtonVisibility(workingHost) == Visibility.Collapsed
-            && ElapsedChip(workingHost).Visibility == Visibility.Collapsed
-            && workingSlot.AiActivity == AiActivityState.Idle);
+            && ElapsedChip(workingHost).Visibility != Visibility.Visible
+            && workingSlot.AiActivity == AiActivityState.Idle,
+            $"layout={placedUnderButtons} (chip={chipBox}, clear={clearBox}), working={visibleOnlyWhileWorking}, done={doneShowsFrozenTime}, ack={doneClearedOnAcknowledge}");
     }
 
     private static void VerifyGuideAndXamlWiring(List<string> failures)

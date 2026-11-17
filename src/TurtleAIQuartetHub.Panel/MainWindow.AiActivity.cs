@@ -122,11 +122,11 @@ public partial class MainWindow
     }
 
     // 周期更新から呼ぶ。作業中のカードの経過時間（ストップウォッチ）を進める（表示だけで、状態は変えない）。
-    private void RefreshAiWorkingElapsed()
+    private void RefreshAiElapsed()
     {
         foreach (var slot in _statusStore.Slots)
         {
-            slot.RefreshAiWorkingElapsed();
+            slot.RefreshAiElapsed();
         }
     }
 

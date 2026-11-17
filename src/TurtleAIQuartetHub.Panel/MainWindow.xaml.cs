@@ -4084,7 +4084,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            RefreshAiWorkingElapsed();
+            RefreshAiElapsed();
             await RefreshSlotsAsync();
         }
         catch (Exception ex)
