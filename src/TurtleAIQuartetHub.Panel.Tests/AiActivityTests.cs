@@ -8,12 +8,14 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 60;
+    public const int Count = 67;
 
     public static async Task RunAsync(List<string> failures)
     {
         VerifyParser(failures);
         VerifyTrackerTransitions(failures);
+        VerifyWorkingElapsed(failures);
+        VerifyCompletionRestore(failures);
         VerifySlotMatching(failures);
         VerifyInstaller(failures);
         await VerifyPipeConcurrencyAsync(failures);
@@ -195,6 +197,51 @@ internal static class AiActivityTests
         {
             try { Directory.Delete(tempStateDir, recursive: true); } catch (IOException) { }
         }
+
+        // カルテットハブを再起動しても、まだ見ていない完了（青）が同じウィンドウのスロットに戻ること。
+        var restartStateDir = Path.Combine(Path.GetTempPath(), "turtle-ai-done-restore-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var completedAt = new DateTimeOffset(2026, 11, 17, 5, 5, 0, TimeSpan.Zero);
+            var before = new StatusStore(new AppConfig { StateDirectory = restartStateDir });
+            var doneSlot = before.Slots[0];
+            doneSlot.WindowHandle = new IntPtr(0x1234);
+            doneSlot.SavedWorkspacePath = @"C:\work\app";
+            doneSlot.SavedWorkspaceConfirmed = true;
+            doneSlot.AiTracker.Apply(new AiHookEvent("codex", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work\app", "s1"), completedAt.AddMinutes(-2));
+            doneSlot.AiTracker.Apply(new AiHookEvent("codex", "Stop", AiHookEventKind.Stop, @"C:\work\app", "s1"), completedAt);
+            var workingSlot = before.Slots[1];
+            workingSlot.WindowHandle = new IntPtr(0x5678);
+            workingSlot.AiTracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work\b", "s2"), completedAt);
+            var noWindowSlot = before.Slots[2];
+            noWindowSlot.AiTracker.Apply(new AiHookEvent("grok", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work\c", "s3"), completedAt);
+            noWindowSlot.AiTracker.Apply(new AiHookEvent("grok", "Stop", AiHookEventKind.Stop, @"C:\work\c", "s3"), completedAt);
+            before.SaveAiCompletionState();
+
+            var after = new StatusStore(new AppConfig { StateDirectory = restartStateDir });
+            var restoredDone = after.Slots[0].AiActivity == AiActivityState.Done
+                && after.Slots[0].AiTracker.CompletedAt == completedAt
+                && after.Slots[0].AiTracker.LastTool == "codex"
+                && after.Slots[0].AiActivityToolTip?.Contains(completedAt.ToLocalTime().ToString("M/d H:mm"), StringComparison.Ordinal) == true;
+            var workingNotRestored = after.Slots[1].AiActivity == AiActivityState.Idle;
+            var noWindowNotRestored = after.Slots[2].AiActivity == AiActivityState.Idle;
+            var keptForSameWorkspace = !after.Slots[0].DiscardRestoredAiCompletionIfWorkspaceChanged(@"C:\work\app\src")
+                && after.Slots[0].AiActivity == AiActivityState.Done;
+            Check(failures, "完了の戻し: 再起動後、同じウィンドウのスロットに完了だけを時刻ごと戻す（作業中・ウィンドウ無しは戻さない）",
+                restoredDone && workingNotRestored && noWindowNotRestored && keptForSameWorkspace,
+                $"done={restoredDone}, working={workingNotRestored}, noWindow={noWindowNotRestored}, sameWorkspace={keptForSameWorkspace}");
+
+            var discarded = after.Slots[0].DiscardRestoredAiCompletionIfWorkspaceChanged(@"C:\other\project")
+                && after.Slots[0].AiActivity == AiActivityState.Idle;
+            after.SaveAiCompletionState();
+            var third = new StatusStore(new AppConfig { StateDirectory = restartStateDir });
+            Check(failures, "完了の戻し: ウィンドウが別のフォルダを開いていたら戻した完了を捨て、次の再起動でも戻さない",
+                discarded && third.Slots[0].AiActivity == AiActivityState.Idle);
+        }
+        finally
+        {
+            try { Directory.Delete(restartStateDir, recursive: true); } catch (IOException) { }
+        }
     }
 
     // Copilot / Codex / Claude Code の一部は停止ボタンや Esc で中断しても終了の知らせを送らない。
@@ -230,6 +277,77 @@ internal static class AiActivityTests
         claudeIdle.Apply(AiHookEventParser.TryParse(["--ai-event", "claude", "Notification", @"C:\work", "s1", "idle_prompt"])!, now.AddSeconds(200));
         Check(failures, "停止ボタン: Claude の Esc 中断後の入力待ちで緑を止め、完了の青は消さず、消した青も戻さない",
             idleStoppedWorking && doneKept && claudeIdle.State == AiActivityState.Idle);
+    }
+
+    // 作業中の経過時間の表示。表示だけに使い、時間で状態を変えないこと。
+    private static void VerifyWorkingElapsed(List<string> failures)
+    {
+        Check(failures, "経過時間: カードの幅に収まる短い書き方にする",
+            AiWorkingElapsed.Format(TimeSpan.FromSeconds(30)) == "<1分"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(12.9)) == "12分"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(60)) == "1時間"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(65)) == "1時間5分"
+            && AiWorkingElapsed.Format(TimeSpan.FromHours(51)) == "2日3時間",
+            string.Join(",", new[] { 0.5, 12.9, 60, 65, 51 * 60 }.Select(m => AiWorkingElapsed.Format(TimeSpan.FromMinutes(m)))));
+
+        var t0 = new DateTimeOffset(2026, 11, 17, 10, 0, 0, TimeSpan.Zero);
+        var tracker = new AiActivityTracker();
+        var noneBefore = tracker.WorkingSince is null;
+        tracker.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", "conv"), t0);
+        tracker.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", "conv"), t0.AddMinutes(5));
+        var keptAcrossModelCalls = tracker.WorkingSince == t0;
+        tracker.Apply(new AiHookEvent("antigravity", "Stop", AiHookEventKind.Stop, @"C:\work", "conv"), t0.AddMinutes(8));
+        var clearedOnStop = tracker.WorkingSince is null && tracker.State == AiActivityState.Done;
+        tracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0.AddMinutes(10));
+        var restartedFromDone = tracker.WorkingSince == t0.AddMinutes(10);
+        tracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0.AddMinutes(30));
+        var resetOnNewPrompt = tracker.WorkingSince == t0.AddMinutes(30);
+        tracker.Apply(new AiHookEvent("copilot", "userPromptSubmitted", AiHookEventKind.Start, @"C:\work", "c1"), t0.AddMinutes(31));
+        tracker.Apply(new AiHookEvent("copilot", "agentStop", AiHookEventKind.Stop, @"C:\work", "c1"), t0.AddMinutes(32));
+        var keptWhileOtherToolWorks = tracker.WorkingSince is not null;
+        tracker.Acknowledge();
+        var stillWorkingAfterHours = tracker.State == AiActivityState.Working;
+        tracker.StopWorking();
+        Check(failures, "経過時間: 作業中になった時刻から数え、モデル呼び出しごとには数え直さず、新しい指示で数え直し、止まったら消す",
+            noneBefore && keptAcrossModelCalls && clearedOnStop && restartedFromDone && resetOnNewPrompt
+            && keptWhileOtherToolWorks && stillWorkingAfterHours && tracker.WorkingSince is null,
+            $"{noneBefore},{keptAcrossModelCalls},{clearedOnStop},{restartedFromDone},{resetOnNewPrompt},{keptWhileOtherToolWorks},{stillWorkingAfterHours}");
+    }
+
+    // まだ見ていない完了（青）の時刻と、カルテットハブの再起動後の戻し方。古さは時間で判断しない。
+    private static void VerifyCompletionRestore(List<string> failures)
+    {
+        var t0 = new DateTimeOffset(2026, 11, 17, 5, 5, 0, TimeSpan.Zero);
+        var tracker = new AiActivityTracker();
+        tracker.Apply(new AiHookEvent("codex", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0);
+        var noTimeWhileWorking = tracker.CompletedAt is null;
+        tracker.Apply(new AiHookEvent("codex", "Stop", AiHookEventKind.Stop, @"C:\work", "s1"), t0.AddMinutes(3));
+        var stampedOnStop = tracker.CompletedAt == t0.AddMinutes(3);
+        tracker.Acknowledge();
+        var clearedOnAcknowledge = tracker.CompletedAt is null;
+        tracker.Apply(new AiHookEvent("codex", "Stop", AiHookEventKind.Stop, @"C:\work", "s1"), t0.AddMinutes(5));
+        tracker.Apply(new AiHookEvent("codex", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0.AddMinutes(6));
+        var clearedOnNextPrompt = tracker.CompletedAt is null;
+        Check(failures, "完了の時刻: 完了で記録し、フォーカス切替や次の指示で消す",
+            noTimeWhileWorking && stampedOnStop && clearedOnAcknowledge && clearedOnNextPrompt);
+
+        var restored = new AiActivityTracker();
+        var restoredOk = restored.RestoreCompletion("codex", t0)
+            && restored.State == AiActivityState.Done
+            && restored.CompletedAt == t0
+            && restored.LastTool == "codex";
+        var busy = new AiActivityTracker();
+        busy.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "s1"), t0);
+        var notOverWorking = !busy.RestoreCompletion("codex", t0) && busy.State == AiActivityState.Working;
+        restored.Acknowledge();
+        Check(failures, "完了の戻し: 再起動前の完了を時刻ごと戻し、作業中の表示は上書きせず、フォーカス切替で消える",
+            restoredOk && notOverWorking && restored.State == AiActivityState.Idle);
+
+        Check(failures, "完了の戻し: ワークスペースの比較は同じフォルダか配下なら同じ、別フォルダは別とみなす",
+            AiActivitySlotMatcher.IsSameWorkspace(@"C:\work\app", @"c:/work/app/")
+            && AiActivitySlotMatcher.IsSameWorkspace(@"C:\work\app\src", @"C:\work\app")
+            && !AiActivitySlotMatcher.IsSameWorkspace(@"C:\work\app", @"C:\work\application")
+            && !AiActivitySlotMatcher.IsSameWorkspace("", @"C:\work\app"));
     }
 
     private static void VerifySlotMatching(List<string> failures)

@@ -42,17 +42,27 @@ public partial class MainWindow
         }
 
         var now = DateTimeOffset.UtcNow;
+        var completionChanged = false;
         foreach (var slot in targets)
         {
+            var hadCompletion = slot.AiActivity == AiActivityState.Done;
             if (slot.AiTracker.Apply(hookEvent, now))
             {
                 slot.NotifyAiActivityChanged();
             }
             else if (hookEvent.Kind is AiHookEventKind.Stop)
             {
-                // 状態が同じでも、ツールチップのツール名・文言は最新の通知に合わせる。
+                // 状態が同じでも、ツールチップのツール名・完了時刻は最新の通知に合わせる。
                 slot.NotifyAiActivityChanged();
             }
+
+            completionChanged |= hookEvent.Kind is AiHookEventKind.Stop || hadCompletion != (slot.AiActivity == AiActivityState.Done);
+        }
+
+        // まだ見ていない完了は、カルテットハブを再起動しても戻せるよう保存する。
+        if (completionChanged)
+        {
+            _statusStore.SaveAiCompletionState();
         }
 
         DiagnosticLog.Write(
@@ -106,7 +116,17 @@ public partial class MainWindow
         if (slot.AiTracker.Acknowledge())
         {
             slot.NotifyAiActivityChanged();
+            _statusStore.SaveAiCompletionState();
             DiagnosticLog.Write(LogLevel.Info, $"AI activity acknowledged by focus change: slot {slot.Name} -> {slot.AiActivity}");
+        }
+    }
+
+    // 周期更新から呼ぶ。作業中のカードの経過時間の表示を進める（表示だけで、状態は変えない）。
+    private void RefreshAiWorkingElapsed()
+    {
+        foreach (var slot in _statusStore.Slots)
+        {
+            slot.RefreshAiWorkingElapsed();
         }
     }
 

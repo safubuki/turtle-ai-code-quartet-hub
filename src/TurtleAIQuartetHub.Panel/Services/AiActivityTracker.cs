@@ -117,6 +117,15 @@ public sealed class AiActivityTracker
 
     public string LastTool { get; private set; } = string.Empty;
 
+    // 作業中になった時刻（経過時間の表示用）。表示だけに使い、時間で状態を変えることはしない。
+    // 待機・完了から作業中になったとき、または利用者が新しい指示を送ったときに数え始める。
+    // Antigravity はモデルを呼ぶたびに開始（PreInvocation）を送るため、それだけでは数え直さない。
+    public DateTimeOffset? WorkingSince { get; private set; }
+
+    // まだ見ていない完了（青）の時刻。ツールチップに出し、カルテットハブを再起動しても完了を戻せるよう保存する。
+    // 古さは時間で判断しない（時刻を見せて利用者が判断する）。
+    public DateTimeOffset? CompletedAt { get; private set; }
+
     // フォーカス表示中（そのウィンドウを見ている最中）に終わっても、終わったことに気づけるよう必ず光らせる。
     public bool Apply(AiHookEvent hookEvent, DateTimeOffset now)
     {
@@ -125,6 +134,11 @@ public sealed class AiActivityTracker
         switch (hookEvent.Kind)
         {
             case AiHookEventKind.Start:
+                if (_activeSessions.Count == 0 || WorkingSince is null || IsPromptSubmit(hookEvent.EventName))
+                {
+                    WorkingSince = now;
+                }
+
                 // 同一ツールの別セッションが中断未通知のまま残っていると、後続完了の解除時に
                 // 緑の作業中へ戻ってしまうため、同ツールの古いセッションは置き換える。
                 // 異なるツール（例: Claude と Copilot）は並行動作として残す。
@@ -132,12 +146,14 @@ public sealed class AiActivityTracker
                 _activeSessions.Add(key);
                 // 新しく指示を出した＝そのウィンドウを見ている。前の完了の光は役目を終えている。
                 _needsAttention = false;
+                CompletedAt = null;
                 break;
             case AiHookEventKind.Stop:
                 // 開始で同ツールのセッションは 1 つに置き換わっている。完了・中断の SessionId が開始と違っても
                 // （ツールが付け直す・空で届くなど）作業中が残らないよう、同ツールの作業中をまとめて止める。
                 RemoveSessionsForTool(hookEvent.Tool);
                 _needsAttention = true;
+                CompletedAt = now;
                 break;
             case AiHookEventKind.Interrupt:
                 RemoveSessionsForTool(hookEvent.Tool);
@@ -147,7 +163,19 @@ public sealed class AiActivityTracker
         }
 
         LastTool = hookEvent.Tool;
+        ClearWorkingSinceIfIdle();
         return before != State;
+    }
+
+    private static bool IsPromptSubmit(string eventName) =>
+        eventName.Trim().ToLowerInvariant() is "userpromptsubmit" or "userpromptsubmitted";
+
+    private void ClearWorkingSinceIfIdle()
+    {
+        if (_activeSessions.Count == 0)
+        {
+            WorkingSince = null;
+        }
     }
 
     private void RemoveSessionsForTool(string tool, string? exceptKey = null)
@@ -174,6 +202,22 @@ public sealed class AiActivityTracker
         }
 
         _needsAttention = false;
+        CompletedAt = null;
+        return true;
+    }
+
+    // カルテットハブの再起動前に保存しておいた、まだ見ていない完了を戻す。
+    // 何も表示していないときだけ戻す（再起動後に届いた知らせを優先する）。
+    public bool RestoreCompletion(string tool, DateTimeOffset completedAt)
+    {
+        if (State != AiActivityState.Idle || string.IsNullOrWhiteSpace(tool))
+        {
+            return false;
+        }
+
+        _needsAttention = true;
+        CompletedAt = completedAt;
+        LastTool = tool;
         return true;
     }
 
@@ -188,6 +232,7 @@ public sealed class AiActivityTracker
         }
 
         _activeSessions.Clear();
+        WorkingSince = null;
         return true;
     }
 
@@ -195,8 +240,34 @@ public sealed class AiActivityTracker
     {
         var before = State;
         _activeSessions.Clear();
+        WorkingSince = null;
         _needsAttention = false;
+        CompletedAt = null;
         return before != State;
+    }
+}
+
+// 作業中の経過時間の表示。カードの限られた幅に収まるよう短く書く。
+public static class AiWorkingElapsed
+{
+    public static string Format(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "<1分";
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            return $"{(int)elapsed.TotalMinutes}分";
+        }
+
+        if (elapsed < TimeSpan.FromDays(1))
+        {
+            return elapsed.Minutes == 0 ? $"{(int)elapsed.TotalHours}時間" : $"{(int)elapsed.TotalHours}時間{elapsed.Minutes}分";
+        }
+
+        return $"{(int)elapsed.TotalDays}日{elapsed.Hours}時間";
     }
 }
 
@@ -268,6 +339,14 @@ public static class AiActivitySlotMatcher
 
         var root = System.IO.Path.GetPathRoot(value) ?? string.Empty;
         return value.Length > root.Length ? value.TrimEnd('\\') : value;
+    }
+
+    // どちらかがもう一方と同じか、その配下なら同じワークスペースとみなす。
+    public static bool IsSameWorkspace(string? first, string? second)
+    {
+        var a = NormalizeLocalPath(first);
+        var b = NormalizeLocalPath(second);
+        return a.Length > 0 && b.Length > 0 && (IsSameOrUnder(a, b) || IsSameOrUnder(b, a));
     }
 
     private static bool IsSameOrUnder(string cwd, string root)

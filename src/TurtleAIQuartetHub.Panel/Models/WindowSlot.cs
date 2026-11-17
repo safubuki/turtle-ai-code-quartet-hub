@@ -560,10 +560,25 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     public AiActivityState AiActivity => AiTracker.State;
 
+    // 作業中の経過時間（例: 「12分」）。作業中以外は空。表示だけで、時間で状態を変えることはしない。
+    public string AiWorkingElapsedText => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
+        ? AiWorkingElapsed.Format(DateTimeOffset.UtcNow - since)
+        : string.Empty;
+
+    public string? AiWorkingElapsedToolTip => AiTracker.State == AiActivityState.Working && AiTracker.WorkingSince is { } since
+        ? $"作業中の経過時間（{since.ToLocalTime():H:mm} から）。止まっているのに長く続くときは、停止ボタンで表示を止められます。"
+        : null;
+
+    private string _lastAiWorkingElapsedText = string.Empty;
+
     public string? AiActivityToolTip => AiTracker.State switch
     {
-        AiActivityState.Working => $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中",
-        AiActivityState.Done => $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
+        AiActivityState.Working => string.IsNullOrEmpty(AiWorkingElapsedText)
+            ? $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中"
+            : $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中（{AiWorkingElapsedText}）",
+        AiActivityState.Done => AiTracker.CompletedAt is { } completedAt
+            ? $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}。フォーカス表示を切り替えると消えます）"
+            : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
         _ => null
     };
 
@@ -571,6 +586,78 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(AiActivity));
         OnPropertyChanged(nameof(AiActivityToolTip));
+        NotifyAiWorkingElapsedChanged();
+    }
+
+    // 周期更新から呼ぶ。表示の文字（分単位）が変わったときだけ知らせる。
+    public void RefreshAiWorkingElapsed()
+    {
+        if (!string.Equals(_lastAiWorkingElapsedText, AiWorkingElapsedText, StringComparison.Ordinal))
+        {
+            NotifyAiWorkingElapsedChanged();
+            OnPropertyChanged(nameof(AiActivityToolTip));
+        }
+    }
+
+    private void NotifyAiWorkingElapsedChanged()
+    {
+        _lastAiWorkingElapsedText = AiWorkingElapsedText;
+        OnPropertyChanged(nameof(AiWorkingElapsedText));
+        OnPropertyChanged(nameof(AiWorkingElapsedToolTip));
+    }
+
+    // 再起動前に保存した完了を戻したときのワークスペース。ウィンドウが別のフォルダを開いていたら捨てるために使う。
+    private string? _restoredAiCompletionWorkspacePath;
+
+    // 保存するための、まだ見ていない完了。完了でなければ null。
+    public (string Tool, DateTimeOffset CompletedAt, string WorkspacePath)? GetPendingAiCompletion()
+    {
+        return AiTracker.State == AiActivityState.Done && AiTracker.CompletedAt is { } completedAt
+            ? (AiTracker.LastTool, completedAt, EffectivePath)
+            : null;
+    }
+
+    // カルテットハブの再起動前の完了（青）を戻す。ウィンドウがもう無ければ、周期更新の ClearWindow で消える。
+    public bool RestoreAiCompletion(string tool, DateTimeOffset completedAt, string? workspacePath)
+    {
+        if (!AiTracker.RestoreCompletion(tool, completedAt))
+        {
+            return false;
+        }
+
+        _restoredAiCompletionWorkspacePath = workspacePath;
+        NotifyAiActivityChanged();
+        return true;
+    }
+
+    // 周期更新でウィンドウの今のワークスペースが分かったときに呼ぶ。戻した完了が別のフォルダのものなら捨てる。
+    public bool DiscardRestoredAiCompletionIfWorkspaceChanged(string currentWorkspacePath)
+    {
+        if (_restoredAiCompletionWorkspacePath is null)
+        {
+            return false;
+        }
+
+        if (AiTracker.State != AiActivityState.Done)
+        {
+            _restoredAiCompletionWorkspacePath = null;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentWorkspacePath)
+            || string.IsNullOrWhiteSpace(_restoredAiCompletionWorkspacePath)
+            || AiActivitySlotMatcher.IsSameWorkspace(currentWorkspacePath, _restoredAiCompletionWorkspacePath))
+        {
+            return false;
+        }
+
+        _restoredAiCompletionWorkspacePath = null;
+        if (AiTracker.Reset())
+        {
+            NotifyAiActivityChanged();
+        }
+
+        return true;
     }
 
     // カードの停止ボタン。作業中の表示だけを止める（AI の処理は止めない）。
@@ -588,6 +675,8 @@ public sealed class WindowSlot : INotifyPropertyChanged
     public static void SwapAiActivity(WindowSlot source, WindowSlot target)
     {
         (source.AiTracker, target.AiTracker) = (target.AiTracker, source.AiTracker);
+        (source._restoredAiCompletionWorkspacePath, target._restoredAiCompletionWorkspacePath) =
+            (target._restoredAiCompletionWorkspacePath, source._restoredAiCompletionWorkspacePath);
         source.NotifyAiActivityChanged();
         target.NotifyAiActivityChanged();
     }
