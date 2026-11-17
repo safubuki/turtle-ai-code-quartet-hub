@@ -564,6 +564,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         AiActivityState.Working => $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中",
         AiActivityState.Done => $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
+        AiActivityState.TimedOut => $"{GetAiToolDisplayName(AiTracker.LastTool)} の終了の知らせが届かないまま、作業の知らせが途絶えました。停止ボタンでの中断や通知の取りこぼしの可能性があります（フォーカス表示を切り替えると消えます）",
         _ => null
     };
 

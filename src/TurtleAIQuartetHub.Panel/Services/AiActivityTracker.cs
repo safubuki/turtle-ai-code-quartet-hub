@@ -153,9 +153,14 @@ public sealed class AiActivityTracker
     private readonly Dictionary<string, ActiveSession> _quietEndedSessions = new(StringComparer.OrdinalIgnoreCase);
     private bool _needsAttention;
 
+    // 終了の知らせが来ないまま時間切れで作業中を片付けた。まだ見ていない黄色の知らせ。
+    private bool _timedOut;
+
     public AiActivityState State => _needsAttention
         ? AiActivityState.Done
-        : _activeSessions.Count > 0 ? AiActivityState.Working : AiActivityState.Idle;
+        : _timedOut
+            ? AiActivityState.TimedOut
+            : _activeSessions.Count > 0 ? AiActivityState.Working : AiActivityState.Idle;
 
     public string LastTool { get; private set; } = string.Empty;
 
@@ -173,19 +178,24 @@ public sealed class AiActivityTracker
                 RemoveSessionsForTool(_activeSessions, hookEvent.Tool, exceptKey: key);
                 RemoveSessionsForTool(_quietEndedSessions, hookEvent.Tool);
                 _activeSessions[key] = new ActiveSession(hookEvent.Tool, now);
-                // 新しく指示を出した＝そのウィンドウを見ている。前の完了の光は役目を終えている。
+                // 新しく指示を出した＝そのウィンドウを見ている。前の完了・時間切れの光は役目を終えている。
                 _needsAttention = false;
+                _timedOut = false;
                 break;
             case AiHookEventKind.Stop:
                 // 開始で同ツールのセッションは 1 つに置き換わっている。完了・中断の SessionId が開始と違っても
                 // （ツールが付け直す・空で届くなど）作業中が残らないよう、同ツールの作業中をまとめて止める。
                 RemoveSessionsForTool(_activeSessions, hookEvent.Tool);
                 RemoveSessionsForTool(_quietEndedSessions, hookEvent.Tool);
+                // 時間切れのあとに完了が届いた＝通知は遅れただけ。青の完了で知らせる。
                 _needsAttention = true;
+                _timedOut = false;
                 break;
             case AiHookEventKind.Interrupt:
                 RemoveSessionsForTool(_activeSessions, hookEvent.Tool);
                 RemoveSessionsForTool(_quietEndedSessions, hookEvent.Tool);
+                // 中断の知らせが届いた＝止まった理由が分かった。時間切れの黄色は出さない。
+                _timedOut = false;
                 break;
             case AiHookEventKind.Progress:
             case AiHookEventKind.ToolRunning:
@@ -221,6 +231,9 @@ public sealed class AiActivityTracker
                 _activeSessions[quietKey] = _quietEndedSessions[quietKey];
                 _quietEndedSessions.Remove(quietKey);
             }
+
+            // 長く考えていただけで、まだ動いていた。時間切れの黄色を取り消して作業中へ戻す。
+            _timedOut = false;
         }
 
         foreach (var activeKey in keys)
@@ -264,12 +277,13 @@ public sealed class AiActivityTracker
     // 作業中のセッションが残っていれば作業中へ戻る。
     public bool Acknowledge()
     {
-        if (!_needsAttention)
+        if (!_needsAttention && !_timedOut)
         {
             return false;
         }
 
         _needsAttention = false;
+        _timedOut = false;
         return true;
     }
 
@@ -284,6 +298,9 @@ public sealed class AiActivityTracker
             }
 
             _activeSessions.Remove(key);
+            // 終了の知らせが来ないまま止まった。停止ボタンの中断か通知の取りこぼしかは分からないので、黄色で知らせる。
+            _timedOut = true;
+            LastTool = session.Tool;
             if (QuietTimeouts.ContainsKey(session.Tool))
             {
                 // 停止ボタンでの中断とみなして光らせずに止める。長い考え中だっただけなら、次の知らせで作業中へ戻す。
@@ -323,6 +340,7 @@ public sealed class AiActivityTracker
         _activeSessions.Clear();
         _quietEndedSessions.Clear();
         _needsAttention = false;
+        _timedOut = false;
         return before != State;
     }
 

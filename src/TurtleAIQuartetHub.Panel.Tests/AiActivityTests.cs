@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 69;
+    public const int Count = 70;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -112,7 +112,7 @@ internal static class AiActivityTests
         Check(failures, "状態: 完了通知が来ないまま長時間たった作業中は片付ける",
             !stale.PruneStale(now.AddMinutes(10))
             && stale.PruneStale(now + AiActivityTracker.StaleSessionTimeout + TimeSpan.FromSeconds(1))
-            && stale.State == AiActivityState.Idle);
+            && stale.State == AiActivityState.TimedOut);
 
         VerifyStopButtonWithoutStopEvent(failures, now);
 
@@ -209,11 +209,11 @@ internal static class AiActivityTests
 
         var canceled = new AiActivityTracker();
         canceled.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
-        Check(failures, "停止ボタン: Copilot の作業の知らせが途絶えたら、青を付けずに作業中を止める",
+        Check(failures, "停止ボタン: Copilot の作業の知らせが途絶えたら、青ではなく時間切れの黄色にして作業中を止める",
             !canceled.PruneStale(now + quiet - second)
             && canceled.State == AiActivityState.Working
             && canceled.PruneStale(now + quiet + second)
-            && canceled.State == AiActivityState.Idle);
+            && canceled.State == AiActivityState.TimedOut);
 
         var progressing = new AiActivityTracker();
         progressing.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
@@ -223,7 +223,7 @@ internal static class AiActivityTests
             !progressing.PruneStale(progressAt + quiet - second)
             && progressing.State == AiActivityState.Working
             && progressing.PruneStale(progressAt + quiet + second)
-            && progressing.State == AiActivityState.Idle);
+            && progressing.State == AiActivityState.TimedOut);
 
         var toolRunning = new AiActivityTracker();
         toolRunning.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
@@ -233,7 +233,7 @@ internal static class AiActivityTests
             !toolRunning.PruneStale(toolAt + quiet + second)
             && toolRunning.State == AiActivityState.Working
             && toolRunning.PruneStale(toolAt + AiActivityTracker.QuietToolTimeout + second)
-            && toolRunning.State == AiActivityState.Idle);
+            && toolRunning.State == AiActivityState.TimedOut);
 
         var revived = new AiActivityTracker();
         revived.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
@@ -269,10 +269,13 @@ internal static class AiActivityTests
         mixed.Apply(Event("grok", AiHookEventKind.Start, "g1"), now);
         mixed.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
         mixed.PruneStale(now + quiet + second);
+        var mixedYellowWhileGrokWorks = mixed.State == AiActivityState.TimedOut;
+        mixed.Acknowledge();
         Check(failures, "停止ボタン: 中断を必ず知らせる Grok は知らせの途絶えで止めず、60 分の片付けだけにする",
-            mixed.State == AiActivityState.Working
+            mixedYellowWhileGrokWorks
+            && mixed.State == AiActivityState.Working
             && mixed.PruneStale(now + AiActivityTracker.StaleSessionTimeout + second)
-            && mixed.State == AiActivityState.Idle);
+            && mixed.State == AiActivityState.TimedOut);
 
         foreach (var tool in new[] { "claude", "codex" })
         {
@@ -283,11 +286,11 @@ internal static class AiActivityTests
             var keptDuringTool = !escaped.PruneStale(toolAt2 + quiet + second);
             var progressAt2 = toolAt2 + TimeSpan.FromMinutes(5);
             escaped.Apply(Event(tool, AiHookEventKind.Progress, "s1"), progressAt2);
-            Check(failures, $"停止ボタン: {tool} も Esc の中断で終了の知らせが来ないため、作業の知らせが途絶えたら青を付けずに止める",
+            Check(failures, $"停止ボタン: {tool} も Esc の中断で終了の知らせが来ないため、作業の知らせが途絶えたら黄色にして止める",
                 keptDuringTool
                 && !escaped.PruneStale(progressAt2 + quiet - second)
                 && escaped.PruneStale(progressAt2 + quiet + second)
-                && escaped.State == AiActivityState.Idle);
+                && escaped.State == AiActivityState.TimedOut);
         }
 
         var antigravity = new AiActivityTracker();
@@ -298,7 +301,30 @@ internal static class AiActivityTests
             !antigravity.PruneStale(invokedAgain + quiet + second)
             && antigravity.State == AiActivityState.Working
             && antigravity.PruneStale(invokedAgain + AiActivityTracker.AntigravityQuietTimeout + second)
-            && antigravity.State == AiActivityState.Idle);
+            && antigravity.State == AiActivityState.TimedOut);
+
+        var yellow = new AiActivityTracker();
+        yellow.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
+        yellow.PruneStale(now + quiet + second);
+        var yellowAcknowledged = yellow.State == AiActivityState.TimedOut
+            && yellow.LastTool == "copilot"
+            && yellow.Acknowledge()
+            && yellow.State == AiActivityState.Idle;
+        yellow.Apply(Event("copilot", AiHookEventKind.Start, "c2"), now + quiet + TimeSpan.FromSeconds(10));
+        yellow.PruneStale(now + quiet * 2 + TimeSpan.FromSeconds(20));
+        var revivedClearsYellow = yellow.Apply(Event("copilot", AiHookEventKind.Progress, "c2"), now + quiet * 2 + TimeSpan.FromSeconds(30))
+            && yellow.State == AiActivityState.Working;
+        yellow.PruneStale(now + quiet * 3 + TimeSpan.FromSeconds(40));
+        yellow.Apply(Event("copilot", AiHookEventKind.Stop, "c2"), now + quiet * 3 + TimeSpan.FromSeconds(50));
+        var lateStopIsBlue = yellow.State == AiActivityState.Done;
+        yellow.Acknowledge();
+        yellow.Apply(Event("claude", AiHookEventKind.Start, "s1"), now + quiet * 4);
+        yellow.PruneStale(now + quiet * 5 + TimeSpan.FromSeconds(60));
+        yellow.Apply(Event("claude", AiHookEventKind.Interrupt, "s1"), now + quiet * 5 + TimeSpan.FromSeconds(70));
+        var interruptExplainsStop = yellow.State == AiActivityState.Idle;
+        Check(failures, "時間切れ（黄色）: フォーカス切替で消え、作業の知らせで作業中へ戻り、遅れた完了は青、中断の知らせが届けば黄色を出さない",
+            yellowAcknowledged && revivedClearsYellow && lateStopIsBlue && interruptExplainsStop,
+            $"{yellowAcknowledged},{revivedClearsYellow},{lateStopIsBlue},{interruptExplainsStop}");
 
         var manual = new AiActivityTracker();
         var idleIgnored = !manual.StopWorking();

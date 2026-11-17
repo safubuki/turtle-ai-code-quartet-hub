@@ -12,7 +12,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // 完了時（Done）の少し早く滑らかなホタル点滅（AiDoneFirefly）および IDE / CLI 枠内非塗りつぶし（GroupHeaderCutout）の回帰を確認する。
 internal static class AiDoneFireflyTests
 {
-    public const int Count = 9;
+    public const int Count = 10;
 
     public static void Run(List<string> failures)
     {
@@ -209,6 +209,43 @@ internal static class AiDoneFireflyTests
             failures,
             "完了→作業中→待機遷移: フォーカス切替なしで作業中へ移ると完了表示が消え周回へ切り替わり、中断で消灯すること",
             transitionOk);
+
+        // 4. 時間切れ（TimedOut）は完了と同じ場所・同じホタル点滅を黄色で光らせ、カードの停止ボタンは作業中だけ出すこと
+        var timeoutSlot = CreateMockSlot("D", "タイムアウト", @"c:\git_home\timeout-check", AiActivityState.TimedOut);
+        var timeoutHost = RenderTemplate(resources, "SlotCardTemplate", timeoutSlot, 295, 169);
+        AiDoneFirefly.FreezeAtPhaseForTesting(timeoutHost, peakPhase);
+        timeoutHost.UpdateLayout();
+        var timeoutPeak = CapturePulseSnapshot(timeoutHost);
+        var yellowGlow = ((SolidColorBrush)resources["AiTimeoutGlowBrush"]).Color;
+        var yellowEdge = ((SolidColorBrush)resources["AiTimeoutBorderBrush"]).Color;
+        var timeoutBorders = FindVisualChildren<Border>(timeoutHost).ToList();
+        var haloIsYellow = timeoutBorders
+            .Where(b => AiDoneFirefly.GetRole(b) == AiDonePulseRole.Halo)
+            .All(b => (b.Background as SolidColorBrush)?.Color == yellowGlow);
+        var edgeIsYellow = timeoutBorders
+            .Where(b => AiDoneFirefly.GetRole(b) == AiDonePulseRole.CardEdge)
+            .All(b => (b.BorderBrush as SolidColorBrush)?.Color == yellowEdge);
+
+        var stopStyle = (Style)resources["SlotAiStopButtonStyle"];
+        Visibility StopButtonVisibility(FrameworkElement host) => FindVisualChildren<Button>(host)
+            .Single(button => ReferenceEquals(button.Style, stopStyle)).Visibility;
+        var workingSlot = CreateMockSlot("A", "作業中", @"c:\git_home\working-check", AiActivityState.Working);
+        var workingHost = RenderTemplate(resources, "SlotCardTemplate", workingSlot, 295, 169);
+        var stopOnlyWhileWorking = StopButtonVisibility(workingHost) == Visibility.Visible
+            && StopButtonVisibility(timeoutHost) == Visibility.Collapsed
+            && StopButtonVisibility(stdHost) == Visibility.Collapsed;
+        workingSlot.StopAiWorking();
+        workingHost.UpdateLayout();
+        stopOnlyWhileWorking &= StopButtonVisibility(workingHost) == Visibility.Collapsed
+            && workingSlot.AiActivity == AiActivityState.Idle;
+
+        Check(
+            failures,
+            "時間切れ（黄色）: 完了と同じホタル点滅を黄色で光らせ、カードの停止ボタンは作業中だけ出して押すと消えること",
+            timeoutSlot.AiActivity == AiActivityState.TimedOut
+            && timeoutPeak.HaloOpacity > 0.85 && timeoutPeak.EdgeOpacity > 0.90 && timeoutPeak.CardWashOpacity > 0.55
+            && haloIsYellow && edgeIsYellow && stopOnlyWhileWorking,
+            $"state={timeoutSlot.AiActivity}, halo={timeoutPeak.HaloOpacity:F2}, edge={timeoutPeak.EdgeOpacity:F2}, wash={timeoutPeak.CardWashOpacity:F2}, yellowHalo={haloIsYellow}, yellowEdge={edgeIsYellow}, stop={stopOnlyWhileWorking}");
     }
 
     private static void VerifyGuideAndXamlWiring(List<string> failures)
@@ -328,6 +365,16 @@ internal static class AiDoneFireflyTests
         {
             slot.AiTracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, path, "t"), now);
             slot.AiTracker.Apply(new AiHookEvent("claude", "Stop", AiHookEventKind.Stop, path, "t"), now);
+            slot.NotifyAiActivityChanged();
+        }
+        else if (state is AiActivityState.Working or AiActivityState.TimedOut)
+        {
+            slot.AiTracker.Apply(new AiHookEvent("copilot", "userPromptSubmitted", AiHookEventKind.Start, path, "t"), now);
+            if (state == AiActivityState.TimedOut)
+            {
+                slot.AiTracker.PruneStale(now + AiActivityTracker.QuietSessionTimeout + TimeSpan.FromSeconds(1));
+            }
+
             slot.NotifyAiActivityChanged();
         }
 
