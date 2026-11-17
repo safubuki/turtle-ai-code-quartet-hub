@@ -18,8 +18,15 @@ public partial class MainWindow
     private void HandleAiHookEvent(string[] args)
     {
         var hookEvent = AiHookEventParser.TryParse(args);
-        if (hookEvent is null || hookEvent.Kind == AiHookEventKind.Unknown)
+        if (hookEvent is null)
         {
+            return;
+        }
+
+        // 停止ボタンなどで何が届いたかをあとから確かめられるよう、使わなかった知らせも記録する。
+        if (hookEvent.Kind == AiHookEventKind.Unknown)
+        {
+            DiagnosticLog.Write(LogLevel.Info, $"AI event ignored: {DescribeAiHookEvent(hookEvent)}");
             return;
         }
 
@@ -29,14 +36,22 @@ public partial class MainWindow
             hookEvent.Cwd);
         if (targets.Count == 0)
         {
+            // ツールの前後の知らせはツールを使うたびに届くので、記録しない。
+            if (hookEvent.Kind is not (AiHookEventKind.Progress or AiHookEventKind.ToolRunning))
+            {
+                DiagnosticLog.Write(LogLevel.Info, $"AI event unmatched: {DescribeAiHookEvent(hookEvent)} cwd={hookEvent.Cwd}");
+            }
+
             return;
         }
 
         var now = DateTimeOffset.UtcNow;
+        var anyChanged = false;
         foreach (var slot in targets)
         {
             if (slot.AiTracker.Apply(hookEvent, now))
             {
+                anyChanged = true;
                 slot.NotifyAiActivityChanged();
             }
             else if (hookEvent.Kind is AiHookEventKind.Stop)
@@ -46,9 +61,21 @@ public partial class MainWindow
             }
         }
 
+        // ツールの前後の知らせはツールを使うたびに届くので、表示が変わったときだけ記録する。
+        if ((hookEvent.Kind is AiHookEventKind.Progress or AiHookEventKind.ToolRunning) && !anyChanged)
+        {
+            return;
+        }
+
         DiagnosticLog.Write(
             LogLevel.Info,
-            $"AI event: {hookEvent.Tool} {hookEvent.EventName} -> {string.Join(",", targets.Select(slot => $"{slot.Name}:{slot.AiActivity}"))}");
+            $"AI event: {DescribeAiHookEvent(hookEvent)} -> {string.Join(",", targets.Select(slot => $"{slot.Name}:{slot.AiActivity}"))}");
+    }
+
+    private static string DescribeAiHookEvent(AiHookEvent hookEvent)
+    {
+        var detail = string.IsNullOrEmpty(hookEvent.Detail) ? string.Empty : $" ({hookEvent.Detail})";
+        return $"{hookEvent.Tool} {hookEvent.EventName}{detail}";
     }
 
     private static IEnumerable<string> GetAiActivityMatchPaths(WindowSlot slot)
@@ -58,7 +85,8 @@ public partial class MainWindow
             .Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
-    // 周期更新から呼ぶ。完了通知が来ないまま長時間たった「作業中」を片付ける。
+    // 周期更新から呼ぶ。完了通知が来ないまま長時間たった「作業中」と、
+    // 停止ボタンで中断されて作業の知らせが途絶えた GitHub Copilot の「作業中」を片付ける。
     private void PruneStaleAiActivity()
     {
         if (_statusStore.Slots.All(slot => slot.AiActivity != AiActivityState.Working))
@@ -72,8 +100,30 @@ public partial class MainWindow
             if (slot.AiTracker.PruneStale(now))
             {
                 slot.NotifyAiActivityChanged();
+                DiagnosticLog.Write(LogLevel.Info, $"AI activity ended without a stop event: slot {slot.Name} -> {slot.AiActivity}");
             }
         }
+    }
+
+    // 古い版のハブが書いた専用ファイル（共通スクリプト・Copilot の専用フック）を今の内容へ揃える。
+    // フックを解除している（ファイルが無い）ときは何も作らない。
+    private void RefreshOwnedAiNotifyHookFiles()
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var refreshed = _aiNotifyHookInstaller.RefreshOwnedFiles();
+                if (refreshed.Count > 0)
+                {
+                    DiagnosticLog.Write(LogLevel.Info, $"AI notify hook files refreshed: {string.Join(", ", refreshed)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Write(ex);
+            }
+        });
     }
 
     // スロットのフォーカス表示が切り替わった（1 面フォーカスにした／やめて 4 面表示へ戻した）。
@@ -89,6 +139,28 @@ public partial class MainWindow
         {
             slot.NotifyAiActivityChanged();
             DiagnosticLog.Write(LogLevel.Info, $"AI activity acknowledged by focus change: slot {slot.Name} -> {slot.AiActivity}");
+        }
+    }
+
+    // カードの停止ボタン。停止ボタンで終了の知らせを送らない AI でも、作業中の表示をすぐ止められるようにする。
+    // 表示だけを止め、AI の処理には触れない。
+    private void StopSlotAiActivityButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { Tag: WindowSlot slot })
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        StopSlotAiActivity(slot);
+    }
+
+    private void StopSlotAiActivity(WindowSlot slot)
+    {
+        if (slot.StopAiWorking())
+        {
+            DiagnosticLog.Write(LogLevel.Info, $"AI activity stopped by user: slot {slot.Name} -> {slot.AiActivity}");
         }
     }
 

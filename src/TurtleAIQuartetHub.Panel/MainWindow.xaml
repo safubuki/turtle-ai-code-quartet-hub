@@ -38,6 +38,9 @@
     <!-- 完了時にカードの地だけへ乗せる、アプリ色調と調和する深めの青。ボタンや IDE / CLI の枠内には使わない。 -->
     <SolidColorBrush x:Key="AiDoneCardBrush" Color="#0C2135" />
     <SolidColorBrush x:Key="AiDoneCardWashBrush" Color="#1D5B94" />
+    <!-- 時間切れ（黄色）のカード地。完了の青と同じ場所に使う。 -->
+    <SolidColorBrush x:Key="AiTimeoutCardBrush" Color="#2A2108" />
+    <SolidColorBrush x:Key="AiTimeoutCardWashBrush" Color="#8C6A10" />
     <SolidColorBrush x:Key="SurfaceAltBrush" Color="#1D2420" />
     <SolidColorBrush x:Key="BorderBrushSoft" Color="#2E3832" />
     <SolidColorBrush x:Key="TextBrush" Color="#EEF4EF" />
@@ -553,6 +556,32 @@
       </Style.Triggers>
     </Style>
 
+    <!-- カードのクリアの横の停止ボタン。AI が作業中（緑の周回中）のときだけ出し、作業前・完了時は出さない。 -->
+    <Style x:Key="SlotAiStopButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
+      <Setter Property="MinWidth" Value="24" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="#BDEBD0" />
+      <Setter Property="Background" Value="#17271E" />
+      <Setter Property="BorderBrush" Value="#3B604A" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="ToolTip" Value="AI の作業中の表示を止める（AI の処理は止まりません。AI 側で停止したあとに押してください）" />
+      <Setter Property="AutomationProperties.Name" Value="AI の作業中の表示を止める" />
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="#F2FFF8" />
+          <Setter Property="Background" Value="#203629" />
+          <Setter Property="BorderBrush" Value="#6BE49B" />
+        </Trigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Working}">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="SlotOpenFolderButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
       <Setter Property="MinWidth" Value="28" />
       <Setter Property="Width" Value="28" />
@@ -782,6 +811,10 @@
           <Setter Property="Background" Value="{StaticResource AiDoneCardBrush}" />
           <Setter Property="Effect" Value="{x:Null}" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Background" Value="{StaticResource AiTimeoutCardBrush}" />
+          <Setter Property="Effect" Value="{x:Null}" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -807,6 +840,23 @@
                       ShadowDepth="0"
                       Opacity="0.90" />
 
+    <!-- 時間切れ（AiActivityState.TimedOut）: 終了の知らせが届かないまま作業の知らせが途絶えた。
+         完了の青と同じ場所・同じ 3.0 秒ホタル点滅で黄色く光らせ、何かが起きたことを知らせる。 -->
+    <Color x:Key="AiTimeoutGlowColor">#E0A21E</Color>
+    <SolidColorBrush x:Key="AiTimeoutBorderBrush" Color="#F0BE3C" />
+    <SolidColorBrush x:Key="AiTimeoutGlowBrush" Color="{StaticResource AiTimeoutGlowColor}" />
+    <SolidColorBrush x:Key="AiTimeoutBadgeBackgroundBrush" Color="#4A3A0B" />
+    <SolidColorBrush x:Key="AiTimeoutBadgeBorderBrush" Color="#B48A20" />
+    <SolidColorBrush x:Key="AiTimeoutBadgePeakBorderBrush" Color="#FFD866" />
+    <SolidColorBrush x:Key="AiTimeoutBadgeWashBrush" Color="#B98912" />
+    <SolidColorBrush x:Key="AiTimeoutMicroWashBrush" Color="#C29414" />
+    <SolidColorBrush x:Key="AiTimeoutBadgeForegroundBrush" Color="#FFF8E4" />
+    <DropShadowEffect x:Key="AiTimeoutBadgeGlowEffect"
+                      Color="#F0B42A"
+                      BlurRadius="9"
+                      ShadowDepth="0"
+                      Opacity="0.90" />
+
     <!-- 完了時のカード地・極小タイル・A〜D バッジの滑らかな呼吸用オーバーレイ。Opacity のみをアニメートしてバンディングを抑える。 -->
     <Style x:Key="AiCardDoneWashStyle" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource AiDoneCardWashBrush}" />
@@ -818,6 +868,10 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="Background" Value="{StaticResource AiTimeoutCardWashBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -833,6 +887,10 @@
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="Background" Value="{StaticResource AiTimeoutMicroWashBrush}" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -846,6 +904,10 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="Background" Value="{StaticResource AiTimeoutBadgeWashBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -863,6 +925,11 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiTimeoutBadgePeakBorderBrush}" />
+          <Setter Property="Effect" Value="{StaticResource AiTimeoutBadgeGlowEffect}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -892,6 +959,11 @@
           <Setter Property="Background" Value="{StaticResource AiDoneGlowBrush}" />
           <Setter Property="Opacity" Value="0.74" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="Background" Value="{StaticResource AiTimeoutGlowBrush}" />
+          <Setter Property="Opacity" Value="0.74" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -909,6 +981,11 @@
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Visibility" Value="Visible" />
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBorderBrush}" />
+          <Setter Property="Opacity" Value="1" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Visibility" Value="Visible" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiTimeoutBorderBrush}" />
           <Setter Property="Opacity" Value="1" />
         </DataTrigger>
       </Style.Triggers>
@@ -992,6 +1069,10 @@
                 <Setter TargetName="CompactButtonBorder" Property="Background" Value="{StaticResource AiDoneCardBrush}" />
                 <Setter TargetName="CompactButtonBorder" Property="Effect" Value="{x:Null}" />
               </DataTrigger>
+              <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+                <Setter TargetName="CompactButtonBorder" Property="Background" Value="{StaticResource AiTimeoutCardBrush}" />
+                <Setter TargetName="CompactButtonBorder" Property="Effect" Value="{x:Null}" />
+              </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
               </Trigger>
@@ -1024,6 +1105,10 @@
           <Setter Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgeBorderBrush}" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Background" Value="{StaticResource AiTimeoutBadgeBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiTimeoutBadgeBorderBrush}" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -1035,6 +1120,9 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Foreground" Value="{StaticResource AiDoneBadgeForegroundBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Foreground" Value="{StaticResource AiTimeoutBadgeForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1062,6 +1150,11 @@
           <Setter Property="BorderBrush" Value="{StaticResource AiDoneBadgeBorderBrush}" />
           <Setter Property="Opacity" Value="1" />
         </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Background" Value="{StaticResource AiTimeoutBadgeBackgroundBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource AiTimeoutBadgeBorderBrush}" />
+          <Setter Property="Opacity" Value="1" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
@@ -1077,6 +1170,9 @@
         </DataTrigger>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Foreground" Value="{StaticResource AiDoneBadgeForegroundBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Foreground" Value="{StaticResource AiTimeoutBadgeForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1382,6 +1478,10 @@
                 <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiDoneBadgeBackgroundBrush}" />
                 <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{x:Null}" />
               </DataTrigger>
+              <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+                <Setter TargetName="MicroButtonBorder" Property="Background" Value="{StaticResource AiTimeoutBadgeBackgroundBrush}" />
+                <Setter TargetName="MicroButtonBorder" Property="Effect" Value="{x:Null}" />
+              </DataTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
               </Trigger>
@@ -1402,6 +1502,9 @@
         </DataTrigger>
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Foreground" Value="{StaticResource AiDoneBadgeForegroundBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.TimedOut}">
+          <Setter Property="Foreground" Value="{StaticResource AiTimeoutBadgeForegroundBrush}" />
         </DataTrigger>
       </Style.Triggers>
     </Style>
@@ -1921,13 +2024,20 @@
                            FontSize="12.5"
                            Foreground="{StaticResource MutedTextBrush}" />
               </StackPanel>
-              <Button Grid.Column="3"
-                      Content="&#xE75C;"
-                      Tag="{Binding}"
-                      Click="ClearSlotPanelInfoButton_Click"
-                      Style="{StaticResource SlotClearInfoButtonStyle}"
-                      VerticalAlignment="Top"
-                      Margin="8,0,0,0" />
+              <StackPanel Grid.Column="3"
+                          Orientation="Horizontal"
+                          VerticalAlignment="Top"
+                          Margin="8,0,0,0">
+                <Button Content="&#xE71A;"
+                        Tag="{Binding}"
+                        Click="StopSlotAiActivityButton_Click"
+                        Style="{StaticResource SlotAiStopButtonStyle}"
+                        Margin="0,0,4,0" />
+                <Button Content="&#xE75C;"
+                        Tag="{Binding}"
+                        Click="ClearSlotPanelInfoButton_Click"
+                        Style="{StaticResource SlotClearInfoButtonStyle}" />
+              </StackPanel>
             </Grid>
 
             <Grid Grid.Row="1"

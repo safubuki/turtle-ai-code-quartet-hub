@@ -80,6 +80,18 @@ public partial class MainWindow
         menu.Items.Add(displayItem);
 
         menu.Items.Add(new Separator());
+        // 標準表示のカードでクリアの横に出す停止ボタンと同じ。作業中のときだけ出す。
+        if (slot.AiActivity == AiActivityState.Working)
+        {
+            var stopAiItem = CreateStoredMenuItem(
+                "AI の作業中の表示を止める",
+                CreateStoredMenuGlyphIcon("\uE71A", StoredMenuIconBrush),
+                isEnabled: true,
+                () => StopSlotAiActivity(slot));
+            stopAiItem.ToolTip = "AI の処理は止まりません。AI 側で停止したあとに押してください。";
+            menu.Items.Add(stopAiItem);
+        }
+
         var storeItem = CreateStoredMenuItem(
             "控えへ移動",
             CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),

@@ -564,6 +564,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         AiActivityState.Working => $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中",
         AiActivityState.Done => $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
+        AiActivityState.TimedOut => $"{GetAiToolDisplayName(AiTracker.LastTool)} の終了の知らせが届かないまま、作業の知らせが途絶えました。停止ボタンでの中断や通知の取りこぼしの可能性があります（フォーカス表示を切り替えると消えます）",
         _ => null
     };
 
@@ -571,6 +572,18 @@ public sealed class WindowSlot : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(AiActivity));
         OnPropertyChanged(nameof(AiActivityToolTip));
+    }
+
+    // カードの停止ボタン。作業中の表示だけを止める（AI の処理は止めない）。
+    public bool StopAiWorking()
+    {
+        if (!AiTracker.StopWorking())
+        {
+            return false;
+        }
+
+        NotifyAiActivityChanged();
+        return true;
     }
 
     public static void SwapAiActivity(WindowSlot source, WindowSlot target)
