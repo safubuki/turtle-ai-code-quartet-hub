@@ -282,13 +282,15 @@ internal static class AiActivityTests
     // 作業中の経過時間の表示。表示だけに使い、時間で状態を変えないこと。
     private static void VerifyWorkingElapsed(List<string> failures)
     {
-        Check(failures, "経過時間: カードの幅に収まる短い書き方にする",
-            AiWorkingElapsed.Format(TimeSpan.FromSeconds(30)) == "<1分"
-            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(12.9)) == "12分"
-            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(60)) == "1時間"
-            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(65)) == "1時間5分"
-            && AiWorkingElapsed.Format(TimeSpan.FromHours(51)) == "2日3時間",
-            string.Join(",", new[] { 0.5, 12.9, 60, 65, 51 * 60 }.Select(m => AiWorkingElapsed.Format(TimeSpan.FromMinutes(m)))));
+        Check(failures, "経過時間: 時計の書き方（0:42、12:05、1:02:33）にし、漢字を使わない",
+            AiWorkingElapsed.Format(TimeSpan.Zero) == "0:00"
+            && AiWorkingElapsed.Format(TimeSpan.FromSeconds(-3)) == "0:00"
+            && AiWorkingElapsed.Format(TimeSpan.FromSeconds(42.9)) == "0:42"
+            && AiWorkingElapsed.Format(TimeSpan.FromSeconds(12 * 60 + 5)) == "12:05"
+            && AiWorkingElapsed.Format(TimeSpan.FromMinutes(60)) == "1:00:00"
+            && AiWorkingElapsed.Format(TimeSpan.FromSeconds(3600 + 2 * 60 + 33)) == "1:02:33"
+            && AiWorkingElapsed.Format(TimeSpan.FromHours(51)) == "51:00:00",
+            string.Join(",", new[] { 0, 42.9, 725, 3600, 3753, 51 * 3600 }.Select(sec => AiWorkingElapsed.Format(TimeSpan.FromSeconds(sec)))));
 
         var t0 = new DateTimeOffset(2026, 11, 17, 10, 0, 0, TimeSpan.Zero);
         var tracker = new AiActivityTracker();
