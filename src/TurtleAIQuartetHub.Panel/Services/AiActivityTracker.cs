@@ -222,7 +222,7 @@ public sealed class AiActivityTracker
     }
 
     // 利用者がカードの停止ボタンで作業中の表示を止めた。停止ボタンや Esc で中断しても
-    // 終了の知らせを送らないツール（Copilot / Codex / Claude Code の一部）があるため。
+    // 終了の知らせを送らないツール（Copilot、VS Code 版の Claude Code、Antigravity の一部）があるため。
     // 作業中のときだけ働き、次の指示（開始）でまた作業中になる。AI の処理そのものは止めない。
     public bool StopWorking()
     {

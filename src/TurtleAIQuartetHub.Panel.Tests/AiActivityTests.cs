@@ -244,7 +244,7 @@ internal static class AiActivityTests
         }
     }
 
-    // Copilot / Codex / Claude Code の一部は停止ボタンや Esc で中断しても終了の知らせを送らない。
+    // Copilot、VS Code 版の Claude Code、Antigravity の一部は停止ボタンや Esc で中断しても終了の知らせを送らない（Codex は Interrupt を送る）。
     // 時間では片付けず、カードの停止ボタンと、届く知らせ（idle_prompt など）で止める。
     private static void VerifyStopButtonWithoutStopEvent(List<string> failures, DateTimeOffset now)
     {

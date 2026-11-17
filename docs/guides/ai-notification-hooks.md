@@ -88,10 +88,10 @@ Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユ�
 | ツール | 中断したときの知らせ | カルテットハブの表示 |
 |---|---|---|
 | GitHub Copilot（CLI と VS Code のチャット） | 届かない（`agentStop` は応答が終わったときだけ） | 緑のまま。カードの停止ボタンで止める |
-| Codex | 届かない（公式のイベント一覧に中断を知らせるものが無い） | 緑のまま。カードの停止ボタンで止める |
+| Codex | `Interrupt` が届く（2026-11-18 に実機のログで確認） | すぐ止まる（青は付けない） |
 | Claude Code | `Stop` は届かない（公式仕様）。CLI ではそのあと入力待ちの `idle_prompt` が届く | `idle_prompt` が届けば止まる。届かないとき（VS Code 拡張など）はカードの停止ボタンで止める |
 | Grok | `StopCancelled` が届く | すぐ止まる（完了と同じ青） |
-| Antigravity | `Stop`（`USER_CANCELED`）が届く。届かない版もある | すぐ止まる。届かないときはカードの停止ボタンで止める |
+| Antigravity | 届かないことがある（2026-11-18 の実機では何も届かなかった）。届けば `Stop`（`USER_CANCELED`） | 届けばすぐ止まる。届かないときは緑のまま。カードの停止ボタンで止める |
 
 **作業中の表示は、時間では片付けません。** 長いビルドや長く考えている途中で、緑が勝手に消えたり、完了と紛らわしい表示が出たりしないようにするためです。作業中の緑は、次のどれかで終わります。
 
@@ -195,10 +195,10 @@ Grok は、Claude 用の `~/.claude/settings.json` も実行することがあ�
 | ツール | 開始 → 緑 | 応答終了 → 青いホタル点滅 | 許可・質問の確認 | 中断・終了 |
 |---|---|---|---|---|
 | Claude Code | `UserPromptSubmit` | `Stop` / `StopFailure` | `permission_prompt` / `elicitation_dialog` は緑のまま | `SessionEnd` で光を付けずに終了（`Ctrl+C`/`Esc` の途中中断は公式仕様上 `Stop` が出ないため、そのあとの入力待ち `idle_prompt` で光を付けずに終了。届かないときはカードの停止ボタン） |
-| Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Esc` の中断は知らせが無いため、カードの停止ボタンで止める。`Interrupt` / `SessionEnd` も登録しているが、公式のイベント一覧には無い |
+| Codex | `UserPromptSubmit` | `Stop` | `PermissionRequest` は緑のまま | `Interrupt`（`Esc` の中断）・`SessionEnd` は光を付けずに終了 |
 | GitHub Copilot | `userPromptSubmitted` | `agentStop` / 非回復 `errorOccurred` | 回復可能 `errorOccurred` は緑のまま | `agentStop`（`abort` / `user_exit` 等）・`sessionEnd` は光を付けずに終了。停止ボタンでは知らせが来ないため、カードの停止ボタンで止める |
 | Grok | `UserPromptSubmit` | `Stop` / `StopFailure` / `StopCancelled` | `permission_prompt` / `elicitation_dialog` は緑のまま | `StopCancelled` も同じ青 |
-| Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED` / `cancel` / `aborted` 系）は光を付けない。`Stop` が届かないときはカードの停止ボタン |
+| Antigravity | `PreInvocation` | `Stop` | 知らせ自体がない。緑のまま | `Stop`（`USER_CANCELED` / `cancel` / `aborted` 系）は光を付けない。中断しても `Stop` が届かないことがあり、そのときはカードの停止ボタン |
 
 Grok と Antigravity の `Stop`、および開始フックは、フックの出力によって処理を止められます。通知スクリプトは空の `{}` を出して終了コード 0 で終わり、止めたり続けさせたりしません。Grok の `StopCancelled` は、次の指示の開始より遅れて届くことがあります。遅れて届いたときは、すでに始まった作業に対して、完了の光が付くことがあります。Antigravity の Windows フック実行系は `-File "..."` の引用符を拒否するため、空白がないパスは無引用の `/` 区切り、ユーザーホームに空白があるときは `hooks.json` 基準の相対パス `../../.turtle-ai-quartet-hub/ai-notify.ps1` で登録します。
 
