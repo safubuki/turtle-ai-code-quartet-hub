@@ -10,10 +10,11 @@ public enum AiHookEventKind
     Stop,
     Interrupt,
 
-    // 作業がまだ続いている証拠（Copilot の postToolUse / 回復可能な errorOccurred）。表示は作業中のまま。
+    // 作業がまだ続いている証拠（PostToolUse / 回復可能な errorOccurred）。表示は作業中のまま。
     Progress,
 
-    // ツールの実行を始めた（Copilot の preToolUse）。コマンドの実行や利用者の許可待ちで長く静かになりうる。
+    // ツールの実行を始めた、または利用者の許可・回答を待っている（PreToolUse / 許可の確認）。
+    // コマンドの実行や許可待ちで長く静かになりうる。表示は作業中のまま。
     ToolRunning
 }
 
@@ -72,20 +73,23 @@ public static class AiHookEventParser
                     ? AiHookEventKind.Progress
                     : AiHookEventKind.Stop;
             case "pretooluse":
-                // Copilot はチャットの停止ボタンで中断しても終了系のフックを送らない。
+                // Copilot / Codex / Claude Code は停止ボタンや Esc で中断しても終了系のフックを送らない。
                 // ツールの前後の知らせで「まだ動いている」ことを確かめ、途絶えたら作業中を片付ける。
                 return AiHookEventKind.ToolRunning;
             case "posttooluse":
                 return AiHookEventKind.Progress;
             case "permissionrequest":
                 // Codex の許可確認は作業の途中。開始済みの緑の周回を続け、青い光にはしない。
-                return AiHookEventKind.Unknown;
+                // 利用者の操作待ちで静かになるので、長めに待つ。
+                return AiHookEventKind.ToolRunning;
             case "notification":
-                // permission_prompt / elicitation_dialog は許可や質問の確認で、作業の途中。表示を変えない。
+                // permission_prompt / elicitation_dialog は許可や質問の確認で、作業の途中。表示は作業中のまま、
+                // 利用者の操作待ちで静かになるので長めに待つ。
                 // idle_prompt は入力待ち（AI はもう動いていない）。Esc / Ctrl+C の中断では Stop が来ないため、
                 // 残った作業中だけを光らせずに止める。完了の光は付けない（消した光を戻さない）。
                 return detail.Trim().ToLowerInvariant() switch
                 {
+                    "permission_prompt" or "elicitation_dialog" => AiHookEventKind.ToolRunning,
                     "idle_prompt" => AiHookEventKind.Interrupt,
                     _ => AiHookEventKind.Unknown
                 };
@@ -121,16 +125,27 @@ public sealed class AiActivityTracker
     // 中断などで完了通知が来ないまま残ったセッションを片付けるまでの時間。
     public static readonly TimeSpan StaleSessionTimeout = TimeSpan.FromMinutes(60);
 
-    // GitHub Copilot（CLI / VS Code のチャット）は停止ボタンで中断しても終了系のフックを送らない。
-    // 作業中はツールの前後（preToolUse / postToolUse）で知らせが続くので、それが途絶えたら止まったとみなす。
+    // GitHub Copilot（CLI / VS Code のチャット）・Codex・Claude Code は、停止ボタンや Esc で中断しても終了系のフックを送らない。
+    // 作業中はツールの前後（PreToolUse / PostToolUse）で知らせが続くので、それが途絶えたら止まったとみなす。
     // ツールの実行後（モデルの考え中）に知らせが途絶えた時間。
     public static readonly TimeSpan QuietSessionTimeout = TimeSpan.FromMinutes(3);
 
     // ツールの実行中（コマンドの実行や、利用者の許可待ち）に知らせが途絶えた時間。長いビルドなどで誤って消さない。
     public static readonly TimeSpan QuietToolTimeout = TimeSpan.FromMinutes(10);
 
-    // 知らせの途絶えで片付ける対象のツール。終了系のフックが中断時に来ないもの。
-    private static readonly HashSet<string> QuietTimeoutTools = new(StringComparer.OrdinalIgnoreCase) { "copilot" };
+    // Antigravity はモデルを呼ぶたびに PreInvocation（開始）が届くが、ツール実行中かどうかは分からない。
+    // 中断の Stop が届かない版もあるため、長めの途絶えで片付ける。
+    public static readonly TimeSpan AntigravityQuietTimeout = TimeSpan.FromMinutes(10);
+
+    // 知らせの途絶えで片付ける対象のツールと、（考え中, ツール実行中）の待ち時間。
+    // Grok は中断を StopCancelled で必ず知らせるので対象外（60 分の片付けだけ）。
+    private static readonly Dictionary<string, (TimeSpan Quiet, TimeSpan ToolRunning)> QuietTimeouts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["copilot"] = (QuietSessionTimeout, QuietToolTimeout),
+        ["codex"] = (QuietSessionTimeout, QuietToolTimeout),
+        ["claude"] = (QuietSessionTimeout, QuietToolTimeout),
+        ["antigravity"] = (AntigravityQuietTimeout, AntigravityQuietTimeout)
+    };
 
     private readonly Dictionary<string, ActiveSession> _activeSessions = new(StringComparer.OrdinalIgnoreCase);
 
@@ -269,7 +284,7 @@ public sealed class AiActivityTracker
             }
 
             _activeSessions.Remove(key);
-            if (QuietTimeoutTools.Contains(session.Tool))
+            if (QuietTimeouts.ContainsKey(session.Tool))
             {
                 // 停止ボタンでの中断とみなして光らせずに止める。長い考え中だっただけなら、次の知らせで作業中へ戻す。
                 _quietEndedSessions[key] = session;
@@ -298,12 +313,12 @@ public sealed class AiActivityTracker
 
     private static TimeSpan GetTimeout(ActiveSession session)
     {
-        if (!QuietTimeoutTools.Contains(session.Tool))
+        if (!QuietTimeouts.TryGetValue(session.Tool, out var timeouts))
         {
             return StaleSessionTimeout;
         }
 
-        return session.ToolRunning ? QuietToolTimeout : QuietSessionTimeout;
+        return session.ToolRunning ? timeouts.ToolRunning : timeouts.Quiet;
     }
 
     private sealed class ActiveSession(string tool, DateTimeOffset lastActivityAt)

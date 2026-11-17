@@ -41,10 +41,12 @@ public sealed class AiNotifyHookInstaller
     };
 
     // Claude Code / Codex / Grok は同じ形式（event → [{ hooks: [{ type, command, timeout }] }]）。
-    private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "Stop", "StopFailure", "SessionEnd", "Notification"];
-    private static readonly string[] CodexEvents = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt", "SessionEnd"];
-    // Copilot は停止ボタンでの中断時に終了系のフックを送らないため、ツールの前後（preToolUse / postToolUse）で
-    // 作業が続いていることを確かめ、知らせが途絶えたら作業中を片付ける。
+    // Claude Code（Esc / Ctrl+C）・Codex（Esc）・Copilot（停止ボタン）は中断時に終了系のフックを送らないため、
+    // ツールの前後（PreToolUse / PostToolUse）で作業が続いていることを確かめ、知らせが途絶えたら作業中を片付ける。
+    private static readonly string[] ClaudeEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "StopFailure", "SessionEnd", "Notification"];
+    private static readonly string[] CodexEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "PermissionRequest", "Interrupt", "SessionEnd"];
+    // Claude Code はツールの前後のフックを裏で動かせる（async）。ツールの実行を待たせない。
+    private static readonly HashSet<string> ClaudeAsyncEvents = new(StringComparer.Ordinal) { "PreToolUse", "PostToolUse" };
     private static readonly string[] CopilotEvents = ["userPromptSubmitted", "preToolUse", "postToolUse", "agentStop", "errorOccurred", "sessionEnd"];
     // Grok は中断と API エラーを Stop ではなく StopCancelled / StopFailure で知らせる。
     private static readonly string[] GrokEvents = ["UserPromptSubmit", "Stop", "StopFailure", "StopCancelled", "Notification"];
@@ -362,17 +364,20 @@ public sealed class AiNotifyHookInstaller
                     hooks[hookEvent] = groups;
                 }
 
+                var handler = new JsonObject
+                {
+                    ["type"] = "command",
+                    ["command"] = BuildCommand(tool, hookEvent),
+                    ["timeout"] = 10
+                };
+                if (string.Equals(tool, "claude", StringComparison.Ordinal) && ClaudeAsyncEvents.Contains(hookEvent))
+                {
+                    handler["async"] = true;
+                }
+
                 groups.Add(new JsonObject
                 {
-                    ["hooks"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["type"] = "command",
-                            ["command"] = BuildCommand(tool, hookEvent),
-                            ["timeout"] = 10
-                        }
-                    }
+                    ["hooks"] = new JsonArray { handler }
                 });
             }
         }
@@ -442,26 +447,81 @@ public sealed class AiNotifyHookInstaller
         WriteWithBackup(AntigravityHooksPath, originalText, root.ToJsonString(WriteOptions) + Environment.NewLine);
     }
 
-    // ハブ専用のファイル（共通スクリプト・Copilot の専用フック）が古い版の内容なら、今の内容に書き直す。
-    // どちらもハブだけが書くファイルなので、利用者の設定は変わらない。ファイルが無い（未設定・解除済み）ときは作らない。
+    // 古い版のハブが書いた内容を今の内容に揃える。
+    // ・共通スクリプトと Copilot の専用フックはハブだけが書くファイルなので書き直す。
+    // ・Claude Code / Codex は、すでにハブの項目がある設定だけ、ハブの項目を足し直す（利用者の設定は残し、バックアップも取る）。
+    // ファイルやハブの項目が無い（未設定・解除済み）ときは何も作らない。
     public IReadOnlyList<string> RefreshOwnedFiles()
     {
         var refreshed = new List<string>();
-        if (File.Exists(ScriptPath) && !string.Equals(File.ReadAllText(ScriptPath), NotifyScript, StringComparison.Ordinal))
+        if (!File.Exists(ScriptPath))
         {
+            return refreshed;
+        }
+
+        TryRefresh(refreshed, "script", () =>
+        {
+            if (string.Equals(File.ReadAllText(ScriptPath), NotifyScript, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
             WriteScript();
-            refreshed.Add("script");
-        }
-
-        if (File.Exists(CopilotHookPath)
-            && File.Exists(ScriptPath)
-            && !string.Equals(File.ReadAllText(CopilotHookPath), BuildCopilotHookFileText(), StringComparison.Ordinal))
+            return true;
+        });
+        TryRefresh(refreshed, "claude", () => RefreshHubEvents(ClaudeSettingsPath, "claude", ClaudeEvents));
+        TryRefresh(refreshed, "codex", () => RefreshHubEvents(CodexHooksPath, "codex", CodexEvents));
+        TryRefresh(refreshed, "copilot", () =>
         {
+            if (!File.Exists(CopilotHookPath)
+                || string.Equals(File.ReadAllText(CopilotHookPath), BuildCopilotHookFileText(), StringComparison.Ordinal))
+            {
+                return false;
+            }
+
             WriteCopilotHookFile();
-            refreshed.Add("copilot");
+            return true;
+        });
+        return refreshed;
+    }
+
+    // 1 つのツールの設定が読めなくても、ほかのツールの更新は続ける。
+    private static void TryRefresh(List<string> refreshed, string name, Func<bool> refresh)
+    {
+        try
+        {
+            if (refresh())
+            {
+                refreshed.Add(name);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            DiagnosticLog.Write(ex);
+        }
+    }
+
+    // ハブの項目はあるが、登録しているイベントが今の一覧と違う（古い版で設定した）ときだけ足し直す。
+    private bool RefreshHubEvents(string path, string tool, IReadOnlyList<string> expectedEvents)
+    {
+        if (!File.Exists(path)
+            || JsonNode.Parse(File.ReadAllText(path), documentOptions: ReadOptions) is not JsonObject root
+            || root["hooks"] is not JsonObject hooks)
+        {
+            return false;
         }
 
-        return refreshed;
+        var hubEvents = hooks
+            .Where(pair => pair.Value is JsonArray groups && CountHubHandlers(groups) > 0)
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        if (hubEvents.Count == 0 || hubEvents.SetEquals(expectedEvents))
+        {
+            return false;
+        }
+
+        UpdateEventHookFile(path, tool, expectedEvents, install: true);
+        return true;
     }
 
     private void WriteCopilotHookFile()
@@ -595,7 +655,13 @@ public sealed class AiNotifyHookInstaller
         return hooks
             .Select(pair => pair.Value)
             .OfType<JsonArray>()
-            .SelectMany(groups => groups.OfType<JsonObject>())
+            .Sum(CountHubHandlers);
+    }
+
+    private static int CountHubHandlers(JsonArray groups)
+    {
+        return groups
+            .OfType<JsonObject>()
             .Select(group => group["hooks"])
             .OfType<JsonArray>()
             .SelectMany(handlers => handlers.OfType<JsonObject>())

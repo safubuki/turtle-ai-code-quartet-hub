@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 63;
+    public const int Count = 68;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -27,10 +27,11 @@ internal static class AiActivityTests
         Check(failures, "通知: Copilot の userPromptSubmitted / agentStop を開始・完了として扱う",
             AiHookEventParser.Classify("userPromptSubmitted", "") == AiHookEventKind.Start
             && AiHookEventParser.Classify("agentStop", "") == AiHookEventKind.Stop);
-        Check(failures, "通知: 許可や質問の確認は表示を変えない",
-            AiHookEventParser.Classify("Notification", "permission_prompt") == AiHookEventKind.Unknown
-            && AiHookEventParser.Classify("Notification", "elicitation_dialog") == AiHookEventKind.Unknown
-            && AiHookEventParser.Classify("PermissionRequest", "") == AiHookEventKind.Unknown);
+        Check(failures, "通知: 許可や質問の確認は作業中のまま、利用者の操作待ちとして長めに待つ",
+            AiHookEventParser.Classify("Notification", "permission_prompt") == AiHookEventKind.ToolRunning
+            && AiHookEventParser.Classify("Notification", "elicitation_dialog") == AiHookEventKind.ToolRunning
+            && AiHookEventParser.Classify("PermissionRequest", "") == AiHookEventKind.ToolRunning
+            && AiHookEventParser.Classify("Notification", "task_complete") == AiHookEventKind.Unknown);
         Check(failures, "通知: 入力待ち（idle_prompt）は光らせない中断として扱う（Esc / Ctrl+C の中断で緑を残さない）",
             AiHookEventParser.Classify("Notification", "idle_prompt") == AiHookEventKind.Interrupt);
         Check(failures, "通知: Copilot の preToolUse / postToolUse は作業が続いている知らせとして扱う",
@@ -91,7 +92,7 @@ internal static class AiActivityTests
         Check(failures, "状態: 光っていないときの切り替えでは何も変わらない", !tracker.Acknowledge());
 
         tracker.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
-        var permissionKeptWorking = !tracker.Apply(Event("claude", AiHookEventKind.Unknown, "s1"), now);
+        var permissionKeptWorking = !tracker.Apply(Event("claude", AiHookEventKind.ToolRunning, "s1"), now);
         Check(failures, "状態: 許可の確認では緑の作業中のまま",
             permissionKeptWorking && tracker.State == AiActivityState.Working);
         tracker.Apply(Event("claude", AiHookEventKind.Stop, "s1"), now);
@@ -107,7 +108,7 @@ internal static class AiActivityTests
         Check(failures, "状態: 中断は光らせずに元へ戻す", multi.State == AiActivityState.Idle);
 
         var stale = new AiActivityTracker();
-        stale.Apply(Event("claude", AiHookEventKind.Start, "x"), now);
+        stale.Apply(Event("grok", AiHookEventKind.Start, "x"), now);
         Check(failures, "状態: 完了通知が来ないまま長時間たった作業中は片付ける",
             !stale.PruneStale(now.AddMinutes(10))
             && stale.PruneStale(now + AiActivityTracker.StaleSessionTimeout + TimeSpan.FromSeconds(1))
@@ -265,13 +266,39 @@ internal static class AiActivityTests
             !unkeyed.PruneStale(now + quiet + second) && unkeyed.State == AiActivityState.Working);
 
         var mixed = new AiActivityTracker();
-        mixed.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
+        mixed.Apply(Event("grok", AiHookEventKind.Start, "g1"), now);
         mixed.Apply(Event("copilot", AiHookEventKind.Start, "c1"), now);
         mixed.PruneStale(now + quiet + second);
-        Check(failures, "停止ボタン: 知らせの途絶えで止めるのは Copilot だけで、ほかのツールの作業中は残す",
+        Check(failures, "停止ボタン: 中断を必ず知らせる Grok は知らせの途絶えで止めず、60 分の片付けだけにする",
             mixed.State == AiActivityState.Working
             && mixed.PruneStale(now + AiActivityTracker.StaleSessionTimeout + second)
             && mixed.State == AiActivityState.Idle);
+
+        foreach (var tool in new[] { "claude", "codex" })
+        {
+            var escaped = new AiActivityTracker();
+            escaped.Apply(Event(tool, AiHookEventKind.Start, "s1"), now);
+            var toolAt2 = now + TimeSpan.FromSeconds(20);
+            escaped.Apply(Event(tool, AiHookEventKind.ToolRunning, "s1"), toolAt2);
+            var keptDuringTool = !escaped.PruneStale(toolAt2 + quiet + second);
+            var progressAt2 = toolAt2 + TimeSpan.FromMinutes(5);
+            escaped.Apply(Event(tool, AiHookEventKind.Progress, "s1"), progressAt2);
+            Check(failures, $"停止ボタン: {tool} も Esc の中断で終了の知らせが来ないため、作業の知らせが途絶えたら青を付けずに止める",
+                keptDuringTool
+                && !escaped.PruneStale(progressAt2 + quiet - second)
+                && escaped.PruneStale(progressAt2 + quiet + second)
+                && escaped.State == AiActivityState.Idle);
+        }
+
+        var antigravity = new AiActivityTracker();
+        antigravity.Apply(Event("antigravity", AiHookEventKind.Start, "conv-1"), now);
+        var invokedAgain = now + TimeSpan.FromMinutes(4);
+        antigravity.Apply(Event("antigravity", AiHookEventKind.Start, "conv-1"), invokedAgain);
+        Check(failures, "停止ボタン: Antigravity はモデル呼び出し（PreInvocation）が約 10 分途絶えたら止める",
+            !antigravity.PruneStale(invokedAgain + quiet + second)
+            && antigravity.State == AiActivityState.Working
+            && antigravity.PruneStale(invokedAgain + AiActivityTracker.AntigravityQuietTimeout + second)
+            && antigravity.State == AiActivityState.Idle);
 
         var claudeIdle = new AiActivityTracker();
         claudeIdle.Apply(Event("claude", AiHookEventKind.Start, "s1"), now);
@@ -356,8 +383,20 @@ internal static class AiActivityTests
                 && !Directory.Exists(Path.Combine(home, ".gemini")));
             Check(failures, "フック設定: 通知スクリプトは ASCII だけ（PowerShell 5.1 の文字化け対策）",
                 File.ReadAllText(installer.ScriptPath).All(character => character < 128));
+            var claudePreToolHandler = claude["hooks"]!["PreToolUse"]!.AsArray()
+                .SelectMany(group => group!["hooks"]!.AsArray())
+                .Single()!.AsObject();
+            Check(failures, "フック設定: Claude Code のツールの前後のフックは裏で動かし（async）、ツールを待たせない",
+                claudePreToolHandler["async"]?.GetValue<bool>() == true
+                && claude["hooks"]!["PostToolUse"]!.AsArray().SelectMany(group => group!["hooks"]!.AsArray()).Single()!["async"]?.GetValue<bool>() == true
+                && claude["hooks"]!["Stop"]!.AsArray().SelectMany(group => group!["hooks"]!.AsArray())
+                    .Where(handler => AiNotifyHookInstaller.IsHubCommand(handler!["command"]!.GetValue<string>()))
+                    .All(handler => handler!["async"] is null),
+                claude["hooks"]!.ToJsonString());
             Check(failures, "フック設定: Claude Code は StopFailure と SessionEnd も含めて登録する",
                 claude["hooks"]!.AsObject().ContainsKey("UserPromptSubmit")
+                && claude["hooks"]!.AsObject().ContainsKey("PreToolUse")
+                && claude["hooks"]!.AsObject().ContainsKey("PostToolUse")
                 && claude["hooks"]!.AsObject().ContainsKey("Stop")
                 && claude["hooks"]!.AsObject().ContainsKey("StopFailure")
                 && claude["hooks"]!.AsObject().ContainsKey("SessionEnd")
@@ -365,6 +404,8 @@ internal static class AiActivityTests
             var codexHooks = JsonNode.Parse(File.ReadAllText(installer.CodexHooksPath))!.AsObject()["hooks"]!.AsObject();
             Check(failures, "フック設定: Codex は SessionEnd も含めて登録する",
                 codexHooks.ContainsKey("UserPromptSubmit")
+                && codexHooks.ContainsKey("PreToolUse")
+                && codexHooks.ContainsKey("PostToolUse")
                 && codexHooks.ContainsKey("Stop")
                 && codexHooks.ContainsKey("PermissionRequest")
                 && codexHooks.ContainsKey("Interrupt")
@@ -422,6 +463,35 @@ internal static class AiActivityTests
                 && File.ReadAllText(installer.ScriptPath) == AiNotifyHookInstaller.NotifyScript
                 && refreshedAgain.Count == 0,
                 $"{string.Join(",", refreshed)} / {string.Join(",", refreshedAgain)}");
+
+            // 古い版で設定した Claude Code / Codex は、利用者の設定を残してハブの項目だけ足し直す。
+            var claudeHub = installer.BuildCommand("claude", "Stop").Replace("\\", "\\\\").Replace("\"", "\\\"");
+            File.WriteAllText(installer.ClaudeSettingsPath, $$"""
+                {
+                  "model": "opus",
+                  "hooks": {
+                    "Stop": [
+                      { "hooks": [ { "type": "command", "command": "echo mine" } ] },
+                      { "hooks": [ { "type": "command", "command": "{{claudeHub}}", "timeout": 10 } ] }
+                    ]
+                  }
+                }
+                """);
+            var upgraded = installer.RefreshOwnedFiles();
+            var upgradedClaude = JsonNode.Parse(File.ReadAllText(installer.ClaudeSettingsPath))!.AsObject();
+            var upgradedStop = upgradedClaude["hooks"]!["Stop"]!.AsArray()
+                .SelectMany(group => group!["hooks"]!.AsArray())
+                .Select(handler => handler!["command"]!.GetValue<string>())
+                .ToList();
+            Check(failures, "フック更新: 古い版で設定した Claude Code は利用者の設定を残してツールの前後のフックを足す",
+                upgraded.SequenceEqual(["claude"])
+                && upgradedClaude["model"]!.GetValue<string>() == "opus"
+                && upgradedClaude["hooks"]!.AsObject().ContainsKey("PreToolUse")
+                && upgradedStop.Contains("echo mine")
+                && upgradedStop.Count(AiNotifyHookInstaller.IsHubCommand) == 1
+                && File.Exists(installer.ClaudeSettingsPath + ".turtle-hub-backup")
+                && installer.RefreshOwnedFiles().Count == 0,
+                $"{string.Join(",", upgraded)} / {upgradedClaude["hooks"]!.ToJsonString()}");
 
             installer.Uninstall();
             Check(failures, "フック更新: 解除したあと（ファイルが無いとき）は起動時の更新でも何も作らない",

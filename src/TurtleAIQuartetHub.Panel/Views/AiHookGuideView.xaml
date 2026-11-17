@@ -341,7 +341,7 @@
               <TextBlock Text="Claude Code / Codex" Style="{StaticResource GuideHeading}" />
               <TextBlock Text="~/.claude/settings.json&#x0a;~/.codex/hooks.json" FontFamily="Consolas" FontSize="11.5"
                          Margin="0,6,0,0" Foreground="#BDEBD0" />
-              <TextBlock Text="ほかの設定・フックを残して通知用の項目を追加します。既存ファイルの変更前の内容は .turtle-hub-backup に保存します（再設定時は更新）。"
+              <TextBlock Text="ほかの設定・フックを残して通知用の項目を追加します。既存ファイルの変更前の内容は .turtle-hub-backup に保存します（再設定時は更新）。Esc で中断しても終了の知らせが来ないため、ツールの前後（PreToolUse / PostToolUse）の知らせが途絶えたら（約 3 分、ツール実行中は約 10 分）作業中の緑を止めます。古い版で設定した項目は起動時に足し直します。"
                          Margin="0,6,0,0" Style="{StaticResource GuideBody}" />
             </StackPanel>
           </Border>
