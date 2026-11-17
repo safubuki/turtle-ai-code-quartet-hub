@@ -87,11 +87,11 @@ Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユ�
 
 | ツール | 中断したときの知らせ | カルテットハブの表示 |
 |---|---|---|
-| GitHub Copilot（CLI と VS Code のチャット） | 届かない（`agentStop` は応答が終わったときだけ。2026-11-18 に VS Code の実機ログで確認） | 緑のまま。カードの停止ボタンで止める |
-| Codex | `Interrupt` が届く（2026-11-18 に VS Code 拡張の実機ログで確認） | すぐ止まる（青は付けない） |
-| Claude Code | `Stop` は届かない（公式仕様）。CLI ではそのあと入力待ちの `idle_prompt` が届く。VS Code 拡張では何も届かない（2026-11-18 に実機ログで確認） | CLI は `idle_prompt` が届けば止まる。VS Code 拡張は緑のまま。カードの停止ボタンで止める |
+| GitHub Copilot（CLI と VS Code のチャット） | 届かない。公式の hooks reference で `agentStop` は「ターンを終えたとき」、`stopReason` は `end_turn` だけで、中断のイベントは無い（2026-11-18 に VS Code の実機ログでも確認） | 緑のまま。カードの停止ボタンで止める |
+| Codex | `Interrupt` が届く。Codex のソースの公式イベント一覧に `interrupt` がある（2026-11-18 に VS Code 拡張の実機ログでも確認） | すぐ止まる（青は付けない） |
+| Claude Code | 届かない。公式の hooks reference に「`Stop` はユーザーの中断で止まったときは動かない」とある。`idle_prompt` は「応答を終えて約 60 秒、入力が無いとき」の知らせで、中断のあとに届く保証は無い（2026-11-18 に VS Code の実機ログで何も届かないことを確認） | 緑のまま。カードの停止ボタンで止める（`idle_prompt` が届いたときは止まる） |
 | Grok | `StopCancelled` が届く | すぐ止まる（完了と同じ青） |
-| Antigravity | 届かないことがある（2026-11-18 の実機では何も届かなかった）。届けば `Stop`（`USER_CANCELED`） | 届けばすぐ止まる。届かないときは緑のまま。カードの停止ボタンで止める |
+| Antigravity | 届かない。`terminationReason` に `USER_CANCELED` は定義されているが、中断すると `Stop` 自体が動かない不具合が公式リポジトリに報告されている（google-antigravity/antigravity-cli #1348。1.5.10 の変更履歴まで修正の記載なし。2026-11-18 の実機ログでも確認） | 緑のまま。カードの停止ボタンで止める（直って `Stop` が届けばすぐ止まる） |
 
 **作業中の表示は、時間では片付けません。** 長いビルドや長く考えている途中で、緑が勝手に消えたり、完了と紛らわしい表示が出たりしないようにするためです。作業中の緑は、次のどれかで終わります。
 
