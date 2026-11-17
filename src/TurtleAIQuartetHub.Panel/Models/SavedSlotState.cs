@@ -18,5 +18,13 @@ public sealed class SavedSlotState
 
     public long WindowHandle { get; set; }
 
+    // まだ見ていない AI の完了（青）。同じウィンドウ（WindowHandle）が再起動後も開いているときだけ戻す。
+    public string? AiDoneTool { get; set; }
+
+    public DateTimeOffset? AiDoneAt { get; set; }
+
+    // 完了したときのワークスペース。再起動後にそのウィンドウが別のフォルダを開いていたら、戻した完了を捨てる。
+    public string? AiDoneWorkspacePath { get; set; }
+
     public VscodeLayoutPreference? PreferredLayout { get; set; }
 }

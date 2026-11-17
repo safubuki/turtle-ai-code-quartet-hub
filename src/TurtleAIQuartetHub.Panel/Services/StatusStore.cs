@@ -1296,6 +1296,11 @@ public sealed class StatusStore : INotifyPropertyChanged
                     {
                         var workspacePath = result.CurrentWorkspacePath ?? string.Empty;
                         slot.CurrentWorkspacePath = workspacePath;
+                        if (slot.DiscardRestoredAiCompletionIfWorkspaceChanged(workspacePath))
+                        {
+                            DiagnosticLog.Write(LogLevel.Info, $"AI completion discarded: slot {slot.Name} now shows another workspace.");
+                        }
+
                         _workspaceRefreshTimestamps[slot.Name] = result.WorkspaceRefreshedAt.Value;
                         if (!string.IsNullOrWhiteSpace(workspacePath))
                         {
@@ -1378,17 +1383,25 @@ public sealed class StatusStore : INotifyPropertyChanged
             var document = new SavedPanelStateDocument
             {
                 VisibleSlots = Slots
-                    .Select(slot => new SavedSlotState
+                    .Select(slot =>
                     {
-                        Name = slot.Name,
-                        RuntimeSlotName = slot.RuntimeSlotName,
-                        PanelTitle = slot.PanelTitle,
-                        AssignedPath = slot.Path,
-                        ApplicationId = slot.ApplicationId,
-                        SavedWorkspacePath = slot.SavedWorkspacePath,
-                        SavedWorkspaceConfirmed = slot.SavedWorkspaceConfirmed,
-                        WindowHandle = slot.WindowHandle.ToInt64(),
-                        PreferredLayout = slot.PreferredLayout.HasAnyValue ? slot.PreferredLayout : null
+                        // まだ見ていない完了は、ウィンドウのあるスロットだけ保存する（ウィンドウが無ければ戻す先が無い）。
+                        var pendingCompletion = slot.WindowHandle != IntPtr.Zero ? slot.GetPendingAiCompletion() : null;
+                        return new SavedSlotState
+                        {
+                            Name = slot.Name,
+                            RuntimeSlotName = slot.RuntimeSlotName,
+                            PanelTitle = slot.PanelTitle,
+                            AssignedPath = slot.Path,
+                            ApplicationId = slot.ApplicationId,
+                            SavedWorkspacePath = slot.SavedWorkspacePath,
+                            SavedWorkspaceConfirmed = slot.SavedWorkspaceConfirmed,
+                            WindowHandle = slot.WindowHandle.ToInt64(),
+                            PreferredLayout = slot.PreferredLayout.HasAnyValue ? slot.PreferredLayout : null,
+                            AiDoneTool = pendingCompletion?.Tool,
+                            AiDoneAt = pendingCompletion?.CompletedAt,
+                            AiDoneWorkspacePath = pendingCompletion?.WorkspacePath
+                        };
                     })
                     .ToList(),
                 StoredPanels = StoredPanels
@@ -1478,6 +1491,14 @@ public sealed class StatusStore : INotifyPropertyChanged
             if (state.WindowHandle != 0)
             {
                 slot.WindowHandle = new IntPtr(state.WindowHandle);
+
+                // まだ見ていなかった完了（青）を戻す。そのウィンドウが閉じていれば周期更新で消え、
+                // 別のフォルダを開いていれば DiscardRestoredAiCompletionIfWorkspaceChanged で消える。
+                if (!string.IsNullOrWhiteSpace(state.AiDoneTool) && state.AiDoneAt is { } doneAt
+                    && slot.RestoreAiCompletion(state.AiDoneTool, doneAt, state.AiDoneWorkspacePath))
+                {
+                    DiagnosticLog.Write(LogLevel.Info, $"AI completion restored: slot {slot.Name} {state.AiDoneTool} {doneAt:O}");
+                }
             }
         }
 
@@ -1774,8 +1795,16 @@ public sealed class StatusStore : INotifyPropertyChanged
             }
         }
 
+        if (resetCount > 0)
+        {
+            SavePanelStates();
+        }
+
         return resetCount;
     }
+
+    // まだ見ていない完了（青）が付いた・消えたときに保存し、カルテットハブを再起動しても戻せるようにする。
+    public void SaveAiCompletionState() => SavePanelStates();
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
