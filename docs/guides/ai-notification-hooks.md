@@ -88,8 +88,8 @@ Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユ�
 | ツール | 中断したときの知らせ | カルテットハブの表示 |
 |---|---|---|
 | GitHub Copilot（CLI と VS Code のチャット） | 届かない（`agentStop` は応答が終わったときだけ） | 緑のまま。カードの停止ボタンで止める |
-| Codex | `Interrupt` が届く（2026-11-18 に実機のログで確認） | すぐ止まる（青は付けない） |
-| Claude Code | `Stop` は届かない（公式仕様）。CLI ではそのあと入力待ちの `idle_prompt` が届く | `idle_prompt` が届けば止まる。届かないとき（VS Code 拡張など）はカードの停止ボタンで止める |
+| Codex | `Interrupt` が届く（2026-11-18 に VS Code 拡張の実機ログで確認） | すぐ止まる（青は付けない） |
+| Claude Code | `Stop` は届かない（公式仕様）。CLI ではそのあと入力待ちの `idle_prompt` が届く。VS Code 拡張では何も届かない（2026-11-18 に実機ログで確認） | CLI は `idle_prompt` が届けば止まる。VS Code 拡張は緑のまま。カードの停止ボタンで止める |
 | Grok | `StopCancelled` が届く | すぐ止まる（完了と同じ青） |
 | Antigravity | 届かないことがある（2026-11-18 の実機では何も届かなかった）。届けば `Stop`（`USER_CANCELED`） | 届けばすぐ止まる。届かないときは緑のまま。カードの停止ボタンで止める |
 
