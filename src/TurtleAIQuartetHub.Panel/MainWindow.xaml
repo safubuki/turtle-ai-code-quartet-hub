@@ -604,6 +604,8 @@
       <Setter Property="SnapsToDevicePixels" Value="True" />
       <Setter Property="ToolTip" Value="{Binding AiElapsedToolTip}" />
       <Setter Property="Visibility" Value="Collapsed" />
+      <!-- 作業中は秒が動いて気が散らないよう薄く控えめに出す。完了時とマウスを乗せたときだけ、はっきり見せる。 -->
+      <Setter Property="Opacity" Value="0.45" />
       <Style.Triggers>
         <DataTrigger Binding="{Binding HasAiElapsed}" Value="True">
           <Setter Property="Visibility" Value="Visible" />
@@ -611,14 +613,20 @@
         <DataTrigger Binding="{Binding AiActivity}" Value="{x:Static models:AiActivityState.Done}">
           <Setter Property="Background" Value="{StaticResource AiElapsedChipDoneBackgroundBrush}" />
           <Setter Property="BorderBrush" Value="{StaticResource AiElapsedChipDoneBorderBrush}" />
+          <Setter Property="Opacity" Value="1" />
         </DataTrigger>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Opacity" Value="1" />
+        </Trigger>
       </Style.Triggers>
     </Style>
 
-    <!-- 標準表示のカード用。消えているあいだも場所を取っておき、出し入れでカードの高さが変わらないようにする。 -->
+    <!-- 標準表示のカード用。消えているあいだも場所を取っておき、出し入れでカードの高さが変わらないようにする。
+         最小幅は上の停止・クリアの2ボタン分（24 + 4 + 24）にそろえ、時間が伸びたら左へ広がる。 -->
     <Style x:Key="AiElapsedCardChipStyle" TargetType="Border" BasedOn="{StaticResource AiElapsedChipStyle}">
       <Setter Property="Visibility" Value="Hidden" />
       <Setter Property="Height" Value="16" />
+      <Setter Property="MinWidth" Value="52" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="4,0" />
       <Setter Property="HorizontalAlignment" Value="Right" />
@@ -2038,9 +2046,11 @@
                           Click="ClearSlotPanelInfoButton_Click"
                           Style="{StaticResource SlotClearInfoButtonStyle}" />
                 </StackPanel>
+                <!-- 上のボタンとの隙間を、下の IDE / CLI の枠との隙間（Grid.Row=1 の上マージン）と同じにする。 -->
                 <Border Style="{StaticResource AiElapsedCardChipStyle}"
-                        Margin="0,2,0,0">
-                  <StackPanel Orientation="Horizontal">
+                        Margin="0,4,0,0">
+                  <StackPanel Orientation="Horizontal"
+                              HorizontalAlignment="Center">
                     <TextBlock Style="{StaticResource AiElapsedIconStyle}" />
                     <TextBlock Style="{StaticResource AiElapsedTextStyle}" />
                   </StackPanel>
@@ -2049,7 +2059,7 @@
             </Grid>
 
             <Grid Grid.Row="1"
-                  Margin="0,7,0,0">
+                  Margin="0,4,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="98" />
                 <ColumnDefinition Width="*" />
