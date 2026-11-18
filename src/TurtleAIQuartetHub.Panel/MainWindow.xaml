@@ -300,10 +300,12 @@
       </Style.Triggers>
     </Style>
 
+    <!-- 地と同じ色の枠を重ねると、角丸の部分で地と枠が別々にぼかされて暗いすき間がにじむので、枠は付けない。 -->
     <Style x:Key="LaunchButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButton}">
       <Setter Property="Foreground" Value="#06120C" />
       <Setter Property="Background" Value="{StaticResource AccentBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="FontSize" Value="15" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="MinHeight" Value="34" />
@@ -3404,9 +3406,10 @@
       </StackPanel>
     </Grid>
 
+    <!-- 下の 2 は、ウィンドウの縁（DWM の 1px の枠）を除いた見た目の下の隙間を、上の「すべて閉じる」との隙間とそろえるため。 -->
     <Grid Grid.Row="4"
           x:Name="ApplicationLauncherPanel"
-          Margin="5,5,5,0">
+          Margin="5,5,5,2">
       <Button x:Name="LaunchButton"
               Click="LaunchButton_Click"
               ToolTip="{Binding LaunchButtonToolTip}"

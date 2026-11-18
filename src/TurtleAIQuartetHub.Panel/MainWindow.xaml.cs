@@ -193,6 +193,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             Topmost = true;
+            EnsureStandardWindowFitsContent();
             RememberStandardWindowMetrics();
             UpdateDisplayModeChrome();
             await RefreshSlotsAsync(allowDuringBusy: true);
@@ -4460,6 +4461,10 @@ public partial class MainWindow : Window
                 var targetHeight = _standardWindowHeight > 0
                     ? Math.Max(MinHeight, _standardWindowHeight)
                     : Height;
+                // 中身より低いと下（Launch Quartet の下の隙間）が切れるので、中身の高さは必ず確保する。
+                var contentHeight = GetStandardContentHeight(targetWidth);
+                MinHeight = Math.Max(MinHeight, contentHeight);
+                targetHeight = Math.Max(targetHeight, contentHeight);
                 var targetBounds = GetCenterAnchoredBounds(preModeChangeBounds, targetWidth * scale, targetHeight * scale);
                 ApplyModeTargetBounds(targetBounds);
                 break;
@@ -4536,6 +4541,44 @@ public partial class MainWindow : Window
     // 標準サイズは DPI 非依存の論理サイズ(DIP)で記憶する。物理pxで覚えると、別 DPI の
     // ディスプレイへ移って標準へ戻したとき、その物理pxがそのまま適用されてウィンドウが
     // 巨大化（または縮小）してしまう。現在の物理サイズを現在DPIで割って DIP に直して保持する。
+    // 標準表示の中身（パネル全体）が必要とする高さ（DIP）。
+    private double GetStandardContentHeight(double width)
+    {
+        if (width <= 0 || double.IsNaN(width))
+        {
+            return 0;
+        }
+
+        PanelFrameBorder.Measure(new Size(width, double.PositiveInfinity));
+        return Math.Ceiling(PanelFrameBorder.DesiredSize.Height);
+    }
+
+    // 標準表示のウィンドウが中身より低いと、下の Launch Quartet の下の隙間が切れて詰まって見える
+    // （保存された大きさや DPI の丸めで数 px 足りないことがある）。中身の高さを下限にして、足りなければ伸ばす。
+    private void EnsureStandardWindowFitsContent()
+    {
+        if (!IsStandardMode)
+        {
+            return;
+        }
+
+        var contentHeight = GetStandardContentHeight(ActualWidth > 0 ? ActualWidth : Width);
+        if (contentHeight <= 0)
+        {
+            return;
+        }
+
+        if (MinHeight < contentHeight)
+        {
+            MinHeight = contentHeight;
+        }
+
+        if ((ActualHeight > 0 ? ActualHeight : Height) < contentHeight)
+        {
+            Height = contentHeight;
+        }
+    }
+
     private void RememberStandardWindowMetrics()
     {
         if (!IsStandardMode)
