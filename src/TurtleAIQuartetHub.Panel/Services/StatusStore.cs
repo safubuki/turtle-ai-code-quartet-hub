@@ -15,7 +15,8 @@ public sealed class StatusStore : INotifyPropertyChanged
     private static readonly TimeSpan SlowRefreshLogInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SlowSlotProbeLogInterval = TimeSpan.FromSeconds(5);
     private const int StoredPanelsPerPage = 4;
-    private const int StoredPanelPageCount = 6;
+    // 1 段 4 枚（メインの Quartet と同じ数）で 10 段。保存は番号（Index）ごとなので、段を増やしても既存の控えはそのまま読み込める。
+    private const int StoredPanelPageCount = 10;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -1418,7 +1419,8 @@ public sealed class StatusStore : INotifyPropertyChanged
                     .Select(page => new SavedStoredPanelPageState
                     {
                         Index = page.Index,
-                        CustomHeader = page.CustomHeader
+                        CustomHeader = page.CustomHeader,
+                        HasDivider = page.HasDivider
                     })
                     .ToList()
             };
@@ -1534,6 +1536,7 @@ public sealed class StatusStore : INotifyPropertyChanged
         foreach (var page in StoredPanelPages)
         {
             page.ResetHeader();
+            page.HasDivider = false;
         }
 
         foreach (var state in states)
@@ -1542,8 +1545,27 @@ public sealed class StatusStore : INotifyPropertyChanged
             if (page is not null)
             {
                 page.CustomHeader = state.CustomHeader ?? string.Empty;
+                // 区切り線の無かった頃に名前を付けた段は、その名前の区切り線として引き継ぐ。
+                page.HasDivider = state.HasDivider || page.HasCustomHeader;
             }
         }
+    }
+
+    /// <summary>控え一覧で、段の上の区切り線を引く／消す。消すときは区切り線の名前も消す。</summary>
+    public void SetStoredPanelPageDivider(StoredPanelPage page, bool hasDivider)
+    {
+        if (!StoredPanelPages.Contains(page))
+        {
+            return;
+        }
+
+        page.HasDivider = hasDivider;
+        if (!hasDivider)
+        {
+            page.ResetHeader();
+        }
+
+        SavePanelStates();
     }
 
     /// <summary>控えタブの名前を変更する。空文字なら既定名に戻る。</summary>
@@ -1555,6 +1577,12 @@ public sealed class StatusStore : INotifyPropertyChanged
         }
 
         page.CustomHeader = header ?? string.Empty;
+        // 名前は区切り線に出すので、名前を付けた段には区切り線を引く。
+        if (page.HasCustomHeader)
+        {
+            page.HasDivider = true;
+        }
+
         SavePanelStates();
     }
 

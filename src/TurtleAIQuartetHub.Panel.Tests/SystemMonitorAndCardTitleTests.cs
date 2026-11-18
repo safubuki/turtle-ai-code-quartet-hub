@@ -198,18 +198,33 @@ internal static class SystemMonitorAndCardTitleTests
                 titleTextBox?.ToString() ?? "null");
         }
 
-        // 2b. 縮小表示の控えカードはカードごとの A〜D ボタンを持たず（#4）、選択中はスロット側が配置先に切り替わること
-        var compactStoredTemplate = root.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "CompactStoredPanelTemplate");
-        var compactSlotTemplate = root.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "CompactSlotTemplate");
+        // 2b. 控え Quartet（タブと 4 枚の控えカード）は標準・縮小とも置かず、控えは一覧から選んで
+        //     スロット側の「ここに表示」で配置すること。一覧には A〜D の配置先パッドを置かないこと。
+        var removedStoredQuartetKeys = new[] { "CompactStoredPanelTemplate", "StoredPanelTemplate", "StoredPanelPageTemplate", "CompactStoredPageTemplate" };
+        var removedStoredQuartetNames = new[] { "StoredPanelsExpander", "CompactStoredPanelsArea", "StoredOverviewTargetPad", "CompactStoredPanelsToggleButton" };
+        var leftoverStoredQuartet = root.Descendants()
+            .Where(e => removedStoredQuartetKeys.Contains((string?)e.Attribute(x + "Key"))
+                || removedStoredQuartetNames.Contains((string?)e.Attribute(x + "Name")))
+            .Select(e => (string?)e.Attribute(x + "Key") ?? (string?)e.Attribute(x + "Name"))
+            .ToList();
         Check(
             failures,
-            "縮小表示の控えカードに A〜D ボタンが無く、クリックで選ぶ作りになっていること",
-            compactStoredTemplate is not null
-            && !compactStoredTemplate.Descendants().Any(e => (string?)e.Attribute("Click") == "ShowStoredPanelButton_Click")
-            && (string?)compactStoredTemplate.Elements().First().Attribute("PreviewMouseLeftButtonDown") == "CompactStoredCard_PreviewMouseLeftButtonDown",
-            compactStoredTemplate?.ToString() ?? "null");
+            "控え Quartet（タブ・控えカード）と一覧の A〜D パッドが標準・縮小とも無いこと",
+            leftoverStoredQuartet.Count == 0,
+            string.Join(", ", leftoverStoredQuartet));
+        var compactSlotTemplate = root.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "CompactSlotTemplate");
+        var standardSlotTemplate = root.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "SlotCardTemplate");
+        Check(
+            failures,
+            "標準表示のスロットカードも控えの選択中に「ここに表示」へ切り替わり、クリックで配置できること",
+            standardSlotTemplate is not null
+            && standardSlotTemplate.Descendants().Any(e => e.Name.LocalName == "Trigger"
+                && (string?)e.Attribute("Property") == "local:SlotAssignTarget.IsArmed")
+            && standardSlotTemplate.Descendants().Any(e => (string?)e.Attribute(x + "Name") == "SlotAssignOverlay"
+                && (string?)e.Attribute("MouseLeftButtonUp") == "SlotAssignOverlay_MouseLeftButtonUp"),
+            "SlotCardTemplate");
         Check(
             failures,
             "縮小表示のスロットが控えの選択中に「ここに表示」へ切り替わるトリガーを持つこと",
@@ -218,13 +233,21 @@ internal static class SystemMonitorAndCardTitleTests
                 && (string?)e.Attribute("Property") == "local:SlotAssignTarget.IsArmed")
             && compactSlotTemplate.Descendants().Any(e => (string?)e.Attribute(x + "Name") == "CompactSlotAssignPill"),
             "CompactSlotTemplate");
-        var compactOverviewButton = root.Descendants()
-            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "CompactStoredOverviewButton");
+        // 控え一覧の開閉ボタンは標準・縮小で共通の 1 つ。AI アプリ（左）と同じ行の右端（Grid.Column=1）に置く。
+        var overviewToggleButton = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "StoredOverviewToggleButton");
+        var auxiliaryRow = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "AuxiliaryApplicationsRow");
         Check(
             failures,
-            "縮小表示にも控え一覧ボタンがあり、標準表示と同じ一覧を開くこと",
-            compactOverviewButton is not null && (string?)compactOverviewButton.Attribute("Click") == "StoredOverviewButton_Click",
-            compactOverviewButton?.ToString() ?? "null");
+            "控え一覧の開閉ボタンが AI アプリの右側にあり、一覧を開くこと",
+            overviewToggleButton is not null
+            && (string?)overviewToggleButton.Attribute("Click") == "StoredOverviewButton_Click"
+            && (string?)overviewToggleButton.Attribute("Grid.Column") == "1"
+            && overviewToggleButton.Parent is not null
+            && ReferenceEquals(overviewToggleButton.Parent, auxiliaryRow?.Parent)
+            && (string?)auxiliaryRow?.Attribute("HorizontalAlignment") == "Left",
+            overviewToggleButton?.ToString() ?? "null");
 
         // 3. TitleBarButtonsPanel で SystemMonitorButton → DownloadsFolderButton → PullRequestInboxButton → SettingsButton の順に並ぶこと
         var titleBarButtonsPanel = root.Descendants()

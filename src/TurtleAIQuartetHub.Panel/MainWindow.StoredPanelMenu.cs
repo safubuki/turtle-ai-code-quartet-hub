@@ -79,7 +79,7 @@ public partial class MainWindow
             "名前を編集",
             CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
             hasContent,
-            () => BeginStoredPanelTitleEdit(storedPanel, card)));
+            () => ShowStoredRenameDialog(storedPanel)));
 
         menu.Items.Add(new Separator());
         var openFolderItem = CreateStoredMenuItem(
@@ -102,6 +102,12 @@ public partial class MainWindow
         gitHubItem.ToolTip = storedPanel.GitHubToolTip;
         menu.Items.Add(gitHubItem);
 
+        if (_statusStore.StoredPanelPages.FirstOrDefault(page => page.Slots.Contains(storedPanel)) is { } row)
+        {
+            menu.Items.Add(new Separator());
+            AddStoredDividerMenuItems(menu, row, fromDivider: false);
+        }
+
         menu.Items.Add(new Separator());
         var clearItem = CreateStoredMenuItem(
             "控えをクリア...",
@@ -112,6 +118,95 @@ public partial class MainWindow
         clearItem.ToolTip = "この控えの登録内容を空きに戻します（フォルダは削除されません）。";
         menu.Items.Add(clearItem);
         return menu;
+    }
+
+    // 控え一覧の区切り線の右クリック。名前の変更・削除と、区切り線そのものの削除。
+    private void StoredOverviewDivider_PreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: StoredPanelPage page } divider)
+        {
+            return;
+        }
+
+        // 名前の編集中は、入力欄の切り取り・貼り付けメニューを優先する。
+        if (FindAncestorOrSelf<TextBox>(e.OriginalSource as DependencyObject) is { IsReadOnly: false })
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (_isBusy)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu();
+        if (TryFindResource("PanelContextMenuStyle") is Style style)
+        {
+            menu.Style = style;
+        }
+
+        AddStoredDividerMenuItems(menu, page, fromDivider: true);
+        menu.PlacementTarget = divider;
+        menu.Placement = PlacementMode.MousePoint;
+        menu.IsOpen = true;
+    }
+
+    // 区切り線は「段（4 枚の行）の上」に引く。カードからは自分の行の上、区切り線からはその線を操作する。
+    private void AddStoredDividerMenuItems(ContextMenu menu, StoredPanelPage row, bool fromDivider)
+    {
+        if (!row.HasDivider)
+        {
+            menu.Items.Add(CreateStoredMenuItem(
+                "この行の上に区切り線を引く",
+                CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
+                isEnabled: true,
+                () => SetStoredDivider(row, true)));
+            menu.Items.Add(CreateStoredMenuItem(
+                "この行の上に名前付きの区切り線を引く...",
+                CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
+                isEnabled: true,
+                () => BeginStoredPanelPageHeaderEdit(row)));
+            return;
+        }
+
+        menu.Items.Add(CreateStoredMenuItem(
+            row.HasCustomHeader ? "区切り線の名前を変更..." : "区切り線に名前を付ける...",
+            CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
+            isEnabled: true,
+            () => BeginStoredPanelPageHeaderEdit(row)));
+        if (fromDivider && row.HasCustomHeader)
+        {
+            menu.Items.Add(CreateStoredMenuItem(
+                "名前だけ消す",
+                CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
+                isEnabled: true,
+                () =>
+                {
+                    _statusStore.ResetStoredPanelPageHeader(row);
+                    _statusStore.Message = "区切り線の名前を消しました（線は残ります）。";
+                }));
+        }
+
+        var removeItem = CreateStoredMenuItem(
+            fromDivider ? "区切り線を消す" : "この行の上の区切り線を消す",
+            CreateStoredMenuGlyphIcon("", StoredMenuDangerBrush),
+            isEnabled: true,
+            () => SetStoredDivider(row, false));
+        removeItem.Foreground = StoredMenuDangerBrush;
+        removeItem.ToolTip = "区切り線と、その名前を消します（控えカードはそのまま残ります）。";
+        menu.Items.Add(removeItem);
+    }
+
+    private void SetStoredDivider(StoredPanelPage row, bool hasDivider)
+    {
+        var name = row.CustomHeader;
+        _statusStore.SetStoredPanelPageDivider(row, hasDivider);
+        _statusStore.Message = hasDivider
+            ? "区切り線を引きました。ダブルクリックで名前を付けられます。"
+            : string.IsNullOrEmpty(name) ? "区切り線を消しました。" : $"区切り線「{name}」を消しました。";
+        // 一覧の高さが変わるので、画面の下にはみ出さないよう位置を合わせ直す。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RepositionStoredOverview);
     }
 
     private MenuItem CreateStoredMenuItem(string header, object icon, bool isEnabled, Action onClick)
@@ -170,48 +265,6 @@ public partial class MainWindow
             Stretch = Stretch.Uniform,
             Fill = StoredMenuIconBrush
         };
-    }
-
-    // 標準・縮小のカードはそのタイトル欄で編集を始める。タイトル欄の無い控え一覧のタイルからは、
-    // 下の控えパネルを該当タブへ切り替えて、そのカードのタイトル欄で編集する。
-    private void BeginStoredPanelTitleEdit(StoredPanelSlot storedPanel, FrameworkElement card)
-    {
-        var textBox = FindStoredPanelTitleTextBox(card, storedPanel);
-        if (textBox is null)
-        {
-            if (_statusStore.StoredPanelPages.FirstOrDefault(page => page.Slots.Contains(storedPanel)) is { } page)
-            {
-                _statusStore.SelectStoredPanelPage(page);
-            }
-
-            UpdateLayout();
-            textBox = FindStoredPanelTitleTextBox(this, storedPanel);
-        }
-
-        if (textBox is null)
-        {
-            _statusStore.Message = $"{storedPanel.Label} の名前は、控え Quartet を開いてカードのタイトルをダブルクリックすると編集できます。";
-            return;
-        }
-
-        // メニューが閉じてフォーカスが戻った後に編集を始めないと、すぐ確定されてしまう。
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
-        {
-            if (textBox.IsVisible && ReferenceEquals(textBox.DataContext, storedPanel))
-            {
-                BeginInlineTitleTextBoxEdit(textBox);
-            }
-        });
-    }
-
-    private TextBox? FindStoredPanelTitleTextBox(DependencyObject root, StoredPanelSlot storedPanel)
-    {
-        var inlineStyle = TryFindResource("InlineTitleTextBox") as Style;
-        return EnumerateVisualDescendants(root)
-            .OfType<TextBox>()
-            .FirstOrDefault(textBox => textBox.IsVisible
-                && ReferenceEquals(textBox.DataContext, storedPanel)
-                && ReferenceEquals(textBox.Style, inlineStyle));
     }
 
     private void OpenStoredPanelFolder(StoredPanelSlot storedPanel)

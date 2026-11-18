@@ -418,6 +418,7 @@ internal static class AiDoneFireflyTests
         {
             "Click", "MouseLeftButtonUp", "PreviewMouseLeftButtonDown", "PreviewMouseMove",
             "DragEnter", "DragLeave", "DragOver", "Drop", "PreviewMouseRightButtonUp",
+            "PreviewDragEnter", "PreviewDragLeave", "PreviewDragOver", "PreviewDrop", "MouseLeftButtonDown",
             "KeyDown", "PreviewKeyDown", "LostKeyboardFocus", "MouseDoubleClick", "PreviewMouseDown",
             "GotKeyboardFocus", "TextChanged", "Checked", "Unchecked", "SelectionChanged"
         };

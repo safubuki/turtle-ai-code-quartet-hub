@@ -15,6 +15,9 @@ public sealed class SavedStoredPanelPageState
 
     /// <summary>ユーザーが付けたタブ名。既定名のままなら空文字で保存される。</summary>
     public string CustomHeader { get; set; } = string.Empty;
+
+    /// <summary>控え一覧で、この段の上に区切り線を引くか。</summary>
+    public bool HasDivider { get; set; }
 }
 
 public sealed class SavedStoredPanelState

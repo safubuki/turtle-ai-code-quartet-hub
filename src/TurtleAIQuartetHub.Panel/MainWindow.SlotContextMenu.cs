@@ -25,7 +25,7 @@ public partial class MainWindow
         }
 
         e.Handled = true;
-        if (_isBusy || IsCompactStoredAssignArmed)
+        if (_isBusy || IsStoredAssignArmed)
         {
             return;
         }

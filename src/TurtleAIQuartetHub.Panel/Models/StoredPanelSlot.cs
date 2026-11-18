@@ -207,6 +207,7 @@ public sealed class StoredPanelSlot : INotifyPropertyChanged
 public sealed class StoredPanelPage : INotifyPropertyChanged
 {
     private bool _isSelected;
+    private bool _hasDivider;
     private string _customHeader = string.Empty;
 
     public StoredPanelPage(int index, IEnumerable<StoredPanelSlot> slots)
@@ -256,10 +257,33 @@ public sealed class StoredPanelPage : INotifyPropertyChanged
 
     public string Header => HasCustomHeader ? _customHeader : DefaultHeader;
 
+    /// <summary>控え一覧でのこの行（4 枚）の番号の範囲。例: 「5〜8」。</summary>
+    public string RowRangeText => Slots.Count == 0
+        ? string.Empty
+        : $"{Slots[0].Index}〜{Slots[^1].Index}";
+
     /// <summary>この控えの名前を既定に戻す。</summary>
     public void ResetHeader()
     {
         CustomHeader = string.Empty;
+    }
+
+    /// <summary>
+    /// 控え一覧で、この段（4 枚の行）の上に区切り線を引くか。区切り線には CustomHeader を名前として出す（空なら線だけ）。
+    /// </summary>
+    public bool HasDivider
+    {
+        get => _hasDivider;
+        set
+        {
+            if (_hasDivider == value)
+            {
+                return;
+            }
+
+            _hasDivider = value;
+            OnPropertyChanged();
+        }
     }
 
     public bool IsSelected

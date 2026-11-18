@@ -92,7 +92,8 @@
                            FontWeight="{TemplateBinding FontWeight}"
                            Foreground="{TemplateBinding Foreground}"
                            TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center"
+                           TextWrapping="{TemplateBinding TextWrapping}"
+                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                            Margin="{TemplateBinding Padding}" />
                 <ScrollViewer x:Name="PART_ContentHost"
                               Margin="{TemplateBinding Padding}" />
@@ -1532,25 +1533,6 @@
       </Style.Triggers>
     </Style>
 
-    <Style x:Key="StoredCardBorderStyle" TargetType="Border">
-      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
-      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Height" Value="118" />
-      <Setter Property="MinHeight" Value="118" />
-      <Setter Property="MaxHeight" Value="118" />
-      <Setter Property="Padding" Value="6" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="VerticalAlignment" Value="Top" />
-      <Style.Triggers>
-        <Trigger Property="IsMouseOver" Value="True">
-          <Setter Property="Background" Value="#202A25" />
-          <Setter Property="BorderBrush" Value="#3E5148" />
-        </Trigger>
-      </Style.Triggers>
-    </Style>
-
     <Style x:Key="SystemMonitorFolderExpanderStyle" TargetType="Expander">
       <Setter Property="IsExpanded" Value="False" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -1613,89 +1595,6 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
-    </Style>
-
-    <Style x:Key="StoredPanelsExpanderStyle" TargetType="Expander">
-      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-      <Setter Property="FontSize" Value="12" />
-    </Style>
-
-    <Style x:Key="StoredPageTabButtonStyle" TargetType="Button">
-      <Setter Property="Foreground" Value="#B9C5BE" />
-      <Setter Property="Background" Value="#17201B" />
-      <Setter Property="BorderBrush" Value="#4A6658" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Padding" Value="8,0,8,0" />
-      <Setter Property="Margin" Value="0,0,5,4" />
-      <Setter Property="MinWidth" Value="64" />
-      <!-- 名前を変えたタブが長くなっても、6枚が横一列に収まる範囲に抑える。 -->
-      <Setter Property="MaxWidth" Value="112" />
-      <Setter Property="Height" Value="22" />
-      <Setter Property="MinHeight" Value="22" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="AllowDrop" Value="True" />
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-      <Setter Property="SnapsToDevicePixels" Value="True" />
-      <Setter Property="UseLayoutRounding" Value="True" />
-      <EventSetter Event="DragEnter" Handler="StoredPanelTab_DragEnter" />
-      <EventSetter Event="DragLeave" Handler="StoredPanelTab_DragLeave" />
-      <EventSetter Event="DragOver" Handler="StoredPanelTab_DragOver" />
-      <EventSetter Event="Drop" Handler="StoredPanelTab_Drop" />
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Grid x:Name="TabButtonRoot"
-                  Height="{TemplateBinding Height}"
-                  MinWidth="{TemplateBinding MinWidth}"
-                  ClipToBounds="False"
-                  SnapsToDevicePixels="True"
-                  UseLayoutRounding="True">
-              <Border x:Name="TabButtonBorder"
-                      Background="{TemplateBinding Background}"
-                      BorderBrush="{TemplateBinding BorderBrush}"
-                      BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="6"
-                      SnapsToDevicePixels="True"
-                      UseLayoutRounding="True" />
-              <!-- 長い名前は「…」で省略する（全文は ToolTip 側で確認できる）。 -->
-              <TextBlock Text="{TemplateBinding Content}"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center"
-                         Margin="{TemplateBinding Padding}"
-                         TextTrimming="CharacterEllipsis" />
-            </Grid>
-            <ControlTemplate.Triggers>
-              <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                <Setter TargetName="TabButtonBorder" Property="Background" Value="#223027" />
-                <Setter TargetName="TabButtonBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-              </DataTrigger>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="TabButtonBorder" Property="Background" Value="#243029" />
-                <Setter TargetName="TabButtonBorder" Property="BorderBrush" Value="#5E7568" />
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-              </Trigger>
-              <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter TargetName="TabButtonBorder" Property="BorderBrush" Value="#8AFCB7" />
-              </Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-
-    <Style x:Key="CompactStoredTabStyle" TargetType="Button" BasedOn="{StaticResource StoredPageTabButtonStyle}">
-      <Setter Property="MinWidth" Value="0" />
-      <!-- 6 ページ分のタブ・整列・一覧が縮小表示の最小幅に収まる幅。 -->
-      <Setter Property="Width" Value="50" />
-      <Setter Property="MaxWidth" Value="50" />
-      <Setter Property="Height" Value="21" />
-      <Setter Property="MinHeight" Value="21" />
-      <Setter Property="Margin" Value="0,0,3,0" />
-      <Setter Property="Padding" Value="3,0" />
-      <Setter Property="FontSize" Value="11" />
     </Style>
 
     <Style x:Key="LedIndicatorStyle" TargetType="Ellipse">
@@ -1969,10 +1868,10 @@
               PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="SlotCard_PreviewMouseMove"
               AllowDrop="True"
-              DragEnter="SlotCard_DragEnter"
-              DragLeave="SlotCard_DragLeave"
-              DragOver="SlotCard_DragOver"
-              Drop="SlotCard_Drop">
+              PreviewDragEnter="SlotCard_DragEnter"
+              PreviewDragLeave="SlotCard_DragLeave"
+              PreviewDragOver="SlotCard_DragOver"
+              PreviewDrop="SlotCard_Drop">
         <Grid>
           <Border CornerRadius="9"
                   Style="{StaticResource AiCardHaloStyle}" />
@@ -2288,8 +2187,68 @@
                   Style="{StaticResource AiCardPulseStyle}" />
           <local:AiCardOrbitGlow CornerRadius="8"
                                  Activity="{Binding AiActivity}" />
+          <!-- 控え一覧でカードを選んでいる間だけ、カード全体を「ここに表示」の配置先にする（縮小表示と同じ操作）。
+               中のボタンは押せなくなり、クリックでこのスロットへ配置する。ドロップはカード本体が受ける。 -->
+          <Border x:Name="SlotAssignOverlay"
+                  Visibility="Collapsed"
+                  CornerRadius="8"
+                  Background="#E6111915"
+                  BorderBrush="{StaticResource AccentBrush}"
+                  BorderThickness="1.5"
+                  Cursor="Hand"
+                  Tag="{Binding}"
+                  ToolTip="選んだ控えをこのスロットに表示します（Esc で取消）"
+                  MouseLeftButtonUp="SlotAssignOverlay_MouseLeftButtonUp">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Margin="10,0">
+              <Border x:Name="SlotAssignPill"
+                      HorizontalAlignment="Center"
+                      Padding="16,5"
+                      CornerRadius="15"
+                      Background="#223027"
+                      BorderBrush="{StaticResource AccentBrush}"
+                      BorderThickness="1">
+                <TextBlock Foreground="{StaticResource AccentBrush}"
+                           FontSize="14"
+                           FontWeight="SemiBold">
+                  <Run Text="▶ " /><Run Text="{Binding Name, Mode=OneWay}" /><Run Text=" に表示" />
+                </TextBlock>
+              </Border>
+              <TextBlock x:Name="SlotAssignReplaceNote"
+                         Margin="0,8,0,0"
+                         HorizontalAlignment="Center"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         FontSize="11.5"
+                         TextTrimming="CharacterEllipsis">
+                <Run Text="いまの「" /><Run Text="{Binding DisplayTitle, Mode=OneWay}" /><Run Text="」は控えへ移ります" />
+              </TextBlock>
+              <TextBlock x:Name="SlotAssignEmptyNote"
+                         Visibility="Collapsed"
+                         Margin="0,8,0,0"
+                         HorizontalAlignment="Center"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         FontSize="11.5"
+                         Text="空きスロット" />
+            </StackPanel>
+          </Border>
         </Grid>
       </Border>
+      <DataTemplate.Triggers>
+        <!-- local:SlotAssignTarget.IsArmed は StandardSlotsGrid から継承する。 -->
+        <Trigger SourceName="SlotCardFocusFrame" Property="local:SlotAssignTarget.IsArmed" Value="True">
+          <Setter TargetName="SlotAssignOverlay" Property="Visibility" Value="Visible" />
+        </Trigger>
+        <Trigger SourceName="SlotAssignOverlay" Property="IsMouseOver" Value="True">
+          <Setter TargetName="SlotAssignOverlay" Property="Background" Value="#EB1A2C21" />
+          <Setter TargetName="SlotAssignOverlay" Property="BorderThickness" Value="2" />
+          <Setter TargetName="SlotAssignPill" Property="Background" Value="#2C4A37" />
+        </Trigger>
+        <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
+          <Setter TargetName="SlotAssignReplaceNote" Property="Visibility" Value="Collapsed" />
+          <Setter TargetName="SlotAssignEmptyNote" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
     </DataTemplate>
 
     <DataTemplate x:Key="MicroSlotTemplate" DataType="{x:Type models:WindowSlot}">
@@ -2298,10 +2257,10 @@
               PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="SlotCard_PreviewMouseMove"
               AllowDrop="True"
-              DragEnter="SlotCard_DragEnter"
-              DragLeave="SlotCard_DragLeave"
-              DragOver="SlotCard_DragOver"
-              Drop="SlotCard_Drop"
+              PreviewDragEnter="SlotCard_DragEnter"
+              PreviewDragLeave="SlotCard_DragLeave"
+              PreviewDragOver="SlotCard_DragOver"
+              PreviewDrop="SlotCard_Drop"
               Style="{StaticResource MicroSlotButtonStyle}">
         <!-- 極小表示は経過時間を出す幅が無いので、ツールチップに AI の状態（作業中は経過時間つき）を足す。 -->
         <Button.ToolTip>
@@ -2349,10 +2308,10 @@
               PreviewMouseLeftButtonDown="SlotCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="SlotCard_PreviewMouseMove"
               AllowDrop="True"
-              DragEnter="SlotCard_DragEnter"
-              DragLeave="SlotCard_DragLeave"
-              DragOver="SlotCard_DragOver"
-              Drop="SlotCard_Drop"
+              PreviewDragEnter="SlotCard_DragEnter"
+              PreviewDragLeave="SlotCard_DragLeave"
+              PreviewDragOver="SlotCard_DragOver"
+              PreviewDrop="SlotCard_Drop"
               Style="{StaticResource CompactSlotButtonStyle}">
         <Grid VerticalAlignment="Center">
           <Grid.ColumnDefinitions>
@@ -2568,276 +2527,6 @@
       </Style.Resources>
     </Style>
 
-    <!-- 縮小表示の控えカード。A〜D ボタンは持たず、クリックで選んでから上のスロット A〜D を押して配置する
-         （選択中は IsOverviewSelected。標準表示の控え一覧と同じ選択を使う）。 -->
-    <DataTemplate x:Key="CompactStoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
-      <Border CornerRadius="6"
-              Padding="5,4"
-              Cursor="Hand"
-              Tag="{Binding}"
-              PreviewMouseLeftButtonDown="CompactStoredCard_PreviewMouseLeftButtonDown"
-              PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
-              PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
-              AllowDrop="True"
-              DragEnter="StoredPanelCard_DragEnter"
-              DragLeave="StoredPanelCard_DragLeave"
-              DragOver="StoredPanelCard_DragOver"
-              Drop="StoredPanelCard_Drop">
-        <Border.Style>
-          <Style TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Style.Triggers>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="BorderBrush" Value="#3D4E45" />
-              </Trigger>
-              <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
-                <Setter Property="Background" Value="#1A2C21" />
-                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-              </DataTrigger>
-            </Style.Triggers>
-          </Style>
-        </Border.Style>
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="22" />
-            <RowDefinition Height="18" />
-          </Grid.RowDefinitions>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <Grid Grid.Column="0" VerticalAlignment="Center">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Border Width="20" Height="18" CornerRadius="4" Background="#223027"
-                    BorderBrush="#335A43" BorderThickness="1" Margin="0,0,5,0">
-              <TextBlock Text="{Binding Label}" Foreground="{StaticResource AccentBrush}"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                         FontWeight="SemiBold" FontSize="12" />
-            </Border>
-            <TextBox Grid.Column="1" Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
-                     Style="{StaticResource InlineTitleTextBox}"
-                     FontSize="12" VerticalAlignment="Center"
-                     MinHeight="0" Height="21" Padding="0" />
-          </Grid>
-          <StackPanel Grid.Column="1" Orientation="Horizontal">
-            <Button Content="&#xED25;" Tag="{Binding}"
-                    Click="RegisterStoredPanelFolderButton_Click"
-                    Style="{StaticResource StoredRegisterFolderButton}"
-                    Width="20" Height="20" MinWidth="0" MinHeight="0" Padding="0"
-                    ToolTip="フォルダを控えに登録" />
-            <Button Content="&#xE75C;" Tag="{Binding}"
-                    Click="DeleteStoredPanelButton_Click"
-                    Style="{StaticResource StoredDeleteButton}"
-                    Width="20" Height="20" MinWidth="0" MinHeight="0" Padding="0"
-                    IsEnabled="{Binding HasContent}" ToolTip="控えをクリア（フォルダは削除されません）" />
-          </StackPanel>
-          <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ShortPath}"
-                     ToolTip="{Binding WorkspacePath}" Foreground="{StaticResource MutedTextBrush}"
-                     FontSize="11.5" TextTrimming="CharacterEllipsis"
-                     VerticalAlignment="Center" />
-        </Grid>
-      </Border>
-    </DataTemplate>
-
-    <DataTemplate x:Key="CompactStoredPageTemplate" DataType="{x:Type models:StoredPanelPage}">
-      <ItemsControl ItemsSource="{Binding Slots}" ItemTemplate="{StaticResource CompactStoredPanelTemplate}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemContainerStyle>
-          <Style TargetType="ContentPresenter">
-            <Setter Property="Margin" Value="2" />
-          </Style>
-        </ItemsControl.ItemContainerStyle>
-      </ItemsControl>
-    </DataTemplate>
-
-    <DataTemplate x:Key="StoredPanelTemplate" DataType="{x:Type models:StoredPanelSlot}">
-      <Border Style="{StaticResource StoredCardBorderStyle}"
-              Tag="{Binding}"
-              PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
-              PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
-              PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
-              AllowDrop="True"
-              DragEnter="StoredPanelCard_DragEnter"
-              DragLeave="StoredPanelCard_DragLeave"
-              DragOver="StoredPanelCard_DragOver"
-              Drop="StoredPanelCard_Drop">
-        <Grid Height="104">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="24" />
-            <RowDefinition Height="19" />
-            <RowDefinition Height="61" />
-          </Grid.RowDefinitions>
-
-          <TextBox x:Name="StoredPanelTitle"
-                   Text="{Binding PanelTitle, UpdateSourceTrigger=Explicit}"
-                   Style="{StaticResource InlineTitleTextBox}"
-                   FontSize="14.5"
-                   VerticalAlignment="Center" />
-
-          <Grid Grid.Row="1" Margin="0,3,0,0">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="20" />
-              <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="{Binding Label}"
-                       Margin="0,0,6,0"
-                       TextAlignment="Right"
-                       Typography.NumeralAlignment="Tabular"
-                       Foreground="{StaticResource AccentBrush}"
-                       FontSize="12" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="1" Text="{Binding ShortPath}"
-                       ToolTip="{Binding WorkspacePath}"
-                       Foreground="{StaticResource MutedTextBrush}"
-                       FontSize="12" TextTrimming="CharacterEllipsis" />
-          </Grid>
-
-          <Grid Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Top">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="30" />
-            </Grid.ColumnDefinitions>
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-              </Grid.RowDefinitions>
-
-              <Button Grid.Row="0" Grid.Column="0" Content="A" Tag="{Binding}"
-                      CommandParameter="A" Click="ShowStoredPanelButton_Click"
-                      Style="{StaticResource StoredAssignButton}"
-                      HorizontalAlignment="Stretch" Margin="0,0,4,4"
-                      FontSize="12.5"
-                      IsEnabled="{Binding HasContent}" />
-              <Button Grid.Row="0" Grid.Column="1" Content="B" Tag="{Binding}"
-                      CommandParameter="B" Click="ShowStoredPanelButton_Click"
-                      Style="{StaticResource StoredAssignButton}"
-                      HorizontalAlignment="Stretch" Margin="4,0,0,4"
-                      FontSize="12.5"
-                      IsEnabled="{Binding HasContent}" />
-              <Button Grid.Row="1" Grid.Column="0" Content="C" Tag="{Binding}"
-                      CommandParameter="C" Click="ShowStoredPanelButton_Click"
-                      Style="{StaticResource StoredAssignButton}"
-                      HorizontalAlignment="Stretch" Margin="0,4,4,0"
-                      FontSize="12.5"
-                      IsEnabled="{Binding HasContent}" />
-              <Button Grid.Row="1" Grid.Column="1" Content="D" Tag="{Binding}"
-                      CommandParameter="D" Click="ShowStoredPanelButton_Click"
-                      Style="{StaticResource StoredAssignButton}"
-                      HorizontalAlignment="Stretch" Margin="4,4,0,0"
-                      FontSize="12.5"
-                      IsEnabled="{Binding HasContent}" />
-            </Grid>
-
-            <Button Grid.Column="1" Content="&#xED25;" Tag="{Binding}"
-                    Click="RegisterStoredPanelFolderButton_Click"
-                    Style="{StaticResource StoredRegisterFolderButton}"
-                    AutomationProperties.Name="フォルダを選んでこの控えに登録"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom" />
-            <Button Grid.Column="1" Content="&#xE75C;" Tag="{Binding}"
-                    Click="DeleteStoredPanelButton_Click"
-                    Style="{StaticResource StoredDeleteButton}"
-                    AutomationProperties.Name="この控えをクリア"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    IsEnabled="{Binding HasContent}" />
-          </Grid>
-        </Grid>
-      </Border>
-    </DataTemplate>
-
-    <DataTemplate x:Key="StoredPanelPageTemplate" DataType="{x:Type models:StoredPanelPage}">
-      <ItemsControl ItemsSource="{Binding Slots}"
-                    ItemTemplate="{StaticResource StoredPanelTemplate}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <UniformGrid Columns="4" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemContainerStyle>
-          <Style TargetType="ContentPresenter">
-            <Setter Property="Margin" Value="0,0,4,0" />
-          </Style>
-        </ItemsControl.ItemContainerStyle>
-      </ItemsControl>
-    </DataTemplate>
-
-    <!-- 控えタブのツールチップ。名前に加えて、そのタブに入っている控えカードを並べる。 -->
-    <DataTemplate x:Key="StoredPageToolTipTemplate" DataType="{x:Type models:StoredPanelPage}">
-      <StackPanel MaxWidth="360">
-        <TextBlock Text="{Binding Header}"
-                   Foreground="{StaticResource AccentBrush}"
-                   FontSize="14"
-                   FontWeight="SemiBold" />
-        <ItemsControl ItemsSource="{Binding Slots}" Margin="0,6,0,0">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate DataType="{x:Type models:StoredPanelSlot}">
-              <DockPanel x:Name="StoredCardLine" Margin="0,1.5,0,1.5">
-                <Ellipse Width="6"
-                         Height="6"
-                         Margin="1,0,8,0"
-                         VerticalAlignment="Center"
-                         Fill="{StaticResource AccentBrush}"
-                         DockPanel.Dock="Left" />
-                <TextBlock Text="{Binding DisplayTitle}"
-                           FontSize="13.5"
-                           TextTrimming="CharacterEllipsis" />
-              </DockPanel>
-              <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding HasContent}" Value="False">
-                  <Setter TargetName="StoredCardLine" Property="Visibility" Value="Collapsed" />
-                </DataTrigger>
-              </DataTemplate.Triggers>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock Text="クリックで切り替え、ダブルクリックで名前を変更"
-                   Margin="0,7,0,0"
-                   Foreground="{StaticResource MutedTextBrush}"
-                   FontSize="11.5" />
-      </StackPanel>
-    </DataTemplate>
-
-    <!-- 控えタブ用の角丸ツールチップ。既定の四角いシステム表示ではなく、パネルの配色に合わせる。
-         影のぶん外側に余白を取り、ポップアップ自体は透明にして角丸を活かす。 -->
-    <Style x:Key="StoredPageToolTipStyle" TargetType="ToolTip">
-      <Setter Property="OverridesDefaultStyle" Value="True" />
-      <Setter Property="HasDropShadow" Value="False" />
-      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-      <Setter Property="FontFamily" Value="Segoe UI" />
-      <Setter Property="ContentTemplate" Value="{StaticResource StoredPageToolTipTemplate}" />
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="ToolTip">
-            <Border Margin="8"
-                    Padding="13,9,15,10"
-                    CornerRadius="12"
-                    Background="#1D2622"
-                    BorderBrush="#4F8466"
-                    BorderThickness="2">
-              <Border.Effect>
-                <DropShadowEffect Color="#000000" BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.45" />
-              </Border.Effect>
-              <ContentPresenter />
-            </Border>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-
-    <!-- 控え一覧のタイル。配置ボタンは持たず、選択とドラッグ（タイル同士の並べ替えも）を受け持つ。
-         配置先は一覧上部の A〜D パッド、またはメインのスロットカードへのドロップで決める。
-         6 ページ分がスクロールなしで収まるよう、横長・低めにして文字を大きく取る。
-         一覧がパネルより低いときは、余った高さを 6 段へ均等に配って下端までぴったり埋める。 -->
     <!-- 控え一覧のスクロールバー。Windows 標準の白い太いバーではなく、パネル配色の細い角丸にする。
          矢印ボタンは置かず、つまみのドラッグ・溝のクリック・ホイールで動かす。 -->
     <Style x:Key="SlimScrollBarStyle" TargetType="ScrollBar">
@@ -2906,10 +2595,13 @@
       </Setter>
     </Style>
 
+    <!-- 控え一覧のタイル。配置ボタンは持たず、選択とドラッグ（タイル同士の並べ替えも）を受け持つ。
+         カードを選ぶと本体のスロットが「ここに表示」に変わり、押したスロットへ配置する（スロットへのドロップでも可）。
+         数を多く並べられるよう低めにし、名前は最大 2 行まで折り返す。名前はダブルクリックで編集できる。 -->
     <DataTemplate x:Key="StoredOverviewTileTemplate" DataType="{x:Type models:StoredPanelSlot}">
       <Border x:Name="TileBorder"
-              MinHeight="62"
-              Padding="7,4,7,4"
+              MinHeight="50"
+              Padding="6,3,7,3"
               CornerRadius="7"
               Background="{StaticResource SurfaceAltBrush}"
               BorderBrush="{StaticResource BorderBrushSoft}"
@@ -2919,12 +2611,13 @@
               PreviewMouseLeftButtonDown="StoredPanelCard_PreviewMouseLeftButtonDown"
               PreviewMouseMove="StoredPanelCard_PreviewMouseMove"
               PreviewMouseRightButtonUp="StoredPanelCard_PreviewMouseRightButtonUp"
+              MouseLeftButtonDown="StoredOverviewTile_MouseLeftButtonDown"
               MouseLeftButtonUp="StoredOverviewTile_MouseLeftButtonUp"
               AllowDrop="True"
-              DragEnter="StoredOverviewTile_DragEnter"
-              DragLeave="StoredOverviewTile_DragLeave"
-              DragOver="StoredOverviewTile_DragOver"
-              Drop="StoredOverviewTile_Drop">
+              PreviewDragEnter="StoredOverviewTile_DragEnter"
+              PreviewDragLeave="StoredOverviewTile_DragLeave"
+              PreviewDragOver="StoredOverviewTile_DragOver"
+              PreviewDrop="StoredOverviewTile_Drop">
         <Border.ToolTip>
           <TextBlock>
             <Run Text="{Binding DisplayTitle, Mode=OneWay}" FontWeight="SemiBold" />
@@ -2939,39 +2632,52 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
+          <!-- 名前は最大 2 行で折り返す。変更はダブルクリック（または右クリックの「名前を編集」）で本体パネルの入力ダイアログから行う
+               （一覧は別ウィンドウのポップアップなので、ここに入力欄を置くとキー入力や IME の位置が不安定になる）。 -->
           <TextBlock x:Name="TileTitleText"
                      Text="{Binding DisplayTitle}"
                      Foreground="{StaticResource TextBrush}"
                      FontSize="12.5"
                      FontWeight="SemiBold"
-                     LineHeight="16"
+                     LineHeight="15"
                      LineStackingStrategy="BlockLineHeight"
-                     MaxHeight="32"
+                     MaxHeight="30"
                      TextWrapping="Wrap"
-                     TextTrimming="CharacterEllipsis" />
-          <DockPanel x:Name="TileFooter" Grid.Row="1" LastChildFill="True">
+                     TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Top" />
+          <!-- 下段は番号・フォルダ名・アプリ名を、カードの幅を超えて要求しない Grid に並べる
+               （DockPanel だと狭い環境で幅を要求し、4 列の格子ごと横に膨らんで右端の列が切れる）。 -->
+          <Grid x:Name="TileFooter" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Label}"
-                       DockPanel.Dock="Left"
                        Margin="0,0,5,0"
                        Foreground="{StaticResource AccentBrush}"
-                       FontSize="11"
+                       FontSize="10.5"
                        FontWeight="SemiBold"
+                       VerticalAlignment="Center"
                        Typography.NumeralAlignment="Tabular" />
             <!-- ほとんどが VS Code なので、それ以外のアプリのときだけ名前を出す。 -->
             <TextBlock x:Name="TileApplicationText"
+                       Grid.Column="2"
                        Text="{Binding ApplicationShortName}"
-                       DockPanel.Dock="Right"
                        Margin="4,0,0,0"
+                       MaxWidth="52"
                        Foreground="#B9A2D6"
                        FontSize="10"
-                       VerticalAlignment="Center" />
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
             <TextBlock x:Name="TilePathText"
+                       Grid.Column="1"
                        Text="{Binding ShortPath}"
                        Foreground="{StaticResource MutedTextBrush}"
                        FontSize="10.5"
                        VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" />
-          </DockPanel>
+          </Grid>
         </Grid>
       </Border>
       <DataTemplate.Triggers>
@@ -2986,23 +2692,12 @@
           <Setter TargetName="TileBorder" Property="Opacity" Value="0.38" />
           <Setter TargetName="TileBorder" Property="Background" Value="Transparent" />
           <Setter TargetName="TileBorder" Property="Cursor" Value="Arrow" />
-          <Setter TargetName="TileBorder" Property="ToolTip" Value="空き" />
+          <Setter TargetName="TileBorder" Property="ToolTip" Value="空き（右クリックでフォルダを登録）" />
           <Setter TargetName="TileTitleText" Property="Foreground" Value="{StaticResource MutedTextBrush}" />
           <Setter TargetName="TileTitleText" Property="FontWeight" Value="Normal" />
           <Setter TargetName="TileApplicationText" Property="Visibility" Value="Collapsed" />
           <Setter TargetName="TilePathText" Property="Visibility" Value="Collapsed" />
         </DataTrigger>
-        <!-- 縮小表示の一覧は高さが限られるので、番号・フォルダ名の行を省いて名前だけの低いタイルにする
-             （フォルダ名などはツールチップで見られる）。local:CompactLayout.IsActive は StoredOverviewRoot から継承。 -->
-        <Trigger SourceName="TileBorder" Property="local:CompactLayout.IsActive" Value="True">
-          <Setter TargetName="TileBorder" Property="MinHeight" Value="36" />
-          <Setter TargetName="TileBorder" Property="Padding" Value="6,3,6,3" />
-          <Setter TargetName="TileFooter" Property="Visibility" Value="Collapsed" />
-          <Setter TargetName="TileTitleText" Property="FontSize" Value="12" />
-          <Setter TargetName="TileTitleText" Property="LineHeight" Value="15" />
-          <Setter TargetName="TileTitleText" Property="MaxHeight" Value="30" />
-          <Setter TargetName="TileTitleText" Property="VerticalAlignment" Value="Center" />
-        </Trigger>
         <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
           <Setter TargetName="TileBorder" Property="Background" Value="#223027" />
           <Setter TargetName="TileBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
@@ -3015,31 +2710,56 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
+    <!-- 控え一覧の 1 段（4 枚の行）。段番号の見出しは出さず、ユーザーが右クリックで引いた区切り線だけを段の上に出す。
+         区切り線には名前（CustomHeader）を付けられ、ダブルクリックで編集、右クリックで名前の変更・削除、
+         カードをドロップするとこの段へ移す。 -->
     <DataTemplate x:Key="StoredOverviewPageTemplate" DataType="{x:Type models:StoredPanelPage}">
       <Grid Margin="0,0,0,5">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
-          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <DockPanel x:Name="PageHeaderRow" Margin="1,0,0,3">
-          <TextBlock x:Name="PageHeaderText"
-                     Text="{Binding Header}"
-                     DockPanel.Dock="Left"
-                     Foreground="{StaticResource MutedTextBrush}"
-                     FontSize="11.5"
-                     FontWeight="SemiBold"
-                     Margin="0,0,8,0"
-                     Cursor="Hand"
-                     ToolTip="クリックで控えパネルをこのタブに切り替え"
-                     MouseLeftButtonUp="StoredOverviewPageHeader_MouseLeftButtonUp" />
-          <Rectangle Height="1"
-                     VerticalAlignment="Center"
-                     Fill="{StaticResource BorderBrushSoft}" />
-        </DockPanel>
+        <!-- 区切り線は上下のカードからの距離を同じ 12 にする（上: 前の行の下余白 5 + 線の上まで 7、下: 線の下から 7 + 5）。
+             右端はカードの右端（右の 5 の余白の手前）にそろえる。 -->
+        <Border x:Name="DividerRow"
+                Visibility="Collapsed"
+                Height="15"
+                Margin="0,0,5,5"
+                Background="Transparent"
+                Tag="{Binding}"
+                AllowDrop="True"
+                ToolTip="ダブルクリックで名前を変更・右クリックで区切り線の操作（カードをここへドラッグすると、この段へ移動）"
+                MouseLeftButtonDown="StoredOverviewDivider_MouseLeftButtonDown"
+                PreviewMouseRightButtonUp="StoredOverviewDivider_PreviewMouseRightButtonUp"
+                DragEnter="StoredPanelTab_DragEnter"
+                DragLeave="StoredPanelTab_DragLeave"
+                DragOver="StoredPanelTab_DragOver"
+                Drop="StoredPanelTab_Drop">
+          <DockPanel>
+            <!-- 名前（無ければ線だけ）。変更はダブルクリックで本体パネルの入力ダイアログから行う。 -->
+            <Grid DockPanel.Dock="Left">
+              <TextBlock x:Name="DividerLabel"
+                         Text="{Binding CustomHeader}"
+                         Margin="1,-2,8,-2"
+                         MaxWidth="260"
+                         VerticalAlignment="Center"
+                         Foreground="{StaticResource AccentBrush}"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis" />
+            </Grid>
+            <Rectangle x:Name="DividerLine"
+                       Height="1"
+                       Margin="0,7,0,7"
+                       SnapsToDevicePixels="True"
+                       Fill="#4A6658" />
+          </DockPanel>
+        </Border>
+        <!-- メインのパネルと同じく、1 段に 4 枚（Quartet）ずつ並べる。各カードの右に 5 の間隔を取り、
+             最後のカードの右の 5 は一覧の右余白に含める（負の余白で打ち消すと丸めで右端が 1px 切れる）。 -->
         <ItemsControl Grid.Row="1"
                       ItemsSource="{Binding Slots}"
-                      ItemTemplate="{StaticResource StoredOverviewTileTemplate}"
-                      Margin="0,0,-6,0">
+                      ItemTemplate="{StaticResource StoredOverviewTileTemplate}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
               <UniformGrid Rows="1" />
@@ -3047,98 +2767,56 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemContainerStyle>
             <Style TargetType="ContentPresenter">
-              <Setter Property="Margin" Value="0,0,6,0" />
+              <Setter Property="Margin" Value="0,0,5,0" />
             </Style>
           </ItemsControl.ItemContainerStyle>
         </ItemsControl>
       </Grid>
       <DataTemplate.Triggers>
-        <!-- 控えパネルで今開いているタブを一覧でも見分けられるようにする。 -->
-        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-          <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource AccentBrush}" />
+        <DataTrigger Binding="{Binding HasDivider}" Value="True">
+          <Setter TargetName="DividerRow" Property="Visibility" Value="Visible" />
         </DataTrigger>
-        <!-- 縮小表示の一覧は見出しを縮小表示の控えタブ（11）と同じくらいに抑え、ページの間隔も詰める。 -->
-        <Trigger SourceName="PageHeaderText" Property="local:CompactLayout.IsActive" Value="True">
-          <Setter TargetName="PageHeaderText" Property="FontSize" Value="11" />
-          <Setter TargetName="PageHeaderRow" Property="Margin" Value="1,0,0,2" />
-        </Trigger>
-        <Trigger SourceName="PageHeaderText" Property="IsMouseOver" Value="True">
-          <Setter TargetName="PageHeaderText" Property="TextDecorations" Value="Underline" />
-          <Setter TargetName="PageHeaderText" Property="Foreground" Value="{StaticResource TextBrush}" />
+        <DataTrigger Binding="{Binding HasCustomHeader}" Value="False">
+          <Setter TargetName="DividerLabel" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <Trigger SourceName="DividerRow" Property="IsMouseOver" Value="True">
+          <Setter TargetName="DividerLine" Property="Fill" Value="{StaticResource AccentBrush}" />
         </Trigger>
       </DataTemplate.Triggers>
     </DataTemplate>
 
-    <!-- 一覧上部の配置先パッド。メインの 2x2 と同じ並びで、今そこにある内容も見せる。
-         一覧でカードを選ぶとパッド（UniformGrid）の Tag が "Armed" になり、押せる状態を強調する。 -->
-    <Style x:Key="StoredOverviewTargetButtonStyle" TargetType="Button">
-      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-      <Setter Property="Background" Value="#17201B" />
-      <Setter Property="BorderBrush" Value="#2E3832" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Height" Value="44" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="AllowDrop" Value="True" />
-      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-      <Setter Property="Tag" Value="{Binding}" />
-      <EventSetter Event="Click" Handler="StoredOverviewTargetButton_Click" />
-      <EventSetter Event="DragEnter" Handler="SlotCard_DragEnter" />
-      <EventSetter Event="DragLeave" Handler="SlotCard_DragLeave" />
-      <EventSetter Event="DragOver" Handler="SlotCard_DragOver" />
-      <EventSetter Event="Drop" Handler="SlotCard_Drop" />
+    <!-- 控え一覧の開閉ボタン。アプリの緑（AccentBrush）を少し差して、ほかのボタンより目立たせる。
+         開いている間はさらに明るい緑の枠と地にし、矢印は一覧が出る側（開いている間はしまう側）を向ける。 -->
+    <Style x:Key="StoredOverviewToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="Foreground" Value="#D6F5E2" />
+      <Setter Property="Background" Value="#14261C" />
+      <Setter Property="BorderBrush" Value="#3B7A55" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="TargetBorder"
+            <Border x:Name="ButtonBorder"
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="7"
-                    Padding="8,0,8,0">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TargetLetter"
-                           Text="{Binding Name}"
-                           VerticalAlignment="Center"
-                           Margin="0,0,8,0"
-                           Foreground="#7F9A8A"
-                           FontSize="20"
-                           FontWeight="Bold" />
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding DisplayTitle}"
-                             FontSize="13"
-                             FontWeight="SemiBold"
-                             TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding ApplicationBadgeText}"
-                             Margin="0,0,0,0"
-                             Foreground="{StaticResource MutedTextBrush}"
-                             FontSize="10.5"
-                             TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-              </Grid>
+                    CornerRadius="8">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
             </Border>
             <ControlTemplate.Triggers>
-              <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=UniformGrid}}" Value="Armed">
-                <Setter TargetName="TargetBorder" Property="BorderBrush" Value="#3B7A55" />
-                <Setter TargetName="TargetLetter" Property="Foreground" Value="{StaticResource AccentBrush}" />
-              </DataTrigger>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="TargetBorder" Property="Background" Value="#223027" />
-                <Setter TargetName="TargetBorder" Property="BorderBrush" Value="#5E7568" />
+                <Setter Property="Foreground" Value="#F2FFF8" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#1D3527" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#5FC98A" />
               </Trigger>
-              <MultiDataTrigger>
-                <MultiDataTrigger.Conditions>
-                  <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=UniformGrid}}" Value="Armed" />
-                  <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
-                </MultiDataTrigger.Conditions>
-                <Setter TargetName="TargetBorder" Property="Background" Value="#24402F" />
-                <Setter TargetName="TargetBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-              </MultiDataTrigger>
+              <Trigger Property="Tag" Value="Active">
+                <Setter Property="Foreground" Value="#F2FFF8" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#24402F" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+              </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="TargetBorder" Property="Background" Value="#18201B" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#10201A" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45" />
@@ -3147,15 +2825,6 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
-    </Style>
-
-    <Style x:Key="StoredOverviewToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
-      <Style.Triggers>
-        <Trigger Property="Tag" Value="Active">
-          <Setter Property="Background" Value="#223027" />
-          <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-        </Trigger>
-      </Style.Triggers>
     </Style>
     <DataTemplate x:Key="DiskCleanupCandidateTemplate" DataType="{x:Type models:DiskCleanupCandidate}">
       <Border Margin="0,0,0,6"
@@ -3239,8 +2908,8 @@
     </Grid.RowDefinitions>
 
     <!-- 控え一覧。メインの 4 カードを隠さないよう、パネルの外側（画面の空きが広い側）へ
-         別ウィンドウとして横付けする。位置と高さはコードビハインドでパネルに追従させ、
-         上端・下端をパネルと揃える（中身が入りきらないときだけ一覧をスクロールする）。 -->
+         別ウィンドウとして横付けする。上端はパネルに揃え、高さは中身に合わせる（パネルの高さには揃えない）。
+         画面の下に入りきらないときだけ上へずらし、それでも入りきらないときは一覧をスクロールする。 -->
     <Popup x:Name="StoredOverviewPopup"
            PlacementTarget="{Binding ElementName=PanelFrameBorder}"
            Placement="Custom"
@@ -3252,7 +2921,7 @@
       <Border x:Name="StoredOverviewRoot"
               Width="460"
               Opacity="0"
-              Padding="10,6,10,8"
+              Padding="10,6,5,6"
               Background="{StaticResource PanelBackgroundBrush}"
               BorderBrush="#3E5148"
               BorderThickness="1"
@@ -3263,11 +2932,11 @@
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
 
-          <DockPanel Margin="0,0,0,6">
+          <DockPanel Margin="0,0,5,5">
             <Button DockPanel.Dock="Right"
                     Content="&#xE711;"
                     FontFamily="Segoe MDL2 Assets"
@@ -3293,34 +2962,39 @@
                        TextTrimming="CharacterEllipsis" />
           </DockPanel>
 
-          <UniformGrid x:Name="StoredOverviewTargetPad"
-                       Grid.Row="1"
-                       Rows="2"
-                       Columns="2"
-                       Margin="0,0,0,9">
-            <Button DataContext="{Binding Slots[0]}" Style="{StaticResource StoredOverviewTargetButtonStyle}" Margin="0,0,3,3" />
-            <Button DataContext="{Binding Slots[1]}" Style="{StaticResource StoredOverviewTargetButtonStyle}" Margin="3,0,0,3" />
-            <Button DataContext="{Binding Slots[2]}" Style="{StaticResource StoredOverviewTargetButtonStyle}" Margin="0,3,3,0" />
-            <Button DataContext="{Binding Slots[3]}" Style="{StaticResource StoredOverviewTargetButtonStyle}" Margin="3,3,0,0" />
-          </UniformGrid>
-
-          <ScrollViewer Grid.Row="2"
+          <ScrollViewer x:Name="StoredOverviewScrollViewer"
+                        Grid.Row="1"
                         VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled"
                         CanContentScroll="False"
                         Style="{StaticResource SlimScrollViewerStyle}">
-            <!-- 表示領域いっぱいを下限にして 6 段を均等割りする。入りきらないときだけスクロール。 -->
             <ItemsControl x:Name="StoredOverviewPagesList"
                           ItemsSource="{Binding StoredPanelPages}"
-                          ItemTemplate="{StaticResource StoredOverviewPageTemplate}"
-                          MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <UniformGrid Columns="1" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-            </ItemsControl>
+                          ItemTemplate="{StaticResource StoredOverviewPageTemplate}" />
           </ScrollViewer>
+
+          <!-- 縮小表示だけ、最初は前半（1〜20）だけを出し、このボタンで後半（21〜40）を下に伸ばして表示する。 -->
+          <Button x:Name="StoredOverviewMoreButton"
+                  Grid.Row="2"
+                  Visibility="Collapsed"
+                  Height="24"
+                  MinHeight="0"
+                  Margin="0,1,5,1"
+                  FontSize="11.5"
+                  Click="StoredOverviewMoreButton_Click"
+                  Style="{StaticResource BarButton}">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="StoredOverviewMoreChevron"
+                         Text="&#xE70D;"
+                         FontFamily="Segoe MDL2 Assets"
+                         FontSize="9"
+                         Foreground="{StaticResource AccentBrush}"
+                         VerticalAlignment="Center"
+                         Margin="0,1,6,0" />
+              <TextBlock x:Name="StoredOverviewMoreText"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </Grid>
       </Border>
     </Popup>
@@ -3334,7 +3008,7 @@
                   HorizontalAlignment="Right"
                   Orientation="Horizontal">
         <!-- VS Code と同じく、ツール系（モニタ・ダウンロード・PR・設定・ヘルプ）は詰めてひとまとまりにし、
-             右端の表示切替・最小化・閉じるとは間を空ける。標準表示のときだけ出す（コードで切り替え）。 -->
+             右端の表示切替・最小化・閉じるとは間を空ける。縮小表示はダウンロードと PR だけ出す（コードで切り替え）。 -->
         <StackPanel x:Name="TitleBarToolButtonsPanel"
                     Orientation="Horizontal"
                     Margin="0,0,14,0">
@@ -3588,184 +3262,18 @@
       </Grid>
     </Border>
 
+    <!-- AI アプリ（左寄せ）と控え一覧の開閉ボタン（右端）の行。標準・縮小表示で同じ並びにする。 -->
     <Grid x:Name="StoredPanelsRowGrid" Grid.Row="2" Margin="5,2,5,3">
-      <!-- 右列は AI アプリの行。標準表示の控え Quartet は両列にまたがり、見出しの右上に AI アプリが重なる。 -->
+      <!-- 右列は残りの幅。標準表示は開閉ボタンを右端に「最背面」と同じ幅で置き、縮小表示は残りの幅いっぱいに広げる。 -->
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
-      <Expander x:Name="StoredPanelsExpander"
-                Grid.ColumnSpan="2"
-                Style="{StaticResource StoredPanelsExpanderStyle}"
-                IsExpanded="False"
-                Expanded="StoredPanelsExpander_Expanded"
-                Collapsed="StoredPanelsExpander_Collapsed"
-                Margin="0">
-        <Expander.Header>
-          <Grid Height="28">
-            <TextBlock Text="控え Quartet（クリックで開く）"
-                     Foreground="{StaticResource TextBrush}"
-                     FontSize="12"
-                     FontWeight="SemiBold"
-                     VerticalAlignment="Center" />
-          </Grid>
-        </Expander.Header>
-            <Border x:Name="StoredPanelsExpanderContent"
-              Background="{StaticResource SurfaceBrush}"
-              BorderBrush="{StaticResource BorderBrushSoft}"
-              BorderThickness="1"
-              CornerRadius="8"
-              Margin="0,12,0,0"
-              Padding="6">
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-          </Grid.RowDefinitions>
-
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <ItemsControl Grid.Column="0" ItemsSource="{Binding StoredPanelPages}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="{x:Type models:StoredPanelPage}">
-                  <!-- タブ本体と、ダブルクリックで前に出る名前編集用の入力欄を重ねている。 -->
-                  <Grid>
-                    <Button Content="{Binding Header}"
-                            Tag="{Binding}"
-                            Click="StoredPanelPageTab_Click"
-                            MouseDoubleClick="StoredPanelPageTab_MouseDoubleClick"
-                            Style="{StaticResource StoredPageTabButtonStyle}">
-                      <Button.ToolTip>
-                        <!-- 名前が省略表示されても、ここで全文と中身の控えを確認できる。 -->
-                        <ToolTip Content="{Binding}" Style="{StaticResource StoredPageToolTipStyle}" />
-                      </Button.ToolTip>
-                    </Button>
-                    <TextBox x:Name="PageHeaderEditBox"
-                             Tag="{Binding}"
-                             Visibility="Collapsed"
-                             Text="{Binding Header, Mode=OneWay}"
-                             MaxLength="20"
-                             Margin="0,0,6,4"
-                             Height="22"
-                             Padding="4,0"
-                             FontSize="11"
-                             FontWeight="SemiBold"
-                             Background="#223027"
-                             Foreground="{StaticResource TextBrush}"
-                             CaretBrush="{StaticResource TextBrush}"
-                             SelectionBrush="{StaticResource AccentBrush}"
-                             BorderBrush="{StaticResource AccentBrush}"
-                             BorderThickness="1"
-                             HorizontalContentAlignment="Center"
-                             VerticalContentAlignment="Center"
-                             KeyDown="StoredPanelPageHeaderEditBox_KeyDown"
-                             LostFocus="StoredPanelPageHeaderEditBox_LostFocus" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Top"
-                        Margin="12,0,4,4">
-              <!-- 整列は控えタブと同じ幅（StoredPageTabButtonStyle の MinWidth）に揃える。 -->
-              <Button x:Name="CompactStoredPanelsButton"
-                      Content="整列"
-                      Click="CompactStoredPanelsButton_Click"
-                      Style="{StaticResource BarButton}"
-                      Width="64"
-                      Height="22"
-                      MinHeight="22"
-                      FontSize="12"
-                      Padding="8,0"
-                      Margin="0,0,6,0"
-                      ToolTip="控えの空き（歯抜け）を前に詰めて整列します。ページをまたいで詰めます。" />
-              <Button x:Name="StoredOverviewButton"
-                      Click="StoredOverviewButton_Click"
-                      Style="{StaticResource StoredOverviewToggleButtonStyle}"
-                      MinWidth="96"
-                      Height="22"
-                      MinHeight="22"
-                      FontSize="12"
-                      Padding="8,0"
-                      AutomationProperties.Name="控えの一覧を開く"
-                      ToolTip="すべての控えを横に一覧表示します。カードを選んで A〜D を押すか、カードをスロットへドラッグして配置できます。">
-                <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE8A9;"
-                             FontFamily="Segoe MDL2 Assets"
-                             FontSize="10"
-                             VerticalAlignment="Center"
-                             Margin="0,0,5,0" />
-                  <TextBlock Text="一覧" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-            </StackPanel>
-          </Grid>
-
-          <ContentControl Grid.Row="1"
-                          Content="{Binding SelectedStoredPanelPage}"
-                          ContentTemplate="{StaticResource StoredPanelPageTemplate}" />
-        </Grid>
-      </Border>
-      </Expander>
-
-      <!-- 標準表示の控え Quartet の見出しと同じく、AI アプリの手前まで押せるように横に広げる。 -->
-      <Button x:Name="CompactStoredPanelsToggleButton"
-                Height="24"
-                MinHeight="24"
-                MinWidth="0"
-                Padding="4,0"
-                Margin="0,0,10,0"
-                HorizontalAlignment="Stretch"
-                HorizontalContentAlignment="Left"
-                VerticalAlignment="Center"
-                Panel.ZIndex="2"
-                Background="Transparent"
-                BorderThickness="0"
-                Visibility="Collapsed"
-                ToolTip="控えを縮小表示で開く"
-                AutomationProperties.Name="控えを開く"
-                Click="CompactStoredPanelsToggleButton_Click"
-                Style="{StaticResource BarButton}">
-          <StackPanel Orientation="Horizontal"
-                      HorizontalAlignment="Left"
-                      VerticalAlignment="Center">
-            <Grid Width="16" Height="16" Margin="0,0,4,0">
-              <Ellipse Fill="#F4F7F5" />
-              <Path x:Name="CompactStoredPanelsChevron"
-                    Width="16" Height="16"
-                    Data="M 4,6.5 L 8,10 L 12,6.5"
-                    Stroke="#152019"
-                    StrokeThickness="1.6"
-                    StrokeStartLineCap="Round"
-                    StrokeEndLineCap="Round"
-                    StrokeLineJoin="Round"
-                    RenderTransformOrigin="0.5,0.5" />
-            </Grid>
-            <TextBlock Text="控え"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Foreground="{StaticResource TextBrush}"
-                       VerticalAlignment="Center" />
-          </StackPanel>
-      </Button>
       <StackPanel x:Name="AuxiliaryApplicationsRow"
-                  Grid.Column="1"
                   Orientation="Horizontal"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Top"
-                  Margin="0,0,4,0"
-                  Panel.ZIndex="2">
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Center"
+                  Margin="2,0,0,0">
         <TextBlock Text="AIアプリ"
                    VerticalAlignment="Center"
                    Foreground="{StaticResource MutedTextBrush}"
@@ -3794,111 +3302,37 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </StackPanel>
-    </Grid>
 
-    <Border x:Name="CompactStoredPanelsArea"
-            Grid.Row="3"
-            Visibility="Collapsed"
-            Margin="5,2,5,4"
-            Padding="5"
-            Background="{StaticResource SurfaceBrush}"
-            BorderBrush="{StaticResource BorderBrushSoft}"
-            BorderThickness="1"
-            CornerRadius="8">
-      <Grid>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="23" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-        <!-- 控えカードを選んでいる間は、タブの行を配置先の案内と「取消」に置き換える（高さは変えない）。 -->
-        <Grid x:Name="CompactStoredAssignHintRow" Visibility="Collapsed">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <TextBlock x:Name="CompactStoredAssignHintText"
-                     Margin="2,0,6,0"
-                     VerticalAlignment="Center"
-                     Foreground="{StaticResource AccentBrush}"
+      <!-- 控え一覧をパネルの横へ引き出す／しまうボタン。矢印は一覧が出る側を向き、開いている間は戻る向きになる。 -->
+      <Button x:Name="StoredOverviewToggleButton"
+              Grid.Column="1"
+              Height="28"
+              MinHeight="0"
+              MinWidth="0"
+              Padding="10,0,8,0"
+              Margin="8,0,0,0"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              Click="StoredOverviewButton_Click"
+              AutomationProperties.Name="控えの一覧を開く"
+              ToolTip="控えの一覧をパネルの横に開きます。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。"
+              Style="{StaticResource StoredOverviewToggleButtonStyle}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock x:Name="StoredOverviewToggleText"
+                     Text="控え一覧"
                      FontSize="12"
                      FontWeight="SemiBold"
-                     TextTrimming="CharacterEllipsis" />
-          <Button Grid.Column="1" Content="取消"
-                  Click="CancelCompactStoredAssignButton_Click"
-                  Style="{StaticResource BarButton}"
-                  Width="38" Height="21" MinHeight="21" MinWidth="0"
-                  Padding="2,0" FontSize="11"
-                  ToolTip="控えの選択を取り消す（Esc）" />
-        </Grid>
-        <Grid x:Name="CompactStoredTabsRow">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <ItemsControl ItemsSource="{Binding StoredPanelPages}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="{x:Type models:StoredPanelPage}">
-                <Grid>
-                  <Button Content="{Binding Header}" Tag="{Binding}"
-                          Click="StoredPanelPageTab_Click"
-                          MouseDoubleClick="StoredPanelPageTab_MouseDoubleClick"
-                          Style="{StaticResource CompactStoredTabStyle}">
-                    <Button.ToolTip>
-                      <ToolTip Content="{Binding}" Style="{StaticResource StoredPageToolTipStyle}" />
-                    </Button.ToolTip>
-                  </Button>
-                  <TextBox x:Name="PageHeaderEditBox"
-                           Tag="{Binding}"
-                           Visibility="Collapsed"
-                           Text="{Binding Header, Mode=OneWay}"
-                           MaxLength="20"
-                           Width="50" Height="21"
-                           Padding="2,0" FontSize="11"
-                           Foreground="{StaticResource TextBrush}"
-                           Background="#223027"
-                           CaretBrush="{StaticResource TextBrush}"
-                           SelectionBrush="{StaticResource AccentBrush}"
-                           BorderBrush="{StaticResource AccentBrush}"
-                           BorderThickness="1"
-                           KeyDown="StoredPanelPageHeaderEditBox_KeyDown"
-                           LostFocus="StoredPanelPageHeaderEditBox_LostFocus" />
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <!-- 標準表示と同じく、整列の横に一覧を置く。 -->
-          <StackPanel Grid.Column="1" Orientation="Horizontal">
-            <Button Content="整列"
-                    Click="CompactStoredPanelsButton_Click"
-                    Style="{StaticResource BarButton}"
-                    Width="36" Height="21" MinHeight="21" MinWidth="0"
-                    Padding="2,0" FontSize="11"
-                    ToolTip="控えの空きを前に詰める" />
-            <!-- 一覧でカードを選び、本体のスロットの「ここに表示」で配置する（一覧の A〜D パッドは縮小表示では隠す）。 -->
-            <Button x:Name="CompactStoredOverviewButton"
-                    Width="26"
-                    Height="21"
-                    MinHeight="21"
-                    MinWidth="0"
-                    Padding="0"
-                    Margin="3,0,0,0"
-                    Content="&#xE8A9;"
-                    FontFamily="Segoe MDL2 Assets"
-                    FontSize="10"
-                    ToolTip="すべての控えを横に一覧表示します。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。"
-                    AutomationProperties.Name="控えの一覧を開く"
-                    Click="StoredOverviewButton_Click"
-                    Style="{StaticResource StoredOverviewToggleButtonStyle}" />
-          </StackPanel>
-        </Grid>
-        <ContentControl Grid.Row="1"
-                        Content="{Binding SelectedStoredPanelPage}"
-                        ContentTemplate="{StaticResource CompactStoredPageTemplate}" />
-      </Grid>
-    </Border>
+                     VerticalAlignment="Center" />
+          <TextBlock x:Name="StoredOverviewToggleChevron"
+                     Text="&#xE76C;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="10"
+                     Foreground="{StaticResource AccentBrush}"
+                     VerticalAlignment="Center"
+                     Margin="8,1,0,0" />
+        </StackPanel>
+      </Button>
+    </Grid>
 
     <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,2,5,3">
       <Grid.ColumnDefinitions>
@@ -4803,10 +4237,10 @@
                         BorderThickness="1"
                         CornerRadius="8">
                   <StackPanel>
-                    <TextBlock Text="控えタブの名前"
+                    <TextBlock Text="控えの区切り線の名前"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" />
-                    <TextBlock Text="タブをダブルクリックしても変更できます。空欄にすると既定名に戻ります。"
+                    <TextBlock Text="控え一覧の各行（4 枚ずつ）の上に引く区切り線の名前です。名前を付けるとその行の上に区切り線が引かれます。一覧の区切り線をダブルクリックしても変更できます。"
                                Foreground="{StaticResource MutedTextBrush}"
                                FontSize="10"
                                TextWrapping="Wrap"
@@ -4822,7 +4256,8 @@
                               <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="{Binding DefaultHeader}"
+                            <TextBlock Text="{Binding RowRangeText}"
+                                       ToolTip="この番号の行の上に引く区切り線"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource AccentBrush}"
                                        FontWeight="SemiBold"
@@ -4831,15 +4266,15 @@
                                      Tag="{Binding}"
                                      Text="{Binding CustomHeader, UpdateSourceTrigger=LostFocus}"
                                      MaxLength="20"
-                                     ToolTip="空欄にすると既定名に戻ります"
+                                     ToolTip="空欄にすると名前を消します（区切り線は残ります）"
                                      LostFocus="SettingsStoredPageHeaderTextBox_LostFocus"
                                      Style="{StaticResource SettingsTextBoxStyle}" />
                             <Button Grid.Column="2"
-                                    Content="既定に戻す"
+                                    Content="名前を消す"
                                     Tag="{Binding}"
                                     Click="SettingsResetStoredPageHeaderButton_Click"
                                     IsEnabled="{Binding HasCustomHeader}"
-                                    ToolTip="この控えの名前だけを既定に戻します"
+                                    ToolTip="この区切り線の名前だけを消します（区切り線は一覧の右クリックで消せます）"
                                     Style="{StaticResource StoredAssignButton}"
                                     Margin="8,0,0,0" />
                           </Grid>
@@ -4856,10 +4291,10 @@
                         BorderThickness="1"
                         CornerRadius="8">
                   <StackPanel>
-                    <TextBlock Text="控え Quartet"
+                    <TextBlock Text="控え"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" />
-                    <TextBlock Text="↑↓ボタン・つまみの上下キー・ドラッグで並び替え（ページをまたいで移動できます）"
+                    <TextBlock Text="↑↓ボタン・つまみの上下キー・ドラッグで並び替え（行をまたいで移動できます）"
                                Foreground="{StaticResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,0" />
                     <ItemsControl Margin="0,8,0,0"
                                   ItemsSource="{Binding StoredPanels}">
@@ -4982,14 +4417,101 @@
       </Grid>
     </Border>
 
+    <!-- 控えのカード名・区切り線の名前の入力ダイアログ。控え一覧は別ウィンドウのポップアップでキー入力・IME が不安定なため、
+         名前の入力は必ず本体パネル（通常のウィンドウ）で行う。縮小表示の低いパネルにも収まるよう 1 行の入力欄にする。 -->
+    <Border x:Name="StoredRenameOverlay"
+            Grid.RowSpan="5"
+            Visibility="Collapsed"
+            Background="#B0090B0A"
+            Panel.ZIndex="27"
+            MouseLeftButtonDown="StoredRenameOverlay_MouseLeftButtonDown">
+      <Border x:Name="StoredRenameCard"
+              MaxWidth="420"
+              Margin="12,6"
+              Padding="12,9,12,9"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Center"
+              Background="{StaticResource SurfaceBrush}"
+              BorderBrush="#3B7A55"
+              BorderThickness="1"
+              CornerRadius="10"
+              MouseLeftButtonDown="StoredRenameCard_MouseLeftButtonDown">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock x:Name="StoredRenameSubtitleText"
+                       DockPanel.Dock="Right"
+                       Margin="10,0,0,0"
+                       MaxWidth="200"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       FontSize="11"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="StoredRenameTitleText"
+                       Text="控えの名前を変更"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource TextBrush}"
+                       FontSize="13"
+                       FontWeight="SemiBold" />
+          </DockPanel>
+          <Grid Margin="0,7,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="StoredRenameTextBox"
+                     Height="28"
+                     MaxLength="40"
+                     Padding="6,0"
+                     FontSize="13"
+                     VerticalContentAlignment="Center"
+                     Background="#101613"
+                     Foreground="{StaticResource TextBrush}"
+                     CaretBrush="{StaticResource TextBrush}"
+                     SelectionBrush="{StaticResource AccentBrush}"
+                     BorderBrush="{StaticResource AccentBrush}"
+                     BorderThickness="1"
+                     PreviewKeyDown="StoredRenameTextBox_PreviewKeyDown" />
+            <Button Grid.Column="1"
+                    Content="変更"
+                    Width="56"
+                    Height="28"
+                    MinHeight="0"
+                    Margin="6,0,0,0"
+                    Click="ConfirmStoredRenameButton_Click"
+                    Style="{StaticResource StoredOverviewToggleButtonStyle}" />
+            <Button Grid.Column="2"
+                    Content="取消"
+                    Width="52"
+                    Height="28"
+                    MinHeight="0"
+                    Margin="4,0,0,0"
+                    Click="CancelStoredRenameButton_Click"
+                    Style="{StaticResource BarButton}" />
+          </Grid>
+          <TextBlock x:Name="StoredRenameHintText"
+                     Margin="1,5,0,0"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     FontSize="10.5"
+                     TextTrimming="CharacterEllipsis"
+                     Text="Enter で変更・Esc で取消" />
+        </StackPanel>
+      </Border>
+    </Border>
+
     <Border x:Name="HelpOverlay"
             Grid.RowSpan="5"
             Visibility="Collapsed"
             Background="#96090B0A"
             Panel.ZIndex="23">
       <Grid>
+        <!-- 本体が低くなっても「閉じる」まで収まるよう、ダイアログの高さを本体の高さ（設定画面と同じく Window.Height 基準）から
+             余白ぶん引いた値までに抑え、はみ出す分は中のスクロールで見せる。オーバーレイは Auto 行にまたがるため、
+             上限が無いと中身の高さのまま測られ、行ごと伸びて下が切れる。 -->
         <Border Width="486"
                 MaxWidth="520"
+                MaxHeight="{Binding Height, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource SubtractConverter}, ConverterParameter=44}"
+                Margin="0,10"
                 Padding="16"
                 Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrushSoft}"
@@ -5000,7 +4522,7 @@
           <Grid>
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
