@@ -36,7 +36,7 @@ public partial class MainWindow : Window
     private static readonly Duration StoredOverviewItemDuration = new(TimeSpan.FromMilliseconds(260));
     private static readonly TimeSpan StoredOverviewItemFirstDelay = TimeSpan.FromMilliseconds(70);
     private static readonly TimeSpan StoredOverviewItemStagger = TimeSpan.FromMilliseconds(35);
-    // 控え Quartet を開いたら、下の控えタブが出た後に一拍おいて一覧を横へ引き出す。
+    // 開いておきたい控え一覧を、最小化からの復帰や表示モードの切り替えのあとに一拍おいて引き出し直す。
     private static readonly TimeSpan StoredOverviewAutoOpenDelay = TimeSpan.FromMilliseconds(150);
     private static readonly Duration StoredOverviewCloseDuration = new(TimeSpan.FromMilliseconds(140));
     private static readonly TimeSpan PanelFrontRestoreDelay = TimeSpan.FromMilliseconds(80);
@@ -104,9 +104,11 @@ public partial class MainWindow : Window
     private bool _isRefreshInFlight;
     private bool _areWindowsHidden;
     private DisplayMode _displayMode = DisplayMode.Standard;
-    private bool _isCompactStoredPanelsOpen;
-    private double _collapsedWindowHeight;
-    private double _collapsedWindowMinHeight;
+    // 控え一覧を開いておきたいか（開閉ボタンで切り替える）。最小化や表示モードの切り替えで一度閉じても、復帰時に開き直す。
+    private bool _isStoredOverviewWanted;
+    // 縮小表示の控え一覧は、最初は前半の行だけを出す。後半は一覧下のボタンで下に伸ばして出す（このセッション中は覚えておく）。
+    private const int CompactOverviewVisibleRows = 5;
+    private bool _isCompactOverviewExpanded;
     private double _standardWindowWidth;
     private double _standardWindowHeight;
     private double _standardWindowMinWidth;
@@ -115,6 +117,7 @@ public partial class MainWindow : Window
     private WindowSlot? _pendingSlotInfoClear;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private StoredPanelSlot? _selectedOverviewStoredPanel;
+    private bool _suppressNextOverviewTileClick;
     private bool _isStoredOverviewClosing;
     private bool _storedOverviewPrefersLeft;
     private bool _isStoredOverviewOnLeft;
@@ -190,13 +193,11 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             Topmost = true;
-            _collapsedWindowHeight = Height;
-            _collapsedWindowMinHeight = MinHeight;
             RememberStandardWindowMetrics();
             UpdateDisplayModeChrome();
             await RefreshSlotsAsync(allowDuringBusy: true);
             ApplyManagedWindowLayers();
-            UpdateWindowHeightForStoredPanels(StoredPanelsExpander.IsExpanded, true);
+            UpdateStoredOverviewToggleButton();
             UpdateCompactPanelFrame();
             RefreshAuxiliaryUi();
             RefreshLaunchButtonAvailability();
@@ -1438,9 +1439,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (IsCompactStoredAssignArmed)
+        if (IsStoredAssignArmed)
         {
-            ShowSelectedStoredPanelInCompactSlot(slot);
+            ShowSelectedStoredPanelInSlot(slot);
             return;
         }
 
@@ -1474,46 +1475,6 @@ public partial class MainWindow : Window
         }
 
         await SelectSlotWorkspaceApplicationAsync(slot, slot.CompactIdeToggleTargetApplicationId);
-    }
-
-    private void CompactStoredPanelsToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_displayMode != DisplayMode.Compact)
-        {
-            return;
-        }
-
-        _isCompactStoredPanelsOpen = !_isCompactStoredPanelsOpen;
-        UpdateCompactStoredPanelsVisibility();
-        // 標準表示の控え Quartet と同じく、開いたら一覧も横に引き出し、閉じたら一緒に閉じる。
-        if (_isCompactStoredPanelsOpen)
-        {
-            ScheduleStoredOverviewAutoOpen();
-        }
-        else
-        {
-            CloseStoredOverview(animate: false);
-        }
-
-        var currentBounds = GetCurrentWindowBounds();
-        var scale = GetCurrentDpiScale(new WindowInteropHelper(this).Handle);
-        var compactHeight = GetCompactModeHeight(currentBounds.Width / scale);
-        var targetBounds = GetCompactModeBounds(currentBounds, currentBounds.Width, compactHeight * scale);
-        MinHeight = CompactWindowMinHeight;
-        SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
-        MinHeight = compactHeight;
-    }
-
-    private void UpdateCompactStoredPanelsVisibility()
-    {
-        CompactStoredPanelsArea.Visibility = _displayMode == DisplayMode.Compact && _isCompactStoredPanelsOpen
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        CompactStoredPanelsChevron.RenderTransform = new RotateTransform(_isCompactStoredPanelsOpen ? 180 : 0);
-        AutomationProperties.SetName(CompactStoredPanelsToggleButton, _isCompactStoredPanelsOpen ? "控えを閉じる" : "控えを開く");
-        CompactStoredPanelsToggleButton.ToolTip = _isCompactStoredPanelsOpen
-            ? "縮小表示の控えを閉じる"
-            : "控えを縮小表示で開く";
     }
 
     private void MicroSlotButton_Click(object sender, RoutedEventArgs e)
@@ -1748,6 +1709,12 @@ public partial class MainWindow : Window
 
     private void SlotCard_DragLeave(object sender, DragEventArgs e)
     {
+        // Preview で受けているので、カードの中の子要素の間を移るときにも来る。外へ出たときだけ光を消す。
+        if (IsDragPointInside(sender, e))
+        {
+            return;
+        }
+
         SetSlotCardDropHighlight(sender, false);
     }
 
@@ -1759,7 +1726,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    // スロット同士の入れ替えに加えて、控えカード（一覧・控えパネル）をスロットへ落とした
+    // スロット同士の入れ替えに加えて、控えカード（控え一覧のタイル）をスロットへ落とした
     // 場合も受け付ける。後者は A〜D ボタンを押したのと同じ「控えを表示」になる。
     private bool CanDropOnSlotCard(object sender, DragEventArgs e)
     {
@@ -1920,70 +1887,6 @@ public partial class MainWindow : Window
             || DateTimeOffset.UtcNow < _suppressSlotFocusFromDragUntil;
     }
 
-    private void StoredPanelCard_DragEnter(object sender, DragEventArgs e)
-    {
-        if (sender is not Border border || !e.Data.GetDataPresent("StoredPanelSlot"))
-        {
-            e.Effects = DragDropEffects.None;
-            e.Handled = true;
-            return;
-        }
-
-        var sourcePanel = e.Data.GetData("StoredPanelSlot") as StoredPanelSlot;
-        var targetPanel = border.Tag as StoredPanelSlot;
-        if (sourcePanel is not null && targetPanel is not null && !ReferenceEquals(sourcePanel, targetPanel))
-        {
-            border.BorderBrush = (SolidColorBrush)FindResource("AccentBrush");
-        }
-    }
-
-    private void StoredPanelCard_DragLeave(object sender, DragEventArgs e)
-    {
-        if (sender is Border border)
-        {
-            border.ClearValue(Border.BorderBrushProperty);
-        }
-    }
-
-    private void StoredPanelCard_DragOver(object sender, DragEventArgs e)
-    {
-        var sourcePanel = e.Data.GetData("StoredPanelSlot") as StoredPanelSlot;
-        var targetPanel = (sender as FrameworkElement)?.Tag as StoredPanelSlot;
-        e.Effects = sourcePanel is not null
-            && targetPanel is not null
-            && !ReferenceEquals(sourcePanel, targetPanel)
-            ? DragDropEffects.Move
-            : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private void StoredPanelCard_Drop(object sender, DragEventArgs e)
-    {
-        if (sender is Border border)
-        {
-            border.ClearValue(Border.BorderBrushProperty);
-        }
-
-        var sourcePanel = e.Data.GetData("StoredPanelSlot") as StoredPanelSlot;
-        var targetPanel = (sender as FrameworkElement)?.Tag as StoredPanelSlot;
-        if (sourcePanel is null || targetPanel is null || ReferenceEquals(sourcePanel, targetPanel))
-        {
-            e.Effects = DragDropEffects.None;
-            e.Handled = true;
-            return;
-        }
-
-        var sourceLabel = sourcePanel.Label;
-        var targetLabel = targetPanel.Label;
-        var targetHadContent = targetPanel.HasContent;
-        _statusStore.SwapStoredPanels(sourcePanel, targetPanel);
-        _statusStore.Message = targetHadContent
-            ? $"{sourceLabel}と{targetLabel}の控えカードを入れ替えました。"
-            : $"{sourceLabel}を{targetLabel}へ移動しました。";
-        RefreshAuxiliaryUi();
-        e.Handled = true;
-    }
-
     private void StoredPanelTab_DragEnter(object sender, DragEventArgs e)
     {
         if (sender is not FrameworkElement element || !e.Data.GetDataPresent("StoredPanelSlot"))
@@ -2048,119 +1951,33 @@ public partial class MainWindow : Window
             && targetPanel is not null)
         {
             _statusStore.Message = swapped
-                ? $"{sourceLabel}を{targetPage.Header}へ移動し、{targetPanel.Label}と入れ替えました。"
-                : $"{sourceLabel}を{targetPage.Header}の{targetPanel.Label}へ移動しました。";
+                ? $"{sourceLabel}を{targetPage.RowRangeText}の行へ移動し、{targetPanel.Label}と入れ替えました。"
+                : $"{sourceLabel}を{targetPage.RowRangeText}の行の{targetPanel.Label}へ移動しました。";
             RefreshAuxiliaryUi();
         }
 
         e.Handled = true;
     }
 
-    private void StoredPanelPageTab_Click(object sender, RoutedEventArgs e)
+    // 控え一覧の区切り線をダブルクリックしたら、その場で名前を編集する。
+    private void StoredOverviewDivider_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is StoredPanelPage page)
-        {
-            _statusStore.SelectStoredPanelPage(page);
-        }
-    }
-
-    /// <summary>
-    /// タブをダブルクリックしたら、その場で名前を編集できるようにする。
-    /// ボタンの上に重ねてある TextBox を前に出し、全選択した状態でフォーカスを移す。
-    /// </summary>
-    private void StoredPanelPageTab_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not Button button || button.DataContext is not StoredPanelPage page)
+        if (e.ClickCount != 2
+            || _isBusy
+            || (sender as FrameworkElement)?.DataContext is not StoredPanelPage page
+            || FindAncestorOrSelf<TextBox>(e.OriginalSource as DependencyObject) is { IsVisible: true })
         {
             return;
         }
 
-        var editBox = FindStoredPanelPageHeaderEditBox(button);
-        if (editBox is null)
-        {
-            return;
-        }
-
-        _statusStore.SelectStoredPanelPage(page);
-
-        editBox.Text = page.Header;
-        editBox.Visibility = Visibility.Visible;
-
-        // テンプレート適用直後はフォーカスを受け取れないことがあるので、レイアウト後に確定させる。
-        editBox.Dispatcher.BeginInvoke(
-            new Action(() =>
-            {
-                editBox.Focus();
-                editBox.SelectAll();
-            }),
-            DispatcherPriority.Input);
-
+        BeginStoredPanelPageHeaderEdit(page);
         e.Handled = true;
     }
 
-    private void StoredPanelPageHeaderEditBox_KeyDown(object sender, KeyEventArgs e)
+    // 区切り線の名前の変更（区切り線が無ければ、名前付きで引く）。入力は本体パネルのダイアログで行う。
+    private void BeginStoredPanelPageHeaderEdit(StoredPanelPage page)
     {
-        if (sender is not TextBox editBox)
-        {
-            return;
-        }
-
-        if (e.Key == Key.Enter)
-        {
-            CommitStoredPanelPageHeaderEdit(editBox);
-            e.Handled = true;
-            return;
-        }
-
-        if (e.Key == Key.Escape)
-        {
-            // 取り消し。LostFocus 側で確定させないよう、先に編集欄を閉じる。
-            editBox.Visibility = Visibility.Collapsed;
-            Keyboard.ClearFocus();
-            e.Handled = true;
-        }
-    }
-
-    private void StoredPanelPageHeaderEditBox_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (sender is TextBox editBox && editBox.Visibility == Visibility.Visible)
-        {
-            CommitStoredPanelPageHeaderEdit(editBox);
-        }
-    }
-
-    private void CommitStoredPanelPageHeaderEdit(TextBox editBox)
-    {
-        editBox.Visibility = Visibility.Collapsed;
-
-        if (editBox.DataContext is not StoredPanelPage page)
-        {
-            return;
-        }
-
-        var previousHeader = page.Header;
-        _statusStore.RenameStoredPanelPage(page, editBox.Text);
-
-        if (!string.Equals(previousHeader, page.Header, StringComparison.Ordinal))
-        {
-            _statusStore.Message = page.HasCustomHeader
-                ? $"控えタブの名前を「{page.Header}」に変更しました。"
-                : $"控えタブの名前を既定の「{page.Header}」に戻しました。";
-        }
-
-        if (editBox.IsKeyboardFocusWithin)
-        {
-            Keyboard.ClearFocus();
-        }
-    }
-
-    /// <summary>タブのボタンと同じ DataTemplate 内に置かれた、名前編集用の TextBox を取り出す。</summary>
-    private static TextBox? FindStoredPanelPageHeaderEditBox(Button tabButton)
-    {
-        return (VisualTreeHelper.GetParent(tabButton) as Grid)?
-            .Children
-            .OfType<TextBox>()
-            .FirstOrDefault();
+        ShowStoredDividerRenameDialog(page);
     }
 
     private static void ClearStoredPanelTabDragHighlight(object sender)
@@ -3127,7 +2944,7 @@ public partial class MainWindow : Window
             if (!_statusStore.TryStoreSlotInBack(slot, out var storedPanel))
             {
                 _statusStore.Message = _statusStore.StoredPanels.All(item => item.HasContent)
-                    ? "控え Quartet が満杯のため保存できません。"
+                    ? "控えが満杯のため保存できません。控え一覧で不要な控えをクリアしてください。"
                     : $"スロット{slot.Name}に控え保存できるワークスペースがありません。";
                 return;
             }
@@ -3141,27 +2958,6 @@ public partial class MainWindow : Window
             _statusStore.Message = $"スロット{slot.Name}を{storedPanel!.Label}へ控え保存しました。";
             RefreshAuxiliaryUi();
         });
-    }
-
-    private async void ShowStoredPanelButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_isBusy)
-        {
-            return;
-        }
-
-        if (sender is not Button { Tag: StoredPanelSlot storedPanel, CommandParameter: string targetSlotName })
-        {
-            return;
-        }
-
-        var targetSlot = _statusStore.FindSlot(targetSlotName);
-        if (targetSlot is null)
-        {
-            return;
-        }
-
-        await ShowStoredPanelAsync(storedPanel, targetSlot);
     }
 
     private async Task ShowStoredPanelAsync(StoredPanelSlot storedPanel, WindowSlot targetSlot)
@@ -3251,21 +3047,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private void RegisterStoredPanelFolderButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_isBusy || sender is not Button { Tag: StoredPanelSlot storedPanel })
-        {
-            return;
-        }
-
-        if (storedPanel.HasContent)
-        {
-            return;
-        }
-
-        SelectStoredPanelFolder(storedPanel);
-    }
-
     // 空きの控えには新規登録、登録済みの控えはフォルダだけ差し替える（名前と選択アプリは残す）。
     private void SelectStoredPanelFolder(StoredPanelSlot storedPanel)
     {
@@ -3313,21 +3094,6 @@ public partial class MainWindow : Window
             ? $"{storedPanel.Label}「{storedPanel.DisplayTitle}」のフォルダを変更しました: {storedPanel.WorkspacePath}"
             : $"{storedPanel.Label} に「{storedPanel.DisplayTitle}」を登録しました。";
         RefreshAuxiliaryUi();
-    }
-
-    private void DeleteStoredPanelButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_isBusy)
-        {
-            return;
-        }
-
-        if (sender is not Button { Tag: StoredPanelSlot storedPanel } || !storedPanel.HasContent)
-        {
-            return;
-        }
-
-        ShowClearStoredPanelDialog(storedPanel);
     }
 
     private void ShowClearStoredPanelDialog(StoredPanelSlot storedPanel)
@@ -3626,51 +3392,25 @@ public partial class MainWindow : Window
         }
 
         _statusStore.ResetStoredPanelPageHeader(page);
-        _statusStore.Message = $"控えタブの名前を既定の「{page.Header}」に戻しました。";
-    }
-
-    private void CompactStoredPanelsButton_Click(object sender, RoutedEventArgs e)
-    {
-        var movedCount = _statusStore.CompactStoredPanels();
-
-        _statusStore.Message = movedCount > 0
-            ? $"控えの空きを詰めて整列しました（{movedCount} 件移動）。"
-            : "控えはすでに整列済みです。詰める空きはありませんでした。";
-
-        if (movedCount > 0 && _statusStore.StoredPanelPages.Count > 0)
-        {
-            _statusStore.SelectStoredPanelPage(_statusStore.StoredPanelPages[0]);
-        }
-
-        RefreshAuxiliaryUi();
-    }
-
-    private void StoredPanelsExpander_Expanded(object sender, RoutedEventArgs e)
-    {
-        UpdateWindowHeightForStoredPanels(true);
-        ScheduleStoredOverviewAutoOpen();
-    }
-
-    private void StoredPanelsExpander_Collapsed(object sender, RoutedEventArgs e)
-    {
-        // 一覧ボタンごと隠れるので、一覧も一緒に閉じる。
-        CloseStoredOverview(animate: false);
-        UpdateWindowHeightForStoredPanels(false);
+        _statusStore.Message = "区切り線の名前を消しました（線は残ります）。";
     }
 
     private void StoredOverviewButton_Click(object sender, RoutedEventArgs e)
     {
         if (StoredOverviewPopup.IsOpen && !_isStoredOverviewClosing)
         {
+            _isStoredOverviewWanted = false;
             CloseStoredOverview(animate: true);
             return;
         }
 
+        _isStoredOverviewWanted = true;
         OpenStoredOverview();
     }
 
     private void CloseStoredOverviewButton_Click(object sender, RoutedEventArgs e)
     {
+        _isStoredOverviewWanted = false;
         CloseStoredOverview(animate: true);
     }
 
@@ -3678,35 +3418,49 @@ public partial class MainWindow : Window
     {
         _isStoredOverviewClosing = false;
         SelectOverviewStoredPanel(null);
-        UpdateStoredOverviewHeight();
-        foreach (var button in new[] { StoredOverviewButton, CompactStoredOverviewButton })
-        {
-            button.Tag = "Active";
-            AutomationProperties.SetName(button, "控えの一覧を閉じる");
-        }
-
+        UpdateStoredOverviewMaxHeight();
         if (StoredOverviewPopup.IsOpen)
         {
             // 閉じるアニメーションの途中で押し直された場合は、その場から開き直す。
             AnimateStoredOverview(show: true);
+            UpdateStoredOverviewToggleButton();
             return;
         }
 
         _storedOverviewPrefersLeft = ShouldPlaceStoredOverviewOnLeft();
+        _isStoredOverviewOnLeft = _storedOverviewPrefersLeft;
         StoredOverviewPopup.CustomPopupPlacementCallback = PlaceStoredOverview;
         StoredOverviewPopup.IsOpen = true;
+        UpdateStoredOverviewToggleButton();
     }
 
-    // 控えが開いているか（標準表示は控え Quartet の Expander、縮小表示は「控え」トグル）。
-    private bool IsStoredPanelsAreaOpen => _displayMode switch
-    {
-        DisplayMode.Standard => StoredPanelsExpander.IsExpanded,
-        DisplayMode.Compact => _isCompactStoredPanelsOpen,
-        _ => false
-    };
+    // 控え一覧を開いておきたい状態か（開閉ボタンで開いたまま）。極小表示では出さない。
+    private bool IsStoredPanelsAreaOpen => _isStoredOverviewWanted && _displayMode != DisplayMode.Micro;
 
-    // 控えが開いている間は、一覧も最初から出しておく（すぐ見たい用途のため）。標準・縮小表示とも同じ。
-    // 一覧ボタンで閉じた後は、次に控えを開き直すまで出さない。
+    // 開閉ボタンの見た目。開いている間は緑の枠にし、矢印は一覧が出る側へ、開いている間はしまう側へ向ける。
+    private void UpdateStoredOverviewToggleButton()
+    {
+        var isOpen = StoredOverviewPopup.IsOpen && !_isStoredOverviewClosing;
+        var overviewOnLeft = isOpen ? _isStoredOverviewOnLeft : ShouldPlaceStoredOverviewOnLeft();
+        var pointsLeft = isOpen ? !overviewOnLeft : overviewOnLeft;
+        StoredOverviewToggleChevron.Text = pointsLeft ? "" : "";
+        if (isOpen)
+        {
+            StoredOverviewToggleButton.Tag = "Active";
+        }
+        else
+        {
+            StoredOverviewToggleButton.ClearValue(TagProperty);
+        }
+
+        var side = overviewOnLeft ? "左" : "右";
+        AutomationProperties.SetName(StoredOverviewToggleButton, isOpen ? "控えの一覧を閉じる" : "控えの一覧を開く");
+        StoredOverviewToggleButton.ToolTip = isOpen
+            ? "控えの一覧を閉じます。"
+            : $"控えの一覧をパネルの{side}側に開きます。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。";
+    }
+
+    // 開いておきたい間は、最小化からの復帰・表示モードの切り替え・終了確認の取消のあとにも開き直す。
     private void ScheduleStoredOverviewAutoOpen()
     {
         CancelStoredOverviewAutoOpen();
@@ -3733,6 +3487,13 @@ public partial class MainWindow : Window
     private void StoredOverviewAutoOpenTimer_Tick(object? sender, EventArgs e)
     {
         CancelStoredOverviewAutoOpen();
+        // 表示モードの切り替えアニメーション中は、ウィンドウが動き終わってから開く。
+        if (_isModeTransitionRunning)
+        {
+            ScheduleStoredOverviewAutoOpen();
+            return;
+        }
+
         if (!IsStoredPanelsAreaOpen
             || WindowState == WindowState.Minimized
             || AppExitConfirmOverlay.Visibility == Visibility.Visible
@@ -3747,15 +3508,11 @@ public partial class MainWindow : Window
     private void CloseStoredOverview(bool animate)
     {
         CancelStoredOverviewAutoOpen();
-        foreach (var button in new[] { StoredOverviewButton, CompactStoredOverviewButton })
-        {
-            button.ClearValue(TagProperty);
-            AutomationProperties.SetName(button, "控えの一覧を開く");
-        }
         SelectOverviewStoredPanel(null);
 
         if (!StoredOverviewPopup.IsOpen)
         {
+            UpdateStoredOverviewToggleButton();
             return;
         }
 
@@ -3765,16 +3522,67 @@ public partial class MainWindow : Window
             StoredOverviewRoot.BeginAnimation(OpacityProperty, null);
             StoredOverviewTranslate.BeginAnimation(TranslateTransform.XProperty, null);
             StoredOverviewPopup.IsOpen = false;
+            UpdateStoredOverviewToggleButton();
             return;
         }
 
         _isStoredOverviewClosing = true;
+        UpdateStoredOverviewToggleButton();
         AnimateStoredOverview(show: false);
     }
 
     private void StoredOverviewPopup_Opened(object? sender, EventArgs e)
     {
         // 画面端で反対側へ回り込むこともあるので、実際に出た側を見てスライド方向を決める。
+        UpdateStoredOverviewSide();
+        StoredOverviewRoot.UpdateLayout();
+        UpdateStoredOverviewRows();
+        StoredOverviewTranslate.X = _isStoredOverviewOnLeft ? StoredOverviewSlideDistance : -StoredOverviewSlideDistance;
+        AnimateStoredOverview(show: true);
+        // 行を畳んで高さが変わったので、画面の下にはみ出さない位置を計算し直す。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RepositionStoredOverview);
+    }
+
+    // 縮小表示では前半の行だけを出し、一覧の下のボタンで後半を下に伸ばす。標準表示は常にすべての行を出す。
+    private void UpdateStoredOverviewRows()
+    {
+        var isCompact = _displayMode == DisplayMode.Compact;
+        var limitRows = isCompact && !_isCompactOverviewExpanded;
+        var pages = _statusStore.StoredPanelPages;
+        for (var index = 0; index < pages.Count; index++)
+        {
+            if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is UIElement container)
+            {
+                container.Visibility = limitRows && index >= CompactOverviewVisibleRows ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+
+        var hiddenSlots = pages.Skip(CompactOverviewVisibleRows).SelectMany(page => page.Slots).ToList();
+        var hasMore = isCompact && hiddenSlots.Count > 0;
+        StoredOverviewMoreButton.Visibility = hasMore ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasMore)
+        {
+            return;
+        }
+
+        var range = $"{hiddenSlots[0].Index}〜{hiddenSlots[^1].Index}";
+        var registered = hiddenSlots.Count(slot => slot.HasContent);
+        StoredOverviewMoreChevron.Text = _isCompactOverviewExpanded ? "" : "";
+        StoredOverviewMoreText.Text = _isCompactOverviewExpanded
+            ? $"{range} をたたむ"
+            : registered > 0 ? $"{range} を表示（登録 {registered} 件）" : $"{range} を表示（すべて空き）";
+        AutomationProperties.SetName(StoredOverviewMoreButton, StoredOverviewMoreText.Text);
+    }
+
+    private void StoredOverviewMoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isCompactOverviewExpanded = !_isCompactOverviewExpanded;
+        UpdateStoredOverviewRows();
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RepositionStoredOverview);
+    }
+
+    private void UpdateStoredOverviewSide()
+    {
         try
         {
             var popupLeft = StoredOverviewRoot.PointToScreen(new Point()).X;
@@ -3786,8 +3594,7 @@ public partial class MainWindow : Window
             _isStoredOverviewOnLeft = _storedOverviewPrefersLeft;
         }
 
-        StoredOverviewTranslate.X = _isStoredOverviewOnLeft ? StoredOverviewSlideDistance : -StoredOverviewSlideDistance;
-        AnimateStoredOverview(show: true);
+        UpdateStoredOverviewToggleButton();
     }
 
     // パネルの側面からぬるっと引き出す。閉じるときは同じ方向へ少し戻しながら消す。
@@ -3811,6 +3618,7 @@ public partial class MainWindow : Window
 
                 _isStoredOverviewClosing = false;
                 StoredOverviewPopup.IsOpen = false;
+                UpdateStoredOverviewToggleButton();
             };
         }
 
@@ -3822,14 +3630,14 @@ public partial class MainWindow : Window
         }
     }
 
-    // 枠が滑り出るのに合わせて、配置先パッド→控え1→…→控え6 の順に少しずつ浮かび上がらせる。
+    // 枠が滑り出るのに合わせて、控え1→控え2→… の段を順に少しずつ浮かび上がらせる。
     private void AnimateStoredOverviewItemsIn()
     {
         StoredOverviewRoot.UpdateLayout();
-        var items = new List<FrameworkElement> { StoredOverviewTargetPad };
+        var items = new List<FrameworkElement>();
         for (var index = 0; index < StoredOverviewPagesList.Items.Count; index++)
         {
-            if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement container)
+            if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement { Visibility: Visibility.Visible } container)
             {
                 items.Add(container);
             }
@@ -3860,9 +3668,43 @@ public partial class MainWindow : Window
 
     private CustomPopupPlacement[] PlaceStoredOverview(Size popupSize, Size targetSize, Point offset)
     {
-        var right = new CustomPopupPlacement(new Point(targetSize.Width + StoredOverviewGap, 0), PopupPrimaryAxis.Horizontal);
-        var left = new CustomPopupPlacement(new Point(-popupSize.Width - StoredOverviewGap, 0), PopupPrimaryAxis.Horizontal);
+        // 引数の単位は DPI によって物理ピクセルになるため、パネルの実寸（DIP）との比で換算して使う。
+        var unitsPerDip = PanelFrameBorder.ActualWidth > 0 ? targetSize.Width / PanelFrameBorder.ActualWidth : 1;
+        var gap = StoredOverviewGap * unitsPerDip;
+        var shift = GetStoredOverviewVerticalShift(popupSize.Height / unitsPerDip) * unitsPerDip;
+        var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, shift), PopupPrimaryAxis.Horizontal);
+        var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, shift), PopupPrimaryAxis.Horizontal);
         return _storedOverviewPrefersLeft ? [left, right] : [right, left];
+    }
+
+    // 一覧の上端はパネルの上端に揃える（区切り線を足しても上の位置が動かないように）。
+    // 画面（作業領域）の下にはみ出すときだけ上へずらし、作業領域の上端より上へは出さない。
+    // 戻り値はパネルの上端からのずれ（DIP）。
+    private double GetStoredOverviewVerticalShift(double popupHeight)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !_windowArranger.TryGetMonitorWorkAreaForWindow(handle, out var workArea))
+        {
+            return 0;
+        }
+
+        Point panelTop;
+        try
+        {
+            panelTop = PanelFrameBorder.PointToScreen(new Point());
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
+        }
+
+        var scale = VisualTreeHelper.GetDpi(this).DpiScaleY;
+        var popupHeightPx = popupHeight * scale;
+        var top = panelTop.Y;
+        // 下端を先に作業領域へ収め、それでも上にはみ出すなら上端を優先する（入りきらない分は一覧がスクロールする）。
+        top = Math.Min(top, workArea.Top + workArea.Height - popupHeightPx);
+        top = Math.Max(top, workArea.Top);
+        return (top - panelTop.Y) / scale;
     }
 
     // 基本はパネルの右側。右に一覧の幅ぶんの空きが無いときだけ左側へ出す
@@ -3889,15 +3731,17 @@ public partial class MainWindow : Window
         return leftSpace >= requiredSpace || leftSpace > rightSpace;
     }
 
-    // 上端・下端をパネルと揃えるため、高さはパネルと同じに固定する。下限（MinHeight）だけだと、
-    // 長いタイトルの折り返しなどで中身が少しでも大きいと一覧だけ下へはみ出してずれる。
-    // 6 ページ分は通常この高さに収まり、入りきらないときだけ一覧部分をスクロールさせる。
-    private void UpdateStoredOverviewHeight()
+    // 高さはパネルに揃えず中身に合わせる。画面の作業領域より高くなるときだけ、上限で止めて一覧をスクロールさせる。
+    private void UpdateStoredOverviewMaxHeight()
     {
-        if (PanelFrameBorder.ActualHeight > 0)
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !_windowArranger.TryGetMonitorWorkAreaForWindow(handle, out var workArea))
         {
-            StoredOverviewRoot.Height = PanelFrameBorder.ActualHeight;
+            StoredOverviewRoot.ClearValue(MaxHeightProperty);
+            return;
         }
+
+        StoredOverviewRoot.MaxHeight = Math.Max(200, workArea.Height / VisualTreeHelper.GetDpi(this).DpiScaleY);
     }
 
     // Popup はオーナーの移動に追従しないため、オフセットを揺らして再配置させる。
@@ -3905,41 +3749,59 @@ public partial class MainWindow : Window
     {
         if (!StoredOverviewPopup.IsOpen)
         {
+            // 閉じている間も、ボタンの矢印は「今開いたら出る側」に合わせておく。
+            UpdateStoredOverviewToggleButton();
             return;
         }
 
-        UpdateStoredOverviewHeight();
+        UpdateStoredOverviewMaxHeight();
         // パネルを動かして右側に空きができたら右へ戻す（逆に右が足りなくなれば左へ）。
         _storedOverviewPrefersLeft = ShouldPlaceStoredOverviewOnLeft();
         var offset = StoredOverviewPopup.HorizontalOffset;
         StoredOverviewPopup.HorizontalOffset = offset + 0.01;
         StoredOverviewPopup.HorizontalOffset = offset;
+        UpdateStoredOverviewSide();
+    }
+
+    // タイルのダブルクリックで名前の変更（本体パネルの入力ダイアログ）を開く。
+    private void StoredOverviewTile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2 || sender is not FrameworkElement { Tag: StoredPanelSlot { HasContent: true } storedPanel })
+        {
+            return;
+        }
+
+        // 2 回目の MouseUp で選択が切り替わらないようにする（1 回目で付いた選択はダイアログを開くときに外す）。
+        _suppressNextOverviewTileClick = true;
+        ShowStoredRenameDialog(storedPanel);
+        e.Handled = true;
     }
 
     private void StoredOverviewTile_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_suppressNextOverviewTileClick)
+        {
+            _suppressNextOverviewTileClick = false;
+            e.Handled = true;
+            return;
+        }
+
         // ドラッグで配置した直後の MouseUp は選択操作として扱わない。
         if (IsSlotFocusSuppressedByDrag() || sender is not FrameworkElement { Tag: StoredPanelSlot storedPanel })
         {
             return;
         }
 
-        SelectOverviewStoredPanel(storedPanel.HasContent && !ReferenceEquals(_selectedOverviewStoredPanel, storedPanel)
-            ? storedPanel
-            : null);
+        ToggleOverviewStoredPanelSelection(storedPanel);
         e.Handled = true;
     }
 
-    // 一覧のページ見出し（控え1 など）を押すと、下の控えパネルもそのタブへ切り替える。
-    private void StoredOverviewPageHeader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    // 選んだカードをもう一度押すと選択を解く。空きカードは選べない。
+    private void ToggleOverviewStoredPanelSelection(StoredPanelSlot storedPanel)
     {
-        if ((sender as FrameworkElement)?.DataContext is not StoredPanelPage page)
-        {
-            return;
-        }
-
-        _statusStore.SelectStoredPanelPage(page);
-        e.Handled = true;
+        SelectOverviewStoredPanel(storedPanel.HasContent && !ReferenceEquals(_selectedOverviewStoredPanel, storedPanel)
+            ? storedPanel
+            : null);
     }
 
     private void StoredOverviewTile_DragEnter(object sender, DragEventArgs e)
@@ -3956,15 +3818,34 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    // ドラッグ系はタイルの Preview（トンネル）イベントで受ける。名前などの子要素の上でも、子より先にタイルが受け付ける。
+    // 子要素の間を移るたびに Leave が来るので、本当にタイルの外へ出たときだけ光を消す。
     private void StoredOverviewTile_DragLeave(object sender, DragEventArgs e)
     {
+        if (IsDragPointInside(sender, e))
+        {
+            return;
+        }
+
         SetStoredOverviewTileDropHighlight(sender, false);
     }
 
     private void StoredOverviewTile_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = CanDropOnStoredOverviewTile(sender, e) ? DragDropEffects.Move : DragDropEffects.None;
+        var canDrop = CanDropOnStoredOverviewTile(sender, e);
+        e.Effects = canDrop ? DragDropEffects.Move : DragDropEffects.None;
+        if (canDrop)
+        {
+            SetStoredOverviewTileDropHighlight(sender, true);
+        }
+
         e.Handled = true;
+    }
+
+    private static bool IsDragPointInside(object sender, DragEventArgs e)
+    {
+        return sender is FrameworkElement element
+            && new Rect(element.RenderSize).Contains(e.GetPosition(element));
     }
 
     private void StoredOverviewTile_Drop(object sender, DragEventArgs e)
@@ -4024,22 +3905,6 @@ public partial class MainWindow : Window
         border.ClearValue(OpacityProperty);
     }
 
-    private async void StoredOverviewTargetButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: WindowSlot targetSlot })
-        {
-            return;
-        }
-
-        if (_selectedOverviewStoredPanel is null)
-        {
-            _statusStore.Message = "先に一覧から控えカードを選んでから、配置先を押してください。";
-            return;
-        }
-
-        await ShowStoredPanelFromOverviewAsync(_selectedOverviewStoredPanel, targetSlot);
-    }
-
     private async Task ShowStoredPanelFromOverviewAsync(StoredPanelSlot storedPanel, WindowSlot targetSlot)
     {
         // 表示すると元のスロット内容がこの控えへ入れ替わるため、選択は先に解いておく。
@@ -4055,29 +3920,17 @@ public partial class MainWindow : Window
         }
 
         _selectedOverviewStoredPanel = storedPanel;
-        UpdateCompactStoredAssignState();
+        UpdateStoredAssignState();
         if (storedPanel is not null)
         {
             storedPanel.IsOverviewSelected = true;
-            StoredOverviewTargetPad.Tag = "Armed";
-            StoredOverviewHintText.Text = IsCompactMode
-                ? $"「{storedPanel.DisplayTitle}」をスロットの「ここに表示」で配置"
-                : $"「{storedPanel.DisplayTitle}」の配置先 A〜D を押す";
-            StoredOverviewHintText.ToolTip = StoredOverviewHintText.Text + (IsCompactMode ? "（Esc で取消）" : string.Empty);
+            StoredOverviewHintText.Text = $"「{storedPanel.DisplayTitle}」を表示するスロットを押す";
+            StoredOverviewHintText.ToolTip = $"本体のスロット A〜D が「ここに表示」に変わります。押したスロットに「{storedPanel.DisplayTitle}」を表示します（Esc か、もう一度カードを押すと取消）。";
             return;
         }
 
-        StoredOverviewTargetPad.ClearValue(TagProperty);
-        if (IsCompactMode)
-        {
-            // 縮小表示の一覧には A〜D パッドが無く、本体のスロットが配置先になる。
-            StoredOverviewHintText.Text = "カードを選んでスロットへ（ドラッグでも可）";
-            StoredOverviewHintText.ToolTip = "カードを選ぶと本体のスロット A〜D が「ここに表示」に変わります。押したスロットに表示します。カードをスロットへドラッグしても配置できます。";
-            return;
-        }
-
-        StoredOverviewHintText.Text = "カードを選んで A〜D を押す（ドラッグでも可）";
-        StoredOverviewHintText.ToolTip = "カードを選んで A〜D を押すか、カードを A〜D やメインのカードへドラッグして配置します。";
+        StoredOverviewHintText.Text = "カードを選んでスロットへ（ドラッグでも可）";
+        StoredOverviewHintText.ToolTip = "カードを選ぶと本体のスロット A〜D が「ここに表示」に変わり、押したスロットに表示します。カードをスロットへドラッグしても配置できます。右クリックで登録・名前の変更・クリアと、行の上への区切り線の追加ができます。";
     }
 
     private async void RefreshTimer_Tick(object? sender, EventArgs e)
@@ -4495,7 +4348,8 @@ public partial class MainWindow : Window
         _windowArranger.BringToFront(panelHandle);
     }
 
-    private void SetDisplayMode(DisplayMode mode, bool updateMessage = true)
+    // 表示モードの切り替え本体（部品の出し入れと目標の大きさ・位置）。見せ方のアニメーションは MainWindow.ModeTransition.cs の SetDisplayMode。
+    private void SetDisplayModeCore(DisplayMode mode, bool updateMessage = true)
     {
         CancelInlineTitleClick();
         if (_displayMode == mode)
@@ -4540,17 +4394,10 @@ public partial class MainWindow : Window
         StandardSlotsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         CompactBarPanel.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
         MicroPanel.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
-        CompactStoredPanelsToggleButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
-        // 縮小表示の一覧は本体のスロットを配置先にするので、一覧側の A〜D パッドは標準表示だけ。
-        StoredOverviewTargetPad.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        CompactLayout.SetIsActive(StoredOverviewRoot, isCompact);
-        // 一覧の見出しも縮小表示の文字の大きさに揃える（タイルとページ見出しは XAML のトリガーで切り替える）。
-        StoredOverviewTitleText.FontSize = isCompact ? 12.5 : 14;
-        StoredOverviewHintText.FontSize = isCompact ? 10.5 : 11.5;
+        // AI アプリと控え一覧の開閉ボタンの行。極小表示には置かない。
+        StoredPanelsRowGrid.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
         AuxiliaryApplicationPanel.Tag = mode.ToString();
-        UpdateCompactStoredPanelsVisibility();
-        StoredPanelsExpander.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        // 一覧は表示モードごとに高さと配置先の操作が違うので、切り替えたら一度閉じる。
+        // 一覧はパネルの大きさと配置先（標準はカード全体、縮小はカード右端の案内）が変わるので、切り替えたら一度閉じて開き直す。
         CloseStoredOverview(animate: false);
         if (IsStoredPanelsAreaOpen)
         {
@@ -4558,7 +4405,12 @@ public partial class MainWindow : Window
         }
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        TitleBarToolButtonsPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        // タイトルバーのツール群。縮小表示では、押せばすぐ外部で開く「ダウンロード」と「PR 受信箱」だけを出し、
+        // モーダルを開くもの（システムモニタ・設定・ヘルプ）は標準表示だけにする。極小表示はすべて隠す。
+        TitleBarToolButtonsPanel.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
+        SystemMonitorButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
+        HelpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         if (!isStandard && SystemMonitorOverlay.Visibility == Visibility.Visible)
         {
             HideSystemMonitorDialog();
@@ -4585,8 +4437,8 @@ public partial class MainWindow : Window
 
                 MinWidth = CompactWindowMinWidth;
                 MinHeight = compactHeight;
-                var targetBounds = GetCompactModeBounds(preModeChangeBounds, compactWidth * scale, compactHeight * scale);
-                SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                var targetBounds = GetCenterAnchoredBounds(preModeChangeBounds, compactWidth * scale, compactHeight * scale);
+                ApplyModeTargetBounds(targetBounds);
                 break;
             }
             case DisplayMode.Micro:
@@ -4594,7 +4446,7 @@ public partial class MainWindow : Window
                 MinWidth = MicroWindowSize;
                 MinHeight = MicroWindowSize;
                 var targetBounds = GetMicroModeCenteredBounds(MicroWindowSize * scale, MicroWindowSize * scale);
-                SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                ApplyModeTargetBounds(targetBounds);
                 break;
             }
             case DisplayMode.Standard:
@@ -4608,8 +4460,8 @@ public partial class MainWindow : Window
                 var targetHeight = _standardWindowHeight > 0
                     ? Math.Max(MinHeight, _standardWindowHeight)
                     : Height;
-                var targetBounds = GetStandardModeRestoreBounds(preModeChangeBounds, targetWidth * scale, targetHeight * scale);
-                SetWindowBounds(targetBounds.Left, targetBounds.Top, targetBounds.Width, targetBounds.Height);
+                var targetBounds = GetCenterAnchoredBounds(preModeChangeBounds, targetWidth * scale, targetHeight * scale);
+                ApplyModeTargetBounds(targetBounds);
                 break;
             }
         }
@@ -4634,13 +4486,33 @@ public partial class MainWindow : Window
         // 縮小表示はタイトル行のすぐ下にカードが来るので、上の余白を 3 だけ詰めてカードの上（CompactBarPanel の Margin）へ回し、
         // タイトルが上下の中央に見えるようにする（全体の高さは変えない）。
         RootLayoutGrid.Margin = IsCompactMode ? new Thickness(8, 5, 8, 6) : new Thickness(8);
+        // タイトル「Turtle AI Code Quartet Hub」の左端を、下のカード（標準）・スロット枠（縮小）の左端にそろえる。
+        // 標準はカードの見える枠が 15 DIP（行の余白 8 + 格子の余白 8 - 表示枠の外出し 8 + カードの余白 5 + フォーカス枠 2）、
+        // 縮小はスロット枠が 15 DIP（行の余白 8 + 緑の枠 1.75 + 枠の余白 5）から始まるので、その差だけ右へ寄せる。
+        WindowTitleText.Margin = new Thickness(IsCompactMode ? 5 : isMicro ? 0 : 7, 0, 0, 0);
         // 控えの開閉で操作行が伸縮しないよう、縮小時は行の高さと上端を固定する。
         StoredPanelsRowGrid.Height = IsCompactMode ? 26 : double.NaN;
         StoredPanelsRowGrid.MinHeight = IsCompactMode ? 26 : 0;
         StoredPanelsRowGrid.VerticalAlignment = IsCompactMode ? VerticalAlignment.Top : VerticalAlignment.Stretch;
         StoredPanelsRowGrid.Margin = IsCompactMode ? new Thickness(5, 2, 5, 2) : new Thickness(5, 2, 5, 3);
-        AuxiliaryApplicationsRow.VerticalAlignment = IsCompactMode ? VerticalAlignment.Center : VerticalAlignment.Top;
-        AuxiliaryApplicationsRow.Margin = new Thickness(0, 0, 4, 0);
+        // 控え一覧の開閉ボタンは AI アプリのボタンと同じ高さにそろえる。
+        StoredOverviewToggleButton.Height = IsCompactMode ? 23 : 28;
+        // 標準表示は下の「最背面」と同じ幅で右端をそろえる。縮小表示はフッターが無いので、AI アプリの右の残り幅いっぱいに広げる
+        // （左の Margin 8 が Antigravity2 との隙間になる）。
+        if (IsCompactMode)
+        {
+            StoredOverviewToggleButton.ClearValue(WidthProperty);
+            StoredOverviewToggleButton.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+        else
+        {
+            StoredOverviewToggleButton.SetBinding(WidthProperty, new System.Windows.Data.Binding(nameof(ActualWidth)) { Source = BackmostAllButton });
+            StoredOverviewToggleButton.HorizontalAlignment = HorizontalAlignment.Right;
+        }
+        StoredOverviewToggleButton.Padding = IsCompactMode ? new Thickness(8, 0, 6, 0) : new Thickness(10, 0, 8, 0);
+        StoredOverviewToggleText.Text = "控え一覧";
+        StoredOverviewToggleText.FontSize = IsCompactMode ? 11.5 : 12;
+        StoredOverviewToggleChevron.Margin = IsCompactMode ? new Thickness(6, 1, 0, 0) : new Thickness(8, 1, 0, 0);
         DisplayModeButton.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
         StandardJumpButton.Width = isMicro ? 23 : 26;
         MinimizeButton.Width = isMicro ? 23 : 32;
@@ -4717,16 +4589,9 @@ public partial class MainWindow : Window
         var compactPanelHeight = CompactBarPanel.DesiredSize.Height;
         StoredPanelsRowGrid.Measure(new Size(compactContentWidth, double.PositiveInfinity));
         var auxiliaryRowHeight = StoredPanelsRowGrid.DesiredSize.Height;
-        var storedRowHeight = 0d;
-        if (CompactStoredPanelsArea.Visibility == Visibility.Visible)
-        {
-            CompactStoredPanelsArea.Measure(new Size(compactContentWidth, double.PositiveInfinity));
-            storedRowHeight = CompactStoredPanelsArea.DesiredSize.Height;
-        }
         var desiredHeight = titleRowHeight
             + compactPanelHeight
             + auxiliaryRowHeight
-            + storedRowHeight
             + RootLayoutGrid.Margin.Top
             + RootLayoutGrid.Margin.Bottom
             + CompactPanelBorderThickness * 2;
@@ -4748,27 +4613,27 @@ public partial class MainWindow : Window
             (int)Math.Round(Height));
     }
 
-    private WindowArranger.WindowBounds GetCompactModeBounds(WindowArranger.WindowBounds standardBounds, double targetWidth, double targetHeight)
+    // 標準⇔縮小の切り替えは、切り替え前のウィンドウの中心を保ったまま大きさだけ変える（作業領域からはみ出す分は押し戻す）。
+    // 以前は右上を基準にしていたが、大きさが変わるとウィンドウの位置が大きくずれて使いにくいため中心基準にした。
+    // 極小表示は GetMicroModeCenteredBounds で常に画面（作業領域）の中央に置く。
+    private WindowArranger.WindowBounds GetCenterAnchoredBounds(WindowArranger.WindowBounds previousBounds, double targetWidth, double targetHeight)
     {
-        var compactRight = standardBounds.Left + standardBounds.Width;
-        var defaultBounds = new WindowArranger.WindowBounds(
-            (int)Math.Round(compactRight - targetWidth),
-            standardBounds.Top,
-            (int)Math.Round(targetWidth),
-            (int)Math.Round(targetHeight));
+        var centerX = previousBounds.Left + previousBounds.Width / 2.0;
+        var centerY = previousBounds.Top + previousBounds.Height / 2.0;
+        var left = centerX - targetWidth / 2;
+        var top = centerY - targetHeight / 2;
 
         var panelHandle = new WindowInteropHelper(this).Handle;
-        if (panelHandle == IntPtr.Zero
-            || !_windowArranger.TryGetMonitorWorkAreaForWindow(panelHandle, out var workArea))
+        if (panelHandle != IntPtr.Zero
+            && _windowArranger.TryGetMonitorWorkAreaForWindow(panelHandle, out var workArea))
         {
-            return defaultBounds;
+            left = ClampToWorkArea(left, workArea.Left, workArea.Width, targetWidth);
+            top = ClampToWorkArea(top, workArea.Top, workArea.Height, targetHeight);
         }
 
-        var adjustedLeft = ClampToWorkArea(defaultBounds.Left, workArea.Left, workArea.Width, targetWidth);
-        var adjustedTop = ClampToWorkArea(defaultBounds.Top, workArea.Top, workArea.Height, targetHeight);
         return new WindowArranger.WindowBounds(
-            (int)Math.Round(adjustedLeft),
-            (int)Math.Round(adjustedTop),
+            (int)Math.Round(left),
+            (int)Math.Round(top),
             (int)Math.Round(targetWidth),
             (int)Math.Round(targetHeight));
     }
@@ -4868,32 +4733,6 @@ public partial class MainWindow : Window
         PanelFrameBorder.Effect = null;
     }
 
-    private WindowArranger.WindowBounds GetStandardModeRestoreBounds(WindowArranger.WindowBounds compactBounds, double targetWidth, double targetHeight)
-    {
-        var compactRight = compactBounds.Left + compactBounds.Width;
-        var defaultBounds = new WindowArranger.WindowBounds(
-            (int)Math.Round(compactRight - targetWidth),
-            compactBounds.Top,
-            (int)Math.Round(targetWidth),
-            (int)Math.Round(targetHeight));
-
-        var panelHandle = new WindowInteropHelper(this).Handle;
-        if (panelHandle == IntPtr.Zero
-            || !_windowArranger.TryGetMonitorWorkAreaForWindow(panelHandle, out var workArea))
-        {
-            return defaultBounds;
-        }
-
-        var adjustedLeft = ClampToWorkArea(defaultBounds.Left, workArea.Left, workArea.Width, targetWidth);
-        var adjustedTop = ClampToWorkArea(defaultBounds.Top, workArea.Top, workArea.Height, targetHeight);
-
-        return new WindowArranger.WindowBounds(
-            (int)Math.Round(adjustedLeft),
-            (int)Math.Round(adjustedTop),
-            (int)Math.Round(targetWidth),
-            (int)Math.Round(targetHeight));
-    }
-
     private static bool WouldClip(WindowArranger.WindowBounds workArea, WindowArranger.WindowBounds targetBounds)
     {
         return targetBounds.Left < workArea.Left
@@ -4989,6 +4828,12 @@ public partial class MainWindow : Window
 
     private void RefreshAuxiliaryUi()
     {
+        if (StoredOverviewPopup.IsOpen)
+        {
+            // 縮小表示の「21〜40 を表示（登録 n 件）」の件数を、控えの移動・登録・クリアに合わせて更新する。
+            UpdateStoredOverviewRows();
+        }
+
         UpdateDisplayBadges();
         RefreshLaunchButtonAvailability();
         TaskbarJumpListService.Update(
@@ -5568,52 +5413,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void UpdateWindowHeightForStoredPanels(bool isExpanded, bool force = false)
-    {
-        if (_collapsedWindowHeight <= 0)
-        {
-            _collapsedWindowHeight = Height;
-        }
-
-        if (_collapsedWindowMinHeight <= 0)
-        {
-            _collapsedWindowMinHeight = MinHeight;
-        }
-
-        if (!isExpanded)
-        {
-            MinHeight = _collapsedWindowMinHeight;
-            if (force || Height > _collapsedWindowHeight)
-            {
-                Height = _collapsedWindowHeight;
-            }
-
-            RememberStandardWindowMetrics();
-            return;
-        }
-
-        StoredPanelsExpanderContent.UpdateLayout();
-        var extraHeight = StoredPanelsExpanderContent.ActualHeight;
-        if (extraHeight <= 0)
-        {
-            extraHeight = StoredPanelsExpanderContent.DesiredSize.Height;
-        }
-
-        if (extraHeight <= 0)
-        {
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () => UpdateWindowHeightForStoredPanels(true));
-            return;
-        }
-
-        extraHeight = Math.Max(0, extraHeight + 12);
-        var targetHeight = _collapsedWindowHeight + extraHeight;
-        var targetMinHeight = _collapsedWindowMinHeight + extraHeight;
-
-        Height = targetHeight;
-        MinHeight = targetMinHeight;
-        RememberStandardWindowMetrics();
-    }
-
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         CancelInlineTitleClick();
@@ -5689,8 +5488,12 @@ public partial class MainWindow : Window
         var wasPressed = ReferenceEquals(_pressedInlineTitle, textBox);
         CancelInlineTitleClick();
         if (!wasPressed || _isBusy || IsSlotFocusSuppressedByDrag()
-            || !new Rect(textBox.RenderSize).Contains(e.GetPosition(textBox))
-            || textBox.DataContext is not WindowSlot slot)
+            || !new Rect(textBox.RenderSize).Contains(e.GetPosition(textBox)))
+        {
+            return;
+        }
+
+        if (textBox.DataContext is not WindowSlot slot)
         {
             return;
         }
@@ -6292,7 +6095,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (IsCompactStoredAssignArmed && e.Key == Key.Escape)
+        if (StoredRenameOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            HideStoredRenameDialog();
+            e.Handled = true;
+            return;
+        }
+
+        if (IsStoredAssignArmed && e.Key == Key.Escape)
         {
             SelectOverviewStoredPanel(null);
             e.Handled = true;
@@ -6595,11 +6405,8 @@ public partial class MainWindow : Window
         CompactVisibilityButton.IsEnabled = !busy;
         MicroVisibilityButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;
-        CompactStoredPanelsArea.IsEnabled = !busy;
-        CompactStoredPanelsToggleButton.IsEnabled = !busy;
-        CompactStoredOverviewButton.IsEnabled = !busy;
-        StoredPanelsExpander.IsEnabled = !busy;
-        StoredOverviewTargetPad.IsEnabled = !busy;
+        StoredOverviewToggleButton.IsEnabled = !busy;
+        StoredOverviewRoot.IsEnabled = !busy;
         SettingsOverlay.IsEnabled = !busy;
         SystemMonitorOverlay.IsEnabled = !busy;
         DiskCleanupOverlay.IsEnabled = !busy;

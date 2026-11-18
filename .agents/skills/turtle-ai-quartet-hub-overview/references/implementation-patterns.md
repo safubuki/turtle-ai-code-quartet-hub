@@ -526,3 +526,64 @@
   1. **ダウンロードフォルダボタン**: `TitleBarToolButtonsPanel`（標準表示のみ可視）の `SystemMonitorButton` と `PullRequestInboxButton` の間（＝`PullRequestInboxButton` の左側）に `DownloadsFolderButton`（`Content="&#xE896;"`、`Segoe MDL2 Assets`、26 DIP 幅、`Margin="2,0,0,0"`）を配置した。`DownloadsFolderResolver` は Win32 `SHGetKnownFolderPath(FOLDERID_Downloads)` によりユーザーが別ドライブ等へ移動したダウンロードフォルダを優先解決し、未取得・未存在時のみ `%USERPROFILE%\Downloads` へフォールバックする。Explorer 起動ロジックは `MainWindow.xaml.cs` の `TryOpenFolderInExplorer` へ集約し、他のフォルダボタンとの重複も解消した。
   2. **AI 状態リセットボタン**: Swarm 等の複数エージェント運用や外部要因で表示状態がずれたとき手動で即座に待機へ戻せるよう、「AI の作業通知」カードヘッダー右端に `ResetAiActivityButton`（「AI 状態をリセット」）を追加し、`StatusStore.ResetAllAiActivity()` を呼ぶようにした（`UninstallAiNotifyHooksButton_Click` も同じメソッドを共有）。設定ファイル・通知スクリプト・実行中プロセスには触れず、結果を `AiNotifyActionStatusText`（設定を開き直すたびに文言・可視状態とも初期化）とステータスバーへ表示する。
 - **注意**: `TitleBarButtonsPanel` 上の並び順（`SystemMonitorButton` → `DownloadsFolderButton` → `PullRequestInboxButton` → `SettingsButton`）は `SystemMonitorAndCardTitleTests` で検証しているため、アイコン追加時はテストも整合させること。また `TitleBarToolButtonsPanel` 内のため縮小・極小表示では非表示となる（既存仕様どおり）。
+
+## 14. 控え Quartet の廃止と控え一覧への一本化（2026-11-18 追加）
+- **ファイル**: `MainWindow.xaml`, `MainWindow.xaml.cs`, `MainWindow.StoredAssign.cs`（旧 `MainWindow.CompactStoredAssign.cs`）, `MainWindow.StoredPanelMenu.cs`, `Services/StatusStore.cs`, `TurtleAIQuartetHub.Panel.Tests/SystemMonitorAndCardTitleTests.cs`
+- **ユーザー指示**: 標準・縮小の控え Quartet（タブ＋4 枚のカード）と控え一覧上部の A〜D パッドは使わないので削除。控えは数を増やしたい。配置は縮小表示と同じく「カードを選ぶ → スロットの『ここに表示』」またはドラッグ。AI アプリは左寄せ、控え一覧の開閉ボタンは右端に矢印付きで置く。一覧の高さはメインパネルに揃えなくてよい。
+- **構成**:
+  - `StoredPanelsRowGrid` は列 0 に `AuxiliaryApplicationsRow`（左寄せ）、列 1 に `StoredOverviewToggleButton`。標準は「⊞ 控え一覧 ›」28 DIP、縮小は「控え ›」23 DIP（`UpdateDisplayModeChrome` で切り替え）。極小表示では行ごと隠す。矢印 `StoredOverviewToggleChevron` は閉じている間は一覧が出る側、開いている間はしまう側を向く（`UpdateStoredOverviewToggleButton`）。
+  - 一覧の開閉は `_isStoredOverviewWanted` で持つ。最小化・表示モード切替・終了確認で Popup を閉じても、`IsStoredPanelsAreaOpen` が真なら `ScheduleStoredOverviewAutoOpen` で開き直す。`StoredPanelsExpander` / `CompactStoredPanelsArea` / `_isCompactStoredPanelsOpen` / `UpdateWindowHeightForStoredPanels` は削除済みで、標準表示のウィンドウ高さは控えの開閉で変わらない。
+  - 控えは `StoredPanelsPerPage = 4` × `StoredPanelPageCount = 10`（40 件）。保存は `Index` 単位なので段を増やしても既存の slots.json はそのまま読める。段を減らすと末尾の控えが読めなくなるので減らさない。
+  - 一覧の高さは中身に合わせる（自然高 約 800 DIP）。`UpdateStoredOverviewMaxHeight` で作業領域の高さを上限にし、超える分は一覧をスクロール。上端はパネルに揃え、作業領域の下にはみ出すときだけ `GetStoredOverviewVerticalShift` で上へずらす。Popup のカスタム配置の引数は DPI によって物理ピクセルになるため、`targetSize.Width / PanelFrameBorder.ActualWidth` で換算してから使う。
+  - スロットへの配置は `IsStoredAssignArmed`（極小以外で一覧のカードを選択中）。標準表示は `StandardSlotsGrid`、縮小表示は `CompactBarPanel` に `SlotAssignTarget.IsArmed` を付け、標準カードは全面の `SlotAssignOverlay`（▶ X に表示／いまの「…」は控えへ移ります）を出してクリックで `ShowSelectedStoredPanelInSlot`。オーバーレイ表示中はカード内のボタンを押せない。Esc で取消。
+  - 一覧のタイルは高さ 50 DIP、名前は `InlineTitleTextBox`（最大 2 行折り返し）でダブルクリック編集。単クリックはタイトル上でも選択の切り替えとして扱う（`InlineTitleTextBox_PreviewMouseLeftButtonUp` で `StoredPanelSlot` を分岐）。`InlineTitleTextBox` の表示用 TextBlock は `TextWrapping` と `VerticalContentAlignment` をテンプレートバインドするようにしたが、既定値は従来どおり（NoWrap・Center）。
+  - 段見出し（控え1 など）は `StoredOverviewPageHeaderButtonStyle` のボタンで、ダブルクリックで名前変更（兄弟の `PageHeaderEditBox`）、カードのドロップでその段へ移動。`整列` は一覧の見出し行へ移した。
+- **追加調整（同日）**: ユーザー指示で、段見出し（控え1〜10）と `整列` を廃止し、右クリックで引く区切り線に置き換えた。
+  - `StoredPanelPage.HasDivider`（`SavedStoredPanelPageState.HasDivider` で保存）が真の行だけ、その行の上に区切り線（`DividerRow`）を出す。名前は既存の `CustomHeader` を流用し、空なら線だけ。名前を付けると `RenameStoredPanelPage` が区切り線も引く。区切り線を消すと名前も消す（`SetStoredPanelPageDivider`）。旧データで名前の付いていた段は、読み込み時にその名前の区切り線になる。
+  - カードの右クリックに「この行の上に区切り線を引く／名前付きで引く／名前を変更／消す」、区切り線の右クリックに「名前を変更／名前だけ消す／区切り線を消す」。区切り線のダブルクリックで名前を編集（`BeginStoredPanelPageHeaderEdit`）。カードを区切り線にドロップするとその行へ移す。
+  - 区切り線でグループを作るため、ページをまたいで詰める `整列`（`CompactStoredPanelsButton_Click`）は削除。ドロップでの移動は移動元の行の中だけを詰める（`TryMoveStoredPanelInOverview`）ので、グループをまたいでずれない。
+  - 一覧の上端はパネルの上端に揃える（`GetStoredOverviewVerticalShift`）。一度縦中央揃えにしたが、区切り線を足すたびに一覧全体が上へずれてカードの位置を覚えにくいため、ユーザーと相談して上揃えに戻した。作業領域の下→上の順に収まる位置へ補正する。区切り線の追加・削除で高さが変わったら `RepositionStoredOverview` で合わせ直す。
+  - 開閉ボタンの左のアイコンは削除し、文字と矢印だけにした。標準表示では幅を下の「最背面」（`BackmostAllButton`）の ActualWidth にバインドし右端もそろえる（右 Margin 0）。縮小表示はフッターが無いのでバインドを外して中身の幅にする（`UpdateDisplayModeChrome`）。高さは標準 28 / 縮小 23 のまま。
+  - 開閉ボタンは `StoredOverviewToggleButtonStyle` の独自テンプレートで、緑みの地 #14261C・枠 #3B7A55・文字 #D6F5E2・矢印 AccentBrush。ホバーは #1D3527 / #5FC98A、開いている間（Tag=Active）は #24402F / AccentBrush。BarButton の既定トリガーで灰色に戻らないよう、DangerBarButton と同じく専用テンプレートにしている。
+  - 区切り線は高さ 15・線は上下 7 の位置（SnapsToDevicePixels）で、前の行の下余白 5 と下マージン 5 を合わせて上下のカードとの距離をどちらも 12 にそろえる（100/125/150% で実測一致）。
+  - タイルの格子は負の余白で右端の間隔を打ち消さない（丸めで最後の列が表示域から 1px はみ出し右枠が切れた）。各カードの右 5 と区切り線・見出し行の右 5 をそろえ、一覧の右 Padding を 5 に減らして見た目の左右余白を保つ。タイル下段は DockPanel ではなく Auto/*/Auto の Grid にし、アプリ名に MaxWidth 52 と省略を付けて、狭い環境でもカードが欄の幅以上を要求しないようにする（要求すると UniformGrid ごと膨らみ右の列が切れる）。
+  - 設定の「控えの区切り線の名前」は行番号の範囲（`RowRangeText`、例: 5〜8）ごとに名前を編集する。
+- **注意**: 一覧は Popup（別 HWND）なので、タイル名・区切り線の名前の入力欄へのキーボード入力は実機で確認する（オフスクリーン描画では検証できない）。
+- **縮小表示の追加調整（2026-11-18）**:
+  - 開閉ボタンは標準と同じ「控え一覧 ›」。行の列定義を Auto（AI アプリ）/ *（開閉ボタン）にし、縮小表示では残り幅いっぱい（HorizontalAlignment=Stretch、左 Margin 8 が Antigravity2 との隙間）、標準表示は右寄せで「最背面」と同じ幅。
+  - 縮小表示の一覧は最初 `CompactOverviewVisibleRows`（5 行＝1〜20）だけを出し、一覧下の `StoredOverviewMoreButton`（「21〜40 を表示（登録 n 件）」／「21〜40 をたたむ」）で後半を下に伸ばす。タブ切替ではなく下に伸ばす方式にしたのは、区切り線のまとまりがタブの境目で分断されず、前半のカードの位置も動かないため。行の表示は `UpdateStoredOverviewRows` でページのコンテナの Visibility を切り替える（Popup の Opened で適用、展開状態はセッション中だけ覚える）。件数は `RefreshAuxiliaryUi` でも更新する。
+  - タイトルバーのツール群は縮小表示でも出し、ダウンロードフォルダと PR 受信箱だけを表示する（システムモニタ・設定・ヘルプはモーダルなので標準表示のみ）。
+- **ヘルプのはみ出し（2026-11-18）**: 控え Quartet を外して本体が 535 DIP に低くなり、ヘルプの「閉じる」が下で切れた。オーバーレイは Auto 行にまたがるため高さ無制限で測られ、`MaxHeight=430` のスクロールだけでは収まらず行ごと伸びていた。ダイアログ Border の MaxHeight を設定画面と同じく `Window.Height - 44`（`SubtractConverter`）にし、行を Auto/*/Auto にしてスクロール部分が縮むようにした。650×535 で閉じるボタン下端 496 DIP（100%・125%）。
+
+## 15. 表示モード切替の基準位置を中心に変更（2026-11-18 追加）
+- **ファイル**: `MainWindow.xaml.cs`（`GetCenterAnchoredBounds`）
+- **ユーザー指示**: 標準⇔縮小の切り替えは、押したボタンの位置を保つため右上基準にしていたが、大きさが変わるとウィンドウの位置が大きくずれて使いにくい。中心を保って拡大縮小する一般的な動きにする。極小表示は常に画面中央。
+- **対策**: `GetCompactModeBounds` / `GetStandardModeRestoreBounds`（右端・上端を保つ）を廃止し、切り替え前の物理 px の境界の中心を保つ `GetCenterAnchoredBounds` に統一。作業領域からはみ出す分は `ClampToWorkArea` で押し戻す。極小表示は従来どおり `GetMicroModeCenteredBounds`（作業領域の中央）。極小から戻るときは極小の中心＝画面中央を基準に広がる。
+- **README の図**: `docs/assets/display-modes.svg`（見本データで描画した 3 モードの PNG を data URI で埋め込んだ自己完結 SVG）と、そこから Edge headless（`--force-device-scale-factor=2 --window-size=1200,700 --default-background-color=00000000`）で書き出した `display-modes.png`（2400×1400）。個人のスロット名・パスを載せないよう、描画時はメモリ上だけ見本のタイトル・パスに差し替え、保存は抑止する。
+
+## 16. 表示モード切替のアニメーション（2026-11-18 追加、2026-11-19 作り直し）
+- **ファイル**: `MainWindow.ModeTransition.cs`（`SetDisplayMode` / `ApplyModeWhileCloaked` / `ModeMorphGhostWindow`）、`MainWindow.xaml.cs`（本体は `SetDisplayModeCore`）
+- **ユーザー指示**: 切り替えをふわっと滑らかにしたい。最初の実装（本物のウィンドウを毎フレーム `SetWindowPos` で変形）は「移動しながらガタガタする」と指摘された。
+- **原因**: 最上位ウィンドウの大きさを毎フレーム変えると、そのたびに DWM の再描画と WPF の再レイアウトが走り、整数 px の段階的な動きとコマ落ちになる。
+- **方式**: 本物のウィンドウはアニメーション中に動かさない。
+  1. 今のパネル（`PanelFrameBorder`）を `RenderTargetBitmap` で撮り、始めと見込みの終わりを含む範囲に、透明・クリック透過・非アクティブ・最前面の影武者ウィンドウを一度だけ置いて同じ位置に表示する。
+  2. 影武者の `ContentRendered` 後に、本物を DWM の cloak（`DWMWA_CLOAK`=13）で見えなくする（開いたまま・アクティブのまま）。その間に `SetDisplayModeCore` を実行して目標の境界を受け取り、同期の `SetWindowPos` で一度に移動し、新しいパネルを撮る。
+  3. 影武者の中で角丸の枠（Canvas 上の Grid の Left/Top/Width/Height）を 340ms の ease-in-out cubic で変形させる。画像は伸縮させず中央に置いて（`ImageBrush Stretch=None`）枠で切り抜くので、文字がにじまない。古い画像は 200ms で 0.97 倍に縮みながら消え、新しい画像は 110ms 遅れて 0.97→1 倍で現れる。`UseLayoutRounding=false` で小数点単位の位置にする。
+  4. 最後のコマは本物と同じ位置・見た目なので、cloak を外してから 60ms 後に影武者を閉じる（すき間のコマを作らない）。
+- **注意**:
+  - 影武者ウィンドウは途中で動かさない（動かすとガタつく）。範囲は `EstimateModeTargetRect`（中心基準・極小は画面中央。縮小の高さは 200 DIP で多めに見込む）と開始範囲の和を 48 DIP 広げる。実際の終わりが範囲外なら変形せずに即時表示へ切り替える。
+  - 透明ウィンドウは面積に比例して重くなるので、画面全体を覆う影武者にしない。
+  - cloak に失敗する環境、「アニメーションを表示する」オフ、未表示・最小化中は即時に切り替える。切り替え中の再指示は最後の 1 件だけを終了後に反映する。控え一覧の自動オープンも切り替え後まで待つ。
+  - **操作不能になった不具合（2026-11-19）**: 縮小表示へ切り替えた直後から一切操作できず、タスクマネージャーで終了するしかなくなった。原因は、影武者の枠のアニメーションの `Completed` を `BeginAnimation` の後に登録していたこと。WPF は BeginAnimation の時点で時計を作り、その時点の Completed の登録だけを引き継ぐため、完了が呼ばれなかった。その結果、本物は cloak されたまま（見えず入力も受けない）、影武者の最後のコマだけが残った。画面外の 1×1 の描画先でアニメーションを実際に進めて、後から付けると呼ばれず、前に付けると呼ばれることを確認した。
+  - **対策**: Completed は必ず BeginAnimation より前に付ける。後始末は `SetDisplayMode` 内の `Finish`（1 回だけ実行）に集め、cloak を必ず外し、未適用ならモードを適用し、影武者を閉じる。アニメーション時間＋1.5 秒の watchdog が切れたら、どの段階でも `Finish` を強制する（cloak を外さないまま終わる経路を残さない）。
+
+## 17. 控えの名前入力を本体パネルへ移し、カードのどこにでもドロップできるようにした（2026-11-19 追加）
+- **ファイル**: `MainWindow.StoredRename.cs`（`StoredRenameOverlay`）、`MainWindow.xaml`、`MainWindow.xaml.cs`、`MainWindow.StoredPanelMenu.cs`
+- **報告**: AI が動いているときなどに控えのカード名を変更できないことがある。入力すると IME の変換欄が入力欄の外に出る。カードのタイトルの上にドロップすると禁止マークになる。
+- **原因**:
+  - 控え一覧は WPF の Popup（`AllowsTransparency=True` の別 HWND で、自分ではアクティブにならない）。本体以外（AI が動いている VS Code など）が前面にあると、キー入力が一覧の入力欄に届かない。透過ポップアップの中の入力欄では、IME の変換欄の位置もずれる。
+  - タイル名（`InlineTitleTextBox`）とスロットカードのタイトルは TextBox。読み取り専用の TextBox でも、ドラッグ中のデータが文字列でないと自分で `DragDropEffects.None` を返し、親カードのバブルの DragOver より先に禁止マークにしていた。
+- **対策**:
+  - 一覧のタイル名は TextBlock にし、ダブルクリックや右クリックの「名前を編集」で、本体パネルの `StoredRenameOverlay`（1 行の入力欄・変更・取消。縮小表示 430×145 にも収まる）を開く。開くときに `ActivatePanelWindow` で本体を前面に出し、入力欄にキーボードフォーカスを置く。Enter で確定（IME 確定の Enter は `Key.ImeProcessed` なので誤確定しない）、Esc・外側のクリックで取消、空欄ならフォルダ名の表示に戻す。区切り線の名前（ダブルクリック・右クリック・「名前付きの区切り線を引く」）も同じダイアログで、取消のときは区切り線を作らない。一覧の中の入力欄（`PageHeaderEditBox` など）とインライン編集の処理は削除した。
+  - タイル・スロットカード（標準・縮小・極小）のドラッグ処理は `PreviewDragEnter/Over/Leave/Drop` で受け、子の TextBox より先に受け付ける。Preview の Leave は子要素の間を移るときにも来るため、`IsDragPointInside` で本当に外へ出たときだけ光を消す。
+- **注意**: 一覧の中に入力欄を戻さない（キー入力・IME の問題が再発する）。

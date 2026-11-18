@@ -77,6 +77,7 @@ docs/
 
 | ファイル | 使用する資料・内容 |
 |---|---|
+| [display-modes.svg](assets/display-modes.svg) / [display-modes.png](assets/display-modes.png) | 標準・縮小・極小の 3 つの表示モードを並べた図（README で使用）。実際の画面を見本データで描画したものを SVG に埋め込み、PNG は SVG から書き出したもの。 |
 | [ai-notification-who-moves.svg](assets/ai-notification-who-moves.svg) | 色が変わるまでに動く5つ。AIツールの判断、フックのプログラムの起動、カルテットハブへの短い知らせ、スロットの判断、バッジの色。 |
 | [ai-notification-flow.svg](assets/ai-notification-flow.svg) | AI フックの設定ファイルから、通知スクリプト、カルテットハブ、対象スロットへ届く全体の流れ。 |
 | [ai-notification-states.svg](assets/ai-notification-states.svg) | AI の作業中・完了・確認中・中断と、バッジ表示の関係。青は完了だけ。 |
