@@ -62,6 +62,7 @@ await AiActivityTests.RunAsync(failures);
 AiHookLocationTests.Run(failures);
 AiOrbitGlowTests.Run(failures);
 AiDoneFireflyTests.Run(failures);
+await PublishStopPanelTests.RunAsync(failures);
 
 if (failures.Count > 0)
 {
@@ -94,6 +95,7 @@ Console.WriteLine($"AI の作業通知（状態・スロット特定・フック
 Console.WriteLine($"AI フックの保存先・閲覧チェックに合格しました ({AiHookLocationTests.Count}/{AiHookLocationTests.Count})。");
 Console.WriteLine($"AI 作業中 LED 周回エフェクトのチェックに合格しました ({AiOrbitGlowTests.Count}/{AiOrbitGlowTests.Count})。");
 Console.WriteLine($"AI 完了ホタル点滅・IDE/CLI 枠切り抜きのチェックに合格しました ({AiDoneFireflyTests.Count}/{AiDoneFireflyTests.Count})。");
+Console.WriteLine($"配布ビルド前のアプリ自動終了チェックに合格しました ({PublishStopPanelTests.Count}/{PublishStopPanelTests.Count})。");
 return 0;
 
 async Task VerifyAsync(

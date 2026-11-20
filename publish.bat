@@ -48,6 +48,13 @@ if defined SIGN_RELEASE (
     )
 )
 
+echo Checking for running TurtleAIQuartetHub processes...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\Stop-RunningPanel.ps1" -OutputExecutablePath "%OUTPUT%\TurtleAIQuartetHub.exe"
+if errorlevel 1 (
+    echo [ERROR] Could not stop the running TurtleAIQuartetHub application.
+    goto :failed
+)
+
 echo Restoring packages for a self-contained win-x64 publish...
 dotnet restore "%PROJECT%" -r win-x64 ^
     -p:Configuration=Release ^

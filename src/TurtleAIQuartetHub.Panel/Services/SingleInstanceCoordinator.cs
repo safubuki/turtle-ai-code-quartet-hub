@@ -6,6 +6,7 @@ namespace TurtleAIQuartetHub.Panel.Services;
 
 public sealed class SingleInstanceCoordinator : IDisposable
 {
+    public const string ExitCommandName = "--exit";
     private const string DefaultMutexName = @"Local\TurtleAIQuartetHub.SingleInstance";
     private const string DefaultPipeName = "TurtleAIQuartetHub.Commands";
 
@@ -33,6 +34,10 @@ public sealed class SingleInstanceCoordinator : IDisposable
     public event Action<string[]>? CommandReceived;
 
     public bool IsPrimary => _isPrimary;
+
+    public static bool IsExitCommand(string[]? args)
+        => args is { Length: 1 }
+           && string.Equals(args[0], ExitCommandName, StringComparison.OrdinalIgnoreCase);
 
     public async Task<bool> SendToPrimaryAsync(string[] args, CancellationToken cancellationToken = default)
     {

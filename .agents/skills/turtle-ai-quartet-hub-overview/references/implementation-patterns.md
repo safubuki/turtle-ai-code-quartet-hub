@@ -588,3 +588,11 @@
   - 一覧のタイル名は TextBlock にし、ダブルクリックや右クリックの「名前を編集」で、本体パネルの `StoredRenameOverlay`（1 行の入力欄・変更・取消。縮小表示 430×145 にも収まる）を開く。開くときに `ActivatePanelWindow` で本体を前面に出し、入力欄にキーボードフォーカスを置く。Enter で確定（IME 確定の Enter は `Key.ImeProcessed` なので誤確定しない）、Esc・外側のクリックで取消、空欄ならフォルダ名の表示に戻す。区切り線の名前（ダブルクリック・右クリック・「名前付きの区切り線を引く」）も同じダイアログで、取消のときは区切り線を作らない。一覧の中の入力欄（`PageHeaderEditBox` など）とインライン編集の処理は削除した。
   - タイル・スロットカード（標準・縮小・極小）のドラッグ処理は `PreviewDragEnter/Over/Leave/Drop` で受け、子の TextBox より先に受け付ける。Preview の Leave は子要素の間を移るときにも来るため、`IsDragPointInside` で本当に外へ出たときだけ光を消す。
 - **注意**: 一覧の中に入力欄を戻さない（キー入力・IME の問題が再発する）。
+
+## 18. 配布ビルド（publish.bat）前の起動中アプリ自動終了（2026-11-20 追加）
+- **ファイル**: `publish.bat`, `scripts/Stop-RunningPanel.ps1`, `src/TurtleAIQuartetHub.Panel/Services/SingleInstanceCoordinator.cs`, `src/TurtleAIQuartetHub.Panel/App.xaml.cs`, `src/TurtleAIQuartetHub.Panel/MainWindow.xaml.cs`, `src/TurtleAIQuartetHub.Panel.Tests/PublishStopPanelTests.cs`, `README.md`
+- **問題**: `dist/turtle-ai-quartet-hub/TurtleAIQuartetHub.exe` や Release 出力の `TurtleAIQuartetHub.exe` が起動中のまま `publish.bat` を実行すると、実行ファイルが OS にロックされて `dotnet publish` が失敗していた。さらに `MainWindow.OnClosing` は通常操作の誤終了を防ぐため `WM_CLOSE` で終了確認ダイアログを表示してキャンセルするため、単純な `WM_CLOSE`（`/F` なしの `taskkill` 等）では閉じない。
+- **対策**:
+  - アプリ側（`SingleInstanceCoordinator` / `App.xaml.cs` / `MainWindow.xaml.cs`）に外部終了コマンド `--exit` を追加。未起動時に `--exit` 付きで起動された場合は UI を開かず即 `Shutdown()` し、起動中インスタンスへ届いた場合は `DispatcherPriority.Normal` で `RequestExternalExit()` を呼び出して確認ダイアログを出さずに `OnClosing`（非表示ウィンドウ復元）・`OnClosed`・`App.OnExit`（JumpList 無効化、正常終了ログ記録、Mutex/Pipe 解放）を通って正常終了させる。
+  - `publish.bat` は Preflight 後かつ `dotnet restore` 前に `scripts/Stop-RunningPanel.ps1` を実行する（PowerShell 5.1 互換の英語 ASCII スクリプト）。同スクリプトは現在セッション内の `TurtleAIQuartetHub` プロセスを検出し、まず名前付きパイプ `TurtleAIQuartetHub.Commands` へ `["--exit"]` を送って最大 3 秒待機し、未応答（`--exit` 未実装の旧バイナリやハング時）の場合は `Stop-Process -Force` でアプリ単体プロセスのみをフォールバック終了した上で、`dist` と `bin\Release` の `TurtleAIQuartetHub.exe` の排他オープン（ロック解除）を確認してから `dotnet restore` / `dotnet publish` へ進む。
+- **注意**: VS Code やターミナル等の管理対象・子プロセスを巻き込まないよう、`taskkill /T` のようなプロセスツリー終了は絶対に使わない。`publish.bat` は英語 ASCII のまま維持し（CP932 環境でのバッチ構文崩れ防止）、`Stop-RunningPanel.ps1` 内で配列を返す関数は PowerShell StrictMode で空配列が 1 要素配列へ化けないよう単項カンマ `return ,$arr` を使わない。テスト時は本番 `dist` を触らないよう他プロセス名指定時や `-SkipDefaultLockCheck` 指定時にデフォルトのロック検査をスキップする。

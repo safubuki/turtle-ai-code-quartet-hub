@@ -249,6 +249,8 @@ Windows で自己完結型の win-x64 exe を作る場合は、リポジトリ�
 
 生成先は `dist\turtle-ai-quartet-hub\TurtleAIQuartetHub.exe` です。配布するときは、同じフォルダの `LICENSE.txt` と設定例を含め、フォルダの中身をまとめて渡してください。
 
+実行前に `TurtleAIQuartetHub.exe` が起動している場合は、`publish.bat`（`scripts\Stop-RunningPanel.ps1`）が自動的にアプリを終了させてロックを解除してからビルド・発行を行います（管理中の VS Code やターミナル等の子プロセスは終了しません）。
+
 発行する PC には .NET 10 SDK が必要です。`publish.bat` はまずその PC の NuGet 設定で必要なパッケージを復元し、失敗した場合は公式の `https://api.nuget.org/v3/index.json` を取得先として再試行します。発行時の NuGet 脆弱性監査は省きます。通常発行時の署名状態の表示は、確認に失敗しても発行を止めません。`--sign` を指定した場合の署名失敗はエラーになります。
 
 自己完結型 exe に必要な .NET ランタイムパックがその PC にない場合は、NuGet からの取得が必要です。再試行後も `NU1100` などで失敗する場合は、`dotnet nuget list source` で設定を確認し、`https://api.nuget.org/v3/index.json` への接続または必要なパッケージを含む社内ソースを用意してください。オフラインの PC では、接続できる PC で発行した `dist\turtle-ai-quartet-hub` フォルダを配布できます。必要なパッケージが取得できなければ、自己完結型の発行を成功扱いにはしません。

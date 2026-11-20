@@ -61,8 +61,10 @@ public partial class App : Application
             return;
         }
 
-        // AI フックの通知はハブが動いているときだけ意味がある。ハブ未起動の状態から開いたりしない。
-        if (e.Args.Length > 0 && string.Equals(e.Args[0], Services.AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase))
+        // AI フックの通知と外部終了コマンドはハブが動いているときだけ意味がある。ハブ未起動の状態から開いたりしない。
+        if (e.Args.Length > 0 &&
+            (string.Equals(e.Args[0], Services.AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase)
+             || SingleInstanceCoordinator.IsExitCommand(e.Args)))
         {
             Shutdown();
             return;
@@ -72,15 +74,16 @@ public partial class App : Application
 
         _singleInstanceCoordinator.CommandReceived += args =>
         {
-            var isAiEvent = args.Length > 0
-                && string.Equals(args[0], Services.AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase);
+            var isHighPriority = (args.Length > 0
+                    && string.Equals(args[0], Services.AiHookEventParser.CommandName, StringComparison.OrdinalIgnoreCase))
+                || SingleInstanceCoordinator.IsExitCommand(args);
             _ = Dispatcher.InvokeAsync(() =>
             {
                 if (MainWindow is MainWindow mainWindow)
                 {
                     mainWindow.ExecuteExternalCommand(args);
                 }
-            }, isAiEvent ? DispatcherPriority.Normal : DispatcherPriority.Background);
+            }, isHighPriority ? DispatcherPriority.Normal : DispatcherPriority.Background);
         };
 
         var mainWindow = new MainWindow();

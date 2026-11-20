@@ -145,6 +145,7 @@ public partial class MainWindow : Window
     private DateTimeOffset _suppressSlotFocusFromDragUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _suppressPeriodicRefreshUntil = DateTimeOffset.MinValue;
     private bool _closeConfirmed;
+    private bool _externalExitRequested;
     private string _closeRequestSource = "Alt+F4 またはシステムメニュー";
     private WindowArranger.WindowBounds? _boundsBeforeExitConfirm;
     private double _minWidthBeforeExitConfirm;
@@ -532,6 +533,20 @@ public partial class MainWindow : Window
         Close();
     }
 
+    private void RequestExternalExit()
+    {
+        if (_externalExitRequested)
+        {
+            return;
+        }
+
+        _externalExitRequested = true;
+        _closeConfirmed = true;
+        AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
+        DiagnosticLog.Write(LogLevel.Info, "Panel close requested by external command (--exit).");
+        Close();
+    }
+
     public void ExecuteExternalCommand(string[]? args)
     {
         // AI フックの通知はパネルを前面に出さず、表示だけを更新する。
@@ -543,6 +558,13 @@ public partial class MainWindow : Window
 
         // 昇格プロセス専用。既存インスタンスへ転送されてもパネルを前面化したり終了したりしない。
         if (VscodeProcessRecoveryElevation.IsElevatedRequest(args)) return;
+
+        // 配布ビルドスクリプト等からの外部終了要求は確認ダイアログを出さずに安全終了する。
+        if (SingleInstanceCoordinator.IsExitCommand(args))
+        {
+            RequestExternalExit();
+            return;
+        }
 
         _ = ExecuteExternalCommandAsync(args ?? []);
     }
