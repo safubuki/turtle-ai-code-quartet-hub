@@ -518,6 +518,7 @@
   - `SingleInstanceCoordinator` は `MaxAllowedServerInstances` を許可し、クライアント接続後すぐ次インスタンスを張って `HandleClientConnectionAsync` へ読取を委譲する（テスト隔離用の `internal SingleInstanceCoordinator(string mutexName, string pipeName)` を提供）。`App.xaml.cs` では `--ai-event` のみを `DispatcherPriority.Normal` で即時処理する。
   - `ai-notify.ps1`（ASCII 専用維持）は `ConvertFrom-Json` 失敗でも `(Get-Location).Path` フォールバックへ進み、`workspaceRoot` / `workspace_root` / `termination_reason` / `reason` / `recoverable` を吸い上げ、パイプ接続を 1 回だけ短間隔リトライ（400ms×2 + 30ms）する。
   - `AiActivityTracker.Apply` は同一ツールの新規 `Start` で同ツールの古いセッションキーを置き換え（**異なるツール間の並行動作は維持**）、`Stop` / `Interrupt` でも空 `SessionId`・無キー開始分を取り残さない。
+  - **例外: `SessionEnd`（2026-11-19 追加）**: `SessionId` 付きの `SessionEnd` は、そのセッションのキー（と無キー開始のツール名キー）だけを外し、同ツールの別セッションの作業中は残す。VS Code 版 Codex は次の会話用の空の予備スレッド（Codex ログ上 `prewarmed-thread`）を先に作り、未使用のまま後で `SessionEnd`（`reason` = `other`）で終了するため、ツール単位で消すと同じウィンドウで動いている本来のスレッドのぐるぐるまで消えていた（実例: 03:19 開始 → 約 1 分後に予備スレッドの終了で D:Idle）。`SessionId` が空の `SessionEnd`、Esc の `Interrupt`、`Stop` は従来どおり同ツールをまとめて止める。診断ログの `AI event:` 行にはセッション ID の末尾 8 文字を `[…xxxxxxxx]` で出す（Codex の ID は UUIDv7 で先頭が時刻のため末尾で見分ける）。
   - `ToggleSlotFocus` の外部遮蔽再前面化パスへ `AcknowledgeAiActivityOnFocusChange(slot)` を追加し、`FocusMaximizedOnMonitorAsync` は `SetForegroundWindow(windowHandle) || (IsWindow(windowHandle) && IsZoomed(windowHandle))` を成功とする。なお 4 面でウィンドウを直接クリックしただけでは消さない既存仕様と、Claude CLI の `Esc`/`Ctrl+C` 自体は CLI 側がフックを発行しない外部仕様は維持・明記する。
 
 ## 13. タイトルバー「ダウンロードフォルダを開く」と設定内「AI 状態をリセット」（2026-11-17 追加）

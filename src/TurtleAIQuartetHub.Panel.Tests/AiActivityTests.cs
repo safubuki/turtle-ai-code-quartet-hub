@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 68;
+    public const int Count = 71;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -147,6 +147,29 @@ internal static class AiActivityTests
         emptySessionInterrupt.Apply(Event("claude", AiHookEventKind.Interrupt, ""), now.AddSeconds(3));
         Check(failures, "状態: SessionId が空の Interrupt でも同ツールの作業中を解除する",
             emptySessionInterrupt.State == AiActivityState.Idle);
+
+        // VS Code 版 Codex は空の予備スレッドを先に作り、使わなければ後で SessionEnd (other) で終了する。
+        var prewarmedEnd = new AiActivityTracker();
+        prewarmedEnd.Apply(new AiHookEvent("codex", "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", "working-thread"), now);
+        var prewarmedChanged = prewarmedEnd.Apply(
+            new AiHookEvent("codex", "SessionEnd", AiHookEventKind.Interrupt, @"C:\work", "prewarmed-thread", "other"),
+            now.AddMinutes(1));
+        Check(failures, "状態: 作業中でない別セッションの SessionEnd（Codex の予備スレッドの終了）では作業中を消さない",
+            !prewarmedChanged && prewarmedEnd.State == AiActivityState.Working && prewarmedEnd.WorkingSince == now);
+        prewarmedEnd.Apply(
+            new AiHookEvent("codex", "SessionEnd", AiHookEventKind.Interrupt, @"C:\work", "working-thread", "other"),
+            now.AddMinutes(2));
+        Check(failures, "状態: 作業中のセッション自身の SessionEnd では光らせずに作業中を止める",
+            prewarmedEnd.State == AiActivityState.Idle && prewarmedEnd.WorkingSince is null);
+
+        var unkeyedSessionEnd = new AiActivityTracker();
+        unkeyedSessionEnd.Apply(Event("codex", AiHookEventKind.Start, ""), now);
+        unkeyedSessionEnd.Apply(new AiHookEvent("codex", "SessionEnd", AiHookEventKind.Interrupt, @"C:\work", "s9"), now.AddSeconds(5));
+        var emptySessionEnd = new AiActivityTracker();
+        emptySessionEnd.Apply(Event("codex", AiHookEventKind.Start, "s1"), now);
+        emptySessionEnd.Apply(new AiHookEvent("codex", "SessionEnd", AiHookEventKind.Interrupt, @"C:\work", ""), now.AddSeconds(5));
+        Check(failures, "状態: 開始か終了の SessionId が空なら、SessionEnd で同ツールの作業中を止める",
+            unkeyedSessionEnd.State == AiActivityState.Idle && emptySessionEnd.State == AiActivityState.Idle);
 
         var mismatchedStop = new AiActivityTracker();
         mismatchedStop.Apply(Event("copilot", AiHookEventKind.Start, "prompt-id"), now);

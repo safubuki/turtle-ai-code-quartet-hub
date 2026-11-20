@@ -162,7 +162,21 @@ public sealed class AiActivityTracker
                 CompletedAt = now;
                 break;
             case AiHookEventKind.Interrupt:
-                RemoveSessionsForTool(hookEvent.Tool);
+                if (IsSessionEnd(hookEvent.EventName) && !string.IsNullOrEmpty(hookEvent.SessionId))
+                {
+                    // セッションの終了は、作業中として記録しているそのセッションのときだけ止める。
+                    // VS Code 版 Codex は次の会話用に空の予備スレッドを先に作り、使わなければ後で終了する。
+                    // その SessionEnd で、同じウィンドウで動いている別スレッドの作業中まで消さない。
+                    // 開始が SessionId なしで届いていた場合（キーがツール名だけ）は、同じセッションとみなして止める。
+                    _activeSessions.Remove(key);
+                    _activeSessions.Remove(hookEvent.Tool);
+                }
+                else
+                {
+                    // Esc などの中断は、開始と違う SessionId や空で届いても作業中が残らないよう、同ツールをまとめて止める。
+                    RemoveSessionsForTool(hookEvent.Tool);
+                }
+
                 break;
             default:
                 return false;
@@ -175,6 +189,9 @@ public sealed class AiActivityTracker
 
     private static bool IsPromptSubmit(string eventName) =>
         eventName.Trim().ToLowerInvariant() is "userpromptsubmit" or "userpromptsubmitted";
+
+    private static bool IsSessionEnd(string eventName) =>
+        eventName.Trim().Equals("sessionend", StringComparison.OrdinalIgnoreCase);
 
     private void ClearWorkingSinceIfIdle()
     {

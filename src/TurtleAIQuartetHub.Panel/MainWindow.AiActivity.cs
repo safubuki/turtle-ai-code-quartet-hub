@@ -73,7 +73,15 @@ public partial class MainWindow
     private static string DescribeAiHookEvent(AiHookEvent hookEvent)
     {
         var detail = string.IsNullOrEmpty(hookEvent.Detail) ? string.Empty : $" ({hookEvent.Detail})";
-        return $"{hookEvent.Tool} {hookEvent.EventName}{detail}";
+        // どのセッション（会話・スレッド）の知らせかをあとから追えるよう、ID の末尾 8 文字だけ出す。
+        // Codex の ID は UUIDv7 で先頭が時刻のため、近い時刻のスレッドは先頭が似ていて見分けにくい。
+        var session = hookEvent.SessionId.Length switch
+        {
+            0 => string.Empty,
+            <= 8 => $" [{hookEvent.SessionId}]",
+            _ => $" […{hookEvent.SessionId[^8..]}]"
+        };
+        return $"{hookEvent.Tool} {hookEvent.EventName}{detail}{session}";
     }
 
     private static IEnumerable<string> GetAiActivityMatchPaths(WindowSlot slot)

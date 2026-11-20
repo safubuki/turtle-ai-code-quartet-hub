@@ -77,7 +77,7 @@ AI ツールとフックのプログラムのあいだは、名前付きパイ�
 
 GitHub Copilot と Antigravity には、許可の確認を知らせるフックがありません。Claude Code、Codex、Grok も、許可や質問の確認中は枠を回る緑の光のままです。応答が終わると、5つとも同じ青になります。
 
-Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユーザー自身がキャンセルしたとき（`Stop` / `USER_CANCELED`）は、新しい光を付けません。Grok の中断（`StopCancelled`）は、枠を回る緑が残らないように、完了と同じ青にします。
+Codex の `Interrupt` / `SessionEnd` が届いたときや、Antigravity でユーザー自身がキャンセルしたとき（`Stop` / `USER_CANCELED`）は、新しい光を付けません。`SessionEnd` は、作業中のその会話（セッション）が終わったときだけ緑を止めます。VS Code 版 Codex は次の会話用の空のスレッドを裏で用意し、使わなければ後で終了させます。その終了の知らせでは、同じウィンドウで動いている作業の緑を消しません。Grok の中断（`StopCancelled`）は、枠を回る緑が残らないように、完了と同じ青にします。
 
 `idle_prompt` は「次の入力を待てる状態」です。応答のあとだけでなく、失敗や中断のあとにも届くことがあります。AI はもう動いていないので、`Esc` / `Ctrl+C` の中断で残った緑だけを止めます。青は付けません（一度消した光が戻らないようにするため）。青が光っているときは、青をそのまま残します。`task_complete` と `PermissionDenied`、知らない種類の知らせは無視します。
 
