@@ -46,7 +46,6 @@ public partial class MainWindow : Window
     private static readonly TimeSpan DragDropFocusSuppressWindow = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan InteractiveRefreshSuppressWindow = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan LaunchAllSlotPaceDelay = TimeSpan.FromMilliseconds(450);
-    private static readonly TimeSpan LaunchRevealDelay = TimeSpan.FromMilliseconds(160);
     private static readonly TimeSpan[] ImmediateArrangeSettleDelays =
     [
         TimeSpan.FromMilliseconds(40),
@@ -82,6 +81,7 @@ public partial class MainWindow : Window
     private int _panelFocusRequestsInFlight;
     private readonly ManagedWindowCloseService _managedWindowCloseService;
     private readonly FocusNameOverlay _focusNameOverlay;
+    private readonly LaunchStagingOverlay _launchStagingOverlay;
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly ApplicationLauncher _applicationLauncher;
     private readonly StatusStore _statusStore;
@@ -168,6 +168,8 @@ public partial class MainWindow : Window
         // 各スロットの IsFocused 変化を購読し、true で表示・false で即消しを一元化する
         //（個々のフォーカス制御経路に手を入れずに済む）。
         _focusNameOverlay = new FocusNameOverlay(_windowArranger);
+        _launchStagingOverlay = new LaunchStagingOverlay(_windowArranger);
+        ContentRendered += (_, _) => BeginStartupRevealIfArmed();
         foreach (var slot in _statusStore.Slots)
         {
             slot.PropertyChanged += Slot_PropertyChanged;
@@ -178,7 +180,6 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(config.StatusRefreshIntervalMilliseconds)
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
-        _refreshTimer.Start();
         RefreshOwnedAiNotifyHookFiles();
 
         _systemMonitorTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -197,6 +198,14 @@ public partial class MainWindow : Window
             EnsureStandardWindowFitsContent();
             RememberStandardWindowMetrics();
             UpdateDisplayModeChrome();
+            // 起動アニメーション再生中に重い外部プロセス列挙や定期リフレッシュが UI スレッドと
+            // 競合してコマ落ちしないよう、起動演出が収束してから初期更新とタイマーを始める。
+            await WaitForStartupRevealIfActiveAsync();
+            if (!_refreshCancellation.IsCancellationRequested)
+            {
+                _refreshTimer.Start();
+            }
+
             await RefreshSlotsAsync(allowDuringBusy: true);
             ApplyManagedWindowLayers();
             UpdateStoredOverviewToggleButton();
@@ -314,20 +323,17 @@ public partial class MainWindow : Window
             }
 
             _statusStore.Message = $"未起動スロットを選択アプリで起動しています... {BuildLaunchPlanSummary(launchTargets)}";
-            var config = _statusStore.Config;
-            var launchedAssignments = await LaunchTargetsSequentiallyAsync(launchTargets, config);
-
-            await RefreshSlotsAsync(allowDuringBusy: true);
+            var launchedAssignments = await ExecuteStagedLaunchAsync(
+                launchTargets,
+                clearFocusAfterArrange: true,
+                preserveExistingFocus: false);
 
             var skippedMessage = unavailableSlots.Count > 0
                 ? $" 未検出でスキップ: {string.Join(", ", unavailableSlots)}"
                 : string.Empty;
             var readyLaunchTargetCount = launchTargets.Count(target => target.Slot.WindowStatus == SlotWindowStatus.Ready);
-            var revealTask = RevealLaunchedWindowsAsync(launchedAssignments);
             if (readyLaunchTargetCount > 0)
             {
-                await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
-                _statusStore.ClearFocusedSlot();
                 _statusStore.Message = $"{readyLaunchTargetCount}個のスロットを選択アプリで起動して2x2に配置しました。{skippedMessage}";
             }
             else
@@ -338,61 +344,7 @@ public partial class MainWindow : Window
                     ? $"{arranged}個の管理中ウィンドウを2x2に配置しました。{skippedMessage}"
                     : $"新しい管理中ウィンドウは見つかりませんでした。{skippedMessage}";
             }
-
-            await revealTask;
         });
-    }
-
-    private async Task<IReadOnlyList<WindowAssignment>> LaunchTargetsSequentiallyAsync(
-        IReadOnlyList<(WindowSlot Slot, LauncherApplication Application)> launchTargets,
-        AppConfig config)
-    {
-        var assignments = new List<WindowAssignment>();
-        for (var index = 0; index < launchTargets.Count; index++)
-        {
-            var (slot, application) = launchTargets[index];
-            _statusStore.Message = $"スロット{slot.Name}の{application.DisplayName}を順番に起動しています... ({index + 1}/{launchTargets.Count})";
-            DiagnosticLog.Write($"Launch Quartet starting slot {slot.Name} sequentially with {application.DisplayName} ({index + 1}/{launchTargets.Count}).");
-
-            var slotAssignments = await _applicationLauncher.LaunchMissingAsync(
-                new[] { slot },
-                config,
-                application,
-                CancellationToken.None);
-            foreach (var assignment in slotAssignments)
-            {
-                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
-                assignments.Add(assignment);
-            }
-
-            if (index < launchTargets.Count - 1)
-            {
-                await Task.Delay(LaunchAllSlotPaceDelay);
-            }
-        }
-
-        return assignments;
-    }
-
-    private async Task RevealLaunchedWindowsAsync(IReadOnlyList<WindowAssignment> assignments)
-    {
-        var cloakedAssignments = assignments
-            .Where(assignment => assignment.WasCloakedForLaunch)
-            .ToList();
-        if (cloakedAssignments.Count == 0)
-        {
-            return;
-        }
-
-        // SetWindowPos の非同期配置と Electron の初回描画が DWM へ反映されるまで待ち、
-        // 白い初期サーフェスではなく完成した象限を一度だけ表示する。
-        await Task.Delay(LaunchRevealDelay);
-        foreach (var assignment in cloakedAssignments)
-        {
-            WindowArranger.SetCloaked(assignment.Window.Handle, false);
-        }
-
-        BringPanelToFrontImmediate();
     }
 
     private static string BuildLaunchPlanSummary(IEnumerable<(WindowSlot Slot, LauncherApplication Application)> launchTargets)
@@ -525,12 +477,12 @@ public partial class MainWindow : Window
         ScheduleFocusedSlotReassert();
     }
 
-    private void ConfirmAppExitButton_Click(object sender, RoutedEventArgs e)
+    private async void ConfirmAppExitButton_Click(object sender, RoutedEventArgs e)
     {
         _closeConfirmed = true;
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
         DiagnosticLog.Write(LogLevel.Info, "Panel close confirmed by user.");
-        Close();
+        await ClosePanelWithVanishAnimationAsync();
     }
 
     private void RequestExternalExit()
@@ -1595,7 +1547,6 @@ public partial class MainWindow : Window
         {
             var closeTargets = _statusStore.Slots
                 .Where(slot => slot.WindowHandle != IntPtr.Zero)
-                .Select(slot => (Slot: slot, Handle: slot.WindowHandle))
                 .ToList();
             if (closeTargets.Count == 0)
             {
@@ -1604,42 +1555,12 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // WM_CLOSE 後では対象 HWND が既に消えている可能性があるため、先に状態を保存する。
-            _statusStore.SaveCurrentSettings();
-            _statusStore.ClearFocusedSlot();
-            foreach (var target in closeTargets)
-            {
-                _windowArranger.ReleaseTopmost(target.Handle);
-            }
+            var results = await ExecuteStagedCloseAsync(
+                closeTargets,
+                saveSettingsBeforeClose: true,
+                clearAllFocus: true);
 
-            // 4 枚を順番に最大8秒ずつ待つと操作不能時間が長くなるため、close 要求と確認は並列に行う。
-            var results = await Task.WhenAll(closeTargets.Select(async target =>
-                (target.Slot, target.Handle, Result: await _managedWindowCloseService.CloseAndWaitAsync(target.Handle))));
-
-            var closed = 0;
-            foreach (var result in results)
-            {
-                if (!result.Result.Succeeded)
-                {
-                    DiagnosticLog.Write(
-                        LogLevel.Warn,
-                        $"Managed window close did not complete for slot {result.Slot.Name}: "
-                        + $"handle=0x{result.Handle.ToInt64():X}, status={result.Result.Status}.");
-                    continue;
-                }
-
-                if (result.Slot.WindowHandle == result.Handle)
-                {
-                    result.Slot.IsHidden = false;
-                    _statusStore.ClearWindow(result.Slot);
-                }
-
-                closed++;
-            }
-
-            RefreshHiddenWindowsState();
-            UpdateVisibilityButtonVisual();
-
+            var closed = results.Count(item => item.Result.Succeeded);
             var notClosed = closeTargets.Count - closed;
             _statusStore.Message = notClosed == 0
                 ? $"{closed}個の管理中ウィンドウを閉じて設定を保存しました。"
@@ -2492,7 +2413,21 @@ public partial class MainWindow : Window
     {
         await RunBusyAsync(async () =>
         {
-            var result = await CloseTrackedSlotWindowAsync(slot);
+            if (slot.WindowHandle == IntPtr.Zero)
+            {
+                _statusStore.Message = $"スロット{slot.Name}を閉じました。";
+                RefreshAuxiliaryUi();
+                return;
+            }
+
+            var results = await ExecuteStagedCloseAsync(
+                new[] { slot },
+                saveSettingsBeforeClose: false,
+                clearAllFocus: false);
+            var result = results.Count > 0
+                ? results[0].Result
+                : new ManagedWindowCloseResult(ManagedWindowCloseStatus.AlreadyClosed);
+
             _statusStore.Message = result.Succeeded
                 ? $"スロット{slot.Name}を閉じました。"
                 : BuildCloseFailureMessage(slot, result);
@@ -2759,25 +2694,17 @@ public partial class MainWindow : Window
             }
 
             _statusStore.Message = $"スロット{slot.Name}の{application.DisplayName}を起動しています...";
-            var assignments = await _applicationLauncher.LaunchMissingAsync(
-                new[] { slot },
-                _statusStore.Config,
-                application,
-                CancellationToken.None);
+            var assignments = await ExecuteStagedLaunchAsync(
+                new[] { (slot, application) },
+                clearFocusAfterArrange: false,
+                preserveExistingFocus: true);
 
-            foreach (var assignment in assignments)
-            {
-                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
-            }
-
-            await RefreshSlotsAsync(allowDuringBusy: true);
-            var revealTask = RevealLaunchedWindowsAsync(assignments);
-            await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
-            await revealTask;
-
+            var failureHint = application.IsVsCode ? _applicationLauncher.LastVsCodeLaunchHint : null;
             _statusStore.Message = assignments.Count > 0
                 ? $"スロット{slot.Name}の{application.DisplayName}を起動しました。"
-                : $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。";
+                : string.IsNullOrWhiteSpace(failureHint)
+                    ? $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。"
+                    : $"スロット{slot.Name}の{application.DisplayName}を起動できませんでした。{failureHint}";
         });
     }
 
@@ -2844,25 +2771,17 @@ public partial class MainWindow : Window
 
             _statusStore.SetSlotApplication(slot, application);
             _statusStore.Message = $"スロット{slot.Name}を{application.DisplayName}で開いています...";
-            var assignments = await _applicationLauncher.LaunchMissingAsync(
-                new[] { slot },
-                _statusStore.Config,
-                application,
-                CancellationToken.None);
+            var assignments = await ExecuteStagedLaunchAsync(
+                new[] { (slot, application) },
+                clearFocusAfterArrange: false,
+                preserveExistingFocus: true);
 
-            foreach (var assignment in assignments)
-            {
-                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
-            }
-
-            await RefreshSlotsAsync(allowDuringBusy: true);
-            var revealTask = RevealLaunchedWindowsAsync(assignments);
-            await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
-            await revealTask;
-
+            var failureHint = application.IsVsCode ? _applicationLauncher.LastVsCodeLaunchHint : null;
             _statusStore.Message = assignments.Count > 0
                 ? $"スロット{slot.Name}を{application.DisplayName}で開きました。"
-                : $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。";
+                : string.IsNullOrWhiteSpace(failureHint)
+                    ? $"スロット{slot.Name}の{application.DisplayName}ウィンドウの起動を確認できませんでした。"
+                    : $"スロット{slot.Name}の{application.DisplayName}を起動できませんでした。{failureHint}";
         });
     }
 
@@ -3021,19 +2940,11 @@ public partial class MainWindow : Window
                 _statusStore.SetSlotApplication(targetSlot, application);
             }
 
-            var assignments = await _applicationLauncher.LaunchMissingAsync(
-                new[] { targetSlot },
-                _statusStore.Config,
-                application!,
-                CancellationToken.None);
-
-            foreach (var assignment in assignments)
-            {
-                _statusStore.AssignWindow(assignment.Slot, assignment.Window);
-            }
-
-            await RefreshSlotsAsync(allowDuringBusy: true);
-            var revealTask = RevealLaunchedWindowsAsync(assignments);
+            var assignments = await ExecuteStagedLaunchAsync(
+                new[] { (targetSlot, application!) },
+                clearFocusAfterArrange: false,
+                preserveExistingFocus: true,
+                suppressStagingOverlay: _areWindowsHidden);
 
             if (_areWindowsHidden)
             {
@@ -3044,23 +2955,6 @@ public partial class MainWindow : Window
                     assignment.Slot.IsHidden = true;
                 }
             }
-            else if (FocusedSlots().Any())
-            {
-                // 他ディスプレイにフォーカス（1 面表示）が残っているときは、それを保ったまま
-                // 非フォーカスのみ象限へ整列し、フォーカス対応の settling で DPI 差を補正する
-                // （ArrangeSlotsOnActiveMonitorWithSettlingAsync の settling はフォーカス中に走らない）。
-                ArrangeSlotsOnActiveMonitor(false);
-                ReassertAllFocusedSlots();
-                await SettleArrangementPreservingFocusAsync();
-                SchedulePanelToFront();
-            }
-            else
-            {
-                // 起動直後にウィンドウ位置を自己復元するケースに備えて再配置する
-                await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
-            }
-
-            await revealTask;
 
             _statusStore.Message = assignments.Count > 0
                 ? swappedVisiblePanel
@@ -6218,6 +6112,7 @@ public partial class MainWindow : Window
         _panelWindowProcHookKeepAlive = PanelWindowProcHook;
         HwndSource.FromHwnd(handle)?.AddHook(_panelWindowProcHookKeepAlive);
         ApplyRoundedWindowCorners(handle);
+        ArmStartupRevealCloak(handle);
     }
 
     // カードや控え一覧と揃えて、パネル自体も角丸にする。AllowsTransparency を使うと描画が重く
@@ -6251,6 +6146,7 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Cancel();
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
+        CleanupLaunchPresentationOnClose();
         _focusNameOverlay.Close();
         base.OnClosed(e);
 

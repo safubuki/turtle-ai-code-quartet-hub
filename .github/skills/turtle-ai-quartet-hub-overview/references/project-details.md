@@ -210,3 +210,10 @@
 ## ダウンロードフォルダボタン・AI 状態リセット機能追加（2026-11-17 追加）
 - タイトルバーのプルリクエスト受信箱ボタン（`PullRequestInboxButton`）のすぐ左側に、`DownloadsFolderButton`（`&#xE896;`）を追加し、`SHGetKnownFolderPath(FOLDERID_Downloads)` 優先＋フォールバックでダウンロードフォルダを Explorer で開けるようにした（標準表示時のみ表示）。
 - 設定画面の「AI の作業通知」セクション右上に `ResetAiActivityButton`（「AI 状態をリセット」）を追加し、Swarm 利用時などの表示ズレ時に設定ファイルへ触れず全スロット（A〜D）の `AiTracker` 表示状態を待機へ即時リセットできるようにした。詳細は `implementation-patterns.md` §13 と `current-issues-qa.md` に記録。
+
+## アプリ起動演出と単体／一括ステルス一斉表示（2026-11-25 追加・刷新）
+- アプリ本体起動・終了演出（`MainWindow.StartupAnimation.cs`）では、`ModeMorphGhostWindow` と同じ実績ある「本物を `DWMWA_CLOAK` で隠しつつ、`AllowsTransparency=True` の超シンプル影武者ウィンドウ上で WPF GPU 独立クロックの `DoubleAnimation` を走らせる」方式を採用した（`AllowsTransparency=False` への `SetWindowLong(WS_EX_LAYERED)` は WPF 内部で自動剥ぎ取りされ `SetLayeredWindowAttributes` がエラー 87 で失敗するため禁止）。旧版のカクつき原因（`BitmapCache` への毎フレーム拡大縮小・`HighQuality` フィルタ・多重 `BlurEffect` / リング・`_refreshTimer` 競合）を完全排除して最小 3 レイヤー構成とし、起動時は `120ms`＋影武者安定 `70ms` の余裕待機を経て `920ms` の S 字カーブでふわっと浮かび上がり、終了時も確認オーバーレイ消去の確定（`70ms`）と影武者安定（`60ms`）のあと `680ms` で静かに消え失せる（OS シャットダウン・`--exit`・OS アニメーションオフ時・オフスクリーン検証時は即処理）。
+- 単体起動・アプリ切替・控え復帰・`Launch Quartet` 一括起動、および「すべて閉じる」・個別スロット「閉じる」を `MainWindow.LaunchPresentation.cs`・`Services/LaunchWindowCloakSession.cs`・`Services/LaunchStagingOverlay.cs` の共通パイプラインへ統一した。
+- 象限ベール（`QuadrantVeilWindow`）も正式な `AllowsTransparency=True` + GPU `DoubleAnimation` へ統一し、確実に滑らかなフェードイン／フェードアウトが描画されるようにした。起動時は裏で準備している間の激しい点滅を抑え、全員が揃ったら一拍（`260ms`）置いて、`BeginTime` 一括 GPU タイムラインにより A→B→C→D へ `480ms` 間隔で本当に 1 つ 1 つ LED ランプが「ぽっ…ふぁ〜っ…」と灯ってから `580ms` の S 字カーブで開く（他プロセスへの `DWMWA_CLOAK` が OS 制限で拒否される環境でもベール基準で確実に動作）。
+- 終了時は開いている全対象ウィンドウ（最大化中ならモニタ作業領域全面、4 面なら各セル）へ完全不透明（`Opacity=1.0`）のベールと中央 HUD を一斉に被せ、裏での個別終了タイミング差を一切見せずに全員の終了を待ってから（4.5 秒超の未保存確認ダイアログ待ちのみ個別自動解放）、人間が「すべて完了した」と知覚できるワンクッション（一括 `720ms`／単体 `460ms`・HUD 完了静止点灯＋各象限「✓ 終了完了」）を置いたあと、全象限ベールと中央 HUD へ同時に `420ms` の軽やかなフェードアウト（`CubicEase EaseOut`）を一斉投入して「フッ」と消す。
+- 標準共有プロファイル（`UseDedicatedUserDataDirs=false`）でも、他スロット未割り当てでタイトルがワークスペースと一致する既存 VS Code ウィンドウがあれば安全に再接続し、ゾンビ残存プロセスで新規起動がタイムアウトした場合はシステムモニタの「VS Code の終了・復旧」を案内する。詳細は `implementation-patterns.md` §19 と `current-issues-qa.md` に記録。

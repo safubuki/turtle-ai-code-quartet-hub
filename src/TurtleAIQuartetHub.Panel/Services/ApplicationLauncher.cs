@@ -27,23 +27,27 @@ public sealed class ApplicationLauncher
         return !application.IsVsCode || _vscodeLauncher.IsCodeCommandAvailable(config.CodeCommand);
     }
 
+    public string? LastVsCodeLaunchHint => _vscodeLauncher.LastLaunchDiagnosticHint;
+
     public async Task<IReadOnlyList<WindowAssignment>> LaunchMissingAsync(
         IReadOnlyList<WindowSlot> slots,
         AppConfig config,
         LauncherApplication application,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession = null,
+        IReadOnlyCollection<IntPtr>? assignedOtherHandles = null)
     {
         if (application.IsVsCode)
         {
-            return await _vscodeLauncher.LaunchMissingAsync(slots, config, cancellationToken);
+            return await _vscodeLauncher.LaunchMissingAsync(slots, config, cancellationToken, cloakSession, assignedOtherHandles);
         }
 
         if (application.IsWorkspaceCli)
         {
-            return await LaunchWorkspaceCliApplicationAsync(slots, config, application, cancellationToken);
+            return await LaunchWorkspaceCliApplicationAsync(slots, config, application, cancellationToken, cloakSession);
         }
 
-        return await LaunchGenericWorkspaceApplicationAsync(slots, config, application, cancellationToken);
+        return await LaunchGenericWorkspaceApplicationAsync(slots, config, application, cancellationToken, cloakSession);
     }
 
     public async Task<ApplicationOpenResult> LaunchSingleWindowApplicationAsync(
@@ -72,7 +76,8 @@ public sealed class ApplicationLauncher
         IReadOnlyList<WindowSlot> slots,
         AppConfig config,
         LauncherApplication application,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession)
     {
         if (!application.IsAvailable)
         {
@@ -94,6 +99,13 @@ public sealed class ApplicationLauncher
         }
 
         var knownHandles = GetKnownHandles(application);
+        if (cloakSession is not null)
+        {
+            knownHandles.UnionWith(cloakSession.GetAdoptedHandles());
+            cloakSession.RegisterKnownHandles(knownHandles);
+            cloakSession.AddTargetProcessNames(application.ProcessNames);
+        }
+
         var assignments = new List<WindowAssignment>();
         var timeout = TimeSpan.FromSeconds(config.LaunchTimeoutSeconds);
 
@@ -101,21 +113,29 @@ public sealed class ApplicationLauncher
         {
             cancellationToken.ThrowIfCancellationRequested();
             knownHandles.UnionWith(GetKnownHandles(application));
+            if (cloakSession is not null)
+            {
+                knownHandles.UnionWith(cloakSession.GetAdoptedHandles());
+                cloakSession.RegisterKnownHandles(knownHandles);
+            }
 
             var launchPath = GetLaunchPath(slot, config);
             var arguments = BuildArguments(application, slot, launchPath);
             DiagnosticLog.Write($"Starting {application.DisplayName} for slot {slot.Name}: {application.ResolvedCommand} {string.Join(" ", arguments)}");
             _ = StartApplication(application, arguments);
-            var window = await WaitForNewApplicationWindowAsync(application, knownHandles, expectedProcessId: null, timeout, cancellationToken);
+            var window = await WaitForNewApplicationWindowAsync(application, knownHandles, expectedProcessId: null, timeout, cancellationToken, cloakSession);
             if (window is null)
             {
+                cloakSession?.ReleaseUnadopted();
                 DiagnosticLog.Write(LogLevel.Warn, $"No new {application.DisplayName} window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
 
+            var cloaked = cloakSession?.Adopt(window.Handle) ?? false;
+            cloakSession?.ReleaseUnadopted();
             knownHandles.Add(window.Handle);
-            assignments.Add(new WindowAssignment(slot, window));
+            assignments.Add(new WindowAssignment(slot, window, cloaked));
         }
 
         return assignments;
@@ -125,7 +145,8 @@ public sealed class ApplicationLauncher
         IReadOnlyList<WindowSlot> slots,
         AppConfig config,
         LauncherApplication application,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession)
     {
         if (!application.IsAvailable)
         {
@@ -147,6 +168,13 @@ public sealed class ApplicationLauncher
         }
 
         var knownHandles = GetKnownHandles(application);
+        if (cloakSession is not null)
+        {
+            knownHandles.UnionWith(cloakSession.GetAdoptedHandles());
+            cloakSession.RegisterKnownHandles(knownHandles);
+            cloakSession.AddTargetProcessNames(application.ProcessNames);
+        }
+
         var assignments = new List<WindowAssignment>();
         var timeout = TimeSpan.FromSeconds(config.LaunchTimeoutSeconds);
         var pendingLaunches = new List<(WindowSlot Slot, string ExpectedTitle)>();
@@ -183,8 +211,9 @@ public sealed class ApplicationLauncher
                 }
 
                 var launch = pendingLaunches[pendingIndex];
+                var cloaked = cloakSession?.Adopt(window.Handle) ?? false;
                 knownHandles.Add(window.Handle);
-                assignments.Add(new WindowAssignment(launch.Slot, window));
+                assignments.Add(new WindowAssignment(launch.Slot, window, cloaked));
                 pendingLaunches.RemoveAt(pendingIndex);
             }
 
@@ -197,8 +226,9 @@ public sealed class ApplicationLauncher
 
                 var launch = pendingLaunches[0];
                 DiagnosticLog.Write($"Assigning {application.DisplayName} terminal without title match for slot {launch.Slot.Name}: title={window.Title}");
+                var cloaked = cloakSession?.Adopt(window.Handle) ?? false;
                 knownHandles.Add(window.Handle);
-                assignments.Add(new WindowAssignment(launch.Slot, window));
+                assignments.Add(new WindowAssignment(launch.Slot, window, cloaked));
                 pendingLaunches.RemoveAt(0);
             }
 
@@ -213,8 +243,18 @@ public sealed class ApplicationLauncher
                 break;
             }
 
-            await Task.Delay(remaining < WindowPollInterval ? remaining : WindowPollInterval, cancellationToken);
+            var waitSlice = remaining < WindowPollInterval ? remaining : WindowPollInterval;
+            if (cloakSession is not null)
+            {
+                await cloakSession.WaitForCandidateSignalAsync(waitSlice, cancellationToken);
+            }
+            else
+            {
+                await Task.Delay(waitSlice, cancellationToken);
+            }
         }
+
+        cloakSession?.ReleaseUnadopted();
 
         foreach (var launch in pendingLaunches)
         {
@@ -238,7 +278,8 @@ public sealed class ApplicationLauncher
         HashSet<IntPtr> knownHandles,
         uint? expectedProcessId,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession)
     {
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < timeout)
@@ -265,7 +306,15 @@ public sealed class ApplicationLauncher
                 break;
             }
 
-            await Task.Delay(remaining < WindowPollInterval ? remaining : WindowPollInterval, cancellationToken);
+            var waitSlice = remaining < WindowPollInterval ? remaining : WindowPollInterval;
+            if (cloakSession is not null)
+            {
+                await cloakSession.WaitForCandidateSignalAsync(waitSlice, cancellationToken);
+            }
+            else
+            {
+                await Task.Delay(waitSlice, cancellationToken);
+            }
         }
 
         return null;

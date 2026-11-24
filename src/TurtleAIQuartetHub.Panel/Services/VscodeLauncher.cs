@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -26,6 +26,8 @@ public sealed class VscodeLauncher
 
     private readonly WindowEnumerator _windowEnumerator;
 
+    public string? LastLaunchDiagnosticHint { get; private set; }
+
     public VscodeLauncher(WindowEnumerator windowEnumerator)
     {
         _windowEnumerator = windowEnumerator;
@@ -39,12 +41,15 @@ public sealed class VscodeLauncher
     public async Task<IReadOnlyList<WindowAssignment>> LaunchMissingAsync(
         IReadOnlyList<WindowSlot> slots,
         AppConfig config,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession = null,
+        IReadOnlyCollection<IntPtr>? assignedOtherHandles = null)
     {
+        LastLaunchDiagnosticHint = null;
         await SlotUserDataPaths.UserDataMaintenanceGate.WaitAsync(cancellationToken);
         try
         {
-            return await LaunchMissingCoreAsync(slots, config, cancellationToken);
+            return await LaunchMissingCoreAsync(slots, config, cancellationToken, cloakSession, assignedOtherHandles);
         }
         finally
         {
@@ -55,7 +60,9 @@ public sealed class VscodeLauncher
     private async Task<IReadOnlyList<WindowAssignment>> LaunchMissingCoreAsync(
         IReadOnlyList<WindowSlot> slots,
         AppConfig config,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession,
+        IReadOnlyCollection<IntPtr>? assignedOtherHandles)
     {
         var launchTargets = slots
             .Where(slot => slot.WindowHandle == IntPtr.Zero || !_windowEnumerator.IsLiveWindow(slot.WindowHandle))
@@ -72,7 +79,25 @@ public sealed class VscodeLauncher
             slot.WindowStatus = SlotWindowStatus.Launching;
         }
 
+        var excludedAssignedHandles = new HashSet<IntPtr>();
+        if (assignedOtherHandles is not null)
+        {
+            foreach (var handle in assignedOtherHandles)
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    excludedAssignedHandles.Add(handle);
+                }
+            }
+        }
+
         var knownHandles = await GetKnownHandlesAsync(cancellationToken);
+        if (cloakSession is not null)
+        {
+            knownHandles.UnionWith(cloakSession.GetAdoptedHandles());
+            cloakSession.RegisterKnownHandles(knownHandles);
+            cloakSession.AddTargetProcessNames(VsCodeProcessNames);
+        }
 
         var resolvedCodeCommand = ResolveCodeCommand(config.CodeCommand) ?? config.CodeCommand;
         var assignments = new List<WindowAssignment>();
@@ -82,6 +107,11 @@ public sealed class VscodeLauncher
         {
             cancellationToken.ThrowIfCancellationRequested();
             knownHandles.UnionWith(await GetKnownHandlesAsync(cancellationToken));
+            if (cloakSession is not null)
+            {
+                knownHandles.UnionWith(cloakSession.GetAdoptedHandles());
+                cloakSession.RegisterKnownHandles(knownHandles);
+            }
 
             if (config.UseDedicatedUserDataDirs)
             {
@@ -90,11 +120,16 @@ public sealed class VscodeLauncher
             }
 
             var launchPath = GetLaunchPath(slot, config);
-            var existingSlotWindow = TryFindExistingSlotWindow(slot, config, launchPath);
+            var existingSlotWindow = TryFindExistingSlotWindow(slot, config, launchPath, excludedAssignedHandles);
             if (existingSlotWindow is not null)
             {
                 DiagnosticLog.Write($"Reattached existing VS Code window for slot {slot.Name}: handle=0x{existingSlotWindow.Handle.ToInt64():X}, pid={existingSlotWindow.ProcessId}.");
+                // 万一クロークや遷移無効化が残っていた場合も安全に解除して可視状態へ戻す。
+                _ = WindowArranger.SetTransitionsDisabled(existingSlotWindow.Handle, false);
+                _ = WindowArranger.SetCloaked(existingSlotWindow.Handle, false);
                 knownHandles.Add(existingSlotWindow.Handle);
+                excludedAssignedHandles.Add(existingSlotWindow.Handle);
+                cloakSession?.RegisterKnownHandles([existingSlotWindow.Handle]);
                 assignments.Add(new WindowAssignment(slot, existingSlotWindow));
                 continue;
             }
@@ -105,15 +140,25 @@ public sealed class VscodeLauncher
             slot.PreferredLayout = launchLayout;
             VscodeLayoutState.TryApplyPreferredLayout(slot, config, launchLayout);
 
-            var assignment = await LaunchWindowAsync(slot, config, resolvedCodeCommand, launchPath, knownHandles, timeout, cancellationToken);
+            var assignment = await LaunchWindowAsync(slot, config, resolvedCodeCommand, launchPath, knownHandles, excludedAssignedHandles, timeout, cancellationToken, cloakSession);
+            cloakSession?.ReleaseUnadopted();
             if (assignment is null)
             {
                 DiagnosticLog.Write(LogLevel.Warn, $"No new VS Code window detected for slot {slot.Name} within {timeout.TotalSeconds:0} seconds.");
+                if (!config.UseDedicatedUserDataDirs && HasAnyRunningVsCodeProcess())
+                {
+                    LastLaunchDiagnosticHint = "VS Code の残存プロセスが同じフォルダを保持している可能性があります。システムモニタの「VS Code の終了・復旧」をお試しください。";
+                    DiagnosticLog.Write(
+                        LogLevel.Warn,
+                        $"VS Code process(es) are still running while slot {slot.Name} ({launchPath ?? "<empty>"}) failed to open a new window; a lingering VS Code instance may still hold this workspace.");
+                }
+
                 slot.WindowStatus = SlotWindowStatus.Missing;
                 continue;
             }
 
             knownHandles.Add(assignment.Window.Handle);
+            excludedAssignedHandles.Add(assignment.Window.Handle);
             assignments.Add(assignment);
         }
 
@@ -126,8 +171,10 @@ public sealed class VscodeLauncher
         string codeCommand,
         string? launchPath,
         HashSet<IntPtr> knownHandles,
+        IReadOnlySet<IntPtr> excludedAssignedHandles,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession)
     {
         var launchCodeCommand = GetCodeCommandForLaunch(config.CodeCommand, codeCommand, launchPath);
 
@@ -139,8 +186,10 @@ public sealed class VscodeLauncher
                 launchCodeCommand,
                 launchPath!,
                 knownHandles,
+                excludedAssignedHandles,
                 timeout,
-                cancellationToken);
+                cancellationToken,
+                cloakSession);
         }
 
         DiagnosticLog.Write($"Starting VS Code for slot {slot.Name}: {launchCodeCommand} {GetLaunchArguments(slot, config, launchPath)}");
@@ -152,9 +201,9 @@ public sealed class VscodeLauncher
             timeout,
             expectedProcessId: null,
             launchPath,
-            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
+            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath, excludedAssignedHandles),
             cancellationToken);
-        return window is null ? null : CreateNewWindowAssignment(slot, window);
+        return window is null ? null : CreateNewWindowAssignment(slot, window, cloakSession);
     }
 
     private async Task<WindowAssignment?> LaunchRemoteWindowWithFallbackAsync(
@@ -163,8 +212,10 @@ public sealed class VscodeLauncher
         string codeCommand,
         string launchPath,
         HashSet<IntPtr> knownHandles,
+        IReadOnlySet<IntPtr> excludedAssignedHandles,
         TimeSpan totalTimeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LaunchWindowCloakSession? cloakSession)
     {
         var totalStopwatch = Stopwatch.StartNew();
         var reconnectTimeout = GetRemoteReconnectTimeout(config, totalTimeout);
@@ -180,7 +231,7 @@ public sealed class VscodeLauncher
             reconnectTimeout,
             expectedProcessId: null,
             launchPath,
-            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath),
+            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, launchPath, excludedAssignedHandles),
             cancellationToken);
         if (remoteWindow is not null)
         {
@@ -190,7 +241,7 @@ public sealed class VscodeLauncher
 
         if (remoteWindow is not null)
         {
-            return CreateNewWindowAssignment(slot, remoteWindow);
+            return CreateNewWindowAssignment(slot, remoteWindow, cloakSession);
         }
 
         DiagnosticLog.Write(
@@ -202,6 +253,7 @@ public sealed class VscodeLauncher
             KillZombieProcess(slot, config);
         }, cancellationToken);
         knownHandles.UnionWith(await GetKnownHandlesAsync(cancellationToken));
+        cloakSession?.RegisterKnownHandles(knownHandles);
 
         var fallbackTimeout = GetRemainingTime(totalTimeout, totalStopwatch);
         if (fallbackTimeout <= TimeSpan.Zero)
@@ -223,13 +275,24 @@ public sealed class VscodeLauncher
             fallbackTimeout,
             expectedProcessId,
             launchPath: null,
-            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, null),
+            fallbackWindowProvider: () => TryFindExistingSlotWindow(slot, config, null, excludedAssignedHandles),
             cancellationToken);
-        return fallbackWindow is null ? null : CreateNewWindowAssignment(slot, fallbackWindow);
+        return fallbackWindow is null ? null : CreateNewWindowAssignment(slot, fallbackWindow, cloakSession);
     }
 
-    private static WindowAssignment CreateNewWindowAssignment(WindowSlot slot, WindowInfo window)
+    private static WindowAssignment CreateNewWindowAssignment(
+        WindowSlot slot,
+        WindowInfo window,
+        LaunchWindowCloakSession? cloakSession)
     {
+        // セッション管理下では、セッション全体のライフサイクルと一斉リビールにクローク所有権を委譲する。
+        // これにより一括起動の途中で先行スロットの 12 秒タイマーが勝手に切れて飛び出す問題を防ぐ。
+        if (cloakSession is not null)
+        {
+            var adoptedCloak = cloakSession.Adopt(window.Handle);
+            return new WindowAssignment(slot, window, adoptedCloak);
+        }
+
         var cloaked = WindowArranger.SetCloaked(window.Handle, true);
         if (cloaked)
         {
@@ -253,9 +316,13 @@ public sealed class VscodeLauncher
         }
     }
 
-    public WindowInfo? TryFindExistingSlotWindow(WindowSlot slot, AppConfig config, string? launchPath = null)
+    public WindowInfo? TryFindExistingSlotWindow(
+        WindowSlot slot,
+        AppConfig config,
+        string? launchPath = null,
+        IReadOnlySet<IntPtr>? excludedHandles = null)
     {
-        return TryFindSlotOwnedWindow(slot, config, launchPath);
+        return TryFindSlotOwnedWindow(slot, config, launchPath, excludedHandles);
     }
 
     private async Task<WindowInfo?> WaitForNewWindowAsync(
@@ -437,10 +504,24 @@ public sealed class VscodeLauncher
         return !config.UseDedicatedUserDataDirs || string.IsNullOrWhiteSpace(launchPath);
     }
 
-    private WindowInfo? TryFindSlotOwnedWindow(WindowSlot slot, AppConfig config, string? launchPath)
+    private WindowInfo? TryFindSlotOwnedWindow(
+        WindowSlot slot,
+        AppConfig config,
+        string? launchPath,
+        IReadOnlySet<IntPtr>? excludedHandles)
     {
-        if (!config.UseDedicatedUserDataDirs
-            || !TryReadSlotLockProcessId(slot, config, out var processId)
+        // 標準共有プロファイルでは、既に同じフォルダを開いている管理外 VS Code ウィンドウが存在すると
+        // `Code.exe --new-window <path>` が新規ウィンドウを作らず既存窓をフォーカスするだけで終わる。
+        // 他スロットへ割り当て済みでない一致ウィンドウがあれば安全に再接続し、永久タイムアウトを防ぐ。
+        if (!config.UseDedicatedUserDataDirs)
+        {
+            return SelectMatchingSharedProfileWindow(
+                _windowEnumerator.GetVsCodeWindows(),
+                launchPath,
+                excludedHandles);
+        }
+
+        if (!TryReadSlotLockProcessId(slot, config, out var processId)
             || !IsProcessAlive(processId))
         {
             return null;
@@ -449,6 +530,7 @@ public sealed class VscodeLauncher
         var windows = _windowEnumerator
             .GetVsCodeWindows()
             .Where(window => window.ProcessId == processId)
+            .Where(window => excludedHandles is null || !excludedHandles.Contains(window.Handle))
             .ToList();
         if (windows.Count == 0)
         {
@@ -472,6 +554,52 @@ public sealed class VscodeLauncher
         return windows
             .OrderBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
+    }
+
+    internal static WindowInfo? SelectMatchingSharedProfileWindow(
+        IEnumerable<WindowInfo> windows,
+        string? launchPath,
+        IReadOnlySet<IntPtr>? excludedHandles)
+    {
+        if (string.IsNullOrWhiteSpace(launchPath))
+        {
+            return null;
+        }
+
+        return windows
+            .Where(window => excludedHandles is null || !excludedHandles.Contains(window.Handle))
+            .FirstOrDefault(window => VscodeWorkspaceState.IsWorkspaceVisibleInWindowTitle(window.Title, launchPath));
+    }
+
+    private static bool HasAnyRunningVsCodeProcess()
+    {
+        try
+        {
+            foreach (var name in VsCodeProcessNames)
+            {
+                var processes = Process.GetProcessesByName(name);
+                try
+                {
+                    if (processes.Length > 0)
+                    {
+                        return true;
+                    }
+                }
+                finally
+                {
+                    foreach (var process in processes)
+                    {
+                        process.Dispose();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Process probe failure must not affect launch flow.
+        }
+
+        return false;
     }
 
     private static bool TryReadSlotLockProcessId(WindowSlot slot, AppConfig config, out uint processId)

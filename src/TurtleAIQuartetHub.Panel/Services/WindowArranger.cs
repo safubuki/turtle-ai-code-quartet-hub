@@ -73,10 +73,34 @@ public sealed class WindowArranger
     public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
     {
         var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot: null);
+        return NeedsArrangePlacements(placements, tolerance);
+    }
+
+    // 指定ハンドル群（新規起動直後のクローク中ウィンドウ等）だけを対象に、期待セルへ
+    // 正確に収まっているかを確認する。最大化・最小化状態が残っている場合も再配置が必要とみなす。
+    public bool NeedsArrangeOnly(
+        IReadOnlyList<WindowSlot> slots,
+        IReadOnlyCollection<IntPtr> handles,
+        int gap,
+        int monitorIndex,
+        int tolerance = 24)
+    {
+        if (handles.Count == 0)
+        {
+            return false;
+        }
+
+        var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot: null);
+        placements.RemoveAll(placement => !handles.Contains(placement.Handle));
+        return NeedsArrangePlacements(placements, tolerance);
+    }
+
+    private static bool NeedsArrangePlacements(IReadOnlyList<WindowPlacement> placements, int tolerance)
+    {
         foreach (var placement in placements)
         {
             // 期待セルは可視枠（DWM 拡張フレーム）基準なので、現在値も可視枠で比較する。
-            if (IsIconic(placement.Handle) || !TryGetVisibleBounds(placement.Handle, out var current))
+            if (IsIconic(placement.Handle) || IsZoomed(placement.Handle) || !TryGetVisibleBounds(placement.Handle, out var current))
             {
                 return true;
             }
@@ -88,6 +112,32 @@ public sealed class WindowArranger
         }
 
         return false;
+    }
+
+    // 指定スロットが 2x2 配置で収まるべき可視枠の物理ピクセル矩形を返す。
+    // ウィンドウ未割り当て（起動準備中）の象限ベール配置にも同じ計算式を使うことで、
+    // 準備枠と実ウィンドウの着地位置を 1px 単位で一致させる。
+    public bool TryGetSlotCellBounds(
+        WindowSlot slot,
+        int slotIndex,
+        int gap,
+        int baseMonitorIndex,
+        out WindowBounds cellBounds)
+    {
+        cellBounds = default;
+        if (slotIndex < 0 || slotIndex >= 4)
+        {
+            return false;
+        }
+
+        var monitors = GetOrderedMonitors();
+        if (monitors.Count == 0)
+        {
+            return false;
+        }
+
+        cellBounds = ComputeSlotCellBounds(monitors, slot, slotIndex, gap, baseMonitorIndex);
+        return cellBounds.Width > 0 && cellBounds.Height > 0;
     }
 
     private int ArrangeCore(
@@ -296,19 +346,31 @@ public sealed class WindowArranger
                 continue;
             }
 
-            var effectiveMonitor = NormalizeMonitorIndex(slot.MonitorOverride ?? baseMonitorIndex, monitors.Count);
-            var workArea = monitors[effectiveMonitor].WorkArea;
-            var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
-            var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
-
-            var column = index % 2;
-            var row = index / 2;
-            var x = workArea.Left + normalizedGap + column * (cellWidth + normalizedGap);
-            var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
-            placements.Add(new WindowPlacement(slot.WindowHandle, x, y, cellWidth, cellHeight));
+            var cell = ComputeSlotCellBounds(monitors, slot, index, normalizedGap, baseMonitorIndex);
+            placements.Add(new WindowPlacement(slot.WindowHandle, cell.Left, cell.Top, cell.Width, cell.Height));
         }
 
         return placements;
+    }
+
+    private static WindowBounds ComputeSlotCellBounds(
+        IReadOnlyList<MonitorWorkArea> monitors,
+        WindowSlot slot,
+        int slotIndex,
+        int gap,
+        int baseMonitorIndex)
+    {
+        var normalizedGap = Math.Clamp(gap, 0, 64);
+        var effectiveMonitor = NormalizeMonitorIndex(slot.MonitorOverride ?? baseMonitorIndex, monitors.Count);
+        var workArea = monitors[effectiveMonitor].WorkArea;
+        var cellWidth = Math.Max(320, (workArea.Width - normalizedGap * 3) / 2);
+        var cellHeight = Math.Max(240, (workArea.Height - normalizedGap * 3) / 2);
+
+        var column = slotIndex % 2;
+        var row = slotIndex / 2;
+        var x = workArea.Left + normalizedGap + column * (cellWidth + normalizedGap);
+        var y = workArea.Top + normalizedGap + row * (cellHeight + normalizedGap);
+        return new WindowBounds(x, y, cellWidth, cellHeight);
     }
 
     private static bool IsCloseToExpectedBounds(WindowBounds current, WindowPlacement expected, int tolerance)
@@ -486,6 +548,30 @@ public sealed class WindowArranger
 
         var value = cloaked ? 1 : 0;
         return DwmSetWindowAttribute(windowHandle, DwmwaCloak, ref value, sizeof(int)) == 0;
+    }
+
+    public static bool IsCloaked(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return DwmGetWindowAttributeInt(windowHandle, DwmwaCloaked, out var cloaked, sizeof(int)) == 0
+            && cloaked != 0;
+    }
+
+    // 対象ウィンドウの DWM 遷移アニメ（最小化/復元/最大化/出現時のズーム演出）を一時的に止める。
+    // 失敗（DWM 無効や対象消滅）は無視してよい。必ず disabled=false で対で戻すこと。
+    public static bool SetTransitionsDisabled(IntPtr windowHandle, bool disabled)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        var value = disabled ? 1 : 0;
+        return DwmSetWindowAttribute(windowHandle, DwmwaTransitionsForceDisabled, ref value, sizeof(int)) == 0;
     }
 
     // frontWindowHandle と同じ z-order 帯で、その直後へ windowHandle を置く。
@@ -931,17 +1017,9 @@ public sealed class WindowArranger
         }
     }
 
-    // 対象ウィンドウの DWM 遷移アニメ（最小化/復元/最大化時のズーム演出）を一時的に止める。
-    // 失敗（DWM 無効や対象消滅）は無視してよい。必ず disabled=false で対で戻すこと。
     private static void SetDwmTransitionsDisabled(IntPtr windowHandle, bool disabled)
     {
-        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
-        {
-            return;
-        }
-
-        var value = disabled ? 1 : 0;
-        _ = DwmSetWindowAttribute(windowHandle, DwmwaTransitionsForceDisabled, ref value, sizeof(int));
+        _ = SetTransitionsDisabled(windowHandle, disabled);
     }
 
     private static List<MonitorWorkArea> GetOrderedMonitors()

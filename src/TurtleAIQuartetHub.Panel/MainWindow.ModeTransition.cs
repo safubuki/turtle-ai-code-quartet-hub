@@ -42,6 +42,9 @@ public partial class MainWindow
 
     private void SetDisplayMode(DisplayMode mode, bool updateMessage = true)
     {
+        // 起動直後のふわっと出現演出中に切り替え要求が来た場合は、先に起動演出を終わらせて本物を解放する。
+        CompleteStartupRevealImmediately();
+
         // 切り替えの途中で押し直されたら、終わってから最後の指示だけを反映する。
         if (_isModeTransitionRunning)
         {
