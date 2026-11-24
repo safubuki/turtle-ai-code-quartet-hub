@@ -4,7 +4,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class LaunchPresentationTests
 {
-    public const int Count = 20;
+    public const int Count = 22;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -28,6 +28,8 @@ internal static class LaunchPresentationTests
         TestRevealWaveTimingsProvideCalmSequentialLampPacing(failures);
         TestBeginTimeNormalizationNeverBlocksAnimationStart(failures);
         TestCloseDoneHoldProvidesPerceptibleConfirmationPause(failures);
+        TestFullScreenBackdropPolicy(failures);
+        TestOverlayFailsafeAutoDismissesStuckBackdrop(failures);
     }
 
     private static void TestKnownWindowIsNeverCloaked(List<string> failures)
@@ -415,14 +417,19 @@ internal static class LaunchPresentationTests
                 new("D", 3, "Project Delta", "VS Code", LaunchStageSlotState.AlreadyRunning, IsTarget: false)
             };
 
-            var (hudSize, veilSize, veilAllowsTransparency) = LaunchStagingOverlay.VerifyVisualTreeOffscreenForTesting(
+            var (hudSize, veilSize, veilAllowsTransparency, backdropSize, backdropAllowsTransparency) = LaunchStagingOverlay.VerifyVisualTreeOffscreenForTesting(
                 entries,
                 "QUARTET LAUNCHING",
                 "4面のワークスペースを裏で起動・整列しています...");
 
-            if (!veilAllowsTransparency)
+            if (!veilAllowsTransparency || !backdropAllowsTransparency)
             {
-                throw new InvalidOperationException("象限ベールで AllowsTransparency=True が有効になっていません（WPF が WS_EX_LAYERED を剥ぎ取りフェード不能になります）。");
+                throw new InvalidOperationException("象限ベールまたは黒い全画面シールドで AllowsTransparency=True が有効になっていません。");
+            }
+
+            if (backdropSize.Width <= 0 || backdropSize.Height <= 0)
+            {
+                throw new InvalidOperationException($"黒い全画面シールドの計測サイズが不正です ({backdropSize.Width:0}x{backdropSize.Height:0})。");
             }
 
             if (hudSize.Width < 400 || hudSize.Height < 140)
@@ -447,12 +454,12 @@ internal static class LaunchPresentationTests
                 new("B", 1, "Other", "VS Code", LaunchStageSlotState.AlreadyRunning, IsTarget: false)
             };
 
-            var (hudSize, veilSize, veilAllowsTransparency) = LaunchStagingOverlay.VerifyVisualTreeOffscreenForTesting(
+            var (hudSize, veilSize, veilAllowsTransparency, backdropSize, backdropAllowsTransparency) = LaunchStagingOverlay.VerifyVisualTreeOffscreenForTesting(
                 entries,
                 "LAUNCHING SLOT A",
                 "スロットAのVS Codeを準備しています...");
 
-            if (!veilAllowsTransparency || hudSize.Width < 340 || hudSize.Height < 140 || veilSize.Width <= 0 || veilSize.Height <= 0)
+            if (!veilAllowsTransparency || !backdropAllowsTransparency || hudSize.Width < 340 || hudSize.Height < 140 || veilSize.Width <= 0 || veilSize.Height <= 0 || backdropSize.Width <= 0 || backdropSize.Height <= 0)
             {
                 throw new InvalidOperationException($"単体起動 HUD/ベールの計測サイズが不正です (HUD={hudSize.Width:0}x{hudSize.Height:0}, Veil={veilSize.Width:0}x{veilSize.Height:0})。");
             }
@@ -471,13 +478,13 @@ internal static class LaunchPresentationTests
                 new("D", 3, "Project Delta", "Antigravity", LaunchStageSlotState.Closing, IsTarget: true)
             };
 
-            var (hudSize, veilSize, veilAllowsTransparency) = LaunchStagingOverlay.VerifyVisualTreeOffscreenForTesting(
+            var (hudSize, veilSize, veilAllowsTransparency, backdropSize, backdropAllowsTransparency) = LaunchStagingOverlay.VerifyVisualTreeOffscreenForTesting(
                 entries,
                 "QUARTET CLOSING",
                 "4個のワークスペースを裏で終了しています...",
                 isClosingMode: true);
 
-            if (!veilAllowsTransparency || hudSize.Width < 400 || hudSize.Height < 140 || veilSize.Width <= 0 || veilSize.Height <= 0)
+            if (!veilAllowsTransparency || !backdropAllowsTransparency || hudSize.Width < 400 || hudSize.Height < 140 || veilSize.Width <= 0 || veilSize.Height <= 0 || backdropSize.Width <= 0 || backdropSize.Height <= 0)
             {
                 throw new InvalidOperationException($"終了モード HUD/ベールの計測サイズが不正です (HUD={hudSize.Width:0}x{hudSize.Height:0}, Veil={veilSize.Width:0}x{veilSize.Height:0})。");
             }
@@ -682,6 +689,61 @@ internal static class LaunchPresentationTests
         {
             failures.Add($"単体終了の完了知覚ワンクッションが不適切です (single={singleHold.TotalMilliseconds:0}ms, batch={batchHold.TotalMilliseconds:0}ms)。");
         }
+    }
+
+    private static void TestFullScreenBackdropPolicy(List<string> failures)
+    {
+        if (!LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 4)
+            || !LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 1))
+        {
+            failures.Add("起動時に黒い全画面シールドが有効化されませんでした。");
+        }
+
+        if (!LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 4))
+        {
+            failures.Add("複数一括終了時に黒い全画面シールドが有効化されませんでした。");
+        }
+
+        if (LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 1)
+            || LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 0))
+        {
+            failures.Add("単体終了または対象 0 件時に不要な黒い全画面シールドが有効化されました。");
+        }
+    }
+
+    private static void TestOverlayFailsafeAutoDismissesStuckBackdrop(List<string> failures)
+    {
+        RunOnStaThread(failures, "黒画面・マスク残留防止フェイルセーフ自動解除検証", () =>
+        {
+            using var overlay = new LaunchStagingOverlay(new WindowArranger());
+            overlay.ArmFailsafeForTesting(TimeSpan.FromMilliseconds(70));
+            if (!overlay.IsActive)
+            {
+                throw new InvalidOperationException("テスト用フェイルセーフ待機状態に入れませんでした。");
+            }
+
+            var frame = new System.Windows.Threading.DispatcherFrame();
+            var poll = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(25)
+            };
+            var started = DateTimeOffset.UtcNow;
+            poll.Tick += (_, _) =>
+            {
+                if (!overlay.IsActive || DateTimeOffset.UtcNow - started > TimeSpan.FromSeconds(2))
+                {
+                    poll.Stop();
+                    frame.Continue = false;
+                }
+            };
+            poll.Start();
+            System.Windows.Threading.Dispatcher.PushFrame(frame);
+
+            if (overlay.IsActive)
+            {
+                throw new InvalidOperationException("フェイルセーフ期限超過後も LaunchStagingOverlay が自動解除されませんでした。");
+            }
+        });
     }
 
     private static void RunOnStaThread(List<string> failures, string label, Action action)

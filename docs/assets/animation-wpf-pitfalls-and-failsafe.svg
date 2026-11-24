@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="740" viewBox="0 0 1200 740" role="img" aria-labelledby="title desc">
+  <title id="title">WPF 実装原則（5 大落とし穴の回避）と 5 重フェイルセーフ</title>
+  <desc id="desc">WPFデスクトップアプリでアニメーションを滑らかに確実に動かすための5つの技術原則と、黒画面や操作不能を絶対に起こさないための5重フェイルセーフ構造をまとめた図。</desc>
+  <defs>
+    <style>
+      text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #18392b; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #466154; }
+      .sec-title { font-size: 19px; font-weight: 700; }
+      .ng-head { font-size: 14px; font-weight: 700; fill: #9c2f26; }
+      .ok-head { font-size: 14px; font-weight: 700; fill: #16663d; }
+      .ng-txt { font-size: 13.5px; fill: #5e2420; }
+      .ok-txt { font-size: 13.5px; fill: #1b432f; }
+      .pillar-num { font-size: 12px; font-weight: 700; fill: #ffffff; }
+      .pillar-title { font-size: 15px; font-weight: 700; fill: #18392b; }
+      .pillar-body { font-size: 13px; fill: #355244; }
+      .small { font-size: 12.5px; fill: #526b5e; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="740" rx="20" fill="#f3f8f5"/>
+  <text x="48" y="52" class="title">他アプリへ応用するための WPF 実装原則と 5 重フェイルセーフ</text>
+  <text x="48" y="82" class="subtitle">実機検証で特定した WPF 特有の落とし穴を避けつつ、黒画面や操作不能を構造的に起こさないための設計指針です。</text>
+
+  <!-- 上段: 5 大落とし穴と正解 -->
+  <rect x="48" y="106" width="1104" height="332" rx="16" fill="#ffffff" stroke="#b9d4c5" stroke-width="2"/>
+  <text x="72" y="138" class="sec-title">WPF / Windows 実装で必ず避けるべき 5 つの落とし穴</text>
+
+  <!-- ヘッダー帯 -->
+  <rect x="72" y="152" width="510" height="28" rx="6" fill="#fdeceb"/>
+  <text x="88" y="171" class="ng-head">NG パターン（起きる不具合）</text>
+  <rect x="602" y="152" width="526" height="28" rx="6" fill="#e2f6ea"/>
+  <text x="618" y="171" class="ok-head">OK パターン（本アプリでの採用解）</text>
+
+  <!-- 行 1 -->
+  <rect x="72" y="186" width="510" height="42" rx="6" fill="#fff8f7" stroke="#f0d0cd" stroke-width="1"/>
+  <text x="86" y="204" class="ng-txt">1. AllowsTransparency=False に WS_EX_LAYERED を後付け</text>
+  <text x="86" y="221" class="small">→ WPF が自動で剥ぎ取り Error 87。フェードが一切動かなくなる</text>
+  <rect x="602" y="186" width="526" height="42" rx="6" fill="#f6fcf8" stroke="#c3e4d0" stroke-width="1"/>
+  <text x="616" y="204" class="ok-txt">透過演出ウィンドウは必ず AllowsTransparency=True + GPU DoubleAnimation</text>
+  <text x="616" y="221" class="small">→ クリックスルー付与後も WS_EX_LAYERED が維持され 100% 確実に動作</text>
+
+  <!-- 行 2 -->
+  <rect x="72" y="234" width="510" height="42" rx="6" fill="#fff8f7" stroke="#f0d0cd" stroke-width="1"/>
+  <text x="86" y="252" class="ng-txt">2. BitmapCache の毎フレーム拡大縮小・HighQuality・多重 Blur</text>
+  <text x="86" y="269" class="small">→ キャッシュ再生成と CPU 転送で冒頭コマ飛び・カクつきが発生</text>
+  <rect x="602" y="234" width="526" height="42" rx="6" fill="#f6fcf8" stroke="#c3e4d0" stroke-width="1"/>
+  <text x="616" y="252" class="ok-txt">最小 3 層構成＋フリーズ済みグラデーション＋起動直後の余裕待機</text>
+  <text x="616" y="269" class="small">→ 定期タイマーを演出後へ譲り、初回描画完了後に一呼吸おいて再生</text>
+
+  <!-- 行 3 -->
+  <rect x="72" y="282" width="510" height="42" rx="6" fill="#fff8f7" stroke="#f0d0cd" stroke-width="1"/>
+  <text x="86" y="300" class="ng-txt">3. BeginTime=null 指定、または遅延開始時のローカル値未確定</text>
+  <text x="86" y="317" class="small">→ null は永遠に未開始。遅延待ち中に初期値 0.0 へ一瞬巻き戻る</text>
+  <rect x="602" y="282" width="526" height="42" rx="6" fill="#f6fcf8" stroke="#c3e4d0" stroke-width="1"/>
+  <text x="616" y="300" class="ok-txt">即時開始は必ず TimeSpan.Zero、開始前後にローカル Opacity を確定</text>
+  <text x="616" y="317" class="small">→ 待機中も HoldEnd 破棄による透明化を防ぎ、テストで自動検証</text>
+
+  <!-- 行 4 -->
+  <rect x="72" y="330" width="510" height="42" rx="6" fill="#fff8f7" stroke="#f0d0cd" stroke-width="1"/>
+  <text x="86" y="348" class="ng-txt">4. BeginAnimation の後に Completed イベントを登録する</text>
+  <text x="86" y="365" class="small">→ 完了通知が発火せず、本物が隠れたまま操作不能になる事故原因</text>
+  <rect x="602" y="330" width="526" height="42" rx="6" fill="#f6fcf8" stroke="#c3e4d0" stroke-width="1"/>
+  <text x="616" y="348" class="ok-txt">Completed は必ず BeginAnimation より前に登録＋ウォッチドッグ併設</text>
+  <text x="616" y="365" class="small">→ 完了通知が来なくても一定時間後に強制復帰する安全網を常備</text>
+
+  <!-- 行 5 -->
+  <rect x="72" y="378" width="510" height="42" rx="6" fill="#fff8f7" stroke="#f0d0cd" stroke-width="1"/>
+  <text x="86" y="396" class="ng-txt">5. 他プロセスへの DWMWA_CLOAK 成功を前提に分岐する</text>
+  <text x="86" y="413" class="small">→ Windows の権限仕様で拒否され、演出や安定化が丸ごとスキップ</text>
+  <rect x="602" y="378" width="526" height="42" rx="6" fill="#f6fcf8" stroke="#c3e4d0" stroke-width="1"/>
+  <text x="616" y="396" class="ok-txt">自プロセスは DWMWA_CLOAK、他プロセスは最前面ベールを主軸制御</text>
+  <text x="616" y="413" class="small">→ クローク成否に依存せず起動成功ウィンドウ集合基準で確実に実行</text>
+
+  <!-- 下段: 5 重フェイルセーフ -->
+  <rect x="48" y="458" width="1104" height="252" rx="16" fill="#ffffff" stroke="#89c9a3" stroke-width="2"/>
+  <text x="72" y="492" class="sec-title">「黒画面のまま復旧しない」を絶対に起こさない 5 重フェイルセーフ</text>
+
+  <!-- ピラー 1 -->
+  <rect x="72" y="510" width="198" height="178" rx="12" fill="#f2faf5" stroke="#9ecfb3" stroke-width="1.6"/>
+  <rect x="86" y="524" width="48" height="22" rx="11" fill="#2c925a"/>
+  <text x="110" y="539" class="pillar-num" text-anchor="middle">第 1 層</text>
+  <text x="86" y="570" class="pillar-title">try / finally 包囲</text>
+  <text x="86" y="596" class="pillar-body">黒幕を出す開始処理から</text>
+  <text x="86" y="616" class="pillar-body">すべてを try 内に収め、</text>
+  <text x="86" y="636" class="pillar-body">例外・中断でも finally で</text>
+  <text x="86" y="656" class="pillar-body">必ず即時クローズする。</text>
+
+  <!-- ピラー 2 -->
+  <rect x="286" y="510" width="198" height="178" rx="12" fill="#f2faf5" stroke="#9ecfb3" stroke-width="1.6"/>
+  <rect x="300" y="524" width="48" height="22" rx="11" fill="#2c925a"/>
+  <text x="324" y="539" class="pillar-num" text-anchor="middle">第 2 層</text>
+  <text x="300" y="570" class="pillar-title">上限自動解除タイマー</text>
+  <text x="300" y="596" class="pillar-body">オーバーレイ自身に上限</text>
+  <text x="300" y="616" class="pillar-body">タイマー（起動最大120s</text>
+  <text x="300" y="636" class="pillar-body">／終了30s）を内蔵し、</text>
+  <text x="300" y="656" class="pillar-body">応答停止でも自動解除。</text>
+
+  <!-- ピラー 3 -->
+  <rect x="500" y="510" width="198" height="178" rx="12" fill="#f2faf5" stroke="#9ecfb3" stroke-width="1.6"/>
+  <rect x="514" y="524" width="48" height="22" rx="11" fill="#2c925a"/>
+  <text x="538" y="539" class="pillar-num" text-anchor="middle">第 3 層</text>
+  <text x="514" y="570" class="pillar-title">確認ダイアログ救済</text>
+  <text x="514" y="596" class="pillar-body">終了時に未保存確認等で</text>
+  <text x="514" y="616" class="pillar-body">4.5 秒超残る窓は、黒幕</text>
+  <text x="514" y="636" class="pillar-body">と該当カバーを自動解放</text>
+  <text x="514" y="656" class="pillar-body">して操作を妨げない。</text>
+
+  <!-- ピラー 4 -->
+  <rect x="714" y="510" width="198" height="178" rx="12" fill="#f2faf5" stroke="#9ecfb3" stroke-width="1.6"/>
+  <rect x="728" y="524" width="48" height="22" rx="11" fill="#2c925a"/>
+  <text x="752" y="539" class="pillar-num" text-anchor="middle">第 4 層</text>
+  <text x="728" y="570" class="pillar-title">世代トークン排他</text>
+  <text x="728" y="596" class="pillar-body">開始ごとに世代番号を進</text>
+  <text x="728" y="616" class="pillar-body">め、中断や再実行後に戻</text>
+  <text x="728" y="636" class="pillar-body">った古い非同期処理が黒</text>
+  <text x="728" y="656" class="pillar-body">幕を再表示するのを防止。</text>
+
+  <!-- ピラー 5 -->
+  <rect x="928" y="510" width="198" height="178" rx="12" fill="#f2faf5" stroke="#9ecfb3" stroke-width="1.6"/>
+  <rect x="942" y="524" width="48" height="22" rx="11" fill="#2c925a"/>
+  <text x="966" y="539" class="pillar-num" text-anchor="middle">第 5 層</text>
+  <text x="942" y="570" class="pillar-title">終了・Escape 即解除</text>
+  <text x="942" y="596" class="pillar-body">OnClosing / OnClosed /</text>
+  <text x="942" y="616" class="pillar-body">Escape 押下で即座に全</text>
+  <text x="942" y="636" class="pillar-body">解放。プロセス終了時も</text>
+  <text x="942" y="656" class="pillar-body">OS が全 HWND を破棄。</text>
+</svg>

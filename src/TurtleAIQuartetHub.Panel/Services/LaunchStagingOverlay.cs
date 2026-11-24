@@ -34,27 +34,36 @@ public sealed record StagingVeilTarget(
     string DisplayTitle,
     string ApplicationName,
     WindowArranger.WindowBounds Bounds,
-    LaunchStageSlotState InitialState);
+    LaunchStageSlotState InitialState,
+    int MonitorIndex = 0);
 
 // ワークスペースアプリの起動・終了時に表示する高貴・確実動作の演出オーバーレイ。
 //
 // 確実な透過フェードと滑らかさの両立:
 //   - WPF は AllowsTransparency=False のウィンドウへ後から WS_EX_LAYERED を設定する操作を
-//     WM_STYLECHANGING で自動的に剥ぎ取る仕様のため、象限ベール（QuadrantVeilWindow）も
-//     中央 HUD（CenterHudWindow）と同じ正式な AllowsTransparency=True とし、
-//     WPF レンダースレッド独立クロックの DoubleAnimation で 100% 確実にフェード駆動する。
+//     WM_STYLECHANGING で自動的に剥ぎ取る仕様のため、象限ベール（QuadrantVeilWindow）・
+//     黒い全画面シールド（MonitorBackdropWindow）・中央 HUD（CenterHudWindow）のすべてを
+//     正式な AllowsTransparency=True とし、WPF レンダースレッド独立クロックの DoubleAnimation で駆動する。
 //   - 重い BlurEffect / DropShadowEffect / BitmapCache は一切使わず、フリーズ済みの純グラデーションと
 //     多重ソフトリングだけで「ほのかに光が漏れる LED のぼやけ」を軽快に描く。
 //
+// 重なり順（上から下へ）:
+//   1. 中央 HUD（CenterHudWindow）
+//   2. メインパネル本体（MainWindow）
+//   3. 4 分割の象限ベール（QuadrantVeilWindow）
+//   4. 黒い全画面シールド（MonitorBackdropWindow: 4 分割の十字隙間・角丸隙間・外周を含めて完全遮蔽）
+//   5. 裏側の実ウィンドウ群（VS Code 等）
+//
 // 起動演出（Launch）:
-//   - 裏で起動・整列している間は激しい点滅を抑え、静かなダークガラス幕として佇む。
-//   - 全員が整ったら一拍（260ms）の間を置き、BeginTime 一括タイムラインにより A→B→C→D へ
-//     480ms 間隔で本当に 1 つ 1 つ LED ランプが「ぽっ…ふぁ〜っ…」と灯ってから 580ms の S 字で開く。
+//   - 起動・整列・安定化の間は、黒い全画面シールド＋象限ベールで裏のチラつきを 1px も見せない。
+//   - 全員の配置安定化が完了したら静かな一拍（260ms）の間に背面の黒い全画面シールドをスッと引き
+//     （この間も 4 枚の象限ベールは 100% 不透明で各ウィンドウを覆っており裏は完全静止）、
+//     BeginTime 一括タイムラインにより A→B→C→D へ 480ms 間隔で 1 つずつ LED ランプが灯って開く。
 //
 // 終了演出（Close）:
-//   - 開いている全対象へ完全不透明（Opacity=1.0）の幕を一斉に被せ、裏の終了タイミング差を見せない。
+//   - 一括終了時は黒い全画面シールド＋象限ベールを一斉に被せ、十字隙間を含め裏の終了差を完全遮断する。
 //   - 全員の終了が確認できたら、人間が「すべて完了した」と知覚できるワンクッション（一括 720ms／単体 460ms）を
-//     静かな完了表示でしっかり置いたあと、全象限ベールと中央 HUD へ同じ瞬間に 420ms の軽やかな
+//     置いたあと、黒い全画面シールド・全象限ベール・中央 HUD へ同じ瞬間に 420ms の軽やかな
 //     フェードアウト（CubicEase EaseOut）を一斉投入して「フッ」と綺麗に消え失せさせる。
 public sealed class LaunchStagingOverlay : IDisposable
 {
@@ -62,6 +71,7 @@ public sealed class LaunchStagingOverlay : IDisposable
     private static readonly TimeSpan CloseCoverFadeInDuration = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan PreWaveBatchHoldDuration = TimeSpan.FromMilliseconds(260);
     private static readonly TimeSpan PreWaveSingleHoldDuration = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan BackdropPreRevealFadeOutDuration = TimeSpan.FromMilliseconds(220);
     private static readonly TimeSpan WaveStaggerDelay = TimeSpan.FromMilliseconds(480);
     private static readonly TimeSpan WaveGlowLeadDuration = TimeSpan.FromMilliseconds(240);
     private static readonly TimeSpan WaveUncloakLeadDuration = TimeSpan.FromMilliseconds(200);
@@ -80,9 +90,29 @@ public sealed class LaunchStagingOverlay : IDisposable
         return isBatch ? CloseDoneBatchHoldDuration : CloseDoneSingleHoldDuration;
     }
 
+    // 黒い全画面シールドを挟むべきかを判定する（テスト対象）。
+    // 起動時は単体でも初期全画面チラつきを遮断するため常に使用し、
+    // 終了時は複数一括（すべて閉じる）で十字隙間からのチラつきを完全遮断するために使用する。
+    internal static bool ShouldUseFullScreenBackdrop(bool isClosingMode, int veilTargetCount)
+    {
+        if (veilTargetCount <= 0)
+        {
+            return false;
+        }
+
+        return !isClosingMode || veilTargetCount > 1;
+    }
+
+    private static readonly TimeSpan DefaultLaunchFailsafeTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan DefaultCloseFailsafeTimeout = TimeSpan.FromSeconds(30);
+
     private readonly WindowArranger _windowArranger;
     private readonly Dictionary<string, QuadrantVeilWindow> _veils = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, MonitorBackdropWindow> _backdrops = new();
+    private readonly Dictionary<string, int> _slotMonitors = new(StringComparer.OrdinalIgnoreCase);
     private CenterHudWindow? _hudWindow;
+    private DispatcherTimer? _failsafeTimer;
+    private int _sessionGeneration;
     private bool _isActive;
     private bool _animationsEnabled = true;
 
@@ -133,7 +163,8 @@ public sealed class LaunchStagingOverlay : IDisposable
         IntPtr panelHandle,
         string headline,
         string statusMessage,
-        bool animate)
+        bool animate,
+        TimeSpan? failsafeTimeout = null)
     {
         var targets = new List<StagingVeilTarget>();
         foreach (var entry in slotEntries.Where(item => item.IsTarget))
@@ -149,15 +180,17 @@ public sealed class LaunchStagingOverlay : IDisposable
                 continue;
             }
 
+            var monitorIndex = slot.MonitorOverride ?? baseMonitorIndex;
             targets.Add(new StagingVeilTarget(
                 entry.SlotName,
                 entry.DisplayTitle,
                 entry.ApplicationName,
                 cellBounds,
-                entry.State));
+                entry.State,
+                monitorIndex));
         }
 
-        BeginCore(
+        var sessionId = BeginCore(
             slotEntries,
             targets,
             hudMonitorIndex,
@@ -165,28 +198,37 @@ public sealed class LaunchStagingOverlay : IDisposable
             headline,
             statusMessage,
             animate,
-            isClosingMode: false);
+            isClosingMode: false,
+            failsafeTimeout ?? DefaultLaunchFailsafeTimeout);
 
-        if (!_isActive || !animate || _veils.Count == 0)
+        if (!_isActive || sessionId != _sessionGeneration || !animate || (_veils.Count == 0 && _backdrops.Count == 0))
         {
             return;
         }
 
         await WaitOneRenderPassAsync();
-        if (!_isActive)
+        if (!_isActive || sessionId != _sessionGeneration)
         {
             return;
         }
 
-        var fadeTasks = _veils.Values
-            .Select(veil => veil.FadeOpacityAsync(0.0, 1.0, LaunchCoverFadeInDuration, TimeSpan.Zero))
-            .ToList();
+        var fadeTasks = new List<Task>(_veils.Count + _backdrops.Count);
+        foreach (var backdrop in _backdrops.Values)
+        {
+            fadeTasks.Add(backdrop.FadeOpacityAsync(0.0, 1.0, LaunchCoverFadeInDuration, TimeSpan.Zero));
+        }
+
+        foreach (var veil in _veils.Values)
+        {
+            fadeTasks.Add(veil.FadeOpacityAsync(0.0, 1.0, LaunchCoverFadeInDuration, TimeSpan.Zero));
+        }
+
         _ = await Task.WhenAny(
             Task.WhenAll(fadeTasks),
             Task.Delay(LaunchCoverFadeInDuration + TimeSpan.FromMilliseconds(600)));
     }
 
-    // 終了用: 開いている全対象へ完全不透明ベールと中央 HUD を一斉に被せ切る。
+    // 終了用: 開いている全対象へ完全不透明ベールと黒い全画面シールド、中央 HUD を一斉に被せ切る。
     public async Task BeginCoverForCloseAsync(
         IReadOnlyList<LaunchStageSlotEntry> slotEntries,
         IReadOnlyList<StagingVeilTarget> veilTargets,
@@ -194,9 +236,10 @@ public sealed class LaunchStagingOverlay : IDisposable
         IntPtr panelHandle,
         string headline,
         string statusMessage,
-        bool animate)
+        bool animate,
+        TimeSpan? failsafeTimeout = null)
     {
-        BeginCore(
+        var sessionId = BeginCore(
             slotEntries,
             veilTargets,
             hudMonitorIndex,
@@ -204,28 +247,37 @@ public sealed class LaunchStagingOverlay : IDisposable
             headline,
             statusMessage,
             animate,
-            isClosingMode: true);
+            isClosingMode: true,
+            failsafeTimeout ?? DefaultCloseFailsafeTimeout);
 
-        if (!_isActive || !animate || _veils.Count == 0)
+        if (!_isActive || sessionId != _sessionGeneration || !animate || (_veils.Count == 0 && _backdrops.Count == 0))
         {
             return;
         }
 
         await WaitOneRenderPassAsync();
-        if (!_isActive)
+        if (!_isActive || sessionId != _sessionGeneration)
         {
             return;
         }
 
-        var fadeTasks = _veils.Values
-            .Select(veil => veil.FadeOpacityAsync(0.0, 1.0, CloseCoverFadeInDuration, TimeSpan.Zero))
-            .ToList();
+        var fadeTasks = new List<Task>(_veils.Count + _backdrops.Count);
+        foreach (var backdrop in _backdrops.Values)
+        {
+            fadeTasks.Add(backdrop.FadeOpacityAsync(0.0, 1.0, CloseCoverFadeInDuration, TimeSpan.Zero));
+        }
+
+        foreach (var veil in _veils.Values)
+        {
+            fadeTasks.Add(veil.FadeOpacityAsync(0.0, 1.0, CloseCoverFadeInDuration, TimeSpan.Zero));
+        }
+
         _ = await Task.WhenAny(
             Task.WhenAll(fadeTasks),
             Task.Delay(CloseCoverFadeInDuration + TimeSpan.FromMilliseconds(600)));
     }
 
-    private void BeginCore(
+    private int BeginCore(
         IReadOnlyList<LaunchStageSlotEntry> slotEntries,
         IReadOnlyList<StagingVeilTarget> veilTargets,
         int hudMonitorIndex,
@@ -233,18 +285,23 @@ public sealed class LaunchStagingOverlay : IDisposable
         string headline,
         string statusMessage,
         bool animate,
-        bool isClosingMode)
+        bool isClosingMode,
+        TimeSpan failsafeTimeout)
     {
         DismissImmediate();
 
+        var sessionId = ++_sessionGeneration;
         _animationsEnabled = animate;
         _isActive = true;
+        ArmFailsafeTimer(sessionId, failsafeTimeout);
 
         try
         {
             var isBatch = slotEntries.Count(item => item.IsTarget) > 1;
-            var insertAfter = _windowArranger.IsInTopmostLayer(panelHandle) ? panelHandle : IntPtr.Zero;
+            var currentInsertAfter = _windowArranger.IsInTopmostLayer(panelHandle) ? panelHandle : IntPtr.Zero;
 
+            // 1. まず 4 分割の象限ベールをパネルのすぐ後ろへ順番にチェーン配置する。
+            //    (Panel > VeilA > VeilB > VeilC > VeilD の順を保つことで、全ベールが確実に黒シールドより前に出る)
             foreach (var target in veilTargets)
             {
                 var veil = new QuadrantVeilWindow(
@@ -254,7 +311,7 @@ public sealed class LaunchStagingOverlay : IDisposable
                     isBatch,
                     isClosingMode,
                     target.Bounds,
-                    insertAfter,
+                    currentInsertAfter,
                     initialOpacity: animate ? 0.0 : 1.0);
                 veil.ShowVeil();
                 if (isClosingMode)
@@ -263,8 +320,40 @@ public sealed class LaunchStagingOverlay : IDisposable
                 }
 
                 _veils[target.SlotName] = veil;
+                _slotMonitors[target.SlotName] = target.MonitorIndex;
+                if (veil.Handle != IntPtr.Zero)
+                {
+                    currentInsertAfter = veil.Handle;
+                }
             }
 
+            // 2. 全象限ベールのすぐ背面（かつ裏の実ウィンドウの前面）へ黒い全画面シールドを挟み、
+            //    4 分割の十字隙間・角丸の隅・外周からのチラつきを 1px も漏らさず完全遮断する。
+            if (ShouldUseFullScreenBackdrop(isClosingMode, veilTargets.Count))
+            {
+                var targetMonitors = veilTargets
+                    .Select(target => target.MonitorIndex)
+                    .Distinct()
+                    .ToList();
+                foreach (var monitorIndex in targetMonitors)
+                {
+                    if (!_windowArranger.TryGetMonitorWorkArea(monitorIndex, out var workArea)
+                        || workArea.Width <= 0
+                        || workArea.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    var backdrop = new MonitorBackdropWindow(
+                        workArea,
+                        currentInsertAfter,
+                        initialOpacity: animate ? 0.0 : 1.0);
+                    backdrop.ShowBackdrop();
+                    _backdrops[monitorIndex] = backdrop;
+                }
+            }
+
+            // 3. 最前面に中央 HUD を表示する。
             _hudWindow = new CenterHudWindow(
                 slotEntries,
                 headline,
@@ -279,6 +368,53 @@ public sealed class LaunchStagingOverlay : IDisposable
             DiagnosticLog.Write(ex);
             DismissImmediate();
         }
+
+        return sessionId;
+    }
+
+    private void ArmFailsafeTimer(int sessionId, TimeSpan timeout)
+    {
+        StopFailsafeTimer();
+        if (timeout <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+        _failsafeTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+        {
+            Interval = timeout
+        };
+        _failsafeTimer.Tick += (_, _) =>
+        {
+            StopFailsafeTimer();
+            if (_isActive && sessionId == _sessionGeneration)
+            {
+                DiagnosticLog.Write(
+                    LogLevel.Warn,
+                    $"LaunchStagingOverlay failsafe triggered after {timeout.TotalSeconds:0.#}s; forcibly clearing masks and backdrop.");
+                DismissImmediate();
+            }
+        };
+        _failsafeTimer.Start();
+    }
+
+    private void StopFailsafeTimer()
+    {
+        if (_failsafeTimer is not null)
+        {
+            _failsafeTimer.Stop();
+            _failsafeTimer = null;
+        }
+    }
+
+    // テスト専用の無菌フェイルセーフ検証ヘルパー（ウィンドウを表示せずに自動解除タイマーの動作を検証）。
+    internal void ArmFailsafeForTesting(TimeSpan timeout)
+    {
+        DismissImmediate();
+        var sessionId = ++_sessionGeneration;
+        _isActive = true;
+        ArmFailsafeTimer(sessionId, timeout);
     }
 
     public void UpdateSlotState(string slotName, LaunchStageSlotState state, string? statusMessage = null)
@@ -321,21 +457,72 @@ public sealed class LaunchStagingOverlay : IDisposable
     }
 
     // 閉じる処理中に未保存確認ダイアログ等で長時間止まったスロットだけ、後からベールを外す安全弁。
+    // 同じモニタの黒い全画面シールドも一緒に外し、確認ダイアログが裏に隠れないようにする。
+    // 最大化全面カバーの裏で別スロットが止まった場合も、全黒シールドと全面カバーを確実に解除する。
     public void ReleaseSlotVeilEarly(string slotName)
     {
-        if (!_isActive || !_veils.TryGetValue(slotName, out var veil))
+        if (!_isActive)
         {
             return;
         }
 
-        _veils.Remove(slotName);
+        var releasedSpecificMonitor = false;
+        if (_slotMonitors.TryGetValue(slotName, out var monitorIndex)
+            && _backdrops.TryGetValue(monitorIndex, out var backdrop))
+        {
+            releasedSpecificMonitor = true;
+            _backdrops.Remove(monitorIndex);
+            ReleaseBackdropSafely(backdrop);
+        }
+
+        if (_veils.TryGetValue(slotName, out var veil))
+        {
+            _veils.Remove(slotName);
+            ReleaseVeilSafely(veil);
+            return;
+        }
+
+        // 最大化全面カバー中などで対象スロット自身の個別ベールが存在しない場合は、
+        // 確認ダイアログが黒幕・全面カバーの裏に隠れないよう残存カバーと黒シールドをすべて解放する。
+        if (!releasedSpecificMonitor)
+        {
+            foreach (var extraBackdrop in _backdrops.Values.ToList())
+            {
+                ReleaseBackdropSafely(extraBackdrop);
+            }
+
+            _backdrops.Clear();
+            foreach (var extraVeil in _veils.Values.ToList())
+            {
+                ReleaseVeilSafely(extraVeil);
+            }
+
+            _veils.Clear();
+        }
+    }
+
+    private void ReleaseBackdropSafely(MonitorBackdropWindow backdrop)
+    {
+        if (!_animationsEnabled)
+        {
+            SafeCloseWindow(backdrop);
+        }
+        else
+        {
+            _ = CloseBackdropWithFadeAsync(backdrop, TimeSpan.FromMilliseconds(220));
+        }
+    }
+
+    private void ReleaseVeilSafely(QuadrantVeilWindow veil)
+    {
         if (!_animationsEnabled)
         {
             SafeCloseWindow(veil);
-            return;
         }
-
-        _ = CloseVeilWithFadeAsync(veil, TimeSpan.FromMilliseconds(260));
+        else
+        {
+            _ = CloseVeilWithFadeAsync(veil, TimeSpan.FromMilliseconds(260));
+        }
     }
 
     // 起動リビール（1 つ 1 つ落ち着いて LED ランプが灯るウェーブ）:
@@ -375,6 +562,7 @@ public sealed class LaunchStagingOverlay : IDisposable
 
         try
         {
+            var sessionId = _sessionGeneration;
             if (!_animationsEnabled)
             {
                 EnsureRemainingCloaksReleased();
@@ -389,12 +577,35 @@ public sealed class LaunchStagingOverlay : IDisposable
 
             _hudWindow?.ShowReadyEmphasis(readyHeadline, readyMessage);
 
-            // 全員が整った直後にいきなり動かさず、一拍の静寂を置いて落ち着きと品格を出す。
+            // 全員の起動・整列・安定化が終わった直後の静かな一拍（260ms / 120ms）の間に、
+            // 背面の黒い全画面シールドだけをスッと先に抜いておく。
+            // この時点で 4 枚の象限ベールは 100% 不透明のまま裏の静止ウィンドウを完全に覆っているため
+            // チラつきは起きず、直後の A→B→C→D の 1 つずつ点灯で各画面が黒幕に塞がれず鮮やかに現れる。
             var holdDuration = slotsToReveal.Count > 1 ? PreWaveBatchHoldDuration : PreWaveSingleHoldDuration;
-            await Task.Delay(holdDuration);
-            if (!_isActive)
+            if (_backdrops.Count > 0)
             {
-                return;
+                var backdropFadeDuration = TimeSpan.FromMilliseconds(Math.Min(BackdropPreRevealFadeOutDuration.TotalMilliseconds, holdDuration.TotalMilliseconds));
+                var backdropFadeTasks = _backdrops.Values
+                    .Select(backdrop => backdrop.FadeOpacityAsync(backdrop.CurrentOpacity, 0.0, backdropFadeDuration, TimeSpan.Zero))
+                    .ToList();
+                var waitAllBackdrops = Task.WhenAll(backdropFadeTasks);
+                await Task.WhenAll(
+                    Task.Delay(holdDuration),
+                    Task.WhenAny(waitAllBackdrops, Task.Delay(holdDuration + TimeSpan.FromMilliseconds(200))));
+                if (!_isActive || sessionId != _sessionGeneration)
+                {
+                    return;
+                }
+
+                CloseAllBackdropsImmediate();
+            }
+            else
+            {
+                await Task.Delay(holdDuration);
+                if (!_isActive || sessionId != _sessionGeneration)
+                {
+                    return;
+                }
             }
 
             var timings = BuildRevealWaveTimings(slotsToReveal.Count);
@@ -479,6 +690,7 @@ public sealed class LaunchStagingOverlay : IDisposable
 
         try
         {
+            var sessionId = _sessionGeneration;
             if (!_animationsEnabled)
             {
                 DismissImmediate();
@@ -493,12 +705,22 @@ public sealed class LaunchStagingOverlay : IDisposable
 
             var holdDuration = GetCloseDoneHoldDuration(_veils.Count > 1);
             await Task.Delay(holdDuration);
-            if (!_isActive)
+            if (!_isActive || sessionId != _sessionGeneration)
             {
                 return;
             }
 
-            var fadeTasks = new List<Task>(_veils.Count + 1);
+            var fadeTasks = new List<Task>(_veils.Count + _backdrops.Count + 1);
+            foreach (var backdrop in _backdrops.Values)
+            {
+                fadeTasks.Add(backdrop.FadeOpacityAsync(
+                    backdrop.CurrentOpacity,
+                    0.0,
+                    CloseVanishFadeOutDuration,
+                    TimeSpan.Zero,
+                    briskVanish: true));
+            }
+
             foreach (var veil in _veils.Values)
             {
                 fadeTasks.Add(veil.FadeOpacityAsync(
@@ -543,7 +765,12 @@ public sealed class LaunchStagingOverlay : IDisposable
         {
             if (_animationsEnabled)
             {
-                var fadeTasks = new List<Task>(_veils.Count + 1);
+                var fadeTasks = new List<Task>(_veils.Count + _backdrops.Count + 1);
+                foreach (var backdrop in _backdrops.Values)
+                {
+                    fadeTasks.Add(backdrop.FadeOpacityAsync(backdrop.CurrentOpacity, 0.0, DismissFadeOutDuration, TimeSpan.Zero));
+                }
+
                 foreach (var veil in _veils.Values)
                 {
                     fadeTasks.Add(veil.FadeOpacityAsync(veil.CurrentOpacity, 0.0, DismissFadeOutDuration, TimeSpan.Zero));
@@ -571,6 +798,8 @@ public sealed class LaunchStagingOverlay : IDisposable
 
     public void DismissImmediate()
     {
+        StopFailsafeTimer();
+        _sessionGeneration++;
         _isActive = false;
 
         foreach (var veil in _veils.Values)
@@ -579,12 +808,24 @@ public sealed class LaunchStagingOverlay : IDisposable
         }
 
         _veils.Clear();
+        CloseAllBackdropsImmediate();
+        _slotMonitors.Clear();
 
         if (_hudWindow is not null)
         {
             SafeCloseWindow(_hudWindow);
             _hudWindow = null;
         }
+    }
+
+    private void CloseAllBackdropsImmediate()
+    {
+        foreach (var backdrop in _backdrops.Values)
+        {
+            SafeCloseWindow(backdrop);
+        }
+
+        _backdrops.Clear();
     }
 
     public void Dispose()
@@ -638,9 +879,27 @@ public sealed class LaunchStagingOverlay : IDisposable
         }
     }
 
-    // テスト専用の無菌検証ヘルパー。画面へ Show() せずに中央 HUD と象限ベールの
+    private static async Task CloseBackdropWithFadeAsync(MonitorBackdropWindow backdrop, TimeSpan duration)
+    {
+        try
+        {
+            _ = await Task.WhenAny(
+                backdrop.FadeOpacityAsync(backdrop.CurrentOpacity, 0.0, duration, TimeSpan.Zero),
+                Task.Delay(duration + TimeSpan.FromMilliseconds(350)));
+        }
+        catch
+        {
+            // Ignore animation failures during early release.
+        }
+        finally
+        {
+            SafeCloseWindow(backdrop);
+        }
+    }
+
+    // テスト専用の無菌検証ヘルパー。画面へ Show() せずに中央 HUD・象限ベール・黒い全画面シールドの
     // ビジュアルツリー構築・レイアウト計測・全状態遷移（起動モード・終了モード双方）を確認する。
-    internal static (Size HudSize, Size VeilSize, bool VeilAllowsTransparency) VerifyVisualTreeOffscreenForTesting(
+    internal static (Size HudSize, Size VeilSize, bool VeilAllowsTransparency, Size BackdropSize, bool BackdropAllowsTransparency) VerifyVisualTreeOffscreenForTesting(
         IReadOnlyList<LaunchStageSlotEntry> entries,
         string headline,
         string statusMessage,
@@ -703,7 +962,15 @@ public sealed class LaunchStagingOverlay : IDisposable
             veil.UpdateState(LaunchStageSlotState.Failed);
         }
 
-        return (hudContent.DesiredSize, veilContent.DesiredSize, veil.AllowsTransparency);
+        var backdrop = new MonitorBackdropWindow(
+            new WindowArranger.WindowBounds(0, 0, 1920, 1040),
+            IntPtr.Zero,
+            initialOpacity: 1.0);
+        var backdropContent = (UIElement)backdrop.Content;
+        backdropContent.Measure(new Size(1920, 1040));
+        backdropContent.Arrange(new Rect(0, 0, 1920, 1040));
+
+        return (hudContent.DesiredSize, veilContent.DesiredSize, veil.AllowsTransparency, backdropContent.RenderSize, backdrop.AllowsTransparency);
     }
 
     private static void SafeCloseWindow(Window window)
@@ -757,8 +1024,10 @@ public sealed class LaunchStagingOverlay : IDisposable
         private readonly TextBlock _slotLetterText;
         private readonly TextBlock _stateText;
         private readonly List<Shape> _cornerAccents = [];
+        private IntPtr _handle;
         private bool _closed;
 
+        public IntPtr Handle => _handle;
         public double CurrentOpacity => _veilRoot.Opacity;
 
         public QuadrantVeilWindow(
@@ -901,14 +1170,14 @@ public sealed class LaunchStagingOverlay : IDisposable
 
         public void ShowVeil()
         {
-            var handle = new WindowInteropHelper(this).EnsureHandle();
-            var exStyle = GetWindowLong(handle, GwlExStyle);
+            _handle = new WindowInteropHelper(this).EnsureHandle();
+            var exStyle = GetWindowLong(_handle, GwlExStyle);
             // AllowsTransparency=True で WPF が付与済みの WS_EX_LAYERED を保ったままクリックスルー属性を足す。
-            _ = SetWindowLong(handle, GwlExStyle, exStyle | WsExTransparent | WsExToolWindow | WsExNoActivate);
+            _ = SetWindowLong(_handle, GwlExStyle, exStyle | WsExTransparent | WsExToolWindow | WsExNoActivate);
 
-            PlaceWindow(handle);
+            PlaceWindow(_handle);
             Show();
-            PlaceWindow(handle);
+            PlaceWindow(_handle);
             UpdateLayout();
         }
 
@@ -1201,6 +1470,131 @@ public sealed class LaunchStagingOverlay : IDisposable
             _cornerAccents.Add(vertical);
             parent.Children.Add(horizontal);
             parent.Children.Add(vertical);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 1.5. 黒い全画面シールド（象限ベールのすぐ背面に敷き、十字隙間・角丸隙間・外周のチラつきを完全遮断）
+    // -------------------------------------------------------------------------
+    private sealed class MonitorBackdropWindow : Window
+    {
+        private const int GwlExStyle = -20;
+        private const int WsExTransparent = 0x00000020;
+        private const int WsExToolWindow = 0x00000080;
+        private const int WsExNoActivate = 0x08000000;
+        private const uint SwpNoActivate = 0x0010;
+        private const uint SwpNoOwnerZOrder = 0x0200;
+        private static readonly IntPtr HwndTopmost = new(-1);
+
+        private readonly WindowArranger.WindowBounds _bounds;
+        private readonly IntPtr _insertAfterHandle;
+        private readonly Border _backdropRoot;
+        private bool _closed;
+
+        public double CurrentOpacity => _backdropRoot.Opacity;
+
+        public MonitorBackdropWindow(
+            WindowArranger.WindowBounds bounds,
+            IntPtr insertAfterHandle,
+            double initialOpacity)
+        {
+            _bounds = bounds;
+            _insertAfterHandle = insertAfterHandle;
+
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
+            ResizeMode = ResizeMode.NoResize;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            ShowInTaskbar = false;
+            ShowActivated = false;
+            Topmost = true;
+            Focusable = false;
+            IsHitTestVisible = false;
+            UseLayoutRounding = false;
+
+            // 角丸なしの完全矩形の深い漆黒（#070A08）で作業領域全面を 1px の隙間もなく覆う。
+            _backdropRoot = new Border
+            {
+                Background = CreateFrozenSolid(Color.FromRgb(0x07, 0x0A, 0x08)),
+                Opacity = Math.Clamp(initialOpacity, 0.0, 1.0)
+            };
+
+            Content = _backdropRoot;
+            Closed += (_, _) => _closed = true;
+        }
+
+        public void ShowBackdrop()
+        {
+            var handle = new WindowInteropHelper(this).EnsureHandle();
+            var exStyle = GetWindowLong(handle, GwlExStyle);
+            _ = SetWindowLong(handle, GwlExStyle, exStyle | WsExTransparent | WsExToolWindow | WsExNoActivate);
+
+            PlaceWindow(handle);
+            Show();
+            PlaceWindow(handle);
+            UpdateLayout();
+        }
+
+        public Task FadeOpacityAsync(
+            double fromOpacity,
+            double toOpacity,
+            TimeSpan duration,
+            TimeSpan beginTime,
+            bool briskVanish = false)
+        {
+            if (_closed)
+            {
+                return Task.CompletedTask;
+            }
+
+            var clampedFrom = Math.Clamp(fromOpacity, 0.0, 1.0);
+            var clampedTo = Math.Clamp(toOpacity, 0.0, 1.0);
+            if (duration <= TimeSpan.Zero)
+            {
+                _backdropRoot.BeginAnimation(OpacityProperty, null);
+                _backdropRoot.Opacity = clampedTo;
+                return Task.CompletedTask;
+            }
+
+            _backdropRoot.Opacity = clampedFrom;
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            IEasingFunction ease = briskVanish
+                ? new CubicEase { EasingMode = EasingMode.EaseOut }
+                : new SineEase { EasingMode = EasingMode.EaseInOut };
+            var anim = new DoubleAnimation(clampedFrom, clampedTo, new Duration(duration))
+            {
+                BeginTime = NormalizeBeginTime(beginTime),
+                EasingFunction = ease
+            };
+            // Completed は必ず BeginAnimation より前に登録する。
+            anim.Completed += (_, _) =>
+            {
+                if (!_closed)
+                {
+                    _backdropRoot.Opacity = clampedTo;
+                }
+
+                tcs.TrySetResult(true);
+            };
+            _backdropRoot.BeginAnimation(OpacityProperty, anim);
+            return tcs.Task;
+        }
+
+        private void PlaceWindow(IntPtr handle)
+        {
+            var insertAfter = _insertAfterHandle != IntPtr.Zero && IsWindow(_insertAfterHandle)
+                ? _insertAfterHandle
+                : HwndTopmost;
+            _ = SetWindowPos(
+                handle,
+                insertAfter,
+                _bounds.Left,
+                _bounds.Top,
+                Math.Max(1, _bounds.Width),
+                Math.Max(1, _bounds.Height),
+                SwpNoActivate | SwpNoOwnerZOrder);
         }
     }
 

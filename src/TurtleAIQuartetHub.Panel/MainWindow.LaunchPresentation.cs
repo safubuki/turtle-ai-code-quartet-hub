@@ -64,26 +64,27 @@ public partial class MainWindow
             ? $"4面のワークスペースを裏で起動・整列しています... ({BuildLaunchPlanSummary(launchTargets)})"
             : $"スロット{launchTargets[0].Slot.Name}の{launchTargets[0].Application.DisplayName}を準備しています...";
 
-        if (showOverlay)
-        {
-            var stageEntries = BuildLaunchStageEntries(launchTargets);
-            await _launchStagingOverlay.BeginForLaunchAsync(
-                stageEntries,
-                _statusStore.Slots,
-                config.Gap,
-                activeMonitor,
-                hudMonitorIndex,
-                panelHandle,
-                headline,
-                initialMessage,
-                animate: SystemParameters.ClientAreaAnimation);
-        }
-
         var assignments = new List<WindowAssignment>();
         var revealed = false;
 
         try
         {
+            if (showOverlay)
+            {
+                var stageEntries = BuildLaunchStageEntries(launchTargets);
+                await _launchStagingOverlay.BeginForLaunchAsync(
+                    stageEntries,
+                    _statusStore.Slots,
+                    config.Gap,
+                    activeMonitor,
+                    hudMonitorIndex,
+                    panelHandle,
+                    headline,
+                    initialMessage,
+                    animate: SystemParameters.ClientAreaAnimation,
+                    failsafeTimeout: TimeSpan.FromSeconds(failsafeSeconds + 15));
+            }
+
             for (var index = 0; index < launchTargets.Count; index++)
             {
                 var (slot, application) = launchTargets[index];
@@ -311,59 +312,60 @@ public partial class MainWindow
             ? $"{closeTargets.Count}個のワークスペースを裏で終了しています..."
             : $"スロット{closeTargets[0].Slot.Name}の{closeTargets[0].Slot.ApplicationDisplayName}を閉じています...";
 
-        if (showOverlay)
-        {
-            var stageEntries = BuildCloseStageEntries(closeTargets);
-            var hudMonitor = isBatch ? activeMonitor : GetSlotMonitorIndex(closeTargets[0].Slot);
-            await _launchStagingOverlay.BeginCoverForCloseAsync(
-                stageEntries,
-                veilTargets,
-                hudMonitor,
-                panelHandle,
-                headline,
-                initialMessage,
-                animate: SystemParameters.ClientAreaAnimation);
-        }
-
-        if (saveSettingsBeforeClose)
-        {
-            _statusStore.SaveCurrentSettings();
-        }
-        else
-        {
-            foreach (var target in closeTargets)
-            {
-                _statusStore.CaptureWorkspacePath(target.Slot);
-            }
-        }
-
-        if (clearAllFocus)
-        {
-            _statusStore.ClearFocusedSlot();
-        }
-        else
-        {
-            foreach (var target in closeTargets)
-            {
-                ClearFocusedSlotForDisplay(GetSlotMonitorIndex(target.Slot));
-            }
-        }
-
         var transitionsDisabledHandles = new List<IntPtr>(closeTargets.Count);
-        foreach (var target in closeTargets)
-        {
-            _windowArranger.ReleaseTopmost(target.Handle);
-            if (showOverlay && WindowArranger.SetTransitionsDisabled(target.Handle, true))
-            {
-                transitionsDisabledHandles.Add(target.Handle);
-            }
-        }
-
         var closedCount = 0;
         var results = new List<(WindowSlot Slot, IntPtr Handle, ManagedWindowCloseResult Result)>();
 
         try
         {
+            if (showOverlay)
+            {
+                var stageEntries = BuildCloseStageEntries(closeTargets);
+                var hudMonitor = isBatch ? activeMonitor : GetSlotMonitorIndex(closeTargets[0].Slot);
+                await _launchStagingOverlay.BeginCoverForCloseAsync(
+                    stageEntries,
+                    veilTargets,
+                    hudMonitor,
+                    panelHandle,
+                    headline,
+                    initialMessage,
+                    animate: SystemParameters.ClientAreaAnimation,
+                    failsafeTimeout: TimeSpan.FromSeconds(30));
+            }
+
+            if (saveSettingsBeforeClose)
+            {
+                _statusStore.SaveCurrentSettings();
+            }
+            else
+            {
+                foreach (var target in closeTargets)
+                {
+                    _statusStore.CaptureWorkspacePath(target.Slot);
+                }
+            }
+
+            if (clearAllFocus)
+            {
+                _statusStore.ClearFocusedSlot();
+            }
+            else
+            {
+                foreach (var target in closeTargets)
+                {
+                    ClearFocusedSlotForDisplay(GetSlotMonitorIndex(target.Slot));
+                }
+            }
+
+            foreach (var target in closeTargets)
+            {
+                _windowArranger.ReleaseTopmost(target.Handle);
+                if (showOverlay && WindowArranger.SetTransitionsDisabled(target.Handle, true))
+                {
+                    transitionsDisabledHandles.Add(target.Handle);
+                }
+            }
+
             var tasks = closeTargets.Select(async target =>
             {
                 using var earlyReleaseCts = new CancellationTokenSource();
@@ -505,7 +507,8 @@ public partial class MainWindow
                     slot.DisplayTitle,
                     slot.ApplicationDisplayName,
                     workArea,
-                    LaunchStageSlotState.Closing));
+                    LaunchStageSlotState.Closing,
+                    monitorIndex));
             }
         }
 
@@ -543,7 +546,8 @@ public partial class MainWindow
                 slot.DisplayTitle,
                 slot.ApplicationDisplayName,
                 bounds,
-                LaunchStageSlotState.Closing));
+                LaunchStageSlotState.Closing,
+                monitorIndex));
         }
 
         return targets;

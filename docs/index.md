@@ -9,6 +9,7 @@ Turtle AI Code Quartet Hub の資料を、目的別にまとめています。�
 | 知りたいこと | 読む資料 |
 |---|---|
 | AI のフックを設定し、完了通知が届く仕組みを知りたい | [AI の作業通知：フック設定と通知の流れ](guides/ai-notification-hooks.md) — 基本から実装までのベクター図付き |
+| UI アニメーションの設計・使い分け・他アプリへの応用を知りたい | [UI アニメーション設計・実装ガイド](guides/ui-animation-guide.md) — シーン別一覧・5 層構造・フェイルセーフのベクター図付き |
 | データ容量が増えた原因や診断コードを調べたい | [容量の解析・診断コード一覧](guides/data-folder-diagnostics.md) |
 | IDE・CLI の起動やスロット管理の設計を知りたい | [複数アプリケーション起動の仕様](design/multi-application-launcher-spec.md) |
 | 画面を安全に検証したい | [WPF UI の検証手順](development/wpf-ui-validation.md) |
@@ -32,6 +33,7 @@ docs/
 | ファイル | この資料の内容 |
 |---|---|
 | [ai-notification-hooks.md](guides/ai-notification-hooks.md) | 現在の AI フック設定、設定ファイルの場所、通知がカルテットハブへ届く経路、バッジの見方、通知が届かないときの確認方法。 |
+| [ui-animation-guide.md](guides/ui-animation-guide.md) | 本体起動・終了、モード切替、ワークスペース起動／終了（5 層遮蔽・1 つずつランプ点灯・完了ワンクッション）、AI 通知のアニメーション設計と WPF 実装原則・5 重フェイルセーフ。 |
 | [data-folder-diagnostics.md](guides/data-folder-diagnostics.md) | システムモニタの容量解析で表示する診断コード、容量増加の原因、対処方法と開発側の改善案。 |
 
 ## 設計・実装計画 — `design/`
@@ -81,6 +83,9 @@ docs/
 | [ai-notification-who-moves.svg](assets/ai-notification-who-moves.svg) | 色が変わるまでに動く5つ。AIツールの判断、フックのプログラムの起動、カルテットハブへの短い知らせ、スロットの判断、バッジの色。 |
 | [ai-notification-flow.svg](assets/ai-notification-flow.svg) | AI フックの設定ファイルから、通知スクリプト、カルテットハブ、対象スロットへ届く全体の流れ。 |
 | [ai-notification-states.svg](assets/ai-notification-states.svg) | AI の作業中・完了・確認中・中断と、バッジ表示の関係。青は完了だけ。 |
+| [animation-scenes-map.svg](assets/animation-scenes-map.svg) | 本体起動・終了、モード切替、ワークスペース起動／終了、AI 通知の 5 シーン別アニメーション一覧マップ。 |
+| [animation-five-layer-architecture.svg](assets/animation-five-layer-architecture.svg) | 中央 HUD〜黒い全画面シールド〜裏の実ウィンドウの 5 層 Z 順構造と、起動・終了タイムラインの違い。 |
+| [animation-wpf-pitfalls-and-failsafe.svg](assets/animation-wpf-pitfalls-and-failsafe.svg) | WPF で必ず避けるべき 5 大落とし穴と、黒画面残留・操作不能を防ぐ 5 重フェイルセーフ構造。 |
 
 SVG は [フック設定の解説](guides/ai-notification-hooks.md) から画像として参照しています。ブラウザで開いたり拡大したりしても、文字や線が鮮明に表示されます。Store 掲載用の画像は、別の [リポジトリ直下の assets/store](../assets/store/README.md) で管理しています。
 

@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">5 層重ね合わせ構造と起動・終了タイムライン比較</title>
+  <desc id="desc">左側に中央HUD・メインパネル・4分割象限ベール・黒い全画面シールド・実ウィンドウの5層Z順構造を示し、右側に起動時と終了時の消去タイミングの違いをタイムラインバーで比較した図。</desc>
+  <defs>
+    <style>
+      text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #18392b; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #466154; }
+      .sec-title { font-size: 19px; font-weight: 700; }
+      .layer-num { font-size: 13px; font-weight: 700; fill: #ffffff; }
+      .layer-title { font-size: 16px; font-weight: 700; }
+      .layer-sub { font-size: 13px; fill: #4a6658; }
+      .bar-label { font-size: 13px; font-weight: 700; fill: #18392b; }
+      .bar-text { font-size: 12px; font-weight: 700; fill: #ffffff; }
+      .bar-dark { font-size: 12px; font-weight: 700; fill: #153c29; }
+      .note { font-size: 13px; fill: #3c594b; }
+      .small { font-size: 12px; fill: #556e61; }
+      .dark-layer-title { font-size: 16px; font-weight: 700; fill: #f0faf4; }
+      .dark-layer-sub { font-size: 13px; fill: #cdecd9; }
+      .dark-layer-accent { font-size: 13px; font-weight: 600; fill: #8ce9b5; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="760" rx="20" fill="#f3f8f5"/>
+  <text x="48" y="52" class="title">5 層重ね合わせ（Z 順）と、起動・終了タイムラインの違い</text>
+  <text x="48" y="82" class="subtitle">4 分割カバーの背面に角丸なしの黒全画面シールドを挟むことで、十字隙間や全画面起動時のチラつきを 1px も漏らしません。</text>
+
+  <!-- 左パネル: 5 層 Z 順構造 -->
+  <rect x="48" y="108" width="468" height="612" rx="16" fill="#ffffff" stroke="#b9d4c5" stroke-width="2"/>
+  <text x="72" y="144" class="sec-title">5 層の重なり順（上から下へ）</text>
+  <text x="72" y="168" class="small">Win32 SetWindowPos をチェーン指定して確実に階層を維持</text>
+
+  <!-- 層 1 -->
+  <rect x="72" y="188" width="420" height="82" rx="12" fill="#e9f8ef" stroke="#45b879" stroke-width="2"/>
+  <rect x="88" y="204" width="60" height="24" rx="12" fill="#2c925a"/>
+  <text x="118" y="220" class="layer-num" text-anchor="middle">1 層目</text>
+  <text x="160" y="222" class="layer-title">中央 HUD（CenterHudWindow）</text>
+  <text x="88" y="252" class="layer-sub">最前面（HWND_TOPMOST）。進捗・4 ランプ・完了表示を担当</text>
+
+  <!-- 層 2 -->
+  <rect x="72" y="286" width="420" height="82" rx="12" fill="#f5faf7" stroke="#9ec3af" stroke-width="1.8"/>
+  <rect x="88" y="302" width="60" height="24" rx="12" fill="#476e5a"/>
+  <text x="118" y="318" class="layer-num" text-anchor="middle">2 層目</text>
+  <text x="160" y="320" class="layer-title">メインパネル本体（MainWindow）</text>
+  <text x="88" y="350" class="layer-sub">操作パネル。緊急時は Escape キーで即座に全マスク解除可能</text>
+
+  <!-- 層 3 -->
+  <rect x="72" y="384" width="420" height="86" rx="12" fill="#eef8f2" stroke="#53b97f" stroke-width="1.8"/>
+  <rect x="88" y="400" width="60" height="24" rx="12" fill="#2f8d59"/>
+  <text x="118" y="416" class="layer-num" text-anchor="middle">3 層目</text>
+  <text x="160" y="418" class="layer-title">4 分割象限ベール × 4（Veil A〜D）</text>
+  <text x="88" y="446" class="layer-sub">Panel &gt; A &gt; B &gt; C &gt; D とチェーン配置。各エリアの LED 光と開閉</text>
+  <text x="88" y="463" class="small">※ 象限同士の間には gap (6px) と角丸 (10px) の隙間がある</text>
+
+  <!-- 層 4 (ハイライト) -->
+  <rect x="72" y="486" width="420" height="96" rx="12" fill="#131c17" stroke="#45d483" stroke-width="2.4"/>
+  <rect x="88" y="502" width="60" height="24" rx="12" fill="#35b46e"/>
+  <text x="118" y="518" class="layer-num" text-anchor="middle">4 層目</text>
+  <text x="160" y="520" class="dark-layer-title">黒い全画面シールド（MonitorBackdrop）</text>
+  <text x="88" y="548" class="dark-layer-sub">全ベールの直後（Veil D の背面）へ配置。角丸なしの漆黒 #070A08</text>
+  <text x="88" y="568" class="dark-layer-accent">作業領域全面を 1px の隙間もなく封鎖（タスクバーは隠さない）</text>
+
+  <!-- 層 5 -->
+  <rect x="72" y="598" width="420" height="82" rx="12" fill="#f7f9f8" stroke="#c3cfc9" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <rect x="88" y="614" width="60" height="24" rx="12" fill="#6b7f75"/>
+  <text x="118" y="630" class="layer-num" text-anchor="middle">5 層目</text>
+  <text x="160" y="632" class="layer-title">裏側の実ウィンドウ群（VS Code 等）</text>
+  <text x="88" y="662" class="layer-sub">通常 Z 帯。ここで起動・2×2 整列・安定化や個別終了を実施</text>
+
+  <text x="72" y="704" class="small">ポイント: 3 層目と 5 層目の間に 4 層目を挟むことで隙間漏れが 0 になる。</text>
+
+  <!-- 右パネル上段: 起動タイムライン -->
+  <rect x="540" y="108" width="612" height="304" rx="16" fill="#ffffff" stroke="#89c9a3" stroke-width="2"/>
+  <text x="564" y="142" class="sec-title">起動タイムライン（黒シールドは一拍で先に引く）</text>
+  <text x="564" y="165" class="small">黒シールドを残すと先に開く A〜C が塞がれるため、裏が完全静止した一拍の間に抜きます。</text>
+
+  <!-- タイムライン行ラベル (起動) -->
+  <text x="564" y="206" class="bar-label">黒シールド</text>
+  <text x="564" y="242" class="bar-label">象限 A〜D</text>
+  <text x="564" y="278" class="bar-label">中央 HUD</text>
+  <text x="564" y="314" class="bar-label">裏の実窓</text>
+
+  <!-- 起動バー: 黒シールド -->
+  <rect x="652" y="188" width="62" height="24" rx="5" fill="#2c925a"/>
+  <text x="683" y="204" class="bar-text" text-anchor="middle">被せ</text>
+  <rect x="718" y="188" width="136" height="24" rx="5" fill="#17231d"/>
+  <text x="786" y="204" class="bar-text" text-anchor="middle">完全遮蔽 (1.0)</text>
+  <rect x="858" y="188" width="56" height="24" rx="5" fill="#74c998"/>
+  <text x="886" y="204" class="bar-dark" text-anchor="middle">先行抜</text>
+
+  <!-- 起動バー: 象限 A〜D -->
+  <rect x="652" y="224" width="62" height="24" rx="5" fill="#2c925a"/>
+  <text x="683" y="240" class="bar-text" text-anchor="middle">被せ</text>
+  <rect x="718" y="224" width="136" height="24" rx="5" fill="#28583e"/>
+  <text x="786" y="240" class="bar-text" text-anchor="middle">不透明カバー待機</text>
+  <rect x="858" y="224" width="56" height="24" rx="5" fill="#28583e"/>
+  <text x="886" y="240" class="bar-text" text-anchor="middle">一拍</text>
+  <rect x="918" y="224" width="46" height="24" rx="5" fill="#35b46e"/>
+  <text x="941" y="240" class="bar-text" text-anchor="middle">A</text>
+  <rect x="968" y="224" width="46" height="24" rx="5" fill="#3fc079"/>
+  <text x="991" y="240" class="bar-text" text-anchor="middle">B</text>
+  <rect x="1018" y="224" width="46" height="24" rx="5" fill="#52cb88"/>
+  <text x="1041" y="240" class="bar-dark" text-anchor="middle">C</text>
+  <rect x="1068" y="224" width="46" height="24" rx="5" fill="#72daa0"/>
+  <text x="1091" y="240" class="bar-dark" text-anchor="middle">D</text>
+
+  <!-- 起動バー: 中央 HUD -->
+  <rect x="652" y="260" width="262" height="24" rx="5" fill="#3d7356"/>
+  <text x="783" y="276" class="bar-text" text-anchor="middle">準備中 / 準備OK 表示</text>
+  <rect x="918" y="260" width="160" height="24" rx="5" fill="#2e9b60"/>
+  <text x="998" y="276" class="bar-text" text-anchor="middle">A→B→C→D ランプ点灯</text>
+  <rect x="1082" y="260" width="48" height="24" rx="5" fill="#9cdcb8"/>
+  <text x="1106" y="276" class="bar-dark" text-anchor="middle">消散</text>
+
+  <!-- 起動バー: 裏の実窓 -->
+  <rect x="718" y="296" width="136" height="24" rx="5" fill="#6f8479"/>
+  <text x="786" y="312" class="bar-text" text-anchor="middle">起動・整列・安定化</text>
+  <rect x="858" y="296" width="272" height="24" rx="5" fill="#d7e8de"/>
+  <text x="994" y="312" class="bar-dark" text-anchor="middle">定位置で完全静止（チラつき 0）</text>
+
+  <!-- 起動タイムライン補足 -->
+  <rect x="564" y="338" width="564" height="54" rx="10" fill="#f2faf5" stroke="#c8e2d3" stroke-width="1.4"/>
+  <text x="580" y="361" class="note">・一拍（260ms）の時点で裏の 4 窓は静止済み、4 枚のカバーが 100% 覆っているため</text>
+  <text x="580" y="381" class="note">　先に黒シールドを抜いてもチラつかず、続く 480ms 刻みの点灯で中身が鮮明に出ます。</text>
+
+  <!-- 右パネル下段: 終了タイムライン -->
+  <rect x="540" y="432" width="612" height="288" rx="16" fill="#ffffff" stroke="#89c9a3" stroke-width="2"/>
+  <text x="564" y="466" class="sec-title">すべて閉じるタイムライン（ワンクッション → 全層同時消散）</text>
+  <text x="564" y="489" class="small">全員の終了が揃うまで黒シールドで隙間を遮断し、完了知覚のあと全層同時に「フッ」と消します。</text>
+
+  <!-- タイムライン行ラベル (終了) -->
+  <text x="564" y="530" class="bar-label">黒シールド</text>
+  <text x="564" y="566" class="bar-label">象限 A〜D</text>
+  <text x="564" y="602" class="bar-label">中央 HUD</text>
+  <text x="564" y="638" class="bar-label">裏の実窓</text>
+
+  <!-- 終了バー: 黒シールド -->
+  <rect x="652" y="512" width="62" height="24" rx="5" fill="#2c925a"/>
+  <text x="683" y="528" class="bar-text" text-anchor="middle">被せ</text>
+  <rect x="718" y="512" width="150" height="24" rx="5" fill="#17231d"/>
+  <text x="793" y="528" class="bar-text" text-anchor="middle">完全遮蔽 (1.0)</text>
+  <rect x="872" y="512" width="150" height="24" rx="5" fill="#17231d"/>
+  <text x="947" y="528" class="bar-text" text-anchor="middle">完了保持 (720ms)</text>
+  <rect x="1026" y="512" width="104" height="24" rx="5" fill="#49c480"/>
+  <text x="1078" y="528" class="bar-text" text-anchor="middle">同時消散</text>
+
+  <!-- 終了バー: 象限 A〜D -->
+  <rect x="652" y="548" width="62" height="24" rx="5" fill="#2c925a"/>
+  <text x="683" y="564" class="bar-text" text-anchor="middle">被せ</text>
+  <rect x="718" y="548" width="150" height="24" rx="5" fill="#28583e"/>
+  <text x="793" y="564" class="bar-text" text-anchor="middle">不透明カバー</text>
+  <rect x="872" y="548" width="150" height="24" rx="5" fill="#2c774f"/>
+  <text x="947" y="564" class="bar-text" text-anchor="middle">✓ 終了完了</text>
+  <rect x="1026" y="548" width="104" height="24" rx="5" fill="#49c480"/>
+  <text x="1078" y="564" class="bar-text" text-anchor="middle">同時消散</text>
+
+  <!-- 終了バー: 中央 HUD -->
+  <rect x="652" y="584" width="216" height="24" rx="5" fill="#3d7356"/>
+  <text x="760" y="600" class="bar-text" text-anchor="middle">終了中 (1/4 → 4/4)</text>
+  <rect x="872" y="584" width="150" height="24" rx="5" fill="#2e9b60"/>
+  <text x="947" y="600" class="bar-text" text-anchor="middle">CLOSED 静止点灯</text>
+  <rect x="1026" y="584" width="104" height="24" rx="5" fill="#49c480"/>
+  <text x="1078" y="600" class="bar-text" text-anchor="middle">同時消散</text>
+
+  <!-- 終了バー: 裏の実窓 -->
+  <rect x="718" y="620" width="90" height="24" rx="5" fill="#7f9389"/>
+  <text x="763" y="636" class="bar-text" text-anchor="middle">早い窓終了</text>
+  <rect x="812" y="620" width="56" height="24" rx="5" fill="#63786d"/>
+  <text x="840" y="636" class="bar-text" text-anchor="middle">遅い窓</text>
+  <rect x="872" y="620" width="258" height="24" rx="5" fill="#e4ede8"/>
+  <text x="1001" y="636" class="bar-dark" text-anchor="middle">すべて終了済み（裏は空）</text>
+
+  <!-- 縦の同期ライン -->
+  <line x1="1026" y1="506" x2="1026" y2="614" stroke="#188c4e" stroke-width="2" stroke-dasharray="4 3"/>
+
+  <text x="564" y="678" class="note">・完了後 720ms（単体 460ms）のワンクッションで「全部終わった」を人が確実に知覚。</text>
+  <text x="564" y="700" class="note">・直後に BeginTime=0・420ms・CubicEase EaseOut で黒シールド含め全層一斉に「フッ」と消散。</text>
+</svg>

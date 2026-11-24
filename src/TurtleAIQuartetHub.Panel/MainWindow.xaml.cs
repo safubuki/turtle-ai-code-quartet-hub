@@ -5945,6 +5945,14 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _launchStagingOverlay.IsActive)
+        {
+            DiagnosticLog.Write(LogLevel.Info, "Launch/close staging overlay dismissed by Escape key.");
+            _launchStagingOverlay.DismissImmediate();
+            e.Handled = true;
+            return;
+        }
+
         if (AiHookSettingsPreviewOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             HideAiHookSettingsPreviewDialog();
@@ -6082,6 +6090,9 @@ public partial class MainWindow : Window
             ShowAppExitConfirmDialog();
             return;
         }
+
+        // アプリ終了が確定した瞬間に、起動／終了マスクや黒画面シールドを確実に片付ける。
+        _launchStagingOverlay.DismissImmediate();
 
         // 非表示中にアプリが終了される場合、管理中ウィンドウを復元してから閉じる
         if (_areWindowsHidden)
