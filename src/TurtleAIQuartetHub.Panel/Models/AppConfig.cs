@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -58,6 +58,9 @@ public sealed class AppConfig
     // GitHub CLI (gh) が導入・サインイン済みなら、数分ごとに未読の Pull Request 通知を確認し、
     // 受信箱ボタンに赤丸を出す。false にすると gh を起動せず、GitHub への確認も行わない。
     public bool CheckPullRequestUpdates { get; set; } = true;
+
+    // 極小表示（円形オービット・ダイヤル）で、マウスが乗っていない間は半透明のゴースト表示にするか。
+    public bool MicroGhostOpacityEnabled { get; set; } = true;
 
     public string DefaultWorkspaceApplicationId { get; set; } = VsCodeApplicationId;
 

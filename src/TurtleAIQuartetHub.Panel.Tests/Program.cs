@@ -66,6 +66,7 @@ await PublishStopPanelTests.RunAsync(failures);
 await LaunchPresentationTests.RunAsync(failures);
 MinimizeAnimationTests.Run(failures);
 RestoreAnimationTests.Run(failures);
+MicroDialTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -102,6 +103,7 @@ Console.WriteLine($"配布ビルド前のアプリ自動終了チェックに合
 Console.WriteLine($"起動演出・ステルス起動・一斉表示のチェックに合格しました ({LaunchPresentationTests.Count}/{LaunchPresentationTests.Count})。");
 Console.WriteLine($"最小化のタスクバー吸い込み演出のチェックに合格しました ({MinimizeAnimationTests.Count}/{MinimizeAnimationTests.Count})。");
 Console.WriteLine($"最小化からの復元演出のチェックに合格しました ({RestoreAnimationTests.Count}/{RestoreAnimationTests.Count})。");
+Console.WriteLine($"極小表示（円形オービット・ダイヤル）のチェックに合格しました ({MicroDialTests.Count}/{MicroDialTests.Count})。");
 return 0;
 
 async Task VerifyAsync(

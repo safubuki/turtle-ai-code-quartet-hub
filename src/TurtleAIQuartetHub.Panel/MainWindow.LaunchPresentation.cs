@@ -56,7 +56,7 @@ public partial class MainWindow
         var hudMonitorIndex = isBatch
             ? activeMonitor
             : GetSlotMonitorIndex(launchTargets[0].Slot);
-        var panelHandle = new WindowInteropHelper(this).Handle;
+        var panelHandle = GetActivePresentationPanelHandle();
         var headline = isBatch
             ? "QUARTET LAUNCHING"
             : $"LAUNCHING SLOT {launchTargets[0].Slot.Name}";
@@ -297,7 +297,7 @@ public partial class MainWindow
         var config = _statusStore.Config;
         var activeMonitor = GetActiveMonitorIndex();
         var isBatch = closeTargets.Count > 1;
-        var panelHandle = new WindowInteropHelper(this).Handle;
+        var panelHandle = GetActivePresentationPanelHandle();
 
         var veilTargets = BuildCloseVeilTargets(closeTargets, config.Gap, activeMonitor);
         var showOverlay = !_areWindowsHidden

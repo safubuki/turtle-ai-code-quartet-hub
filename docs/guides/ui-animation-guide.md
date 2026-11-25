@@ -23,7 +23,7 @@
 | シーン | 実装ファイル | 時間 | 加減速カーブ | 狙いと表現のポイント |
 |---|---|---|---|---|
 | **1. アプリ本体 起動・終了** | `MainWindow.StartupAnimation.cs` | 起動 `920ms` / 終了 `680ms` | `SineEase (EaseInOut)` | 最小 3 層の超軽量透過影武者で、`+12px → 0` の控えめな浮上・`0.965 → 1.0`・ほのかな 1.5px エメラルド縁により「静かに浮かび上がり、霧のように消える」。起動直後の `120ms + 70ms` 待機と定期タイマー後回しで冒頭コマ飛びを根絶。 |
-| **2. 表示モード切替**（標準⇄縮小⇄極小） | `MainWindow.ModeTransition.cs` | `340ms` | `CubicEase (EaseInOut)` | 本物を `DWMWA_CLOAK` で隠した裏で 1 回だけ同期リサイズし、影武者の角丸枠を小数点単位で変形。画像は伸縮せず `Stretch=None` 中央配置で切り抜いてクロスフェードするため、文字が一切にじまない。 |
+| **2. 表示モード切替**（標準⇄縮小⇄極小） | `MainWindow.ModeTransition.cs` | `340ms` | `CubicEase (EaseInOut)` | 本物を `DWMWA_CLOAK` で隠した裏で 1 回だけ同期リサイズし、影武者の枠（`Rectangle` の `RadiusX/Y` で角丸 `8 ⇄ 58` まで GPU 補間）を小数点単位で四角⇄真円へ変形。画像は伸縮せず `Stretch=None` 中央配置で切り抜いてクロスフェードするため、文字が一切にじまない。 |
 | **3. ワークスペース起動**（単体・4 面一括） | `MainWindow.LaunchPresentation.cs`<br>`Services/LaunchStagingOverlay.cs` | カバー `320ms` → 一拍 `260ms`（単体 `120ms`）→ `480ms` 刻み点灯 → `580ms` 開放 | `SineEase (EaseInOut)` | 一括起動（複数同時）は 5 層遮蔽（黒全画面シールド＋象限ベール＋中央 HUD）、単体起動は象限ベール＋中央 HUD のみで他画面を暗転させずに裏で起動・配置・安定化を実施。全員静止後の一拍で黒シールドを先に抜き、A→B→C→D へ `480ms` 間隔で 1 つずつ LED ランプが灯るように開く。 |
 | **4. ワークスペース終了**（すべて閉じる・個別） | `MainWindow.LaunchPresentation.cs`<br>`Services/LaunchStagingOverlay.cs` | カバー `300ms` → 完了知覚 `720ms`（単体 `460ms`）→ 一斉消散 `420ms` | 消散のみ `CubicEase (EaseOut)` | 一括終了（複数同時）は 5 層遮蔽で裏の終了差を完全に隠し、単体の閉じる・クリアは象限ベール＋中央 HUD のみを表示。全員終了後に HUD の点滅を静止点灯へ変えて「すべて完了した」を人間が知覚する `720ms`（単体 `460ms`）のワンクッションを置いた直後、全層一斉に「フッ」と軽やかに消え失せる。 |
 | **5. AI 作業状態の常時フィードバック** | `Services/AiCardOrbitGlow.cs`<br>`Services/AiDoneFirefly.cs` | 作業中 `3.60s`（標準）<br>完了 `3.0s` 周期 | 緩加速トレイル / 水平接線曲線 | 作業中は 1px 枠線中心を 28 段グラデーションの緑 LED が一周、応答完了時は深い青でホタルのように呼吸点滅。日常操作の邪魔をしない低主張な光量に抑える。 |

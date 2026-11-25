@@ -55,8 +55,9 @@ public sealed class FocusNameOverlay
     }
 
     // スロット名（パネルD）・タイトル・アプリ名の 3 行を、monitorIndex（GetSlotMonitorIndex の
-    // 正規化済みインデックス）の作業領域中央へ出す。フェードイン → 数秒保持 → フェードアウト。
-    public void Show(string slotLabel, string title, string appName, int monitorIndex)
+    // 正規化済みインデックス）の作業領域中央へ出す。極小表示などで avoidRectScreenPx が指定され、
+    // 同じディスプレイ上に重なる場合は被らないよう下側（下に空きが無ければ上側）へ配置する。
+    public void Show(string slotLabel, string title, string appName, int monitorIndex, Rect? avoidRectScreenPx = null)
     {
         EnsureWindow();
         if (_window is null || _card is null
@@ -80,14 +81,14 @@ public sealed class FocusNameOverlay
         var startY = (_card.RenderTransform as TranslateTransform)?.Y ?? StartOffsetY;
 
         // 表示の瞬間に左上の既定位置でカードが一瞬見えてチラつくのを防ぐため、
-        // Show() する前にハンドルを確保してレイアウトを測り、対象ディスプレイ作業領域の
-        // 中央へ位置を確定させてから可視化する。
-        var positioned = PositionOnMonitor(monitorIndex);
+        // Show() する前にハンドルを確保してレイアウトを測り、対象ディスプレイ上の
+        // 配置先を確定させてから可視化する。
+        var positioned = PositionOnMonitor(monitorIndex, avoidRectScreenPx);
         _window.Show();
-        // ハンドルが取れずに事前配置できなかった場合のみ、表示後に測り直して中央へ。
+        // ハンドルが取れずに事前配置できなかった場合のみ、表示後に測り直して配置する。
         if (!positioned)
         {
-            PositionOnMonitor(monitorIndex);
+            PositionOnMonitor(monitorIndex, avoidRectScreenPx);
         }
 
         var storyboard = new Storyboard();
@@ -328,11 +329,10 @@ public sealed class FocusNameOverlay
         SetWindowLong(handle, GWL_EXSTYLE, exStyle);
     }
 
-    // 対象ディスプレイの作業領域中央へ、物理ピクセル指定で置く。WindowArranger の座標は
+    // 対象ディスプレイの作業領域へ、物理ピクセル指定で置く。WindowArranger の座標は
     // ネイティブ px なので、DIP 変換を挟まず SetWindowPos で直接合わせるのが確実。
-    // 中央へ置けたら true。Show() 前に EnsureHandle() でハンドルを確保するので、
-    // 可視化より前に正しい位置を決めてチラつきを防げる。
-    private bool PositionOnMonitor(int monitorIndex)
+    // 極小表示と同一モニタで重なる場合（avoidRectScreenPx 指定時）は極小表示の下側へ出す。
+    private bool PositionOnMonitor(int monitorIndex, Rect? avoidRectScreenPx)
     {
         if (_window is null)
         {
@@ -348,7 +348,7 @@ public sealed class FocusNameOverlay
             return false;
         }
 
-        // 自然サイズを測ってから中央に配置する。
+        // 自然サイズを測ってから位置を確定する。
         _window.UpdateLayout();
         _card?.UpdateLayout();
 
@@ -360,12 +360,59 @@ public sealed class FocusNameOverlay
             return false;
         }
 
-        var left = work.Left + ((work.Width - widthPx) / 2);
-        var top = work.Top + ((work.Height - heightPx) / 2);
+        var (left, top) = ComputeOverlayPosition(work, widthPx, heightPx, avoidRectScreenPx, dpi.DpiScaleY);
 
-        // SWP_NOSIZE で WPF が計算した実サイズを尊重しつつ、位置だけ作業領域中央へ合わせる。
+        // SWP_NOSIZE で WPF が計算した実サイズを尊重しつつ、位置だけ確定先へ合わせる。
         SetWindowPos(handle, HWND_TOPMOST, left, top, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
         return true;
+    }
+
+    internal static (int Left, int Top) ComputeOverlayPosition(
+        WindowArranger.WindowBounds work,
+        int widthPx,
+        int heightPx,
+        Rect? avoidRectScreenPx,
+        double dpiScaleY = 1.0)
+    {
+        var scaleY = dpiScaleY > 0 ? dpiScaleY : 1.0;
+        var left = work.Left + ((work.Width - widthPx) / 2);
+        var centeredTop = work.Top + ((work.Height - heightPx) / 2);
+
+        if (avoidRectScreenPx is not { Width: > 0, Height: > 0 } avoid)
+        {
+            return (left, centeredTop);
+        }
+
+        var workRect = new Rect(work.Left, work.Top, work.Width, work.Height);
+        if (!workRect.IntersectsWith(avoid))
+        {
+            // 別ディスプレイ上のフォーカス通知なのでそのまま作業領域中央へ出す。
+            return (left, centeredTop);
+        }
+
+        var gapPx = (int)Math.Ceiling(16.0 * scaleY);
+        var marginPx = (int)Math.Ceiling(12.0 * scaleY);
+        var belowTop = (int)Math.Ceiling(avoid.Bottom + gapPx);
+        var maxTop = work.Top + work.Height - heightPx - marginPx;
+
+        int top;
+        if (belowTop <= maxTop)
+        {
+            // 極小表示の下側へ被らないように表示する（既定）。
+            top = belowTop;
+        }
+        else
+        {
+            // 極小表示が画面下端付近へ寄っていて下に収まらないときだけ上側へ退避する。
+            var aboveTop = (int)Math.Floor(avoid.Top - gapPx - heightPx);
+            var minTop = work.Top + marginPx;
+            top = aboveTop >= minTop
+                ? aboveTop
+                : Math.Clamp(belowTop, work.Top, Math.Max(work.Top, work.Top + work.Height - heightPx));
+        }
+
+        var clampedLeft = Math.Clamp(left, work.Left, Math.Max(work.Left, work.Left + work.Width - widthPx));
+        return (clampedLeft, top);
     }
 
     // ShowActivated=false で前面を奪わず出すための薄い Window。

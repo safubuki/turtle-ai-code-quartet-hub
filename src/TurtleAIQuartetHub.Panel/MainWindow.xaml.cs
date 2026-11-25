@@ -24,10 +24,9 @@ public partial class MainWindow : Window
     private const double MicroWindowSize = 116;
     private const double ExitConfirmViewportWidth = 430;
     private const double ExitConfirmViewportHeight = 250;
-    // \u7E2E\u5C0F=Tile, \u6975\u5C0F=AppIconDefault(2x2 \u30C9\u30C3\u30C8), \u6A19\u6E96=ShowResults\u3002
-    // \u30DC\u30BF\u30F3\u306B\u306F\u300C\u6B21\u306B\u9077\u79FB\u3059\u308B\u30E2\u30FC\u30C9\u300D\u306E\u30A2\u30A4\u30B3\u30F3\u3092\u8868\u793A\u3059\u308B\u3002
+    // 縮小=ChromeBackToWindow、標準=ChromeFullScreen、極小=円形オービット・ダイヤル（ベクター描画）。
+    // ボタンには「次に遷移するモード」のアイコンを表示する。
     private const string CompactModeGlyph = "\uE73F";
-    private const string MicroModeGlyph = "\uF158";
     private const string StandardModeGlyph = "\uE740";
     private const double StoredOverviewGap = 6;
     private const double StoredOverviewSlideDistance = 40;
@@ -396,6 +395,7 @@ public partial class MainWindow : Window
     private void ShowAppExitConfirmDialog()
     {
         DiagnosticLog.Write(LogLevel.Info, $"Panel close requested via {_closeRequestSource}; awaiting confirmation.");
+        SuspendMicroDialForMainOverlay();
         CloseStoredOverview(animate: false);
         EnsureExitConfirmViewport();
         AppExitConfirmOverlay.Visibility = Visibility.Visible;
@@ -408,6 +408,7 @@ public partial class MainWindow : Window
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
         RestoreBoundsAfterExitConfirm();
         _closeRequestSource = "Alt+F4 またはシステムメニュー";
+        ResumeMicroDialAfterMainOverlay();
         if (IsStoredPanelsAreaOpen)
         {
             ScheduleStoredOverviewAutoOpen();
@@ -615,6 +616,13 @@ public partial class MainWindow : Window
     {
         SuppressFocusedSlotReassertForPanelInput();
         SetDisplayMode(DisplayMode.Compact);
+        ActivatePanelWindow();
+    }
+
+    private void MicroJumpButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressFocusedSlotReassertForPanelInput();
+        SetDisplayMode(DisplayMode.Micro);
         ActivatePanelWindow();
     }
 
@@ -2573,7 +2581,9 @@ public partial class MainWindow : Window
             ? "保存済みパスはありません。"
             : slot.Path;
 
+        SuspendMicroDialForMainOverlay(expandForModal: true);
         ClearSlotInfoOverlay.Visibility = Visibility.Visible;
+        Activate();
         CancelClearSlotInfoButton.Focus();
     }
 
@@ -3029,7 +3039,9 @@ public partial class MainWindow : Window
             ? "保存済みパスはありません。"
             : storedPanel.WorkspacePath;
 
+        SuspendMicroDialForMainOverlay(expandForModal: true);
         DeleteStoredPanelOverlay.Visibility = Visibility.Visible;
+        Activate();
         CancelDeleteStoredPanelButton.Focus();
     }
 
@@ -3376,6 +3388,7 @@ public partial class MainWindow : Window
         StoredOverviewToggleButton.ToolTip = isOpen
             ? "控えの一覧を閉じます。"
             : $"控えの一覧をパネルの{side}側に開きます。カードを選んでスロットの「ここに表示」を押すか、カードをスロットへドラッグして配置できます。";
+        _microDialWindow?.SetStoredOverviewOpen(isOpen);
     }
 
     // 開いておきたい間は、最小化からの復帰・表示モードの切り替え・終了確認の取消のあとにも開き直す。
@@ -3461,10 +3474,10 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RepositionStoredOverview);
     }
 
-    // 縮小表示では前半の行だけを出し、一覧の下のボタンで後半を下に伸ばす。標準表示は常にすべての行を出す。
+    // 縮小・極小表示では前半の行だけを出し、一覧の下のボタンで後半を下に伸ばす。標準表示は常にすべての行を出す。
     private void UpdateStoredOverviewRows()
     {
-        var isCompact = _displayMode == DisplayMode.Compact;
+        var isCompact = _displayMode is DisplayMode.Compact or DisplayMode.Micro;
         var limitRows = isCompact && !_isCompactOverviewExpanded;
         var pages = _statusStore.StoredPanelPages;
         for (var index = 0; index < pages.Count; index++)
@@ -3588,7 +3601,8 @@ public partial class MainWindow : Window
     {
         // 引数の単位は DPI によって物理ピクセルになるため、パネルの実寸（DIP）との比で換算して使う。
         var unitsPerDip = PanelFrameBorder.ActualWidth > 0 ? targetSize.Width / PanelFrameBorder.ActualWidth : 1;
-        var gap = StoredOverviewGap * unitsPerDip;
+        var extraGap = IsMicroDialActive ? MicroStoredOverviewExtraGapDip : 0;
+        var gap = (StoredOverviewGap + extraGap) * unitsPerDip;
         var shift = GetStoredOverviewVerticalShift(popupSize.Height / unitsPerDip) * unitsPerDip;
         var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, shift), PopupPrimaryAxis.Horizontal);
         var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, shift), PopupPrimaryAxis.Horizontal);
@@ -3839,6 +3853,7 @@ public partial class MainWindow : Window
 
         _selectedOverviewStoredPanel = storedPanel;
         UpdateStoredAssignState();
+        _microDialWindow?.SetPendingStoredPanel(storedPanel);
         if (storedPanel is not null)
         {
             storedPanel.IsOverviewSelected = true;
@@ -4254,6 +4269,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsMicroDialActive)
+        {
+            _microDialWindow?.ShowTopmost();
+            return;
+        }
+
         var panelHandle = new WindowInteropHelper(this).Handle;
         if (panelHandle == IntPtr.Zero)
         {
@@ -4337,6 +4358,7 @@ public partial class MainWindow : Window
         }
         StandardJumpButton.Visibility = isCompact || isMicro ? Visibility.Visible : Visibility.Collapsed;
         CompactJumpButton.Visibility = isMicro ? Visibility.Visible : Visibility.Collapsed;
+        MicroJumpButton.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         WindowTitleText.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
         UpdateDisplayModeChrome();
 
@@ -4351,6 +4373,7 @@ public partial class MainWindow : Window
         {
             case DisplayMode.Compact:
             {
+                DeactivateMicroDialForNonMicroMode(keepMainCloakedDuringTransition: _isModeTransitionRunning);
                 var baseWidth = _standardWindowWidth > 0 ? _standardWindowWidth : preModeChangeBounds.Width / scale;
                 var compactWidth = Math.Max(CompactWindowMinWidth, Math.Round(baseWidth * CompactWindowWidthScale));
                 var compactHeight = GetCompactModeHeight(compactWidth);
@@ -4367,11 +4390,13 @@ public partial class MainWindow : Window
                 MinHeight = MicroWindowSize;
                 var targetBounds = GetMicroModeCenteredBounds(MicroWindowSize * scale, MicroWindowSize * scale);
                 ApplyModeTargetBounds(targetBounds);
+                EnsureMicroDialActiveForMicroMode(targetBounds, deferShowForTransition: _isModeTransitionRunning);
                 break;
             }
             case DisplayMode.Standard:
             default:
             {
+                DeactivateMicroDialForNonMicroMode(keepMainCloakedDuringTransition: _isModeTransitionRunning);
                 MinWidth = _standardWindowMinWidth > 0 ? _standardWindowMinWidth : MinWidth;
                 MinHeight = _standardWindowMinHeight > 0 ? _standardWindowMinHeight : MinHeight;
                 var targetWidth = _standardWindowWidth > 0
@@ -4438,6 +4463,11 @@ public partial class MainWindow : Window
         StoredOverviewToggleText.FontSize = IsCompactMode ? 11.5 : 12;
         StoredOverviewToggleChevron.Margin = IsCompactMode ? new Thickness(6, 1, 0, 0) : new Thickness(8, 1, 0, 0);
         DisplayModeButton.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
+        MicroJumpButton.Visibility = IsStandardMode ? Visibility.Visible : Visibility.Collapsed;
+        if (MicroJumpButton.Content is null)
+        {
+            MicroJumpButton.Content = CreateMicroDialModeIcon();
+        }
         StandardJumpButton.Width = isMicro ? 23 : 26;
         MinimizeButton.Width = isMicro ? 23 : 32;
         CloseButton.Width = isMicro ? 23 : 32;
@@ -4445,16 +4475,36 @@ public partial class MainWindow : Window
         var windowControlMargin = isMicro ? new Thickness(0) : new Thickness(4, 0, 0, 0);
         StandardJumpButton.Margin = windowControlMargin;
         DisplayModeButton.Margin = windowControlMargin;
+        MicroJumpButton.Margin = windowControlMargin;
         MinimizeButton.Margin = windowControlMargin;
         CloseButton.Margin = windowControlMargin;
 
-        (DisplayModeButton.Content, DisplayModeButton.ToolTip) = _displayMode switch
+        object displayModeIcon;
+        string displayModeToolTip;
+        switch (_displayMode)
         {
-            DisplayMode.Standard => (CompactModeGlyph, "縮小表示へ切り替え"),
-            DisplayMode.Compact => (MicroModeGlyph, "極小表示へ切り替え"),
-            DisplayMode.Micro => (StandardModeGlyph, "標準表示へ戻す"),
-            _ => (CompactModeGlyph, "縮小表示へ切り替え")
-        };
+            case DisplayMode.Standard:
+                displayModeIcon = CompactModeGlyph;
+                displayModeToolTip = "縮小表示へ切り替え";
+                break;
+            case DisplayMode.Compact:
+                _microDialModeButtonIcon ??= CreateMicroDialModeIcon();
+                displayModeIcon = _microDialModeButtonIcon;
+                displayModeToolTip = "極小表示（円形ダイヤル）へ切り替え";
+                break;
+            case DisplayMode.Micro:
+                displayModeIcon = StandardModeGlyph;
+                displayModeToolTip = "標準表示へ戻す";
+                break;
+            default:
+                displayModeIcon = CompactModeGlyph;
+                displayModeToolTip = "縮小表示へ切り替え";
+                break;
+        }
+
+        DisplayModeButton.Content = displayModeIcon;
+        DisplayModeButton.ToolTip = displayModeToolTip;
+        AutomationProperties.SetName(DisplayModeButton, displayModeToolTip);
     }
 
     // 標準サイズは DPI 非依存の論理サイズ(DIP)で記憶する。物理pxで覚えると、別 DPI の
@@ -4724,6 +4774,7 @@ public partial class MainWindow : Window
             CompleteRestoreRevealImmediately();
             // Popup は最小化に連動して消えないため、取り残されないよう閉じる。
             CloseStoredOverview(animate: false);
+            HideMicroDialForMinimize();
             CancelScheduledPanelFrontRestore();
             CancelScheduledFocusedSlotReassert();
             CancelScheduledPostLaunchArrange();
@@ -4744,6 +4795,11 @@ public partial class MainWindow : Window
         {
             _wasMinimized = false;
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(CorrectWindowSizeForCurrentDpi));
+            if (!isRestoreRevealing)
+            {
+                RestoreMicroDialAfterUnminimize();
+            }
+
             if (IsStoredPanelsAreaOpen)
             {
                 // 復元の演出中は本物が隠れているので、控え一覧は演出が終わってから開く。
@@ -4813,6 +4869,7 @@ public partial class MainWindow : Window
 
         UpdateDisplayBadges();
         RefreshLaunchButtonAvailability();
+        SyncMicroDialUiState();
         TaskbarJumpListService.Update(
             _statusStore.Slots,
             _displayMode,
@@ -5297,12 +5354,14 @@ public partial class MainWindow : Window
     {
         _pendingSlotInfoClear = null;
         ClearSlotInfoOverlay.Visibility = Visibility.Collapsed;
+        ResumeMicroDialAfterMainOverlay(restoreRenameViewport: true);
     }
 
     private void HideDeleteStoredPanelDialog()
     {
         _pendingStoredPanelDeletion = null;
         DeleteStoredPanelOverlay.Visibility = Visibility.Collapsed;
+        ResumeMicroDialAfterMainOverlay(restoreRenameViewport: true);
     }
 
     private void RestoreHiddenWindowState()
@@ -5388,6 +5447,8 @@ public partial class MainWindow : Window
             CompactVisibilityButton.ToolTip = MicroVisibilityButton?.ToolTip;
             CompactVisibilityButton.Style = centerButtonStyle;
         }
+
+        _microDialWindow?.SetWindowsHiddenState(_areWindowsHidden);
     }
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -5808,11 +5869,15 @@ public partial class MainWindow : Window
                 || string.Equals(slot.PanelTitle, slot.DefaultPanelTitle, StringComparison.Ordinal)
                 ? string.Empty
                 : slot.PanelTitle;
+            var avoidRect = IsMicroDialActive && _microDialWindow is { } dial
+                ? dial.GetExpandedDialScreenRect()
+                : (Rect?)null;
             _focusNameOverlay.Show(
                 $"パネル{slot.Name}",
                 title,
                 slot.ApplicationDisplayName,
-                GetSlotMonitorIndex(slot));
+                GetSlotMonitorIndex(slot),
+                avoidRect);
         }
         else if (ReferenceEquals(_overlayShownForSlot, slot))
         {
@@ -6109,8 +6174,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        // アプリ終了が確定した瞬間に、起動／終了マスクや黒画面シールドを確実に片付ける。
+        // アプリ終了が確定した瞬間に、起動／終了マスクや黒画面シールド・極小円形ダイヤルを確実に片付ける。
         _launchStagingOverlay.DismissImmediate();
+        DisposeMicroDialWindow();
 
         // 非表示中にアプリが終了される場合、管理中ウィンドウを復元してから閉じる
         if (_areWindowsHidden)
@@ -6178,6 +6244,7 @@ public partial class MainWindow : Window
         CompleteMinimizeAnimationImmediately();
         CompleteRestoreRevealImmediately();
         CleanupLaunchPresentationOnClose();
+        DisposeMicroDialWindow();
         _focusNameOverlay.Close();
         base.OnClosed(e);
 
@@ -6409,6 +6476,7 @@ public partial class MainWindow : Window
         DisplayModeButton.IsEnabled = !busy;
         StandardJumpButton.IsEnabled = !busy;
         CompactJumpButton.IsEnabled = !busy;
+        MicroJumpButton.IsEnabled = !busy;
         CompactVisibilityButton.IsEnabled = !busy;
         MicroVisibilityButton.IsEnabled = !busy;
         CompactBarPanel.IsEnabled = !busy;

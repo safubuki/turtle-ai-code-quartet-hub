@@ -41,6 +41,7 @@ docs/
 | ファイル | この資料の内容・位置付け |
 |---|---|
 | [multi-application-launcher-spec.md](design/multi-application-launcher-spec.md) | IDE・CLI・補助アプリの分類、起動・配置・保存、画面構成の設計仕様。過去の画面仕様や後からの追記も含む設計資料。 |
+| [micro-mode-ui-concepts.md](design/micro-mode-ui-concepts.md) | 極小表示（Micro モード）の UI/UX 改善比較（案 A〜C）、採用した円形オービット・ダイヤル（案 B）の仕様、および将来再利用できる超極小宝石展開（案 C）の設計メモ。 |
 | [system-monitor-recovery-plan.md](design/system-monitor-recovery-plan.md) | フォルダ分類の折りたたみと、VS Code の終了・復旧機能の仕様・実装計画・検証記録。記載された実装フェーズは完了済み。 |
 
 ## 開発・検証 — `development/`

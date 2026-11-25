@@ -183,6 +183,7 @@ public partial class MainWindow
                     : "更新を確認しています...");
         PullRequestInboxButton.ToolTip = $"{PullRequestInboxToolTipTitle}{Environment.NewLine}{status}";
         AutomationProperties.SetHelpText(PullRequestInboxButton, status);
+        _microDialWindow?.SetPullRequestBadge(count > 0, PullRequestInboxButton.ToolTip as string);
     }
 
     // 受信箱を開いたら、その時点までの通知は既読扱いにして赤丸を消す。

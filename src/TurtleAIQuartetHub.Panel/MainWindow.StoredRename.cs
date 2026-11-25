@@ -40,6 +40,7 @@ public partial class MainWindow
 
     private void OpenStoredRenameDialog(object target, string title, string subtitle, string text, string hint)
     {
+        SuspendMicroDialForMainOverlay(expandForRename: true);
         _storedRenameTarget = target;
         SelectOverviewStoredPanel(null);
         StoredRenameTitleText.Text = title;
@@ -125,6 +126,8 @@ public partial class MainWindow
         {
             Keyboard.ClearFocus();
         }
+
+        ResumeMicroDialAfterMainOverlay(restoreRenameViewport: true);
     }
 
     private void StoredRenameTextBox_PreviewKeyDown(object sender, KeyEventArgs e)

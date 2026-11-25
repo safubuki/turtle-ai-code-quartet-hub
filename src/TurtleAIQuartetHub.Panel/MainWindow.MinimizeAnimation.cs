@@ -275,14 +275,15 @@ public partial class MainWindow
         try
         {
             UpdateLayout();
-            var panelRect = GetPanelScreenRect();
+            var fromMicroDial = IsMicroDialActive && _microDialWindow is not null;
+            var panelRect = fromMicroDial ? _microDialWindow!.GetCoreScreenRect() : GetPanelScreenRect();
             if (panelRect.Width <= 0 || panelRect.Height <= 0)
             {
                 Finish(applyPendingMinimize: true);
                 return;
             }
 
-            var panelImage = CapturePanelImage();
+            var panelImage = fromMicroDial ? _microDialWindow!.CaptureCoreCircleImage() : CapturePanelImage();
             var scale = VisualTreeHelper.GetDpi(this);
             var targetRect = ResolveMinimizeTargetRect(
                 panelRect,
@@ -302,7 +303,8 @@ public partial class MainWindow
                 panelImage,
                 initialOpacity: 1.0,
                 initialScale: 1.0,
-                initialOffsetY: 0.0);
+                initialOffsetY: 0.0,
+                cornerRadius: fromMicroDial ? MicroDialWindow.CoreRadiusDip : 8.0);
             if (TryCreateSoftenedPanelImages(panelImage, out var lightSoft, out var heavySoft))
             {
                 ghost.SetSoftenedImages(lightSoft, heavySoft);
@@ -318,6 +320,11 @@ public partial class MainWindow
 
                 try
                 {
+                    if (fromMicroDial)
+                    {
+                        HideMicroDialForMinimize();
+                    }
+
                     // 影武者が本物と完全一致して描かれた瞬間に、本物を OS 既定の遷移なしで即座に最小化する。
                     WindowArranger.SetTransitionsDisabled(handle, true);
                     minimizeApplied = true;

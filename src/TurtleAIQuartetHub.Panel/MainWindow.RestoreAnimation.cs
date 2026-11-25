@@ -195,7 +195,10 @@ public partial class MainWindow
             watchdog.Stop();
             _isRestoreRevealRunning = false;
             _forceFinishRestoreReveal = null;
-            SetCloaked(handle, false);
+            if (!IsMicroMode || !CompleteMicroDialRevealAfterTransition())
+            {
+                SetCloaked(handle, false);
+            }
 
             if (_openStoredOverviewAfterRestoreReveal)
             {
@@ -259,8 +262,9 @@ public partial class MainWindow
 
             var buttonLookup = ResolveTaskbarButtonRectAsync(handle);
             UpdateLayout();
-            var panelRect = GetPanelScreenRect();
-            var panelImage = CapturePanelImage();
+            var restoreMicroDial = IsMicroMode && _microDialWindow is not null && !_microDialSuspendedForOverlay;
+            var panelRect = restoreMicroDial ? _microDialWindow!.GetCoreScreenRect() : GetPanelScreenRect();
+            var panelImage = restoreMicroDial ? _microDialWindow!.CaptureCoreCircleImage() : CapturePanelImage();
             var hasSoftImages = TryCreateSoftenedPanelImages(panelImage, out var lightSoft, out var heavySoft);
 
             Rect? taskbarButton;
@@ -306,7 +310,8 @@ public partial class MainWindow
                 panelImage,
                 initialOpacity: 0.0,
                 initialScale: plan.EndScale,
-                initialOffsetY: 0.0);
+                initialOffsetY: 0.0,
+                cornerRadius: restoreMicroDial ? MicroDialWindow.CoreRadiusDip : 8.0);
             if (hasSoftImages)
             {
                 ghost.SetSoftenedImages(lightSoft, heavySoft);

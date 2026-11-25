@@ -795,6 +795,180 @@ public sealed class WindowSlot : INotifyPropertyChanged
         return label.Length == 0 ? Name : label;
     }
 
+    private static readonly char[] MicroSmartTokenSeparators = ['-', '_', ' ', '\t', '/', '\\', '・', ':', '.', '（', '(', '【', '['];
+
+    /// <summary>
+    /// 極小表示（円形オービット・ダイヤル）の各扇へ収める識別短縮ラベルを 4 スロットまとめて算出する。
+    /// 複数スロット間で先頭語（例: "AI-"）や先頭 2 文字が重複している場合は共通接頭辞を自動スキップし、
+    /// 見分けやすい特徴語（例: "Usage" / "Agent"）を最大 4〜5 文字で返す。未命名スロットは空文字を返す。
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> BuildMicroSmartLabels(IReadOnlyList<WindowSlot> slots)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (slots is null || slots.Count == 0)
+        {
+            return result;
+        }
+
+        var cleanedBySlot = new List<(WindowSlot Slot, string Clean, string[] Tokens)>(slots.Count);
+        foreach (var slot in slots)
+        {
+            if (slot is null)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(slot.PanelTitle)
+                || slot.PanelTitle.TrimStart().StartsWith(DefaultTitlePrefix, StringComparison.Ordinal))
+            {
+                result[slot.Name] = string.Empty;
+                continue;
+            }
+
+            var clean = StripLeadingNonLetterOrDigit(slot.PanelTitle.Trim());
+            if (clean.Length == 0)
+            {
+                result[slot.Name] = string.Empty;
+                continue;
+            }
+
+            var tokens = clean
+                .Split(MicroSmartTokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(token => token.Length > 0)
+                .ToArray();
+            cleanedBySlot.Add((slot, clean, tokens));
+        }
+
+        // 先頭トークンが複数スロットで被っているものを検出する（例: "AI-Usage" と "AI-Agent" の "AI"）。
+        var firstTokenCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in cleanedBySlot)
+        {
+            if (item.Tokens.Length >= 2)
+            {
+                var head = item.Tokens[0];
+                firstTokenCounts[head] = firstTokenCounts.TryGetValue(head, out var count) ? count + 1 : 1;
+            }
+        }
+
+        // 区切り文字がない日本語タイトル等でも先頭 2 文字が複数スロットで重複している場合を検出する。
+        var firstTwoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in cleanedBySlot)
+        {
+            var two = TakeDisplayChars(item.Clean, 2);
+            if (two.Length >= 2)
+            {
+                firstTwoCounts[two] = firstTwoCounts.TryGetValue(two, out var count) ? count + 1 : 1;
+            }
+        }
+
+        foreach (var item in cleanedBySlot)
+        {
+            var candidate = item.Clean;
+
+            if (item.Tokens.Length >= 2
+                && firstTokenCounts.TryGetValue(item.Tokens[0], out var tokenDup)
+                && tokenDup >= 2)
+            {
+                candidate = item.Tokens[1];
+            }
+            else if (item.Tokens.Length >= 1 && item.Tokens[0].Length >= 2)
+            {
+                var two = TakeDisplayChars(item.Clean, 2);
+                if (firstTwoCounts.TryGetValue(two, out var prefixDup) && prefixDup >= 2)
+                {
+                    // 共通の先頭文字数を他の重複スロットと比較して飛ばし、違いが始まる位置を優先する。
+                    var sharedPrefixLen = FindSharedPrefixLengthWithPeers(item.Clean, cleanedBySlot);
+                    if (sharedPrefixLen > 0 && sharedPrefixLen < item.Clean.Length)
+                    {
+                        var tail = StripLeadingNonLetterOrDigit(item.Clean[sharedPrefixLen..]);
+                        if (tail.Length > 0)
+                        {
+                            candidate = tail;
+                        }
+                    }
+                }
+                else
+                {
+                    candidate = item.Tokens[0];
+                }
+            }
+
+            // 扇の中にすっきり収まるよう、全角を含む場合は 4 文字、ASCII 中心なら 6 文字までにする。
+            var maxChars = ContainsWideCharacter(candidate) ? 4 : 6;
+            result[item.Slot.Name] = TakeDisplayChars(candidate, maxChars);
+        }
+
+        return result;
+    }
+
+    private static int FindSharedPrefixLengthWithPeers(
+        string current,
+        List<(WindowSlot Slot, string Clean, string[] Tokens)> peers)
+    {
+        var best = 0;
+        foreach (var peer in peers)
+        {
+            if (string.Equals(peer.Clean, current, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var len = 0;
+            var limit = Math.Min(current.Length, peer.Clean.Length);
+            while (len < limit && char.ToUpperInvariant(current[len]) == char.ToUpperInvariant(peer.Clean[len]))
+            {
+                len++;
+            }
+
+            if (len >= 2 && len > best)
+            {
+                best = len;
+            }
+        }
+
+        return best;
+    }
+
+    private static string StripLeadingNonLetterOrDigit(string text)
+    {
+        var start = 0;
+        while (start < text.Length && !char.IsLetterOrDigit(text[start]))
+        {
+            start++;
+        }
+
+        return start < text.Length ? text[start..] : string.Empty;
+    }
+
+    private static bool ContainsWideCharacter(string text)
+    {
+        foreach (var ch in text)
+        {
+            if (ch > 0x7F)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string TakeDisplayChars(string text, int maxChars)
+    {
+        var output = string.Empty;
+        var index = 0;
+        var taken = 0;
+        while (index < text.Length && taken < maxChars)
+        {
+            var length = char.IsHighSurrogate(text[index]) && index + 1 < text.Length ? 2 : 1;
+            output += text.Substring(index, length);
+            index += length;
+            taken++;
+        }
+
+        return output;
+    }
+
     private static string NormalizeWorkspacePath(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

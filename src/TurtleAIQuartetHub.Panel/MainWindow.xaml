@@ -3105,6 +3105,13 @@
                 ToolTip="縮小表示へ切り替え"
                 Click="DisplayModeButton_Click"
                 Style="{StaticResource TitleBarChromeButton}" />
+        <!-- 標準表示から直接極小表示（円形オービット・ダイヤル）へ切り替えるボタン。アイコンはコードでベクター描画を割り当てる。 -->
+        <Button x:Name="MicroJumpButton"
+                Width="32"
+                ToolTip="極小表示（円形ダイヤル）へ切り替え"
+                AutomationProperties.Name="極小表示（円形ダイヤル）へ切り替え"
+                Click="MicroJumpButton_Click"
+                Style="{StaticResource TitleBarChromeButton}" />
         <!-- 最小化（－）と閉じる（✕）は VS Code と同じ Windows の標準キャプション記号（ChromeMinimize / ChromeClose）。 -->
         <Button x:Name="MinimizeButton"
                 Content="&#xE921;"

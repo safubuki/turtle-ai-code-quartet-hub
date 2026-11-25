@@ -471,7 +471,8 @@ public partial class MainWindow
             BitmapSource panelImage,
             double initialOpacity,
             double initialScale,
-            double initialOffsetY)
+            double initialOffsetY,
+            double cornerRadius = 8.0)
         {
             _area = area;
             _panelRect = panelRect;
@@ -496,7 +497,7 @@ public partial class MainWindow
                 Background = CreateFrozenSolid(Color.FromRgb(0x10, 0x12, 0x11)),
                 BorderBrush = CreateFrozenSolid(Color.FromRgb(0x2E, 0x38, 0x32)),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8)
+                CornerRadius = new CornerRadius(cornerRadius)
             };
 
             // 2. パネル画像本体（HighQuality フィルタ・BitmapCache 不使用で軽快・鮮明）
@@ -509,14 +510,14 @@ public partial class MainWindow
             imageBrush.Freeze();
             var imageLayer = new Border
             {
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(cornerRadius),
                 Background = imageBrush
             };
 
             // 3. さりげない AI ツールらしさを添える 1.5px のほのかなエメラルド縁枠（1 枚のみ）
             _edgeGlow = new Border
             {
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(cornerRadius),
                 BorderBrush = CreateFrozenSolid(Color.FromRgb(0x5E, 0xE3, 0x98)),
                 BorderThickness = new Thickness(1.5),
                 Background = Brushes.Transparent,

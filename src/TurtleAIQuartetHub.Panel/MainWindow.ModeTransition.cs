@@ -79,7 +79,6 @@ public partial class MainWindow
 
             completed = true;
             watchdog?.Stop();
-            SetCloaked(handle, false);
             if (!coreApplied)
             {
                 coreApplied = true;
@@ -91,6 +90,13 @@ public partial class MainWindow
                 {
                     DiagnosticLog.Write(ex);
                 }
+            }
+
+            // 極小表示（円形オービット・ダイヤル）への遷移時は本物 MainWindow を Cloak したまま
+            // 透過円形ウィンドウを表示する。失敗時・他モード時は必ず Cloak を外す。
+            if (!IsMicroMode || !CompleteMicroDialRevealAfterTransition())
+            {
+                SetCloaked(handle, false);
             }
 
             var closingGhost = ghost;
@@ -130,10 +136,13 @@ public partial class MainWindow
 
         try
         {
-            var startRect = GetPanelScreenRect();
-            var oldImage = CapturePanelImage();
+            var fromMicroDial = IsMicroDialActive && _microDialWindow is not null;
+            var startRect = fromMicroDial ? _microDialWindow!.GetCoreScreenRect() : GetPanelScreenRect();
+            var oldImage = fromMicroDial ? _microDialWindow!.CaptureCoreCircleImage() : CapturePanelImage();
+            var startCornerRadius = fromMicroDial ? MicroDialWindow.CoreRadiusDip : 8.0;
+            var targetCornerRadius = mode == DisplayMode.Micro ? MicroDialWindow.CoreRadiusDip : 8.0;
             var ghostArea = GetModeMorphGhostArea(startRect, EstimateModeTargetRect(mode, startRect));
-            ghost = new ModeMorphGhostWindow(ghostArea, startRect, oldImage);
+            ghost = new ModeMorphGhostWindow(ghostArea, startRect, startCornerRadius, oldImage);
             var shownGhost = ghost;
             shownGhost.ContentRendered += (_, _) =>
             {
@@ -144,6 +153,11 @@ public partial class MainWindow
 
                 try
                 {
+                    if (fromMicroDial)
+                    {
+                        _microDialWindow?.HideWithPopups();
+                    }
+
                     // 影武者が画面に出てから本物を隠す（隠すのが先だと、何も映らないコマができる）。
                     if (!SetCloaked(handle, true))
                     {
@@ -153,7 +167,12 @@ public partial class MainWindow
 
                     coreApplied = true;
                     var targetRect = ApplyModeWhileCloaked(mode, updateMessage);
-                    var newImage = CapturePanelImage();
+                    var newImage = mode == DisplayMode.Micro && _microDialWindow is not null
+                        ? _microDialWindow.CaptureCoreCircleImage()
+                        : CapturePanelImage();
+                    var resolvedTargetCorner = mode == DisplayMode.Micro && _microDialWindow is not null
+                        ? targetCornerRadius
+                        : 8.0;
                     if (!shownGhost.Contains(targetRect))
                     {
                         // 見込みより遠くへ動いたとき（画面端の補正など）は、変形せずに一瞬で見せる。
@@ -161,7 +180,7 @@ public partial class MainWindow
                         return;
                     }
 
-                    shownGhost.Morph(targetRect, newImage, Finish);
+                    shownGhost.Morph(targetRect, resolvedTargetCorner, newImage, Finish);
                 }
                 catch (Exception ex)
                 {
@@ -351,18 +370,21 @@ public partial class MainWindow
 
         private readonly Rect _area;
         private readonly Rect _startRect;
+        private readonly double _startCornerRadius;
         private readonly Canvas _canvas = new();
         private readonly Grid _shape = new();
-        private readonly Border _oldLayer;
-        private readonly Border _newLayer;
+        private readonly System.Windows.Shapes.Rectangle _plate;
+        private readonly System.Windows.Shapes.Rectangle _oldLayer;
+        private readonly System.Windows.Shapes.Rectangle _newLayer;
         private readonly ScaleTransform _oldScale = new(1, 1);
         private readonly ScaleTransform _newScale = new(ModeMorphImageScale, ModeMorphImageScale);
         private DpiScale _dpi = new(1, 1);
 
-        public ModeMorphGhostWindow(Rect area, Rect startRect, BitmapSource oldImage)
+        public ModeMorphGhostWindow(Rect area, Rect startRect, double startCornerRadius, BitmapSource oldImage)
         {
             _area = area;
             _startRect = startRect;
+            _startCornerRadius = startCornerRadius;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
@@ -375,19 +397,21 @@ public partial class MainWindow
             UseLayoutRounding = false;
             SnapsToDevicePixels = false;
 
-            // 本物のウィンドウと同じ地の色・角丸・枠の色。影はやわらかく薄めに付ける。
-            var plate = new Border
+            // 本物のウィンドウと同じ地の色・角丸・枠の色。Rectangle の RadiusX/Y を使うことで
+            // 四角（8）⇄ 真円（58）まで 100% GPU で滑らかに角丸モーフィングできる。
+            _plate = new System.Windows.Shapes.Rectangle
             {
-                Background = new SolidColorBrush(Color.FromRgb(0x10, 0x12, 0x11)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x2E, 0x38, 0x32)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
+                Fill = new SolidColorBrush(Color.FromRgb(0x10, 0x12, 0x11)),
+                Stroke = new SolidColorBrush(Color.FromRgb(0x2E, 0x38, 0x32)),
+                StrokeThickness = 1,
+                RadiusX = startCornerRadius,
+                RadiusY = startCornerRadius,
                 Effect = new DropShadowEffect { BlurRadius = 22, ShadowDepth = 4, Direction = 270, Opacity = 0.4, Color = Colors.Black }
             };
-            _oldLayer = CreateImageLayer(oldImage, _oldScale);
-            _newLayer = CreateImageLayer(null, _newScale);
+            _oldLayer = CreateImageLayer(oldImage, _oldScale, startCornerRadius);
+            _newLayer = CreateImageLayer(null, _newScale, startCornerRadius);
             _newLayer.Opacity = 0;
-            _shape.Children.Add(plate);
+            _shape.Children.Add(_plate);
             _shape.Children.Add(_oldLayer);
             _shape.Children.Add(_newLayer);
             _canvas.Children.Add(_shape);
@@ -413,9 +437,9 @@ public partial class MainWindow
             return _area.Contains(screenRect);
         }
 
-        public void Morph(Rect targetScreenRect, BitmapSource newImage, Action onCompleted)
+        public void Morph(Rect targetScreenRect, double targetCornerRadius, BitmapSource newImage, Action onCompleted)
         {
-            ((ImageBrush)_newLayer.Background).ImageSource = newImage;
+            ((ImageBrush)_newLayer.Fill).ImageSource = newImage;
             var from = ToLocal(_startRect);
             var to = ToLocal(targetScreenRect);
             var duration = new Duration(ModeMorphDuration);
@@ -430,6 +454,15 @@ public partial class MainWindow
             _shape.BeginAnimation(Canvas.TopProperty, Geometry(from.Top, to.Top));
             _shape.BeginAnimation(WidthProperty, Geometry(from.Width, to.Width));
             _shape.BeginAnimation(HeightProperty, Geometry(from.Height, to.Height));
+
+            if (Math.Abs(_startCornerRadius - targetCornerRadius) > 0.1)
+            {
+                foreach (var rectShape in new[] { _plate, _oldLayer, _newLayer })
+                {
+                    rectShape.BeginAnimation(System.Windows.Shapes.Rectangle.RadiusXProperty, Geometry(_startCornerRadius, targetCornerRadius));
+                    rectShape.BeginAnimation(System.Windows.Shapes.Rectangle.RadiusYProperty, Geometry(_startCornerRadius, targetCornerRadius));
+                }
+            }
 
             // 古い画像は少し縮みながら先に消え、新しい画像は少し小さい状態から遅れて広がりながら現れる。
             var oldFade = new DoubleAnimation(1, 0, new Duration(ModeMorphOldFadeDuration)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } };
@@ -446,12 +479,13 @@ public partial class MainWindow
         }
 
         // 画像は伸び縮みさせず（文字がにじまないように）中央に置き、角丸の枠で切り抜く。
-        private static Border CreateImageLayer(BitmapSource? image, ScaleTransform scale)
+        private static System.Windows.Shapes.Rectangle CreateImageLayer(BitmapSource? image, ScaleTransform scale, double cornerRadius)
         {
-            return new Border
+            return new System.Windows.Shapes.Rectangle
             {
-                CornerRadius = new CornerRadius(8),
-                Background = new ImageBrush(image)
+                RadiusX = cornerRadius,
+                RadiusY = cornerRadius,
+                Fill = new ImageBrush(image)
                 {
                     Stretch = Stretch.None,
                     AlignmentX = AlignmentX.Center,

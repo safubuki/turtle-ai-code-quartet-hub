@@ -45,6 +45,65 @@ public partial class MainWindow
             menu.Style = style;
         }
 
+        PopulateSlotContextMenuItems(menu, slot, card, includePowerAction: false);
+        return menu;
+    }
+
+    // 極小表示（円形オービット・ダイヤル）の右クリックメニュー。
+    // 扇（スロット）上では先頭に「起動する／閉じる」を置き、続けて縮小表示と同じスロット操作一式を並べ、
+    // 末尾に極小固有の「普段は透過する」「画面の中央へ戻す」を添える。
+    // 扇以外（中央ボタン等）では極小固有の 2 項目のみを表示する。
+    internal ContextMenu BuildMicroDialContextMenu(
+        WindowSlot? slot,
+        bool ghostOpacityEnabled,
+        Action onToggleGhostOpacity,
+        Action onRecenter)
+    {
+        var menu = new ContextMenu();
+        if (TryFindResource("PanelContextMenuStyle") is Style style)
+        {
+            menu.Style = style;
+        }
+
+        if (slot is not null)
+        {
+            var tagHost = new Border { Tag = slot };
+            PopulateSlotContextMenuItems(menu, slot, tagHost, includePowerAction: true);
+            menu.Items.Add(new Separator());
+        }
+
+        var ghostItem = new MenuItem
+        {
+            Header = "普段は透過する（ゴースト表示）",
+            Icon = ghostOpacityEnabled ? CreateStoredMenuGlyphIcon("\uE73E", StoredMenuAccentBrush) : null
+        };
+        ghostItem.Click += (_, _) => onToggleGhostOpacity();
+        menu.Items.Add(ghostItem);
+
+        var recenterItem = new MenuItem
+        {
+            Header = "画面の中央へ戻す",
+            Icon = CreateStoredMenuGlyphIcon("\uE81D", StoredMenuIconBrush)
+        };
+        recenterItem.Click += (_, _) => onRecenter();
+        menu.Items.Add(recenterItem);
+
+        return menu;
+    }
+
+    private void PopulateSlotContextMenuItems(
+        ContextMenu menu,
+        WindowSlot slot,
+        FrameworkElement card,
+        bool includePowerAction)
+    {
+        if (includePowerAction)
+        {
+            var powerItem = CreateSlotPowerMenuItem(slot, card);
+            menu.Items.Add(powerItem);
+            menu.Items.Add(new Separator());
+        }
+
         menu.Items.Add(CreateSlotApplicationSubmenu("IDE", "", slot, slot.IdeApplicationOptions));
         menu.Items.Add(CreateSlotApplicationSubmenu("CLI", "", slot, slot.CliApplicationOptions));
 
@@ -108,7 +167,44 @@ public partial class MainWindow
         clearItem.Foreground = StoredMenuDangerBrush;
         clearItem.ToolTip = "このスロットの登録内容を空きに戻します（フォルダは削除されません）。";
         menu.Items.Add(clearItem);
-        return menu;
+    }
+
+    private MenuItem CreateSlotPowerMenuItem(WindowSlot slot, FrameworkElement card)
+    {
+        if (slot.WindowStatus == SlotWindowStatus.Ready)
+        {
+            var closeItem = CreateStoredMenuItem(
+                "閉じる",
+                CreateStoredMenuGlyphIcon("\uE7E8", StoredMenuDangerBrush),
+                isEnabled: !_isBusy,
+                () => SlotMainActionButton_Click(card, new RoutedEventArgs()));
+            closeItem.Foreground = StoredMenuDangerBrush;
+            closeItem.ToolTip = $"スロット {slot.Name} のウィンドウを閉じます。";
+            return closeItem;
+        }
+
+        if (slot.WindowStatus == SlotWindowStatus.Launching)
+        {
+            var launchingItem = CreateStoredMenuItem(
+                "起動中...",
+                CreateStoredMenuGlyphIcon("\uE7E8", StoredMenuIconBrush),
+                isEnabled: false,
+                () => { });
+            launchingItem.ToolTip = $"スロット {slot.Name} を起動しています。";
+            return launchingItem;
+        }
+
+        var app = _statusStore.FindApplication(slot.ApplicationId);
+        var canLaunch = !_isBusy && app is { IsAvailable: true };
+        var launchItem = CreateStoredMenuItem(
+            "起動する",
+            CreateStoredMenuGlyphIcon("\uE768", StoredMenuAccentBrush),
+            isEnabled: canLaunch,
+            () => SlotMainActionButton_Click(card, new RoutedEventArgs()));
+        launchItem.ToolTip = canLaunch
+            ? $"スロット {slot.Name} の {app!.DisplayName} を起動します。"
+            : app?.ToolTip ?? $"スロット {slot.Name} の起動対象アプリが利用できません。";
+        return launchItem;
     }
 
     private MenuItem CreateSlotApplicationSubmenu(
