@@ -42,8 +42,9 @@ public partial class MainWindow
 
     private void SetDisplayMode(DisplayMode mode, bool updateMessage = true)
     {
-        // 起動直後のふわっと出現演出中に切り替え要求が来た場合は、先に起動演出を終わらせて本物を解放する。
+        // 起動直後のふわっと出現演出中や、最小化からの復元演出中に切り替え要求が来た場合は、先に演出を終わらせて本物を解放する。
         CompleteStartupRevealImmediately();
+        CompleteRestoreRevealImmediately();
 
         // 切り替えの途中で押し直されたら、終わってから最後の指示だけを反映する。
         if (_isModeTransitionRunning)
@@ -230,6 +231,9 @@ public partial class MainWindow
             SetDisplayMode(queued, _queuedDisplayModeUpdateMessage);
         }
     }
+
+    // テスト用: 表示モード切替の長さ（最小化・復元の長さをこれにそろえる）。
+    internal static TimeSpan GetDisplayModeSwitchDurationForTesting() => ModeMorphDuration;
 
     private bool CanAnimateModeTransition(DisplayMode mode)
     {

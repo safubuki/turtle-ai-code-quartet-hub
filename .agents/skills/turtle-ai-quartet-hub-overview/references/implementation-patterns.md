@@ -618,3 +618,35 @@
   - §16 と同じく、全 `DoubleAnimation` の `Completed` は必ず `BeginAnimation` より前に登録し、ウォッチドッグ・`try/finally` でクローク残留やオーバーレイ残留の経路を作らないこと。
   - **WPF `Timeline.BeginTime` とローカル値保持の鉄則**: `BeginTime` に `null` を設定すると WPF 仕様で「永遠に開始しない」扱いになるため、0 秒開始は必ず `TimeSpan.Zero`（`NormalizeBeginTime`）を渡すこと。また、`BeginTime > 0` の次アニメーションを掛ける際は古い `HoldEnd` 時計が破棄されて初期ローカル値（`0.0`）へ一時巻き戻るため、必ず開始前にローカル `Opacity` 値を現在値（`1.0`）へ確定してから `BeginAnimation` すること。
   - `SelectMatchingSharedProfileWindow` は必ず他スロット割り当て済み HWND を除外し、`launchPath` が空のときは再接続しないこと。
+
+## 20. アプリ本体の最小化：タスクバーのボタンへ縮みながら吸い込まれる演出（2026-11-25 追加・同日作り直し）
+- **ファイル**: `MainWindow.MinimizeAnimation.cs`, `MainWindow.StartupAnimation.cs`（`StartupRevealGhostWindow.PlayMinimizeSink` / `SetSoftenedImages`）, `Services/TaskbarButtonLocator.cs`, `Services/PanelImageSoftener.cs`, `MainWindow.xaml.cs`, `Services/WindowArranger.cs`（`TryGetMonitorAreasForWindow`）, `TurtleAIQuartetHub.Panel.Tests/MinimizeAnimationTests.cs`
+- **課題**: `WindowStyle=None` のパネルは OS 既定の最小化アニメーションが付かず、最小化ボタンを押すと「カチッ」と消えていた。最初の版（タスクバーの縁へ沈ませ、縁で切り取る方式）は縮みが弱く（`0.56`〜`0.7`）、「四角いまま下へ落下するだけ」に見えて吸い込まれる印象にならなかった。
+- **対策**:
+  1. **着地点＝タスクバーのこのアプリのボタン（`Services/TaskbarButtonLocator.cs`）**: UI オートメーションで、パネルと同じディスプレイのタスクバー（`Shell_TrayWnd` / `Shell_SecondaryTrayWnd`）から `AutomationId = "Appid: <Environment.ProcessPath>"`（大文字小文字無視）のボタンを探し、無ければボタンの名前（タイトル、または「タイトル - …」）で探す。問い合わせはスレッドプールで 1 本だけ走らせ、最後に見つかった位置を覚える。起動 `3 秒` 後に一度温め、最小化ボタンの `MouseEnter` で先読みし、押した時点では `3 秒` 以内の結果をそのまま使う（古ければ最大 `60ms` だけ待ち、間に合わなければ最後に分かった位置）。
+  2. **代わりの着地点（`ResolveMinimizeTargetRect`）**: ボタンが見つからない・別のディスプレイにある・画面外（自動的に隠す設定）・大きさが不正なときは、ディスプレイ全体と作業領域の差がいちばん広い縁（＝タスクバー、差が無ければ下）の帯の上で、パネルの中心にいちばん近い位置へ `44 DIP` 角の着地点を置く。
+  3. **縮みながら吸い寄せる（`BuildMinimizeSinkPlan` / `PlayMinimizeSink`、`340ms`。表示モード切替と同じ長さ）**: 起動・終了と同じ最小 3 レイヤーの影武者を中央基準で、最後の倍率＝ボタンに収まる大きさ（`0.035`〜`0.3` に制限、通常約 `0.07`）まで縮めながら、パネル中心→ボタン中心へ動かす。影武者の範囲はパネルと着地点の両方を含み、タスクバーの上にも重ねて描く。曲線は `SplineDoubleKeyFrame` の `KeySpline`（CSS の cubic-bezier と同じ）で、移動と縦の縮みは `(0.40, 0, 0.65, 0.80)`、横の縮みは少し先行する `(0.35, 0, 0.60, 0.85)`、薄れ方は `(0.55, 0, 0.90, 0.45)`。エメラルドの縁取りは輪郭を強調してしまうため、最小化では灯さない。
+  6. **輪郭ごとふわっと空気に溶かす（`Services/PanelImageSoftener.cs`、2026-11-25 追加）**: 撮影したパネル画像を `1/4` に縮小し、周囲に透明な余白を足してから CPU で箱型ぼかし 3 回（半径 `2`＝元の大きさで約 `10px`、半径 `5`＝約 `22px`）をかけた「軽いぼかし」「強いぼかし」画像を作る（乗算済みアルファのまま処理、150% 表示の標準サイズでも数 ms）。影武者の中で奥から「強いぼかし → 軽いぼかし → くっきり（枠＋画像）」の順に重ね、ぼかし層は余白の分だけ外側へ広げて置く（輪郭が外へにじむ）。全体時間に対する割合で、くっきりは `0.08〜0.50` で引き、軽いぼかしは `0.02〜0.24` で現れて `0.38〜0.66` で引き、強いぼかしは `0.24〜0.52` で現れる。全体の不透明度は `0〜0.86` の区間を `KeySpline (0.50, 0, 0.75, 1.0)` で 0 にし、移動が道のりの約 9 割に達した時点（ボタンへ届く手前）で消えきって演出を終える。にじみを切らないよう、最小化の影武者の余白は `40 DIP`（起動・終了は `22 DIP`）。透過影武者へ毎フレームの `BlurEffect` は掛けない（§19 の禁止事項どおり、画像の入れ替えだけでぼかしを表現する）。
+  4. **本物は待たせない**: 影武者の `ContentRendered` で本物を `SetTransitionsDisabled(true)` のうえ即座に `WindowState=Minimized` にする。本物を `DWMWA_CLOAK` で隠し続けないため、「本物が見えないまま残る」経路そのものが無い。
+  5. **フェイルセーフ**: 後始末は `Finish` 1 か所（何度呼ばれても 1 回）。影武者が `400ms` 以内に描かれなければ即座に最小化し、描かれた後は全体期限（`20ms`＋`340ms`＋`1000ms`）で強制完了する。演出中の復元（`StateChanged`）と `OnClosed` では `CompleteMinimizeAnimationImmediately` で影武者をすぐ閉じる。`SC_MINIMIZE` はウィンドウプロシージャ内で撮影せず `Dispatcher.BeginInvoke` で始める。
+- **注意**:
+  - `SystemParameters.ClientAreaAnimation` と `SystemParameters.MinimizeAnimation` のどちらかがオフ、表示モード切替中（`_isModeTransitionRunning`）、終了演出中（`_isExitAnimationRunning`）、`WindowState != Normal` のときは従来どおり一瞬で最小化すること。
+  - 本物の最小化を演出の後ろへ遅らせないこと（操作がもたつき、演出中の復元・タスクバーのサムネイルが不自然になる）。UI オートメーションの問い合わせを UI スレッドで同期実行しないこと（エクスプローラーが重いと UI が固まる）。
+  - 共有する `KeySpline` は別スレッド（テストの STA スレッド）でも使うため必ず `Freeze()` しておくこと。
+  - ぼかしを `BlurEffect` に置き換えないこと。最小化の影武者でも、くっきりした層の輪郭（1px 枠・エメラルドの縁取り）を最後まで残さないこと（「輪郭が残る」と指摘された）。
+
+## 21. 最小化からの復元：タスクバーのボタンから広がって元の位置に収まる演出と、タスクバーのアイコンのクリックでの最小化⇄復元（2026-11-25 追加）
+- **ファイル**: `MainWindow.RestoreAnimation.cs`, `MainWindow.StartupAnimation.cs`（`StartupRevealGhostWindow.PlayRestoreReveal`）, `MainWindow.xaml`（`ResizeMode="CanMinimize"`）, `MainWindow.xaml.cs`（`PanelWindowProcHook` / `MainWindow_StateChanged` / `ActivatePanelWindow`）, `TurtleAIQuartetHub.Panel.Tests/RestoreAnimationTests.cs`
+- **課題**: 最小化から戻すとパネルが「パッ」と出ていた。また `ResizeMode="NoResize"` のため `WS_MINIMIZEBOX` が無く、他のアプリと違ってタスクバーのアイコンを押しても最小化されなかった（Windows は最小化ボックスの無いウィンドウをタスクバーのクリックで最小化しない）。
+- **実機で確かめた事実（使い捨ての WPF ウィンドウで `WM_WINDOWPOSCHANGING` を記録）**:
+  1. `ResizeMode=CanMinimize` にすると `WindowStyle=None` のままでも `WS_MINIMIZEBOX`（`0x00020000`）が付く（`NoResize`: `0x06080000` → `CanMinimize`: `0x060A0000`）。
+  2. `SC_RESTORE`（タスクバーのクリックと同じ経路）や外部からの `ShowWindow(SW_RESTORE)` では、復元の `WM_WINDOWPOSCHANGING`（例: `x=20, y=20, flags=0x8120`＝`SWP_STATECHANGED|SWP_NOCOPYBITS|SWP_FRAMECHANGED`）の時点で WPF の `WindowState` はまだ `Minimized`。ただし `IsIconic` はすでに `false` なので判定に使えない。
+  3. アプリ自身の `WindowState = Normal` では、WPF が先に値を変えるため `WM_WINDOWPOSCHANGING` の時点で `WindowState` はもう `Normal`。最小化時の退避は `x=y=-32000, flags=0x8170`。
+- **対策**:
+  1. **タスクバーのアイコンで最小化⇄復元**: `MainWindow.xaml` を `ResizeMode="CanMinimize"` にした（大きさは変えられないまま、`WindowChrome` の `ResizeBorderThickness=0` も維持）。前面にあるときにアイコンを押すと `SC_MINIMIZE` が届き、§20 の吸い込み演出に置き換わる。最小化中に押すと復元され、下の復元演出になる。
+  2. **表示される前に隠す**: `PanelWindowProcHook` の `WM_WINDOWPOSCHANGING` で、`WindowState == Minimized` かつ `IsRestoreWindowPos`（移動あり・重なり順だけではない・退避座標 `-30000` 以下ではない）なら本物を `DWMWA_CLOAK` で隠して「復元待ち」にする。アプリ自身が戻す `ActivatePanelWindow` では、`WindowState = Normal` の直前に `ArmRestoreRevealBeforeProgrammaticRestore` で同じ準備をする。準備と同時にタスクバーのボタンの位置を調べ直す。
+  3. **逆再生（`PlayRestoreReveal`、`340ms`。最小化・表示モード切替と同じ長さ）**: `StateChanged`（Normal）で、DPI 補正（Render 優先度）とレイアウトが終わるのを `DispatcherPriority.Loaded` で待ってから撮影し（cloak 中でも撮れる）、ボタンの位置・ボタン大の倍率・強いぼかしのもやの状態から、最小化と同じ `BuildMinimizeSinkPlan` を逆にたどって元の位置へ広げる。曲線は最小化の `KeySpline` を時間について裏返した `ReverseSpline`（`1 − p(1 − t)`：ボタンから素早く離れ、元の位置へふわっと減速して収まる）。重ね替えは最小化の時刻表（`MinimizeCrispBlend` など）を `MirrorBlendPoints` で裏返す（つなぐ S 字が左右対称なのでそっくり逆になる）。押した直後から待たせないよう、最小化の「消えきったあとの区間」は逆再生せず、はじめからボタン付近で現れ始める。最後のコマは本物と同じ見た目（くっきりした層だけが不透明）なので、cloak を外してから `70ms` 後に影武者を閉じる。
+  4. **フェイルセーフ**: 復元待ちにしたのに最小化のままなら、`DispatcherPriority.Background` の後確認ですぐ cloak を外す。復元待ちは `800ms`、再生は全体期限（`60ms`＋`16ms`＋`340ms`＋`1200ms`）で強制的に cloak を外す。後始末は `Finish` 1 か所。再び最小化された（`StateChanged` の Minimized）、表示モードの切替（`SetDisplayMode`）、終了演出（`ClosePanelWithVanishAnimationAsync`）、`OnClosed` では `CompleteRestoreRevealImmediately` で復元待ち・再生をすぐ終わらせる。復元中は控え一覧の自動オープンを演出の後へ回す（本物が隠れている間に一覧だけが出ないように）。復元待ち・再生中は最小化の演出を始めない（`CanAnimateMinimize`）。
+- **注意**:
+  - 復元の判定に `IsIconic` を使わないこと（復元の `WM_WINDOWPOSCHANGING` の時点ですでに `false`）。アプリ自身が最小化から戻すコードを足すときは、`WindowState = Normal` の直前に `ArmRestoreRevealBeforeProgrammaticRestore()` を呼ぶこと（呼ばないと演出なしで「パッ」と出るだけで、隠れたままにはならない）。
+  - `ResizeMode` を `NoResize` へ戻さないこと（タスクバーのアイコンで最小化できなくなる）。

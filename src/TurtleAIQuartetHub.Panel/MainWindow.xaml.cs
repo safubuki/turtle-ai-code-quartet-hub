@@ -189,6 +189,8 @@ public partial class MainWindow : Window
         _systemMonitorTimer.Tick += SystemMonitorTimer_Tick;
         Activated += MainWindow_Activated;
         StateChanged += MainWindow_StateChanged;
+        // 押される前に、吸い込まれる先（タスクバーのこのアプリのボタン）の位置を先読みしておく。
+        MinimizeButton.MouseEnter += (_, _) => PrefetchTaskbarButtonRect();
         SizeChanged += MainWindow_SizeChanged;
         LocationChanged += MainWindow_LocationChanged;
 
@@ -214,6 +216,7 @@ public partial class MainWindow : Window
             RefreshLaunchButtonAvailability();
             ScheduleUnusedUserDataReclaim();
             StartTitleBarIndicators();
+            WarmUpTaskbarButtonLocator();
         };
     }
 
@@ -377,10 +380,8 @@ public partial class MainWindow : Window
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
     {
-        CancelScheduledPanelFrontRestore();
-        CancelScheduledFocusedSlotReassert();
-        CancelScheduledPostLaunchArrange();
-        WindowState = WindowState.Minimized;
+        // タスクバーへスッと吸い込まれる演出付きで最小化する（MainWindow.MinimizeAnimation.cs）。
+        RequestPanelMinimize();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -4236,6 +4237,8 @@ public partial class MainWindow : Window
     {
         if (WindowState == WindowState.Minimized)
         {
+            // タスクバーから戻すときと同じく、ボタンから広がって元の位置に収まる演出で戻す。
+            ArmRestoreRevealBeforeProgrammaticRestore();
             WindowState = WindowState.Normal;
         }
 
@@ -4717,6 +4720,8 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized)
         {
             _wasMinimized = true;
+            // 復元の演出中に再び最小化されたら、演出をやめて cloak を外しておく（最小化中なので見た目は変わらない）。
+            CompleteRestoreRevealImmediately();
             // Popup は最小化に連動して消えないため、取り残されないよう閉じる。
             CloseStoredOverview(animate: false);
             CancelScheduledPanelFrontRestore();
@@ -4724,6 +4729,11 @@ public partial class MainWindow : Window
             CancelScheduledPostLaunchArrange();
             return;
         }
+
+        // 最小化の吸い込み演出が終わる前に復元されたら、残っている影武者をすぐ閉じる。
+        CompleteMinimizeAnimationImmediately();
+        // 復元の直前に本物を隠してあれば、タスクバーのボタンから広がって元の位置に収まる演出を始める。
+        var isRestoreRevealing = BeginRestoreRevealIfArmed();
 
         // 最小化からの復元時は、最小化中にDPIの異なるディスプレイへ移動していると、WPF が
         // 旧ディスプレイのスケールで記憶した物理サイズのまま復元してウィンドウが過大化する
@@ -4736,7 +4746,15 @@ public partial class MainWindow : Window
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(CorrectWindowSizeForCurrentDpi));
             if (IsStoredPanelsAreaOpen)
             {
-                ScheduleStoredOverviewAutoOpen();
+                // 復元の演出中は本物が隠れているので、控え一覧は演出が終わってから開く。
+                if (isRestoreRevealing)
+                {
+                    _openStoredOverviewAfterRestoreReveal = true;
+                }
+                else
+                {
+                    ScheduleStoredOverviewAutoOpen();
+                }
             }
         }
 
@@ -6157,6 +6175,8 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Cancel();
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
+        CompleteMinimizeAnimationImmediately();
+        CompleteRestoreRevealImmediately();
         CleanupLaunchPresentationOnClose();
         _focusNameOverlay.Close();
         base.OnClosed(e);
@@ -6177,9 +6197,24 @@ public partial class MainWindow : Window
         // 別 DPI のディスプレイへ移ると Windows が送ってくる。lParam に「移動先 DPI に合わせた
         // 推奨ウィンドウ矩形（物理px）」が入る。
         const int WM_DPICHANGED = 0x02E0;
+        // タスクバーのアイコンのクリック・Win+↓・システムメニュー（Alt+Space）からの最小化も、ボタンと同じ吸い込み演出にそろえる。
+        const int WM_SYSCOMMAND = 0x0112;
+        const int SC_MINIMIZE = 0xF020;
+        // 最小化中のパネルが元の位置へ戻される直前に届く（タスクバーのクリック・Alt+Tab など、どの経路の復元でも来る）。
+        const int WM_WINDOWPOSCHANGING = 0x0046;
 
         switch (msg)
         {
+            case WM_WINDOWPOSCHANGING:
+                ArmRestoreRevealIfRestoring(hwnd, lParam);
+                break;
+            case WM_SYSCOMMAND:
+                if ((wParam.ToInt64() & 0xFFF0) == SC_MINIMIZE && TryInterceptSystemMinimize())
+                {
+                    handled = true;
+                }
+
+                break;
             case WM_ENTERSIZEMOVE:
                 _isWindowMoveOrResizeActive = true;
                 SuppressFocusedSlotReassertForPanelInput();

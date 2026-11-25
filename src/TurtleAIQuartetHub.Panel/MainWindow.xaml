@@ -15,7 +15,7 @@
         FontFamily="Segoe UI"
         FontSize="12"
         WindowStyle="None"
-        ResizeMode="NoResize"
+        ResizeMode="CanMinimize"
         WindowStartupLocation="CenterScreen"
         Topmost="True"
         UseLayoutRounding="True"
@@ -23,6 +23,9 @@
         TextOptions.TextFormattingMode="Display"
         Icon="app.ico"
         PreviewMouseDown="Window_PreviewMouseDown">
+  <!-- ResizeMode="CanMinimize": 大きさは変えさせないまま、Windows に「最小化できるウィンドウ」（WS_MINIMIZEBOX）と伝える。
+       NoResize だとタスクバーのアイコンを押しても最小化されず、他のアプリのように押すたびに最小化⇄復元できなかった。
+       最小化・復元の演出は MainWindow.MinimizeAnimation.cs / MainWindow.RestoreAnimation.cs（SC_MINIMIZE を置き換える）。 -->
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="34"
                         ResizeBorderThickness="0"

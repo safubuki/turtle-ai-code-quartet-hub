@@ -974,6 +974,46 @@ public sealed class WindowArranger
         return true;
     }
 
+    // ウィンドウが載っているディスプレイの全体範囲と作業領域を物理ピクセルで返す。
+    // 両者の差がタスクバーの位置になるので、最小化演出の「吸い込まれる方向」の判定に使う。
+    public bool TryGetMonitorAreasForWindow(IntPtr windowHandle, out WindowBounds monitorBounds, out WindowBounds workAreaBounds)
+    {
+        monitorBounds = default;
+        workAreaBounds = default;
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        var monitorHandle = MonitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST);
+        if (monitorHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var info = new MONITORINFO
+        {
+            cbSize = Marshal.SizeOf<MONITORINFO>()
+        };
+
+        if (!GetMonitorInfo(monitorHandle, ref info))
+        {
+            return false;
+        }
+
+        monitorBounds = new WindowBounds(
+            info.rcMonitor.Left,
+            info.rcMonitor.Top,
+            Math.Max(0, info.rcMonitor.Right - info.rcMonitor.Left),
+            Math.Max(0, info.rcMonitor.Bottom - info.rcMonitor.Top));
+        workAreaBounds = new WindowBounds(
+            info.rcWork.Left,
+            info.rcWork.Top,
+            Math.Max(0, info.rcWork.Right - info.rcWork.Left),
+            Math.Max(0, info.rcWork.Bottom - info.rcWork.Top));
+        return true;
+    }
+
     // 指定ディスプレイ（GetSlotMonitorIndex などで得た正規化済みインデックス）の作業領域を
     // 物理ピクセルで返す。最大化されたウィンドウが覆う範囲＝作業領域なので、その中央に
     // フォーカス名のオーバーレイを重ねるための座標計算に使う。

@@ -64,6 +64,8 @@ AiOrbitGlowTests.Run(failures);
 AiDoneFireflyTests.Run(failures);
 await PublishStopPanelTests.RunAsync(failures);
 await LaunchPresentationTests.RunAsync(failures);
+MinimizeAnimationTests.Run(failures);
+RestoreAnimationTests.Run(failures);
 
 if (failures.Count > 0)
 {
@@ -98,6 +100,8 @@ Console.WriteLine($"AI 作業中 LED 周回エフェクトのチェックに合�
 Console.WriteLine($"AI 完了ホタル点滅・IDE/CLI 枠切り抜きのチェックに合格しました ({AiDoneFireflyTests.Count}/{AiDoneFireflyTests.Count})。");
 Console.WriteLine($"配布ビルド前のアプリ自動終了チェックに合格しました ({PublishStopPanelTests.Count}/{PublishStopPanelTests.Count})。");
 Console.WriteLine($"起動演出・ステルス起動・一斉表示のチェックに合格しました ({LaunchPresentationTests.Count}/{LaunchPresentationTests.Count})。");
+Console.WriteLine($"最小化のタスクバー吸い込み演出のチェックに合格しました ({MinimizeAnimationTests.Count}/{MinimizeAnimationTests.Count})。");
+Console.WriteLine($"最小化からの復元演出のチェックに合格しました ({RestoreAnimationTests.Count}/{RestoreAnimationTests.Count})。");
 return 0;
 
 async Task VerifyAsync(

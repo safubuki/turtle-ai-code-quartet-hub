@@ -260,6 +260,7 @@ public partial class MainWindow
 
         _isExitAnimationRunning = true;
         CompleteStartupRevealImmediately();
+        CompleteRestoreRevealImmediately();
 
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero
@@ -452,7 +453,14 @@ public partial class MainWindow
         private readonly Canvas _canvas = new();
         private readonly Grid _stage = new();
         private readonly Border _bodyContainer;
+        private readonly Grid _crispLayer = new();
         private readonly Border _edgeGlow;
+        // 最小化のときだけ使う、あらかじめぼかしたパネル画像（軽い／強い）。くっきりした層の後ろに重ね、
+        // 入れ替えていくことで輪郭ごと空気に溶けるように見せる（毎フレームの BlurEffect は使わない）。
+        private readonly Border _lightSoftLayer = CreateSoftLayer();
+        private readonly Border _heavySoftLayer = CreateSoftLayer();
+        private SoftenedPanelImage? _lightSoftImage;
+        private SoftenedPanelImage? _heavySoftImage;
         private readonly ScaleTransform _bodyScale;
         private readonly TranslateTransform _bodyTranslate;
         private DpiScale _dpi = new(1, 1);
@@ -515,10 +523,15 @@ public partial class MainWindow
                 Opacity = 0.0
             };
 
+            _crispLayer.Children.Add(plate);
+            _crispLayer.Children.Add(imageLayer);
+            _crispLayer.Children.Add(_edgeGlow);
+
+            // 奥から「強いぼかし → 軽いぼかし → くっきり」の順に重ねる（ぼかし層は最小化のときだけ表示する）。
             var contentGrid = new Grid();
-            contentGrid.Children.Add(plate);
-            contentGrid.Children.Add(imageLayer);
-            contentGrid.Children.Add(_edgeGlow);
+            contentGrid.Children.Add(_heavySoftLayer);
+            contentGrid.Children.Add(_lightSoftLayer);
+            contentGrid.Children.Add(_crispLayer);
 
             var transformGroup = new TransformGroup();
             transformGroup.Children.Add(_bodyScale);
@@ -544,9 +557,62 @@ public partial class MainWindow
             Canvas.SetTop(_stage, local.Top);
             _stage.Width = local.Width;
             _stage.Height = local.Height;
+            ApplySoftLayerMargins(local.Width, local.Height);
             _stage.Measure(new Size(local.Width, local.Height));
             _stage.Arrange(new Rect(0, 0, local.Width, local.Height));
             return _stage.DesiredSize;
+        }
+
+        // テスト用: ぼかし層（強い）の配置後の大きさ。輪郭の外側へにじむ分だけパネルより大きくなる。
+        public Size HeavySoftLayerRenderSizeForTesting => _heavySoftLayer.RenderSize;
+
+        // 最小化の前に呼ぶ。ぼかし画像は ShowGhost で実寸が決まったときに、外側へにじむ分だけ広げて置く。
+        public void SetSoftenedImages(SoftenedPanelImage light, SoftenedPanelImage heavy)
+        {
+            _lightSoftImage = light;
+            _heavySoftImage = heavy;
+            _lightSoftLayer.Background = CreateFrozenImageBrush(light.Image);
+            _heavySoftLayer.Background = CreateFrozenImageBrush(heavy.Image);
+            _lightSoftLayer.Visibility = Visibility.Visible;
+            _heavySoftLayer.Visibility = Visibility.Visible;
+        }
+
+        private void ApplySoftLayerMargins(double stageWidth, double stageHeight)
+        {
+            if (_lightSoftImage is { } light)
+            {
+                _lightSoftLayer.Margin = CreateBleedMargin(light, stageWidth, stageHeight);
+            }
+
+            if (_heavySoftImage is { } heavy)
+            {
+                _heavySoftLayer.Margin = CreateBleedMargin(heavy, stageWidth, stageHeight);
+            }
+        }
+
+        private static Thickness CreateBleedMargin(SoftenedPanelImage image, double stageWidth, double stageHeight)
+        {
+            var x = stageWidth * image.MarginFractionX;
+            var y = stageHeight * image.MarginFractionY;
+            return new Thickness(-x, -y, -x, -y);
+        }
+
+        private static Border CreateSoftLayer()
+        {
+            return new Border
+            {
+                Opacity = 0.0,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false
+            };
+        }
+
+        private static ImageBrush CreateFrozenImageBrush(BitmapSource image)
+        {
+            // 縮小してぼかした画像を引き伸ばして使う（ぼけているので引き伸ばしても粗さは見えない）。
+            var brush = new ImageBrush(image) { Stretch = Stretch.Fill };
+            brush.Freeze();
+            return brush;
         }
 
         public void ShowGhost()
@@ -564,6 +630,7 @@ public partial class MainWindow
             Canvas.SetTop(_stage, local.Top);
             _stage.Width = local.Width;
             _stage.Height = local.Height;
+            ApplySoftLayerMargins(local.Width, local.Height);
             Show();
         }
 
@@ -608,6 +675,106 @@ public partial class MainWindow
             edgePulse.KeyFrames.Add(new EasingDoubleKeyFrame(0.0, KeyTime.FromTimeSpan(ExitFadeDuration)) { EasingFunction = ease });
             _edgeGlow.BeginAnimation(OpacityProperty, edgePulse);
         }
+
+        // 最小化: パネル全体がタスクバーのボタンとほぼ同じ大きさまで縮みながら、ボタンの中心へ吸い寄せられて消える。
+        // 縮小の基準はパネルの中央、移動はパネル中心→ボタン中心。移動と縮みを同じ曲線で進めるので、
+        // パネルの四隅がそろってボタンへ集まっていくように見える（横幅だけ少し先に細らせて吸い口の形にする）。
+        // 飛びながら「くっきり → 軽くぼけ → 強くぼけ」と重ねた画像を入れ替えて輪郭ごと空気に溶かし、
+        // ボタンへ届く手前（道のりの約 9 割）で消えきる。
+        public void PlayMinimizeSink(MinimizeSinkPlan plan, Action onCompleted)
+        {
+            // 計画の移動量は物理 px なので、影武者を置いたディスプレイの倍率で DIP へ直す。
+            var travel = new Vector(plan.Travel.X / _dpi.DpiScaleX, plan.Travel.Y / _dpi.DpiScaleY);
+
+            _bodyContainer.RenderTransformOrigin = new Point(0.5, 0.5);
+
+            var fadeEnd = TimeAt(MinimizeSinkDuration, MinimizeFadeEndRatio);
+            var fade = new DoubleAnimationUsingKeyFrames { Duration = new Duration(fadeEnd) };
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            fade.KeyFrames.Add(new SplineDoubleKeyFrame(0.0, KeyTime.FromTimeSpan(fadeEnd), MinimizeFadeSpline));
+            // Completed は必ず BeginAnimation より前に登録する。消えきった時点で終わる（残りの移動は見えないため待たない）。
+            fade.Completed += (_, _) => onCompleted();
+
+            var duration = MinimizeSinkDuration;
+            _bodyContainer.BeginAnimation(OpacityProperty, fade);
+            _bodyScale.BeginAnimation(ScaleTransform.ScaleXProperty, BuildSplineTimeline(1.0, plan.EndScale, MinimizeNarrowSpline, duration));
+            _bodyScale.BeginAnimation(ScaleTransform.ScaleYProperty, BuildSplineTimeline(1.0, plan.EndScale, MinimizeTravelSpline, duration));
+            _bodyTranslate.BeginAnimation(TranslateTransform.XProperty, BuildSplineTimeline(0.0, travel.X, MinimizeTravelSpline, duration));
+            _bodyTranslate.BeginAnimation(TranslateTransform.YProperty, BuildSplineTimeline(0.0, travel.Y, MinimizeTravelSpline, duration));
+
+            // ぼかし画像を用意できなかったときは、くっきりした層のまま全体の薄れだけで消す。
+            if (_lightSoftImage is null || _heavySoftImage is null)
+            {
+                return;
+            }
+
+            // くっきりした層（枠・画像）は早めに引き、後ろの軽いぼかし→強いぼかしへ受け渡す。
+            _crispLayer.BeginAnimation(OpacityProperty, BuildBlendTimeline(duration, MinimizeCrispBlend));
+            _lightSoftLayer.BeginAnimation(OpacityProperty, BuildBlendTimeline(duration, MinimizeLightSoftBlend));
+            _heavySoftLayer.BeginAnimation(OpacityProperty, BuildBlendTimeline(duration, MinimizeHeavySoftBlend));
+        }
+
+        // 復元: 最小化をそっくり逆に再生する。タスクバーのボタンから、強くぼけたもやが集まるように現れ、
+        // 軽いぼかし→くっきりへ戻りながら元の大きさへ広がって、元の位置にふわっと収まる。
+        // 最後のコマは本物と同じ位置・同じ見た目（くっきりした層だけが不透明）なので、呼び出し側は完了後に
+        // 本物の cloak を外してから影武者を閉じる。
+        public void PlayRestoreReveal(MinimizeSinkPlan plan, Action onCompleted)
+        {
+            var duration = RestoreRevealDuration;
+            var travel = new Vector(plan.Travel.X / _dpi.DpiScaleX, plan.Travel.Y / _dpi.DpiScaleY);
+
+            _bodyContainer.RenderTransformOrigin = new Point(0.5, 0.5);
+
+            // 押した直後から待たせないよう、最小化の「消えきったあとの区間」は逆再生せず、はじめからボタン付近でふわっと現れ始める。
+            var appear = new DoubleAnimationUsingKeyFrames { Duration = new Duration(duration) };
+            appear.KeyFrames.Add(new LinearDoubleKeyFrame(0.0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            appear.KeyFrames.Add(new SplineDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(duration), RestoreFadeSpline));
+
+            var travelX = BuildSplineTimeline(travel.X, 0.0, RestoreTravelSpline, duration);
+            // Completed は必ず BeginAnimation より前に登録する（いちばん長い移動の終わり＝元の位置に収まった時点）。
+            travelX.Completed += (_, _) => onCompleted();
+
+            _bodyContainer.BeginAnimation(OpacityProperty, appear);
+            _bodyScale.BeginAnimation(ScaleTransform.ScaleXProperty, BuildSplineTimeline(plan.EndScale, 1.0, RestoreNarrowSpline, duration));
+            _bodyScale.BeginAnimation(ScaleTransform.ScaleYProperty, BuildSplineTimeline(plan.EndScale, 1.0, RestoreTravelSpline, duration));
+            _bodyTranslate.BeginAnimation(TranslateTransform.XProperty, travelX);
+            _bodyTranslate.BeginAnimation(TranslateTransform.YProperty, BuildSplineTimeline(travel.Y, 0.0, RestoreTravelSpline, duration));
+
+            if (_lightSoftImage is null || _heavySoftImage is null)
+            {
+                return;
+            }
+
+            _crispLayer.BeginAnimation(OpacityProperty, BuildBlendTimeline(duration, MirrorBlendPoints(MinimizeCrispBlend)));
+            _lightSoftLayer.BeginAnimation(OpacityProperty, BuildBlendTimeline(duration, MirrorBlendPoints(MinimizeLightSoftBlend)));
+            _heavySoftLayer.BeginAnimation(OpacityProperty, BuildBlendTimeline(duration, MirrorBlendPoints(MinimizeHeavySoftBlend)));
+        }
+
+        // from→to を、指定の時間で指定の曲線（CSS の cubic-bezier と同じ KeySpline）に沿って動かす。
+        private static DoubleAnimationUsingKeyFrames BuildSplineTimeline(double from, double to, KeySpline spline, TimeSpan duration)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames { Duration = new Duration(duration) };
+            animation.KeyFrames.Add(new LinearDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            animation.KeyFrames.Add(new SplineDoubleKeyFrame(to, KeyTime.FromTimeSpan(duration), spline));
+            return animation;
+        }
+
+        // （全体時間に対する割合, 不透明度）の点を、なめらかな S 字（MinimizeBlendSpline）でつなぐ。
+        private static DoubleAnimationUsingKeyFrames BuildBlendTimeline(TimeSpan duration, (double Ratio, double Value)[] points)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames { Duration = new Duration(duration) };
+            foreach (var (ratio, value) in points)
+            {
+                var keyTime = KeyTime.FromTimeSpan(TimeAt(duration, ratio));
+                animation.KeyFrames.Add(ratio <= 0.0
+                    ? new LinearDoubleKeyFrame(value, keyTime)
+                    : new SplineDoubleKeyFrame(value, keyTime, MinimizeBlendSpline));
+            }
+
+            return animation;
+        }
+
+        public Point BodyRenderTransformOriginForTesting => _bodyContainer.RenderTransformOrigin;
 
         private static SolidColorBrush CreateFrozenSolid(Color color)
         {

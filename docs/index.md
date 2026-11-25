@@ -33,7 +33,7 @@ docs/
 | ファイル | この資料の内容 |
 |---|---|
 | [ai-notification-hooks.md](guides/ai-notification-hooks.md) | 現在の AI フック設定、設定ファイルの場所、通知がカルテットハブへ届く経路、バッジの見方、通知が届かないときの確認方法。 |
-| [ui-animation-guide.md](guides/ui-animation-guide.md) | 本体起動・終了、モード切替、ワークスペース起動／終了（5 層遮蔽・1 つずつランプ点灯・完了ワンクッション）、AI 通知のアニメーション設計と WPF 実装原則・5 重フェイルセーフ。 |
+| [ui-animation-guide.md](guides/ui-animation-guide.md) | 本体起動・終了・最小化（タスクバーのボタンへ吸い込み）と復元（ボタンから広がる）、モード切替、ワークスペース起動／終了（5 層遮蔽・1 つずつランプ点灯・完了ワンクッション）、AI 通知のアニメーション設計と WPF 実装原則・5 重フェイルセーフ。 |
 | [data-folder-diagnostics.md](guides/data-folder-diagnostics.md) | システムモニタの容量解析で表示する診断コード、容量増加の原因、対処方法と開発側の改善案。 |
 
 ## 設計・実装計画 — `design/`
