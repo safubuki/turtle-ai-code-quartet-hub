@@ -694,20 +694,23 @@ internal static class LaunchPresentationTests
     private static void TestFullScreenBackdropPolicy(List<string> failures)
     {
         if (!LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 4)
-            || !LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 1))
+            || !LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 2))
         {
-            failures.Add("起動時に黒い全画面シールドが有効化されませんでした。");
+            failures.Add("複数の一括起動時に黒い全画面シールドが有効化されませんでした。");
         }
 
-        if (!LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 4))
+        if (!LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 4)
+            || !LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 2))
         {
-            failures.Add("複数一括終了時に黒い全画面シールドが有効化されませんでした。");
+            failures.Add("複数の一括終了時に黒い全画面シールドが有効化されませんでした。");
         }
 
-        if (LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 1)
-            || LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 0))
+        if (LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 1)
+            || LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 1)
+            || LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: false, veilTargetCount: 0)
+            || LaunchStagingOverlay.ShouldUseFullScreenBackdrop(isClosingMode: true, veilTargetCount: 0))
         {
-            failures.Add("単体終了または対象 0 件時に不要な黒い全画面シールドが有効化されました。");
+            failures.Add("単体起動・単体終了・クリアまたは対象 0 件時に不要な黒い全画面シールドが有効化されました。");
         }
     }
 
