@@ -11,12 +11,58 @@ namespace TurtleAIQuartetHub.Panel.Services;
 // 縮小表示・極小表示のときに「アプリを終了しますか？」のカード単体だけを表示する独立透過ウィンドウ。
 // 本体 MainWindow を 430x250 へ無理やり縦伸ばししたり、極小ダイヤルの裏から四角い MainWindow を
 // 露出させたりせず、余計な背景・縮小画面・黒余白ゼロで確認カードのみを画面へ浮かべる。
+// 文言と配色は ConfirmCardContent で差し替えられ、極小表示の「すべて閉じる」の確認にも同じカードを使う。
 internal sealed class AppExitConfirmWindow : Window
 {
+    // 確認カードの文言と配色。既定（AppExit）は「アプリを終了しますか？」。
+    internal sealed record ConfirmCardContent(
+        string WindowTitle,
+        string IconText,
+        string Heading,
+        string Subheading,
+        string? NoticeHeading,
+        string NoticeText,
+        string? Footnote,
+        string ConfirmText,
+        bool IsDanger)
+    {
+        public static ConfirmCardContent AppExit { get; } = new(
+            WindowTitle: "終了の確認",
+            IconText: "×",
+            Heading: "アプリを終了しますか？",
+            Subheading: "管理中の IDE / CLI ウィンドウは閉じません。",
+            NoticeHeading: null,
+            NoticeText: "パネルのみ終了します。作業中のウィンドウはそのまま残ります。",
+            Footnote: null,
+            ConfirmText: "終了する",
+            IsDanger: false);
+
+        // 標準表示の「すべて閉じる」の確認（MainWindow.xaml の CloseAllConfirmOverlay）と同じ文言・黄色の警告配色。
+        public static ConfirmCardContent CloseAll(int closeTargetCount) => new(
+            WindowTitle: "すべて閉じるの確認",
+            IconText: "!",
+            Heading: "すべて閉じていいですか？",
+            Subheading: $"{closeTargetCount}個の管理中ウィンドウを閉じます。",
+            NoticeHeading: "対象の管理中ウィンドウを終了します。",
+            NoticeText: "現在のスロット設定は閉じる前に保存されます。",
+            Footnote: "未保存のエディター変更がある場合は、VS Code 側の確認が表示されます。",
+            ConfirmText: "閉じる",
+            IsDanger: true);
+    }
+
     private const double CardWidthDip = 372.0;
     private const double ShadowPaddingDip = 12.0;
     private const uint SwpNoSize = 0x0001;
     private static readonly IntPtr HwndTopmost = new(-1);
+
+    // 「すべて閉じる」用の警告配色（標準表示の CloseAllConfirmOverlay・DangerButtonStyle と同色）。
+    private static readonly Brush WarningBorderBrush = CreateFrozenBrush(Color.FromRgb(0xA8, 0x87, 0x34));
+    private static readonly Brush WarningIconBgBrush = CreateFrozenBrush(Color.FromRgb(0x2B, 0x24, 0x15));
+    private static readonly Brush WarningIconFgBrush = CreateFrozenBrush(Color.FromRgb(0xF2, 0xCA, 0x57));
+    private static readonly Brush DangerBgBrush = CreateFrozenBrush(Color.FromRgb(0x6F, 0x2D, 0x27));
+    private static readonly Brush DangerHoverBrush = CreateFrozenBrush(Color.FromRgb(0x84, 0x37, 0x30));
+    private static readonly Brush DangerBorderBrush = CreateFrozenBrush(Color.FromRgb(0xB3, 0x57, 0x4E));
+    private static readonly Brush DangerTextBrush = CreateFrozenBrush(Color.FromRgb(0xFF, 0xF4, 0xF2));
 
     private static readonly Brush SurfaceBrush = CreateFrozenBrush(Color.FromRgb(0x15, 0x1A, 0x17));
     private static readonly Brush AccentBrush = CreateFrozenBrush(Color.FromRgb(0x45, 0xD4, 0x83));
@@ -41,16 +87,22 @@ internal sealed class AppExitConfirmWindow : Window
     private readonly Button _confirmButton;
     private bool _resultDispatched;
 
+    internal ConfirmCardContent CardContent { get; }
+
     public AppExitConfirmWindow(
         Rect anchorScreenRectPx,
         WindowArranger.WindowBounds? workAreaPx,
         Action onConfirmed,
-        Action onCanceled)
+        Action onCanceled,
+        ConfirmCardContent? content = null)
     {
         _anchorScreenRectPx = anchorScreenRectPx;
         _workAreaPx = workAreaPx;
         _onConfirmed = onConfirmed;
         _onCanceled = onCanceled;
+        CardContent = content ?? ConfirmCardContent.AppExit;
+        var card = CardContent;
+        var frameBrush = card.IsDanger ? WarningBorderBrush : AccentBrush;
 
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -60,7 +112,7 @@ internal sealed class AppExitConfirmWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         ShowInTaskbar = false;
         Topmost = true;
-        Title = "終了の確認";
+        Title = card.WindowTitle;
 
         _cancelButton = CreateActionButton(
             text: "キャンセル",
@@ -68,16 +120,18 @@ internal sealed class AppExitConfirmWindow : Window
             hoverBackground: SecondaryHoverBrush,
             border: SecondaryBorderBrush,
             foreground: TextBrush,
+            focusBorder: frameBrush,
             isCancel: true);
         _cancelButton.Margin = new Thickness(0, 0, 8, 0);
         _cancelButton.Click += (_, _) => DispatchCancelAndClose();
 
         _confirmButton = CreateActionButton(
-            text: "終了する",
-            background: AccentDarkBrush,
-            hoverBackground: AccentHoverBrush,
-            border: AccentBrush,
-            foreground: ConfirmTextBrush,
+            text: card.ConfirmText,
+            background: card.IsDanger ? DangerBgBrush : AccentDarkBrush,
+            hoverBackground: card.IsDanger ? DangerHoverBrush : AccentHoverBrush,
+            border: card.IsDanger ? DangerBorderBrush : AccentBrush,
+            foreground: card.IsDanger ? DangerTextBrush : ConfirmTextBrush,
+            focusBorder: frameBrush,
             isCancel: false);
         _confirmButton.Click += (_, _) => DispatchConfirmAndClose();
 
@@ -86,17 +140,17 @@ internal sealed class AppExitConfirmWindow : Window
             Width = 36,
             Height = 36,
             CornerRadius = new CornerRadius(10),
-            Background = AccentDarkBrush,
-            BorderBrush = AccentBrush,
+            Background = card.IsDanger ? WarningIconBgBrush : AccentDarkBrush,
+            BorderBrush = frameBrush,
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 0, 12, 0),
             Child = new TextBlock
             {
-                Text = "×",
+                Text = card.IconText,
                 FontFamily = new FontFamily("Segoe UI"),
                 FontSize = 18,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = AccentBrush,
+                FontWeight = card.IsDanger ? FontWeights.Bold : FontWeights.SemiBold,
+                Foreground = card.IsDanger ? WarningIconFgBrush : AccentBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
@@ -105,7 +159,7 @@ internal sealed class AppExitConfirmWindow : Window
         var headerTexts = new StackPanel();
         headerTexts.Children.Add(new TextBlock
         {
-            Text = "アプリを終了しますか？",
+            Text = card.Heading,
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
@@ -114,7 +168,7 @@ internal sealed class AppExitConfirmWindow : Window
         headerTexts.Children.Add(new TextBlock
         {
             Margin = new Thickness(0, 5, 0, 0),
-            Text = "管理中の IDE / CLI ウィンドウは閉じません。",
+            Text = card.Subheading,
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
@@ -129,6 +183,30 @@ internal sealed class AppExitConfirmWindow : Window
         headerGrid.Children.Add(iconBadge);
         headerGrid.Children.Add(headerTexts);
 
+        var noticePanel = new StackPanel();
+        if (!string.IsNullOrEmpty(card.NoticeHeading))
+        {
+            noticePanel.Children.Add(new TextBlock
+            {
+                Text = card.NoticeHeading,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = TextBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        noticePanel.Children.Add(new TextBlock
+        {
+            Margin = string.IsNullOrEmpty(card.NoticeHeading) ? new Thickness(0) : new Thickness(0, 4, 0, 0),
+            Text = card.NoticeText,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = string.IsNullOrEmpty(card.NoticeHeading) ? 12 : 11,
+            Foreground = string.IsNullOrEmpty(card.NoticeHeading) ? NoticeTextBrush : MutedTextBrush,
+            TextWrapping = TextWrapping.Wrap
+        });
+
         var noticeBox = new Border
         {
             Margin = new Thickness(0, 14, 0, 0),
@@ -137,14 +215,7 @@ internal sealed class AppExitConfirmWindow : Window
             BorderBrush = NoticeBorderBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
-            Child = new TextBlock
-            {
-                Text = "パネルのみ終了します。作業中のウィンドウはそのまま残ります。",
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 12,
-                Foreground = NoticeTextBrush,
-                TextWrapping = TextWrapping.Wrap
-            }
+            Child = noticePanel
         };
 
         var buttonRow = new StackPanel
@@ -156,26 +227,33 @@ internal sealed class AppExitConfirmWindow : Window
         buttonRow.Children.Add(_cancelButton);
         buttonRow.Children.Add(_confirmButton);
 
-        var cardGrid = new Grid();
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(headerGrid, 0);
-        Grid.SetRow(noticeBox, 1);
-        Grid.SetRow(buttonRow, 2);
-        cardGrid.Children.Add(headerGrid);
-        cardGrid.Children.Add(noticeBox);
-        cardGrid.Children.Add(buttonRow);
+        var cardStack = new StackPanel();
+        cardStack.Children.Add(headerGrid);
+        cardStack.Children.Add(noticeBox);
+        if (!string.IsNullOrEmpty(card.Footnote))
+        {
+            cardStack.Children.Add(new TextBlock
+            {
+                Margin = new Thickness(0, 12, 0, 0),
+                Text = card.Footnote,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 12,
+                Foreground = MutedTextBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        cardStack.Children.Add(buttonRow);
 
         var cardBorder = new Border
         {
             Width = CardWidthDip,
             Padding = new Thickness(18),
             Background = SurfaceBrush,
-            BorderBrush = AccentBrush,
+            BorderBrush = frameBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12),
-            Child = cardGrid
+            Child = cardStack
         };
         cardBorder.MouseLeftButtonDown += (_, e) =>
         {
@@ -308,6 +386,36 @@ internal sealed class AppExitConfirmWindow : Window
         return (size, AllowsTransparency, _cancelButton.IsCancel, 0, 0);
     }
 
+    // カードに表示される文字列（見出し・説明・ボタン）を上から順に返す。
+    internal IReadOnlyList<string> CollectCardTextsForTesting()
+    {
+        var texts = new List<string>();
+
+        void Walk(object node)
+        {
+            switch (node)
+            {
+                case TextBlock { Text: { Length: > 0 } text }:
+                    texts.Add(text);
+                    return;
+                case Button { Content: string buttonText }:
+                    texts.Add(buttonText);
+                    return;
+            }
+
+            if (node is DependencyObject dependencyObject)
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(dependencyObject))
+                {
+                    Walk(child);
+                }
+            }
+        }
+
+        Walk(_rootGrid);
+        return texts;
+    }
+
     internal void SimulateConfirmClickForTesting() => DispatchConfirmAndClose();
 
     internal void SimulateCancelClickForTesting() => DispatchCancelAndClose();
@@ -394,6 +502,7 @@ internal sealed class AppExitConfirmWindow : Window
         Brush hoverBackground,
         Brush border,
         Brush foreground,
+        Brush focusBorder,
         bool isCancel)
     {
         var button = new Button
@@ -431,7 +540,7 @@ internal sealed class AppExitConfirmWindow : Window
         template.Triggers.Add(hoverTrigger);
 
         var focusTrigger = new Trigger { Property = IsKeyboardFocusedProperty, Value = true };
-        focusTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, AccentBrush, "BtnBorder"));
+        focusTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, focusBorder, "BtnBorder"));
         template.Triggers.Add(focusTrigger);
 
         button.Template = template;

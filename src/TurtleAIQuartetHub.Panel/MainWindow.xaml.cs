@@ -150,6 +150,7 @@ public partial class MainWindow : Window
     private double _minWidthBeforeExitConfirm;
     private double _minHeightBeforeExitConfirm;
     private AppExitConfirmWindow? _standaloneExitConfirmWindow;
+    private AppExitConfirmWindow? _standaloneCloseAllConfirmWindow;
 
     public MainWindow()
     {
@@ -1612,7 +1613,7 @@ public partial class MainWindow : Window
 
         SuppressFocusedSlotReassertForPanelInput();
 
-        var closeTargets = _statusStore.Slots.Count(slot => slot.WindowHandle != IntPtr.Zero);
+        var closeTargets = CountCloseAllTargets();
         if (closeTargets == 0)
         {
             _statusStore.Message = "閉じる管理中ウィンドウがありません。";
@@ -1623,6 +1624,62 @@ public partial class MainWindow : Window
         CloseAllConfirmCountText.Text = $"{closeTargets}個の管理中ウィンドウを閉じます。";
         CloseAllConfirmOverlay.Visibility = Visibility.Visible;
         CancelCloseAllButton.Focus();
+    }
+
+    private int CountCloseAllTargets() => _statusStore.Slots.Count(slot => slot.WindowHandle != IntPtr.Zero);
+
+    // 極小表示（ダイヤル中央の右クリックメニュー）からの「すべて閉じる」。本体 MainWindow は cloak 中で
+    // 標準表示の確認オーバーレイ（CloseAllConfirmOverlay）が見えないため、終了確認と同じ単独カードで確認する。
+    private void RequestCloseAllFromMicroDial()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        SuppressFocusedSlotReassertForPanelInput();
+        var closeTargets = CountCloseAllTargets();
+        if (closeTargets == 0)
+        {
+            _statusStore.Message = "閉じる管理中ウィンドウがありません。";
+            RefreshAuxiliaryUi();
+            return;
+        }
+
+        if (_standaloneCloseAllConfirmWindow is { } existing)
+        {
+            existing.FocusDefaultButton();
+            return;
+        }
+
+        var (anchorRectPx, workAreaPx) = GetExitConfirmAnchorAndWorkArea();
+        var dialog = new AppExitConfirmWindow(
+            anchorRectPx,
+            workAreaPx,
+            onConfirmed: async () =>
+            {
+                _standaloneCloseAllConfirmWindow = null;
+                await CloseAllManagedWindowsAsync();
+            },
+            onCanceled: () =>
+            {
+                _standaloneCloseAllConfirmWindow = null;
+                ScheduleFocusedSlotReassert();
+            },
+            AppExitConfirmWindow.ConfirmCardContent.CloseAll(closeTargets));
+        _standaloneCloseAllConfirmWindow = dialog;
+        dialog.Show();
+    }
+
+    private void CloseStandaloneCloseAllConfirmDialog()
+    {
+        if (_standaloneCloseAllConfirmWindow is not { } dialog)
+        {
+            return;
+        }
+
+        _standaloneCloseAllConfirmWindow = null;
+        dialog.CloseSilently();
     }
 
     private async void ConfirmCloseAllButton_Click(object sender, RoutedEventArgs e)
@@ -6373,6 +6430,7 @@ public partial class MainWindow : Window
 
         // アプリ終了が確定した瞬間に、起動／終了マスクや黒画面シールド・終了確認・極小円形ダイヤルを確実に片付ける。
         CloseStandaloneExitConfirmDialog();
+        CloseStandaloneCloseAllConfirmDialog();
         _launchStagingOverlay.DismissImmediate();
         DisposeMicroDialWindow();
 
@@ -6440,6 +6498,7 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
         CloseStandaloneExitConfirmDialog();
+        CloseStandaloneCloseAllConfirmDialog();
         CompleteMinimizeAnimationImmediately();
         CompleteRestoreRevealImmediately();
         CleanupLaunchPresentationOnClose();

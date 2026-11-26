@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 29;
+    public const int Count = 30;
 
     public static void Run(List<string> failures)
     {
@@ -18,6 +18,7 @@ internal static class MicroDialTests
         TestMicroDialContextMenuOutsideClickDismissal(failures);
         TestStandaloneExitConfirmWindowStructureAndPlacement(failures);
         TestCompactAndMicroExitConfirmAvoidMainWindowResizeAndUncloak(failures);
+        TestMicroDialCenterMenuHasLaunchAllAndCloseAll(failures);
         TestMicroDialCaptureCoreCircleImage(failures);
         TestMicroDialCaptureCoreCircleImageCenteredWithoutVerticalClip(failures);
         TestMicroDialCoreShadowConcentricWithCore(failures);
@@ -398,6 +399,125 @@ internal static class MicroDialTests
                 cancelWin.CloseSilently();
             }
         });
+    }
+
+    private static void TestMicroDialCenterMenuHasLaunchAllAndCloseAll(List<string> failures)
+    {
+        RunOnStaThread(failures, "極小中央ボタンの右クリックメニューに一括起動・すべて閉じるが並ぶことの検証", () =>
+        {
+            var slots = CreateSampleSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                // 管理中ウィンドウが無い間は「すべて閉じる」を押せない
+                var centerItems = dial.GetContextMenuItemsForTesting(null);
+                if (centerItems.Count < 2
+                    || centerItems[0].Header != TurtleAIQuartetHub.Panel.MainWindow.MicroLaunchAllMenuHeader
+                    || centerItems[1].Header != TurtleAIQuartetHub.Panel.MainWindow.MicroCloseAllMenuHeader)
+                {
+                    throw new InvalidOperationException(
+                        $"中央メニューの先頭が一括起動・すべて閉じるになっていません ({string.Join(" / ", centerItems.Select(i => i.Header))})。");
+                }
+
+                if (centerItems[1].IsEnabled)
+                {
+                    throw new InvalidOperationException("管理中ウィンドウが無いのに「すべて閉じる」が押せる状態です。");
+                }
+
+                slots[0].WindowHandle = new IntPtr(0x1234);
+                var withWindowItems = dial.GetContextMenuItemsForTesting(null);
+                if (!withWindowItems[1].IsEnabled)
+                {
+                    throw new InvalidOperationException("管理中ウィンドウがあるのに「すべて閉じる」が押せません。");
+                }
+
+                // 扇（スロット）上のメニューには一括操作を混ぜない
+                var sectorHeaders = dial.GetContextMenuItemsForTesting(0).Select(i => i.Header).ToList();
+                if (sectorHeaders.Contains(TurtleAIQuartetHub.Panel.MainWindow.MicroLaunchAllMenuHeader) || sectorHeaders.Contains(TurtleAIQuartetHub.Panel.MainWindow.MicroCloseAllMenuHeader))
+                {
+                    throw new InvalidOperationException("扇の右クリックメニューに一括起動・すべて閉じるが混ざっています。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+
+            // 「すべて閉じる」の単独確認カードは標準表示の確認と同じ文言で、確定は 1 回だけ届く
+            var workArea = new WindowArranger.WindowBounds(0, 0, 1920, 1040);
+            var anchor = new Rect(902, 462, 116, 116);
+            var confirmed = 0;
+            var canceled = 0;
+            var closeAllWin = new AppExitConfirmWindow(
+                anchor,
+                workArea,
+                () => confirmed++,
+                () => canceled++,
+                AppExitConfirmWindow.ConfirmCardContent.CloseAll(3));
+            try
+            {
+                var texts = closeAllWin.CollectCardTextsForTesting();
+                string[] expected = ["すべて閉じていいですか？", "3個の管理中ウィンドウを閉じます。", "キャンセル", "閉じる"];
+                if (expected.Any(text => !texts.Contains(text)) || texts.Contains("アプリを終了しますか？"))
+                {
+                    throw new InvalidOperationException($"すべて閉じるの確認カードの文言が不正です ({string.Join(" / ", texts)})。");
+                }
+
+                closeAllWin.SimulateConfirmClickForTesting();
+                closeAllWin.SimulateConfirmClickForTesting();
+                if (confirmed != 1 || canceled != 0)
+                {
+                    throw new InvalidOperationException($"すべて閉じるの確定が 1 回だけ届きませんでした (confirm={confirmed}, cancel={canceled})。");
+                }
+            }
+            finally
+            {
+                closeAllWin.CloseSilently();
+            }
+
+            // 既定（引数なし）は従来どおり終了確認の文言のまま
+            var exitWin = new AppExitConfirmWindow(anchor, workArea, () => { }, () => { });
+            try
+            {
+                var exitTexts = exitWin.CollectCardTextsForTesting();
+                if (!exitTexts.Contains("アプリを終了しますか？") || !exitTexts.Contains("終了する"))
+                {
+                    throw new InvalidOperationException($"既定の終了確認カードの文言が変わっています ({string.Join(" / ", exitTexts)})。");
+                }
+            }
+            finally
+            {
+                exitWin.CloseSilently();
+            }
+        });
+
+        // 本番のメニュー（MainWindow 側）も、扇以外で一括操作を出し、標準表示と同じ処理へつながること
+        var panelDir = System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel"));
+        var slotMenuCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.SlotContextMenu.cs"));
+        var mainCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.xaml.cs"));
+        if (!slotMenuCs.Contains("AddMicroBulkActionMenuItems(menu);", StringComparison.Ordinal)
+            || !slotMenuCs.Contains("await LaunchAllMissingAsync()", StringComparison.Ordinal)
+            || !slotMenuCs.Contains("RequestCloseAllFromMicroDial", StringComparison.Ordinal))
+        {
+            failures.Add("極小中央メニューの一括起動・すべて閉じるが標準表示と同じ処理（LaunchAllMissingAsync / 確認付きすべて閉じる）につながっていません。");
+        }
+
+        var requestStart = mainCs.IndexOf("private void RequestCloseAllFromMicroDial()", StringComparison.Ordinal);
+        var requestEnd = requestStart < 0 ? -1 : mainCs.IndexOf("private void CloseStandaloneCloseAllConfirmDialog()", requestStart, StringComparison.Ordinal);
+        if (requestStart < 0 || requestEnd <= requestStart)
+        {
+            failures.Add("MainWindow.xaml.cs に RequestCloseAllFromMicroDial が見つかりません。");
+            return;
+        }
+
+        var requestBody = mainCs[requestStart..requestEnd];
+        if (!requestBody.Contains("ConfirmCardContent.CloseAll(", StringComparison.Ordinal)
+            || !requestBody.Contains("await CloseAllManagedWindowsAsync();", StringComparison.Ordinal)
+            || requestBody.Contains("CloseAllConfirmOverlay", StringComparison.Ordinal))
+        {
+            failures.Add("極小表示のすべて閉じるが、単独確認カード → CloseAllManagedWindowsAsync の経路になっていません。");
+        }
     }
 
     private static void TestCompactAndMicroExitConfirmAvoidMainWindowResizeAndUncloak(List<string> failures)

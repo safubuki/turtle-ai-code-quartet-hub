@@ -53,7 +53,8 @@ public partial class MainWindow
     // 極小表示（円形オービット・ダイヤル）の右クリックメニュー。
     // 扇（スロット）上では先頭に「起動する／閉じる」を置き、続けて縮小表示と同じスロット操作一式を並べ、
     // 末尾に極小固有の「普段は透過する（10% 刻みサブメニュー）」「画面の中央へ戻す」を添える。
-    // 扇以外（中央ボタン等）では極小固有の 2 項目のみを表示する。
+    // 扇以外（中央の「非／表」ボタン等）では、先頭に標準表示のフッターと同じ「一括起動（Launch Quartet）」
+    // 「すべて閉じる...」を置き、続けて極小固有の 2 項目を表示する。
     internal ContextMenu BuildMicroDialContextMenu(
         WindowSlot? slot,
         bool ghostOpacityEnabled,
@@ -75,6 +76,11 @@ public partial class MainWindow
             PopulateSlotContextMenuItems(menu, slot, tagHost, includePowerAction: true);
             menu.Items.Add(new Separator());
         }
+        else
+        {
+            AddMicroBulkActionMenuItems(menu);
+            menu.Items.Add(new Separator());
+        }
 
         menu.Items.Add(CreateMicroGhostOpacitySubmenu(ghostOpacityEnabled, ghostOpacityPercent, onGhostOpacityChanged));
 
@@ -87,6 +93,39 @@ public partial class MainWindow
         menu.Items.Add(recenterItem);
 
         return menu;
+    }
+
+    // 標準表示のフッターの「Launch Quartet（一括起動）」「すべて閉じる」と同じ処理を極小表示から呼ぶ。
+    internal const string MicroLaunchAllMenuHeader = "一括起動（Launch Quartet）";
+    internal const string MicroCloseAllMenuHeader = "すべて閉じる...";
+
+    private void AddMicroBulkActionMenuItems(ContextMenu menu)
+    {
+        var canLaunch = !_isBusy && HasLaunchableWorkspaceSlot();
+        var launchItem = CreateStoredMenuItem(
+            MicroLaunchAllMenuHeader,
+            CreateStoredMenuGlyphIcon("\uE768", StoredMenuAccentBrush),
+            canLaunch,
+            async () => await LaunchAllMissingAsync());
+        launchItem.ToolTip = canLaunch
+            ? _statusStore.LaunchButtonToolTip
+            : _isBusy
+                ? "ほかの処理を実行中です。終わってからもう一度お試しください。"
+                : "一括起動できるスロットがありません（起動するアプリが見つかりません）。";
+        menu.Items.Add(launchItem);
+
+        var closeTargets = CountCloseAllTargets();
+        var closeAllItem = CreateStoredMenuItem(
+            MicroCloseAllMenuHeader,
+            CreateStoredMenuGlyphIcon("\uE7E8", StoredMenuDangerBrush),
+            isEnabled: !_isBusy && closeTargets > 0,
+            RequestCloseAllFromMicroDial);
+        closeAllItem.Foreground = StoredMenuDangerBrush;
+        closeAllItem.InputGestureText = closeTargets > 0 ? $"{closeTargets}個" : string.Empty;
+        closeAllItem.ToolTip = closeTargets > 0
+            ? "管理中のウィンドウをすべて閉じます（確認のあと、閉じる前にスロット設定を保存します）。"
+            : "閉じる管理中ウィンドウがありません。";
+        menu.Items.Add(closeAllItem);
     }
 
     private MenuItem CreateMicroGhostOpacitySubmenu(

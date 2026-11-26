@@ -1414,6 +1414,16 @@ internal sealed class MicroDialWindow : Window
             Math.Abs(aOffsetX - cOffsetX));
     }
 
+    // 右クリックメニューの見出し（MenuItem のみ、上から順）と有効状態を返す。sectorIndex=null は中央ボタン等（扇以外）。
+    internal IReadOnlyList<(string Header, bool IsEnabled)> GetContextMenuItemsForTesting(int? sectorIndex)
+    {
+        var slot = sectorIndex is { } index && index >= 0 && index < _slots.Count ? _slots[index] : null;
+        var menu = CreateContextMenuForSlot(slot);
+        return menu.Items.OfType<MenuItem>()
+            .Select(item => (item.Header?.ToString() ?? string.Empty, item.IsEnabled))
+            .ToList();
+    }
+
     // 本体円の背面のソフト影 2 枚が本体円と完全同心か（上下左右の縁取り幅が均一か）を検証する。
     // 戻り値は各影について (上, 下, 左, 右) の本体円外周からのはみ出し幅（DIP）。
     internal (
@@ -2421,6 +2431,16 @@ internal sealed class MicroDialWindow : Window
             var clearItem = CreateDarkMenuItem("登録内容をクリア...", CreateMenuGlyphIcon("\uE75C", PillMissingFgBrush, 12), slot.HasPanelContent);
             clearItem.Foreground = PillMissingFgBrush;
             menu.Items.Add(clearItem);
+            menu.Items.Add(new Separator());
+        }
+        else
+        {
+            // 中央の「非／表」ボタン等（扇以外）: 標準表示のフッターと同じ一括操作を先頭に置く。
+            menu.Items.Add(CreateDarkMenuItem(MainWindow.MicroLaunchAllMenuHeader, CreateMenuGlyphIcon("\uE768", AccentGreenBrush, 12)));
+            var closeTargets = _slots.Count(s => s.WindowHandle != IntPtr.Zero);
+            var closeAllItem = CreateDarkMenuItem(MainWindow.MicroCloseAllMenuHeader, CreateMenuGlyphIcon("\uE7E8", PillMissingFgBrush, 12), closeTargets > 0);
+            closeAllItem.Foreground = PillMissingFgBrush;
+            menu.Items.Add(closeAllItem);
             menu.Items.Add(new Separator());
         }
 
