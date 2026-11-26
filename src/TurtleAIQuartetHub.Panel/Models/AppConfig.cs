@@ -8,6 +8,10 @@ public sealed class AppConfig
 {
     public const string VsCodeApplicationId = "vscode";
     public const string AntigravityCliApplicationId = "antigravity-cli";
+    public const int DefaultMicroGhostOpacityPercent = 30;
+    public const int MinMicroGhostOpacityPercent = 10;
+    public const int MaxMicroGhostOpacityPercent = 90;
+    public const int MicroGhostOpacityStepPercent = 10;
 
     private const string LegacyGeminiCliApplicationId = "gemini";
 
@@ -61,6 +65,18 @@ public sealed class AppConfig
 
     // 極小表示（円形オービット・ダイヤル）で、マウスが乗っていない間は半透明のゴースト表示にするか。
     public bool MicroGhostOpacityEnabled { get; set; } = true;
+
+    // 極小表示（円形オービット・ダイヤル）の非ホバー時の表示濃度（不透明度 %、10〜90 の 10% 刻み、既定 30%）。
+    public int MicroGhostOpacityPercent { get; set; } = DefaultMicroGhostOpacityPercent;
+
+    public static int NormalizeMicroGhostOpacityPercent(int percent)
+    {
+        var clamped = Math.Clamp(percent, MinMicroGhostOpacityPercent, MaxMicroGhostOpacityPercent);
+        var rounded = (int)Math.Round(
+            clamped / (double)MicroGhostOpacityStepPercent,
+            MidpointRounding.AwayFromZero) * MicroGhostOpacityStepPercent;
+        return Math.Clamp(rounded, MinMicroGhostOpacityPercent, MaxMicroGhostOpacityPercent);
+    }
 
     public string DefaultWorkspaceApplicationId { get; set; } = VsCodeApplicationId;
 
@@ -117,6 +133,7 @@ public sealed class AppConfig
         LaunchTimeoutSeconds = Math.Clamp(LaunchTimeoutSeconds, 3, 60);
         RemoteReconnectTimeoutSeconds = Math.Clamp(RemoteReconnectTimeoutSeconds, 1, Math.Min(LaunchTimeoutSeconds, 8));
         StatusRefreshIntervalMilliseconds = Math.Clamp(StatusRefreshIntervalMilliseconds, 250, 5000);
+        MicroGhostOpacityPercent = NormalizeMicroGhostOpacityPercent(MicroGhostOpacityPercent);
         DefaultWorkspaceApplicationId = NormalizeApplicationId(DefaultWorkspaceApplicationId, VsCodeApplicationId);
         VsCodeHttpProxy = VsCodeHttpProxy?.Trim() ?? string.Empty;
         VsCodeHttpNoProxy = VsCodeHttpNoProxy?.Trim() ?? string.Empty;

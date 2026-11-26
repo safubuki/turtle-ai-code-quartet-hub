@@ -220,11 +220,12 @@ public partial class MainWindow
                     onRecenterRequested: RecenterMicroDial,
                     onCoreCenterMoved: OnMicroDialCoreCenterMoved,
                     contextMenuStyle: TryFindResource("PanelContextMenuStyle") as Style,
-                    buildContextMenu: (slot, ghostEnabled, toggleGhost, recenter) =>
-                        BuildMicroDialContextMenu(slot, ghostEnabled, toggleGhost, recenter),
+                    buildContextMenu: (slot, ghostEnabled, ghostPercent, setGhostOpacity, recenter) =>
+                        BuildMicroDialContextMenu(slot, ghostEnabled, ghostPercent, setGhostOpacity, recenter),
                     onOpenDownloadsFolder: () => DownloadsFolderButton_Click(this, new RoutedEventArgs()),
                     onOpenPullRequestInbox: () => PullRequestInboxButton_Click(this, new RoutedEventArgs()),
-                    pullRequestIconGeometry: TryFindResource("GitPullRequestGeometry") as Geometry);
+                    pullRequestIconGeometry: TryFindResource("GitPullRequestGeometry") as Geometry,
+                    ghostOpacityPercent: _statusStore.Config.MicroGhostOpacityPercent);
             }
 
             _microDialSuspendedForOverlay = false;
@@ -544,9 +545,10 @@ public partial class MainWindow
         }
     }
 
-    private void OnMicroDialGhostOpacityChanged(bool enabled)
+    private void OnMicroDialGhostOpacityChanged(bool enabled, int percent)
     {
         _statusStore.Config.MicroGhostOpacityEnabled = enabled;
+        _statusStore.Config.MicroGhostOpacityPercent = AppConfig.NormalizeMicroGhostOpacityPercent(percent);
         try
         {
             _statusStore.Config.SaveToUserConfig();

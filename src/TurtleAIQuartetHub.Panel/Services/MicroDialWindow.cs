@@ -36,7 +36,6 @@ internal sealed class MicroDialWindow : Window
     private const double SectorInnerRadiusDip = 18.5;
     private const double CenterButtonDiameterDip = 30.0;
     private const double DragStartThresholdDip = 7.0;
-    private const double IdleGhostOpacity = 0.48;
     private const double IdleAiAlertOpacity = 0.86;
 
     private static readonly TimeSpan ExpandAnimDuration = TimeSpan.FromMilliseconds(190);
@@ -144,13 +143,13 @@ internal sealed class MicroDialWindow : Window
     private readonly Action _onSwitchCompact;
     private readonly Action _onMinimize;
     private readonly Action _onRequestClose;
-    private readonly Action<bool> _onGhostOpacityChanged;
+    private readonly Action<bool, int> _onGhostOpacityChanged;
     private readonly Action _onRecenterRequested;
     private readonly Action<Point> _onCoreCenterMoved;
     private readonly Action? _onOpenDownloadsFolder;
     private readonly Action? _onOpenPullRequestInbox;
     private readonly Style _contextMenuStyle;
-    private readonly Func<WindowSlot?, bool, Action, Action, ContextMenu>? _buildContextMenu;
+    private readonly Func<WindowSlot?, bool, int, Action<bool, int>, Action, ContextMenu>? _buildContextMenu;
 
     private readonly Grid _stageRoot;
     private readonly Grid _dialRoot;
@@ -187,6 +186,7 @@ internal sealed class MicroDialWindow : Window
 
     private readonly DispatcherTimer _leaveGraceTimer;
     private bool _ghostOpacityEnabled;
+    private int _ghostOpacityPercent;
     private bool _isHovered;
     private bool _isExpanded;
     private bool _isStoredOverviewOpen;
@@ -223,17 +223,19 @@ internal sealed class MicroDialWindow : Window
         Action onSwitchCompact,
         Action onMinimize,
         Action onRequestClose,
-        Action<bool> onGhostOpacityChanged,
+        Action<bool, int> onGhostOpacityChanged,
         Action onRecenterRequested,
         Action<Point> onCoreCenterMoved,
         Style? contextMenuStyle = null,
-        Func<WindowSlot?, bool, Action, Action, ContextMenu>? buildContextMenu = null,
+        Func<WindowSlot?, bool, int, Action<bool, int>, Action, ContextMenu>? buildContextMenu = null,
         Action? onOpenDownloadsFolder = null,
         Action? onOpenPullRequestInbox = null,
-        Geometry? pullRequestIconGeometry = null)
+        Geometry? pullRequestIconGeometry = null,
+        int ghostOpacityPercent = AppConfig.DefaultMicroGhostOpacityPercent)
     {
         _slots = slots;
         _ghostOpacityEnabled = ghostOpacityEnabled;
+        _ghostOpacityPercent = AppConfig.NormalizeMicroGhostOpacityPercent(ghostOpacityPercent);
         _getAuxApplications = getAuxApplications;
         _onSlotActivated = onSlotActivated;
         _onStoredPanelDropped = onStoredPanelDropped;
@@ -512,13 +514,21 @@ internal sealed class MicroDialWindow : Window
 
     public bool GhostOpacityEnabled => _ghostOpacityEnabled;
 
+    public int GhostOpacityPercent => _ghostOpacityPercent;
+
     public bool IsExpanded => _isExpanded;
 
     public int SelectedSectorIndex => _selectedSectorIndex;
 
     public void SetGhostOpacityEnabled(bool enabled)
     {
+        SetGhostOpacity(enabled, _ghostOpacityPercent);
+    }
+
+    public void SetGhostOpacity(bool enabled, int percent)
+    {
         _ghostOpacityEnabled = enabled;
+        _ghostOpacityPercent = AppConfig.NormalizeMicroGhostOpacityPercent(percent);
         UpdateIdleOrActiveOpacity(animate: IsLoaded && !_closed);
     }
 
@@ -985,6 +995,68 @@ internal sealed class MicroDialWindow : Window
             compactCanvas?.Children.OfType<Path>().Count() ?? 0,
             stdFg,
             cmpFg);
+    }
+
+    internal (
+        string InitialGestureText,
+        IReadOnlyList<string> SubmenuHeaders,
+        string GestureAfter20Percent,
+        double IdleOpacityAt20Percent,
+        double AiAlertOpacityAt20Percent,
+        double IdleOpacityAt90Percent,
+        double AiAlertOpacityAt90Percent,
+        string GestureAfterDisabled,
+        double IdleOpacityWhenDisabled) VerifyGhostOpacitySubmenuForTesting()
+    {
+        var initialMenu = CreateContextMenuForSlot(null);
+        var ghostSubmenu = initialMenu.Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).Contains("普段は透過する", StringComparison.Ordinal));
+        var initialGesture = ghostSubmenu.InputGestureText;
+        var subItems = ghostSubmenu.Items.OfType<MenuItem>().ToList();
+        var subHeaders = subItems.Select(m => m.Header?.ToString() ?? string.Empty).ToList();
+
+        // 20% 項目をクリック
+        var item20 = subItems.First(m => (m.Header?.ToString() ?? string.Empty).StartsWith("20%", StringComparison.Ordinal));
+        item20.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        var idle20 = ComputeIdleOpacity(forceNoAiAlert: true);
+        var ai20 = ComputeIdleOpacity(forceAiAlert: true);
+        var menuAfter20 = CreateContextMenuForSlot(null);
+        var gesture20 = menuAfter20.Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).Contains("普段は透過する", StringComparison.Ordinal))
+            .InputGestureText;
+
+        // 90% 項目をクリック（AI 通知時も 0.86 へ下がらず 0.90 を維持すること）
+        var item90 = menuAfter20.Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).Contains("普段は透過する", StringComparison.Ordinal))
+            .Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).StartsWith("90%", StringComparison.Ordinal));
+        item90.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        var idle90 = ComputeIdleOpacity(forceNoAiAlert: true);
+        var ai90 = ComputeIdleOpacity(forceAiAlert: true);
+
+        // 透過しない（100%）項目をクリック
+        var menuAfter90 = CreateContextMenuForSlot(null);
+        var disableItem = menuAfter90.Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).Contains("普段は透過する", StringComparison.Ordinal))
+            .Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).Contains("透過しない", StringComparison.Ordinal));
+        disableItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        var idleDisabled = ComputeIdleOpacity(forceNoAiAlert: true);
+        var menuAfterDisable = CreateContextMenuForSlot(null);
+        var gestureDisabled = menuAfterDisable.Items.OfType<MenuItem>()
+            .First(m => (m.Header?.ToString() ?? string.Empty).Contains("普段は透過する", StringComparison.Ordinal))
+            .InputGestureText;
+
+        return (
+            initialGesture,
+            subHeaders,
+            gesture20,
+            idle20,
+            ai20,
+            idle90,
+            ai90,
+            gestureDisabled,
+            idleDisabled);
     }
 
     internal (bool UsesStaysOpenPopup, bool OpenedFirst, bool ClosedSecond, bool ReopenedThird) VerifyAuxMenuToggleForTesting()
@@ -1655,16 +1727,18 @@ internal sealed class MicroDialWindow : Window
 
     private ContextMenu CreateContextMenuForSlot(WindowSlot? slot)
     {
-        void ToggleGhost()
+        void ApplyGhostOpacity(bool enabled, int percent)
         {
-            _ghostOpacityEnabled = !_ghostOpacityEnabled;
-            _onGhostOpacityChanged(_ghostOpacityEnabled);
+            var normalized = AppConfig.NormalizeMicroGhostOpacityPercent(percent);
+            _ghostOpacityEnabled = enabled;
+            _ghostOpacityPercent = normalized;
+            _onGhostOpacityChanged(enabled, normalized);
             UpdateIdleOrActiveOpacity(animate: true);
         }
 
         if (_buildContextMenu is not null)
         {
-            return _buildContextMenu(slot, _ghostOpacityEnabled, ToggleGhost, _onRecenterRequested);
+            return _buildContextMenu(slot, _ghostOpacityEnabled, _ghostOpacityPercent, ApplyGhostOpacity, _onRecenterRequested);
         }
 
         // 単体テストや MainWindow 非経由で生成された場合も本番と同一のメニュー項目構成を再現する。
@@ -1706,10 +1780,41 @@ internal sealed class MicroDialWindow : Window
             menu.Items.Add(new Separator());
         }
 
+        var normalizedPercent = AppConfig.NormalizeMicroGhostOpacityPercent(_ghostOpacityPercent);
         var ghostIcon = _ghostOpacityEnabled ? CreateMenuGlyphIcon("\uE73E", AccentGreenBrush, 12) : null;
-        var ghostItem = CreateDarkMenuItem("普段は透過する（ゴースト表示）", ghostIcon);
-        ghostItem.Click += (_, _) => ToggleGhost();
-        menu.Items.Add(ghostItem);
+        var ghostSubmenu = CreateDarkMenuItem("普段は透過する（ゴースト表示）", ghostIcon);
+        ghostSubmenu.InputGestureText = _ghostOpacityEnabled ? $"{normalizedPercent}%" : "OFF";
+        for (var percent = AppConfig.MinMicroGhostOpacityPercent;
+             percent <= AppConfig.MaxMicroGhostOpacityPercent;
+             percent += AppConfig.MicroGhostOpacityStepPercent)
+        {
+            var targetPercent = percent;
+            var isSelected = _ghostOpacityEnabled && normalizedPercent == targetPercent;
+            var optionItem = CreateDarkMenuItem(
+                MainWindow.FormatMicroGhostOpacityLabel(targetPercent),
+                isSelected ? CreateMenuGlyphIcon("\uE73E", AccentGreenBrush, 12) : new TextBlock());
+            if (isSelected)
+            {
+                optionItem.InputGestureText = "選択中";
+            }
+
+            optionItem.Click += (_, _) => ApplyGhostOpacity(true, targetPercent);
+            ghostSubmenu.Items.Add(optionItem);
+        }
+
+        ghostSubmenu.Items.Add(new Separator());
+        var disableSelected = !_ghostOpacityEnabled;
+        var disableItem = CreateDarkMenuItem(
+            "透過しない（100%）",
+            disableSelected ? CreateMenuGlyphIcon("\uE73E", AccentGreenBrush, 12) : new TextBlock());
+        if (disableSelected)
+        {
+            disableItem.InputGestureText = "選択中";
+        }
+
+        disableItem.Click += (_, _) => ApplyGhostOpacity(false, normalizedPercent);
+        ghostSubmenu.Items.Add(disableItem);
+        menu.Items.Add(ghostSubmenu);
 
         var recenterItem = CreateDarkMenuItem("画面の中央へ戻す", CreateMenuGlyphIcon("\uE81D", TextMutedBrush, 12));
         recenterItem.Click += (_, _) => _onRecenterRequested();
@@ -1972,8 +2077,14 @@ internal sealed class MicroDialWindow : Window
         iconCol.SetValue(ColumnDefinition.WidthProperty, new GridLength(26));
         var headerCol = new FrameworkElementFactory(typeof(ColumnDefinition));
         headerCol.SetValue(ColumnDefinition.WidthProperty, new GridLength(1, GridUnitType.Star));
+        var gestureCol = new FrameworkElementFactory(typeof(ColumnDefinition));
+        gestureCol.SetValue(ColumnDefinition.WidthProperty, GridLength.Auto);
+        var arrowCol = new FrameworkElementFactory(typeof(ColumnDefinition));
+        arrowCol.SetValue(ColumnDefinition.WidthProperty, GridLength.Auto);
         itemGrid.AppendChild(iconCol);
         itemGrid.AppendChild(headerCol);
+        itemGrid.AppendChild(gestureCol);
+        itemGrid.AppendChild(arrowCol);
 
         var iconPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
         iconPresenter.SetValue(ContentPresenter.ContentProperty, new TemplateBindingExtension(MenuItem.IconProperty));
@@ -1988,12 +2099,63 @@ internal sealed class MicroDialWindow : Window
         headerPresenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         itemGrid.AppendChild(headerPresenter);
 
+        var gestureText = new FrameworkElementFactory(typeof(TextBlock));
+        gestureText.SetValue(Grid.ColumnProperty, 2);
+        gestureText.SetValue(TextBlock.TextProperty, new TemplateBindingExtension(MenuItem.InputGestureTextProperty));
+        gestureText.SetValue(FrameworkElement.MarginProperty, new Thickness(16, 0, 0, 0));
+        gestureText.SetValue(TextBlock.FontSizeProperty, 11.0);
+        gestureText.SetValue(TextBlock.ForegroundProperty, TextMutedBrush);
+        gestureText.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        itemGrid.AppendChild(gestureText);
+
+        var submenuArrow = new FrameworkElementFactory(typeof(TextBlock), "SubmenuArrow");
+        submenuArrow.SetValue(Grid.ColumnProperty, 3);
+        submenuArrow.SetValue(TextBlock.TextProperty, "\uE76C");
+        submenuArrow.SetValue(TextBlock.FontFamilyProperty, new FontFamily("Segoe MDL2 Assets"));
+        submenuArrow.SetValue(TextBlock.FontSizeProperty, 9.0);
+        submenuArrow.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 0, -4, 0));
+        submenuArrow.SetValue(TextBlock.ForegroundProperty, TextMutedBrush);
+        submenuArrow.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        submenuArrow.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+        itemGrid.AppendChild(submenuArrow);
+
         itemBorder.AppendChild(itemGrid);
+
+        var rootGrid = new FrameworkElementFactory(typeof(Grid));
+        rootGrid.AppendChild(itemBorder);
+
+        var submenuBorder = new FrameworkElementFactory(typeof(Border));
+        submenuBorder.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 8, 8));
+        submenuBorder.SetValue(Border.PaddingProperty, new Thickness(4));
+        submenuBorder.SetValue(FrameworkElement.MinWidthProperty, 160.0);
+        submenuBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
+        submenuBorder.SetValue(Border.BackgroundProperty, MenuBgBrush);
+        submenuBorder.SetValue(Border.BorderBrushProperty, MenuBorderBrush);
+        submenuBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        submenuBorder.AppendChild(new FrameworkElementFactory(typeof(ItemsPresenter)));
+
+        var submenuPopup = new FrameworkElementFactory(typeof(Popup), "PART_Popup");
+        submenuPopup.SetValue(Popup.PlacementProperty, PlacementMode.Right);
+        submenuPopup.SetValue(Popup.HorizontalOffsetProperty, 2.0);
+        submenuPopup.SetValue(Popup.VerticalOffsetProperty, -5.0);
+        submenuPopup.SetValue(Popup.AllowsTransparencyProperty, true);
+        submenuPopup.SetValue(UIElement.FocusableProperty, false);
+        submenuPopup.SetValue(Popup.PopupAnimationProperty, PopupAnimation.Fade);
+        submenuPopup.SetBinding(Popup.IsOpenProperty, new System.Windows.Data.Binding(nameof(MenuItem.IsSubmenuOpen))
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent)
+        });
+        submenuPopup.AppendChild(submenuBorder);
+        rootGrid.AppendChild(submenuPopup);
 
         var itemTemplate = new ControlTemplate(typeof(MenuItem))
         {
-            VisualTree = itemBorder
+            VisualTree = rootGrid
         };
+        var submenuHeaderTrigger = new Trigger { Property = MenuItem.RoleProperty, Value = MenuItemRole.SubmenuHeader };
+        submenuHeaderTrigger.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "SubmenuArrow"));
+        itemTemplate.Triggers.Add(submenuHeaderTrigger);
+
         var highlightTrigger = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
         highlightTrigger.Setters.Add(new Setter(Border.BackgroundProperty, MenuHoverBgBrush, "ItemBorder"));
         itemTemplate.Triggers.Add(highlightTrigger);
@@ -2342,9 +2504,10 @@ internal sealed class MicroDialWindow : Window
             return 1.0;
         }
 
+        var idleOpacity = _ghostOpacityPercent / 100.0;
         var hasAiAlert = forceAiAlert || (!forceNoAiAlert && _slots.Any(slot =>
             slot.AiActivity is AiActivityState.Working or AiActivityState.Done));
-        return hasAiAlert ? IdleAiAlertOpacity : IdleGhostOpacity;
+        return hasAiAlert ? Math.Max(idleOpacity, IdleAiAlertOpacity) : idleOpacity;
     }
 
     private void UpdateIdleOrActiveOpacity(bool animate)

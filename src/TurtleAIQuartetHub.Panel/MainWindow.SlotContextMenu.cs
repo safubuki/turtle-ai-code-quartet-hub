@@ -51,12 +51,13 @@ public partial class MainWindow
 
     // 極小表示（円形オービット・ダイヤル）の右クリックメニュー。
     // 扇（スロット）上では先頭に「起動する／閉じる」を置き、続けて縮小表示と同じスロット操作一式を並べ、
-    // 末尾に極小固有の「普段は透過する」「画面の中央へ戻す」を添える。
+    // 末尾に極小固有の「普段は透過する（10% 刻みサブメニュー）」「画面の中央へ戻す」を添える。
     // 扇以外（中央ボタン等）では極小固有の 2 項目のみを表示する。
     internal ContextMenu BuildMicroDialContextMenu(
         WindowSlot? slot,
         bool ghostOpacityEnabled,
-        Action onToggleGhostOpacity,
+        int ghostOpacityPercent,
+        Action<bool, int> onGhostOpacityChanged,
         Action onRecenter)
     {
         var menu = new ContextMenu();
@@ -72,13 +73,7 @@ public partial class MainWindow
             menu.Items.Add(new Separator());
         }
 
-        var ghostItem = new MenuItem
-        {
-            Header = "普段は透過する（ゴースト表示）",
-            Icon = ghostOpacityEnabled ? CreateStoredMenuGlyphIcon("\uE73E", StoredMenuAccentBrush) : null
-        };
-        ghostItem.Click += (_, _) => onToggleGhostOpacity();
-        menu.Items.Add(ghostItem);
+        menu.Items.Add(CreateMicroGhostOpacitySubmenu(ghostOpacityEnabled, ghostOpacityPercent, onGhostOpacityChanged));
 
         var recenterItem = new MenuItem
         {
@@ -90,6 +85,66 @@ public partial class MainWindow
 
         return menu;
     }
+
+    private MenuItem CreateMicroGhostOpacitySubmenu(
+        bool ghostOpacityEnabled,
+        int ghostOpacityPercent,
+        Action<bool, int> onGhostOpacityChanged)
+    {
+        var normalizedPercent = AppConfig.NormalizeMicroGhostOpacityPercent(ghostOpacityPercent);
+        var submenu = new MenuItem
+        {
+            Header = "普段は透過する（ゴースト表示）",
+            Icon = ghostOpacityEnabled ? CreateStoredMenuGlyphIcon("\uE73E", StoredMenuAccentBrush) : null,
+            InputGestureText = ghostOpacityEnabled ? $"{normalizedPercent}%" : "OFF",
+            ToolTip = "マウスが乗っていない間の極小表示の濃さ（不透明度）を 10% 刻みで選びます。"
+        };
+
+        for (var percent = AppConfig.MinMicroGhostOpacityPercent;
+             percent <= AppConfig.MaxMicroGhostOpacityPercent;
+             percent += AppConfig.MicroGhostOpacityStepPercent)
+        {
+            var targetPercent = percent;
+            var isSelected = ghostOpacityEnabled && normalizedPercent == targetPercent;
+            var item = CreateStoredMenuItem(
+                FormatMicroGhostOpacityLabel(targetPercent),
+                isSelected ? CreateStoredMenuGlyphIcon("\uE73E", StoredMenuAccentBrush) : new TextBlock(),
+                isEnabled: true,
+                () => onGhostOpacityChanged(true, targetPercent));
+            if (isSelected)
+            {
+                item.InputGestureText = "選択中";
+            }
+
+            submenu.Items.Add(item);
+        }
+
+        submenu.Items.Add(new Separator());
+
+        var disableSelected = !ghostOpacityEnabled;
+        var disableItem = CreateStoredMenuItem(
+            "透過しない（100%）",
+            disableSelected ? CreateStoredMenuGlyphIcon("\uE73E", StoredMenuAccentBrush) : new TextBlock(),
+            isEnabled: true,
+            () => onGhostOpacityChanged(false, normalizedPercent));
+        if (disableSelected)
+        {
+            disableItem.InputGestureText = "選択中";
+        }
+
+        submenu.Items.Add(disableItem);
+        return submenu;
+    }
+
+    internal static string FormatMicroGhostOpacityLabel(int percent) => percent switch
+    {
+        10 => "10%（もっとも薄い）",
+        20 => "20%（かなり薄い）",
+        30 => "30%（標準・薄め）",
+        50 => "50%（半透明）",
+        90 => "90%（ほぼくっきり）",
+        _ => $"{percent}%"
+    };
 
     private void PopulateSlotContextMenuItems(
         ContextMenu menu,

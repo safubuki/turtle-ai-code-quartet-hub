@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 17;
+    public const int Count = 18;
 
     public static void Run(List<string> failures)
     {
@@ -14,6 +14,7 @@ internal static class MicroDialTests
         TestSmartLabelsDefaultTitleReturnsEmpty(failures);
         TestGhostOpacityConfigDefaultAndBackwardCompat(failures);
         TestMicroDialOffscreenStructureOpacityAndWheel(failures);
+        TestMicroDialGhostOpacitySubmenuTenPercentSteps(failures);
         TestMicroDialCaptureCoreCircleImage(failures);
         TestMicroDialStoredAssignAndHiddenStateTransitions(failures);
         TestMicroDialModeButtonIconUsesCircularDialVector(failures);
@@ -90,16 +91,25 @@ internal static class MicroDialTests
     private static void TestGhostOpacityConfigDefaultAndBackwardCompat(List<string> failures)
     {
         var fresh = new AppConfig();
-        if (!fresh.MicroGhostOpacityEnabled)
+        if (!fresh.MicroGhostOpacityEnabled || fresh.MicroGhostOpacityPercent != AppConfig.DefaultMicroGhostOpacityPercent)
         {
-            failures.Add("AppConfig.MicroGhostOpacityEnabled の既定値が true ではありません。");
+            failures.Add($"AppConfig の極小透過既定値が期待（true / {AppConfig.DefaultMicroGhostOpacityPercent}%）と異なります ({fresh.MicroGhostOpacityEnabled} / {fresh.MicroGhostOpacityPercent}%)。");
         }
 
-        // 旧設定ファイル（MicroGhostOpacityEnabled キー無し）を読み込んでも既定値 true を維持すること。
+        // 旧設定ファイル（MicroGhostOpacityEnabled / MicroGhostOpacityPercent キー無し）を読み込んでも既定値を維持すること。
         var legacy = JsonSerializer.Deserialize<AppConfig>("""{"CodeCommand":"code","Gap":6}""");
-        if (legacy is null || !legacy.MicroGhostOpacityEnabled)
+        if (legacy is null || !legacy.MicroGhostOpacityEnabled || legacy.MicroGhostOpacityPercent != 30)
         {
-            failures.Add("旧設定 JSON からの復元時に MicroGhostOpacityEnabled が true になりませんでした。");
+            failures.Add("旧設定 JSON からの復元時に極小透過既定値（true / 30%）が維持されませんでした。");
+        }
+
+        // 10〜90% の 10% 刻み正規化（範囲外クランプ＆端数丸め）
+        if (AppConfig.NormalizeMicroGhostOpacityPercent(0) != 10
+            || AppConfig.NormalizeMicroGhostOpacityPercent(26) != 30
+            || AppConfig.NormalizeMicroGhostOpacityPercent(34) != 30
+            || AppConfig.NormalizeMicroGhostOpacityPercent(95) != 90)
+        {
+            failures.Add("AppConfig.NormalizeMicroGhostOpacityPercent のクランプ・10% 刻み丸めが期待と異なります。");
         }
     }
 
@@ -123,12 +133,12 @@ internal static class MicroDialTests
                     throw new InvalidOperationException($"MicroDialWindow のステージ実寸が不足しています ({result.StageSize.Width:0}x{result.StageSize.Height:0})。");
                 }
 
-                if (!(result.IdleGhostOpacityValue is >= 0.35 and <= 0.65))
+                if (Math.Abs(result.IdleGhostOpacityValue - 0.30) > 0.01)
                 {
-                    throw new InvalidOperationException($"非ホバー透過率が想定範囲外です ({result.IdleGhostOpacityValue:0.00})。");
+                    throw new InvalidOperationException($"非ホバー既定透過率が期待（0.30）と異なります ({result.IdleGhostOpacityValue:0.00})。");
                 }
 
-                if (!(result.IdleAiAlertOpacityValue > result.IdleGhostOpacityValue + 0.2))
+                if (!(result.IdleAiAlertOpacityValue > result.IdleGhostOpacityValue + 0.4))
                 {
                     throw new InvalidOperationException($"AI 通知時の透過ブーストが効いていません (idle={result.IdleGhostOpacityValue:0.00}, ai={result.IdleAiAlertOpacityValue:0.00})。");
                 }
@@ -147,6 +157,95 @@ internal static class MicroDialTests
                     || !string.Equals(result.ThirdSectorShortLabel, "Agent", StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException($"扇の短縮ラベルにスマート識別名が反映されていません (A='{result.FirstSectorShortLabel}', C='{result.ThirdSectorShortLabel}')。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialGhostOpacitySubmenuTenPercentSteps(List<string> failures)
+    {
+        RunOnStaThread(failures, "右クリックメニューの 10% 刻み透過度サブメニューと反映検証", () =>
+        {
+            var slots = CreateMixedStatusSlots();
+            var callbackHistory = new List<(bool Enabled, int Percent)>();
+            var dial = new MicroDialWindow(
+                slots,
+                ghostOpacityEnabled: true,
+                getAuxApplications: () => [],
+                onSlotActivated: _ => { },
+                onStoredPanelDropped: (_, _) => { },
+                onSlotSwapped: (_, _) => { },
+                onToggleVisibility: () => { },
+                onToggleStoredOverview: () => { },
+                onPinTop: () => { },
+                onSendBack: () => { },
+                onLaunchAuxApp: _ => { },
+                onSwitchStandard: () => { },
+                onSwitchCompact: () => { },
+                onMinimize: () => { },
+                onRequestClose: () => { },
+                onGhostOpacityChanged: (enabled, percent) => callbackHistory.Add((enabled, percent)),
+                onRecenterRequested: () => { },
+                onCoreCenterMoved: _ => { });
+            try
+            {
+                var info = dial.VerifyGhostOpacitySubmenuForTesting();
+                if (!string.Equals(info.InitialGestureText, "30%", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException($"既定の透過表示ラベルが期待（30%）と異なります ('{info.InitialGestureText}')。");
+                }
+
+                // 10%〜90% の 9 項目＋「透過しない（100%）」の計 10 項目が揃っていること
+                if (info.SubmenuHeaders.Count != 10)
+                {
+                    throw new InvalidOperationException($"透過度サブメニューの項目数が 10 ではありません ({info.SubmenuHeaders.Count})。");
+                }
+
+                for (var p = 10; p <= 90; p += 10)
+                {
+                    if (!info.SubmenuHeaders.Any(h => h.StartsWith($"{p}%", StringComparison.Ordinal)))
+                    {
+                        throw new InvalidOperationException($"透過度サブメニューに {p}% の選択肢がありません。");
+                    }
+                }
+
+                if (!info.SubmenuHeaders.Any(h => h.Contains("透過しない", StringComparison.Ordinal)))
+                {
+                    throw new InvalidOperationException("透過度サブメニューに「透過しない（100%）」がありません。");
+                }
+
+                if (!string.Equals(info.GestureAfter20Percent, "20%", StringComparison.Ordinal)
+                    || Math.Abs(info.IdleOpacityAt20Percent - 0.20) > 0.01
+                    || info.AiAlertOpacityAt20Percent < 0.85)
+                {
+                    throw new InvalidOperationException(
+                        $"20% 選択時の反映が期待と異なります (label='{info.GestureAfter20Percent}', idle={info.IdleOpacityAt20Percent:0.00}, ai={info.AiAlertOpacityAt20Percent:0.00})。");
+                }
+
+                if (Math.Abs(info.IdleOpacityAt90Percent - 0.90) > 0.01
+                    || Math.Abs(info.AiAlertOpacityAt90Percent - 0.90) > 0.01)
+                {
+                    throw new InvalidOperationException(
+                        $"90% 選択時に AI 通知で不透明度が下がっています (idle={info.IdleOpacityAt90Percent:0.00}, ai={info.AiAlertOpacityAt90Percent:0.00})。");
+                }
+
+                if (!string.Equals(info.GestureAfterDisabled, "OFF", StringComparison.Ordinal)
+                    || Math.Abs(info.IdleOpacityWhenDisabled - 1.0) > 0.01)
+                {
+                    throw new InvalidOperationException(
+                        $"透過しない選択時の反映が期待と異なります (label='{info.GestureAfterDisabled}', idle={info.IdleOpacityWhenDisabled:0.00})。");
+                }
+
+                if (callbackHistory.Count != 3
+                    || callbackHistory[0] != (true, 20)
+                    || callbackHistory[1] != (true, 90)
+                    || callbackHistory[2] != (false, 90))
+                {
+                    throw new InvalidOperationException("透過度変更コールバックの通知履歴が期待と異なります。");
                 }
             }
             finally
@@ -493,7 +592,7 @@ internal static class MicroDialTests
                 onSwitchCompact: () => { },
                 onMinimize: () => { },
                 onRequestClose: () => { },
-                onGhostOpacityChanged: _ => { },
+                onGhostOpacityChanged: (_, _) => { },
                 onRecenterRequested: () => { },
                 onCoreCenterMoved: _ => { });
             try
@@ -698,7 +797,7 @@ internal static class MicroDialTests
             onSwitchCompact: () => { },
             onMinimize: () => { },
             onRequestClose: () => { },
-            onGhostOpacityChanged: _ => { },
+            onGhostOpacityChanged: (_, _) => { },
             onRecenterRequested: () => { },
             onCoreCenterMoved: _ => { });
     }
