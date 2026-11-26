@@ -263,12 +263,12 @@ public partial class MainWindow
         CompleteRestoreRevealImmediately();
 
         var handle = new WindowInteropHelper(this).Handle;
+        var fromMicroDial = IsMicroDialActive && _microDialWindow is { IsVisible: true };
         if (handle == IntPtr.Zero
             || !IsVisible
             || WindowState != WindowState.Normal
             || !SystemParameters.ClientAreaAnimation
-            || PanelFrameBorder.ActualWidth <= 0
-            || PanelFrameBorder.ActualHeight <= 0)
+            || (!fromMicroDial && (PanelFrameBorder.ActualWidth <= 0 || PanelFrameBorder.ActualHeight <= 0)))
         {
             Close();
             return;
@@ -281,15 +281,37 @@ public partial class MainWindow
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
             await Task.Delay(ExitOverlayClearSettleDelay);
 
-            UpdateLayout();
-            var panelRect = GetPanelScreenRect();
+            Rect panelRect;
+            BitmapSource panelImage;
+            double cornerRadius;
+            if (fromMicroDial && _microDialWindow is { } dial)
+            {
+                // 極小表示（円形オービット・ダイヤル）では裏の四角い MainWindow を出さず、
+                // 真円コアのまま 680ms かけてふわっと消え失せる。
+                panelRect = dial.GetCoreScreenRect();
+                panelImage = dial.CaptureCoreCircleImage();
+                cornerRadius = MicroDialWindow.CoreRadiusDip;
+            }
+            else
+            {
+                UpdateLayout();
+                panelRect = GetPanelScreenRect();
+                if (panelRect.Width <= 0 || panelRect.Height <= 0)
+                {
+                    Close();
+                    return;
+                }
+
+                panelImage = CapturePanelImage();
+                cornerRadius = 8.0;
+            }
+
             if (panelRect.Width <= 0 || panelRect.Height <= 0)
             {
                 Close();
                 return;
             }
 
-            var panelImage = CapturePanelImage();
             var scale = VisualTreeHelper.GetDpi(this);
             var ghostArea = panelRect;
             ghostArea.Inflate(StartupGhostPadding * scale.DpiScaleX, StartupGhostPadding * scale.DpiScaleY);
@@ -301,13 +323,19 @@ public partial class MainWindow
                 panelImage,
                 initialOpacity: 1.0,
                 initialScale: 1.0,
-                initialOffsetY: 0.0);
+                initialOffsetY: 0.0,
+                cornerRadius: cornerRadius);
             var shownGhost = ghost;
             shownGhost.ContentRendered += async (_, _) =>
             {
                 try
                 {
                     // 影武者が本物と完全一致して描画された瞬間に本物を隠し、隙間ゼロで引き継ぐ。
+                    if (fromMicroDial)
+                    {
+                        _microDialWindow?.HideWithPopups();
+                    }
+
                     SetCloaked(handle, true);
                     WindowArranger.SetTransitionsDisabled(handle, true);
 

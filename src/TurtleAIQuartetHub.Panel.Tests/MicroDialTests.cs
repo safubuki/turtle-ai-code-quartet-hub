@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 19;
+    public const int Count = 21;
 
     public static void Run(List<string> failures)
     {
@@ -16,6 +16,8 @@ internal static class MicroDialTests
         TestMicroDialOffscreenStructureOpacityAndWheel(failures);
         TestMicroDialGhostOpacitySubmenuTenPercentSteps(failures);
         TestMicroDialContextMenuOutsideClickDismissal(failures);
+        TestStandaloneExitConfirmWindowStructureAndPlacement(failures);
+        TestCompactAndMicroExitConfirmAvoidMainWindowResizeAndUncloak(failures);
         TestMicroDialCaptureCoreCircleImage(failures);
         TestMicroDialStoredAssignAndHiddenStateTransitions(failures);
         TestMicroDialModeButtonIconUsesCircularDialVector(failures);
@@ -258,7 +260,7 @@ internal static class MicroDialTests
 
     private static void TestMicroDialContextMenuOutsideClickDismissal(List<string> failures)
     {
-        RunOnStaThread(failures, "右クリックメニューのメニュー外クリック閉鎖・サブメニュー内保護検証", () =>
+        RunOnStaThread(failures, "右クリックメニューのメニュー外クリック・Esc閉鎖・サブメニュー保護検証", () =>
         {
             if (!MicroDialWindow.IsOutsideDismissMouseMessage(0x0201)
                 || !MicroDialWindow.IsOutsideDismissMouseMessage(0x0204)
@@ -266,6 +268,22 @@ internal static class MicroDialTests
                 || MicroDialWindow.IsOutsideDismissMouseMessage(0x0200))
             {
                 throw new InvalidOperationException("マウス押下判定（WM_MOUSEMOVE 除外）が期待と異なります。");
+            }
+
+            if (!MicroDialWindow.IsEscapeDismissKeyMessage(0x0100, 0x1B)
+                || MicroDialWindow.IsEscapeDismissKeyMessage(0x0101, 0x1B)
+                || MicroDialWindow.IsEscapeDismissKeyMessage(0x0100, 0x0D))
+            {
+                throw new InvalidOperationException("Esc キー押下判定が期待と異なります。");
+            }
+
+            // WS_EX_NOACTIVATE 付き Popup への SetForegroundWindow は即閉鎖を招くためコードに残っていないこと。
+            var dialPath = System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel", "Services", "MicroDialWindow.cs"));
+            var dialCode = System.IO.File.ReadAllText(dialPath);
+            if (dialCode.Contains("SetForegroundWindow(", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("MicroDialWindow.cs に即閉鎖を引き起こす SetForegroundWindow 呼び出しが残っています。");
             }
 
             var slots = CreateMixedStatusSlots();
@@ -292,12 +310,116 @@ internal static class MicroDialTests
                 {
                     throw new InvalidOperationException("HideWithPopups 実行後に右クリックメニュー追跡状態が解除されていません。");
                 }
+
+                if (!res.HooksInstallAndUninstallCleanly)
+                {
+                    throw new InvalidOperationException("WH_MOUSE_LL / WH_KEYBOARD_LL フックの登録・解除が正常に完了しませんでした。");
+                }
             }
             finally
             {
                 dial.Close();
             }
         });
+    }
+
+    private static void TestStandaloneExitConfirmWindowStructureAndPlacement(List<string> failures)
+    {
+        RunOnStaThread(failures, "縮小・極小用単独終了確認カードウィンドウの構成・中央配置・クランプ検証", () =>
+        {
+            // 中央配置と作業領域端クランプの純粋計算検証
+            var workArea = new WindowArranger.WindowBounds(0, 0, 1920, 1040);
+            var microAnchor = new Rect(902, 462, 116, 116);
+            var dialogSize = new Size(396, 206);
+            var (centerLeft, centerTop) = AppExitConfirmWindow.ComputeCenteredPositionPx(microAnchor, dialogSize, workArea);
+            if (Math.Abs(centerLeft - (960 - 198)) > 2 || Math.Abs(centerTop - (520 - 103)) > 2)
+            {
+                throw new InvalidOperationException($"極小ダイヤル基準の中央配置がずれています ({centerLeft}, {centerTop})。");
+            }
+
+            // 画面左上隅アンカーでも作業領域外へはみ出さないこと
+            var cornerAnchor = new Rect(10, 10, 116, 116);
+            var (clampedLeft, clampedTop) = AppExitConfirmWindow.ComputeCenteredPositionPx(cornerAnchor, dialogSize, workArea);
+            if (clampedLeft < workArea.Left || clampedTop < workArea.Top)
+            {
+                throw new InvalidOperationException($"端配置クランプが効いていません ({clampedLeft}, {clampedTop})。");
+            }
+
+            var confirmed = 0;
+            var canceled = 0;
+            var confirmWin = new AppExitConfirmWindow(microAnchor, workArea, () => confirmed++, () => canceled++);
+            try
+            {
+                var info = confirmWin.VerifyOffscreenForTesting();
+                if (!info.AllowsTransparencyValue || !info.CancelIsDefaultCancelKey)
+                {
+                    throw new InvalidOperationException("AppExitConfirmWindow の透過設定または既定キャンセル設定が不正です。");
+                }
+
+                // 余計な親パネル背景を持たず、カード単体（幅 ~396 DIP、高さ ~180..240 DIP）に収まること
+                if (!(info.DesiredCardSizeDip.Width is >= 380 and <= 420
+                    && info.DesiredCardSizeDip.Height is >= 170 and <= 245))
+                {
+                    throw new InvalidOperationException(
+                        $"単独終了確認カードの寸法が想定範囲外です ({info.DesiredCardSizeDip.Width:0}x{info.DesiredCardSizeDip.Height:0})。");
+                }
+
+                confirmWin.SimulateConfirmClickForTesting();
+                confirmWin.SimulateConfirmClickForTesting();
+                if (confirmed != 1 || canceled != 0)
+                {
+                    throw new InvalidOperationException($"終了確定コールバックが 1 回だけ呼ばれませんでした (confirm={confirmed}, cancel={canceled})。");
+                }
+            }
+            finally
+            {
+                confirmWin.CloseSilently();
+            }
+
+            var cancelWin = new AppExitConfirmWindow(microAnchor, workArea, () => confirmed++, () => canceled++);
+            try
+            {
+                cancelWin.SimulateCancelClickForTesting();
+                if (canceled != 1)
+                {
+                    throw new InvalidOperationException($"キャンセルコールバックが 1 回だけ呼ばれませんでした (cancel={canceled})。");
+                }
+            }
+            finally
+            {
+                cancelWin.CloseSilently();
+            }
+        });
+    }
+
+    private static void TestCompactAndMicroExitConfirmAvoidMainWindowResizeAndUncloak(List<string> failures)
+    {
+        var panelDir = System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel"));
+        var mainCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.xaml.cs"));
+        var startupCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.StartupAnimation.cs"));
+
+        var showStart = mainCs.IndexOf("private void ShowAppExitConfirmDialog()", StringComparison.Ordinal);
+        var showEnd = mainCs.IndexOf("private void ShowStandaloneExitConfirmDialog()", StringComparison.Ordinal);
+        if (showStart < 0 || showEnd <= showStart)
+        {
+            failures.Add("MainWindow.xaml.cs に ShowAppExitConfirmDialog / ShowStandaloneExitConfirmDialog が見つかりません。");
+            return;
+        }
+
+        var showBody = mainCs[showStart..showEnd];
+        if (!showBody.Contains("if (!IsStandardMode)", StringComparison.Ordinal)
+            || !showBody.Contains("ShowStandaloneExitConfirmDialog();", StringComparison.Ordinal)
+            || showBody.Contains("SuspendMicroDialForMainOverlay", StringComparison.Ordinal))
+        {
+            failures.Add("縮小・極小モードの終了確認が本体非変形・非露出の単独ウィンドウ経路になっていません。");
+        }
+
+        if (!startupCs.Contains("CaptureCoreCircleImage()", StringComparison.Ordinal)
+            || !startupCs.Contains("MicroDialWindow.CoreRadiusDip", StringComparison.Ordinal))
+        {
+            failures.Add("極小モードの終了消散アニメーションが真円オービット・ダイヤル対応になっていません。");
+        }
     }
 
     private static void TestMicroDialCaptureCoreCircleImage(List<string> failures)

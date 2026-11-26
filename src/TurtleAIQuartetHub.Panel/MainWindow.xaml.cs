@@ -147,6 +147,7 @@ public partial class MainWindow : Window
     private WindowArranger.WindowBounds? _boundsBeforeExitConfirm;
     private double _minWidthBeforeExitConfirm;
     private double _minHeightBeforeExitConfirm;
+    private AppExitConfirmWindow? _standaloneExitConfirmWindow;
 
     public MainWindow()
     {
@@ -390,19 +391,100 @@ public partial class MainWindow : Window
         ShowAppExitConfirmDialog();
     }
 
+    private bool IsExitConfirmDialogOpen =>
+        AppExitConfirmOverlay.Visibility == Visibility.Visible
+        || _standaloneExitConfirmWindow is not null;
+
     private void ShowAppExitConfirmDialog()
     {
         DiagnosticLog.Write(LogLevel.Info, $"Panel close requested via {_closeRequestSource}; awaiting confirmation.");
-        SuspendMicroDialForMainOverlay();
         CloseStoredOverview(animate: false);
+
+        // 縮小表示・極小表示では本体 MainWindow を引き伸ばしたり極小ダイヤルの裏から四角い枠を
+        // 露出させたりせず、「アプリを終了しますか？」のカード単体だけを表示する。
+        if (!IsStandardMode)
+        {
+            ShowStandaloneExitConfirmDialog();
+            return;
+        }
+
         EnsureExitConfirmViewport();
         AppExitConfirmOverlay.Visibility = Visibility.Visible;
         BringPanelToFrontImmediate();
         CancelAppExitButton.Focus();
     }
 
+    private void ShowStandaloneExitConfirmDialog()
+    {
+        if (_standaloneExitConfirmWindow is { } existing)
+        {
+            existing.FocusDefaultButton();
+            return;
+        }
+
+        var (anchorRectPx, workAreaPx) = GetExitConfirmAnchorAndWorkArea();
+        var dialog = new AppExitConfirmWindow(
+            anchorRectPx,
+            workAreaPx,
+            onConfirmed: () =>
+            {
+                _standaloneExitConfirmWindow = null;
+                ConfirmAppExitAndCloseAsync();
+            },
+            onCanceled: () =>
+            {
+                _standaloneExitConfirmWindow = null;
+                _closeRequestSource = "Alt+F4 またはシステムメニュー";
+                DiagnosticLog.Write(LogLevel.Info, "Panel close canceled by user.");
+                ScheduleFocusedSlotReassert();
+                if (IsStoredPanelsAreaOpen)
+                {
+                    ScheduleStoredOverviewAutoOpen();
+                }
+            });
+        _standaloneExitConfirmWindow = dialog;
+        dialog.Show();
+    }
+
+    private (Rect AnchorScreenRectPx, WindowArranger.WindowBounds? WorkAreaPx) GetExitConfirmAnchorAndWorkArea()
+    {
+        Rect anchorRectPx;
+        if (IsMicroDialActive && _microDialWindow is { } dial)
+        {
+            anchorRectPx = dial.GetCoreScreenRect();
+        }
+        else if (PanelFrameBorder.ActualWidth > 0 && PanelFrameBorder.ActualHeight > 0 && IsVisible)
+        {
+            anchorRectPx = GetPanelScreenRect();
+        }
+        else
+        {
+            var bounds = GetCurrentWindowBounds();
+            anchorRectPx = new Rect(bounds.Left, bounds.Top, Math.Max(1, bounds.Width), Math.Max(1, bounds.Height));
+        }
+
+        var handle = GetActivePresentationPanelHandle();
+        WindowArranger.WindowBounds? workArea = handle != IntPtr.Zero
+            && _windowArranger.TryGetMonitorWorkAreaForWindow(handle, out var area)
+            ? area
+            : null;
+        return (anchorRectPx, workArea);
+    }
+
+    private void CloseStandaloneExitConfirmDialog()
+    {
+        if (_standaloneExitConfirmWindow is not { } dialog)
+        {
+            return;
+        }
+
+        _standaloneExitConfirmWindow = null;
+        dialog.CloseSilently();
+    }
+
     private void HideAppExitConfirmDialog()
     {
+        CloseStandaloneExitConfirmDialog();
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
         RestoreBoundsAfterExitConfirm();
         _closeRequestSource = "Alt+F4 またはシステムメニュー";
@@ -477,10 +559,17 @@ public partial class MainWindow : Window
         ScheduleFocusedSlotReassert();
     }
 
-    private async void ConfirmAppExitButton_Click(object sender, RoutedEventArgs e)
+    private void ConfirmAppExitButton_Click(object sender, RoutedEventArgs e)
+    {
+        ConfirmAppExitAndCloseAsync();
+    }
+
+    private async void ConfirmAppExitAndCloseAsync()
     {
         _closeConfirmed = true;
+        CloseStandaloneExitConfirmDialog();
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
+        RestoreBoundsAfterExitConfirm();
         DiagnosticLog.Write(LogLevel.Info, "Panel close confirmed by user.");
         await ClosePanelWithVanishAnimationAsync();
     }
@@ -494,7 +583,9 @@ public partial class MainWindow : Window
 
         _externalExitRequested = true;
         _closeConfirmed = true;
+        CloseStandaloneExitConfirmDialog();
         AppExitConfirmOverlay.Visibility = Visibility.Collapsed;
+        RestoreBoundsAfterExitConfirm();
         DiagnosticLog.Write(LogLevel.Info, "Panel close requested by external command (--exit).");
         Close();
     }
@@ -3425,7 +3516,7 @@ public partial class MainWindow : Window
 
         if (!IsStoredPanelsAreaOpen
             || WindowState == WindowState.Minimized
-            || AppExitConfirmOverlay.Visibility == Visibility.Visible
+            || IsExitConfirmDialogOpen
             || StoredOverviewPopup.IsOpen && !_isStoredOverviewClosing)
         {
             return;
@@ -6183,7 +6274,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        // アプリ終了が確定した瞬間に、起動／終了マスクや黒画面シールド・極小円形ダイヤルを確実に片付ける。
+        // アプリ終了が確定した瞬間に、起動／終了マスクや黒画面シールド・終了確認・極小円形ダイヤルを確実に片付ける。
+        CloseStandaloneExitConfirmDialog();
         _launchStagingOverlay.DismissImmediate();
         DisposeMicroDialWindow();
 
@@ -6250,6 +6342,7 @@ public partial class MainWindow : Window
         _postLaunchArrangeCancellation?.Cancel();
         _postLaunchArrangeCancellation?.Dispose();
         StopPanelLocateEmphasis();
+        CloseStandaloneExitConfirmDialog();
         CompleteMinimizeAnimationImmediately();
         CompleteRestoreRevealImmediately();
         CleanupLaunchPresentationOnClose();

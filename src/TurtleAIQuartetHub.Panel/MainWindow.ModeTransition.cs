@@ -43,6 +43,7 @@ public partial class MainWindow
     private void SetDisplayMode(DisplayMode mode, bool updateMessage = true)
     {
         // 起動直後のふわっと出現演出中や、最小化からの復元演出中に切り替え要求が来た場合は、先に演出を終わらせて本物を解放する。
+        CloseStandaloneExitConfirmDialog();
         CompleteStartupRevealImmediately();
         CompleteRestoreRevealImmediately();
 
