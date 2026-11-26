@@ -22,21 +22,111 @@ public partial class MainWindow
     private const double MicroStoredOverviewExtraGapDip = 48;
 
     private MicroDialWindow? _microDialWindow;
+    private FrameworkElement? _standardModeButtonIcon;
+    private FrameworkElement? _compactModeButtonIcon;
     private FrameworkElement? _microDialModeButtonIcon;
     private bool _microDialSuspendedForOverlay;
     private WindowArranger.WindowBounds? _boundsBeforeMicroRename;
     private double _minWidthBeforeMicroRename;
     private double _minHeightBeforeMicroRename;
 
-    // 縮小表示のタイトルバーに出す「極小表示（円形オービット・ダイヤル）へ切り替え」用のベクターアイコン。
+    // 親 Button の Foreground に自動連動するベクターアイコン用の Stroke バインディング。
+    // 通常時・ホバー時・無効時・極小ダイヤル上弧ボタンの色がすべて親ボタンと一致する。
+    private static Binding CreateModeButtonStrokeBinding() => new(nameof(Control.Foreground))
+    {
+        RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Button), 1)
+    };
+
+    // 表示モード切替アイコン共通の 13x13 Canvas を生成する。
+    private static Canvas CreateModeIconCanvas() => new()
+    {
+        Width = 13.0,
+        Height = 13.0,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+        IsHitTestVisible = false,
+        UseLayoutRounding = false,
+        SnapsToDevicePixels = false
+    };
+
+    // 「標準表示へ戻す」用の絶対シルエット・ベクターアイコン（案 C：フル 4 タイル）。
+    // キャンバス全体（12x12）に独立した 4 枚の角丸正方形タイルを並べ、3 モード中で最も大きい標準画面を一目で表す。
+    // （WPF の Rectangle は Stroke が内側に描かれるため、外寸 12.0x12.0・隙間 1.2 DIP で極小円アイコンと調和させている）
+    internal static Canvas CreateStandardModeIcon()
+    {
+        var strokeBinding = CreateModeButtonStrokeBinding();
+        var canvas = CreateModeIconCanvas();
+        (double Left, double Top)[] tilePositions =
+        [
+            (0.5, 0.5),
+            (7.1, 0.5),
+            (0.5, 7.1),
+            (7.1, 7.1)
+        ];
+
+        foreach (var (left, top) in tilePositions)
+        {
+            var tile = new Rectangle
+            {
+                Width = 5.4,
+                Height = 5.4,
+                RadiusX = 1.2,
+                RadiusY = 1.2,
+                StrokeThickness = 1.1,
+                Fill = Brushes.Transparent,
+                IsHitTestVisible = false
+            };
+            tile.SetBinding(Shape.StrokeProperty, strokeBinding);
+            Canvas.SetLeft(tile, left);
+            Canvas.SetTop(tile, top);
+            canvas.Children.Add(tile);
+        }
+
+        return canvas;
+    }
+
+    // 「縮小表示へ切り替え」用の絶対シルエット・ベクターアイコン（案 C：極細横長バー）。
+    // 標準アイコン（12x12）のちょうど半分の薄さ（12.4x6.0）の横長角丸バー＋中央縦仕切りで、
+    // 縮小表示のスリムな横長シルエットを直感的に表す。
+    internal static Canvas CreateCompactModeIcon()
+    {
+        var strokeBinding = CreateModeButtonStrokeBinding();
+        var bar = new Rectangle
+        {
+            Width = 12.4,
+            Height = 6.0,
+            RadiusX = 1.7,
+            RadiusY = 1.7,
+            StrokeThickness = 1.15,
+            Fill = Brushes.Transparent,
+            IsHitTestVisible = false
+        };
+        bar.SetBinding(Shape.StrokeProperty, strokeBinding);
+        Canvas.SetLeft(bar, 0.3);
+        Canvas.SetTop(bar, 3.5);
+
+        var dividerGeometry = Geometry.Parse("M 6.5,4.1 L 6.5,8.9");
+        dividerGeometry.Freeze();
+        var divider = new Path
+        {
+            Data = dividerGeometry,
+            StrokeThickness = 1.0,
+            IsHitTestVisible = false
+        };
+        divider.SetBinding(Shape.StrokeProperty, strokeBinding);
+
+        var canvas = CreateModeIconCanvas();
+        canvas.Children.Add(bar);
+        canvas.Children.Add(divider);
+        return canvas;
+    }
+
+    // タイトルバーに出す「極小表示（円形オービット・ダイヤル）へ切り替え」用のベクターアイコン。
     // 外円＋4分割十字スポーク＋中央小円のシルエットで、押した先の円形ダイヤルを一目で連想させる。
     // 線の色は親 Button の Foreground に連動するため、通常時・ホバー時・無効時の見た目が他ボタンと一致する。
     internal static Canvas CreateMicroDialModeIcon()
     {
-        var strokeBinding = new Binding(nameof(Control.Foreground))
-        {
-            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Button), 1)
-        };
+        var strokeBinding = CreateModeButtonStrokeBinding();
 
         var outerRing = new Ellipse
         {
@@ -72,16 +162,7 @@ public partial class MainWindow
         };
         spokes.SetBinding(Shape.StrokeProperty, strokeBinding);
 
-        var canvas = new Canvas
-        {
-            Width = 13.0,
-            Height = 13.0,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsHitTestVisible = false,
-            UseLayoutRounding = false,
-            SnapsToDevicePixels = false
-        };
+        var canvas = CreateModeIconCanvas();
         canvas.Children.Add(outerRing);
         canvas.Children.Add(spokes);
         canvas.Children.Add(centerRing);

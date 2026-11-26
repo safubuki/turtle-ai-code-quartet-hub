@@ -167,6 +167,8 @@ internal sealed class MicroDialWindow : Window
     private readonly Border _auxAiSatelliteBorder;
     private readonly Button _pinTopSatelliteButton;
     private readonly Button _sendBackSatelliteButton;
+    private readonly Button _standardSatelliteButton;
+    private readonly Button _compactSatelliteButton;
     private readonly Button _downloadsSatelliteButton;
     private readonly Button _pullRequestSatelliteButton;
     private readonly Ellipse _pullRequestBadgeDot;
@@ -290,9 +292,19 @@ internal sealed class MicroDialWindow : Window
             RenderTransform = _satelliteScale
         };
 
-        // 上弧 4 ボタン（標準・縮小・最小化・閉じる）
-        AddCircularSatellite(angleDeg: -124, glyph: "\uE740", isMdl2: true, toolTip: "標準表示へ戻す", isClose: false, () => _onSwitchStandard());
-        AddCircularSatellite(angleDeg: -102, glyph: "\uE73F", isMdl2: true, toolTip: "縮小表示へ切り替え", isClose: false, () => _onSwitchCompact());
+        // 上弧 4 ボタン（標準＝フル 4 タイル、縮小＝極細横長バー、最小化、閉じる）
+        (_standardSatelliteButton, _) = AddCircularSatelliteWithContent(
+            angleDeg: -124,
+            content: MainWindow.CreateStandardModeIcon(),
+            toolTip: "標準表示へ戻す",
+            isClose: false,
+            () => _onSwitchStandard());
+        (_compactSatelliteButton, _) = AddCircularSatelliteWithContent(
+            angleDeg: -102,
+            content: MainWindow.CreateCompactModeIcon(),
+            toolTip: "縮小表示へ切り替え",
+            isClose: false,
+            () => _onSwitchCompact());
         AddCircularSatellite(angleDeg: -78, glyph: "\uE921", isMdl2: true, toolTip: "最小化", isClose: false, () => _onMinimize());
         AddCircularSatellite(angleDeg: -56, glyph: "\uE8BB", isMdl2: true, toolTip: "パネルを閉じる", isClose: true, () => _onRequestClose());
 
@@ -951,6 +963,30 @@ internal sealed class MicroDialWindow : Window
             inactiveVis);
     }
 
+    internal (
+        int StandardTileCount,
+        int CompactRectCount,
+        int CompactDividerCount,
+        Color StandardButtonForeground,
+        Color CompactButtonForeground) VerifyTopModeSatellitesForTesting()
+    {
+        _stageRoot.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
+        _stageRoot.UpdateLayout();
+
+        var standardCanvas = (_standardSatelliteButton.Content as Border)?.Child as Canvas;
+        var compactCanvas = (_compactSatelliteButton.Content as Border)?.Child as Canvas;
+        var stdFg = (_standardSatelliteButton.Foreground as SolidColorBrush)?.Color ?? Colors.Transparent;
+        var cmpFg = (_compactSatelliteButton.Foreground as SolidColorBrush)?.Color ?? Colors.Transparent;
+
+        return (
+            standardCanvas?.Children.OfType<Rectangle>().Count() ?? 0,
+            compactCanvas?.Children.OfType<Rectangle>().Count() ?? 0,
+            compactCanvas?.Children.OfType<Path>().Count() ?? 0,
+            stdFg,
+            cmpFg);
+    }
+
     internal (bool UsesStaysOpenPopup, bool OpenedFirst, bool ClosedSecond, bool ReopenedThird) VerifyAuxMenuToggleForTesting()
     {
         var staysOpen = _auxApplicationsPopup.StaysOpen;
@@ -1319,6 +1355,7 @@ internal sealed class MicroDialWindow : Window
         {
             Width = size,
             Height = size,
+            Foreground = TextPrimaryBrush,
             Cursor = Cursors.Hand,
             Focusable = false,
             ToolTip = toolTip,

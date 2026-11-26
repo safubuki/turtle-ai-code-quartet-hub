@@ -3074,34 +3074,23 @@
                   Style="{StaticResource TitleBarChromeButton}" />
         </StackPanel>
         <!-- 表示切替・最小化・閉じるの間隔（Margin）と幅は表示モードに合わせてコードで設定する。 -->
+        <!-- 標準・縮小・極小の各切替ボタンは、遷移先画面の形を表す絶対シルエットのベクターアイコンをコードで割り当てる。 -->
         <Button x:Name="StandardJumpButton"
-                Content="&#xE740;"
                 Width="26"
-                FontFamily="Segoe MDL2 Assets"
-                FontSize="12"
-                FontWeight="SemiBold"
                 Visibility="Collapsed"
                 ToolTip="標準表示へ戻す"
-                 AutomationProperties.Name="標準表示へ戻す"
+                AutomationProperties.Name="標準表示へ戻す"
                 Click="StandardJumpButton_Click"
                 Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="CompactJumpButton"
-                Content="&#xE73F;"
                 Width="23"
-                FontFamily="Segoe MDL2 Assets"
-                FontSize="12"
-                FontWeight="SemiBold"
                 Visibility="Collapsed"
                 ToolTip="縮小表示へ切り替え"
                 AutomationProperties.Name="縮小表示へ切り替え"
                 Click="CompactJumpButton_Click"
                 Style="{StaticResource TitleBarChromeButton}" />
         <Button x:Name="DisplayModeButton"
-                Content="&#xE73F;"
                 Width="32"
-                FontFamily="Segoe MDL2 Assets"
-                FontSize="12"
-                FontWeight="SemiBold"
                 ToolTip="縮小表示へ切り替え"
                 Click="DisplayModeButton_Click"
                 Style="{StaticResource TitleBarChromeButton}" />

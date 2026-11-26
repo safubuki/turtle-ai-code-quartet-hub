@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 15;
+    public const int Count = 17;
 
     public static void Run(List<string> failures)
     {
@@ -17,6 +17,8 @@ internal static class MicroDialTests
         TestMicroDialCaptureCoreCircleImage(failures);
         TestMicroDialStoredAssignAndHiddenStateTransitions(failures);
         TestMicroDialModeButtonIconUsesCircularDialVector(failures);
+        TestStandardAndCompactModeIconsUseAbsoluteVectorShapes(failures);
+        TestMicroDialTopArcUsesAbsoluteStandardAndCompactVectorIcons(failures);
         TestMicroDialBottomArcOrderAndStoredPillClearance(failures);
         TestMicroDialDarkContextMenuAndStatusVisualContrast(failures);
         TestMicroDialMissingSlotClickDoesNotLaunch(failures);
@@ -225,6 +227,97 @@ internal static class MicroDialTests
             if (ellipses != 2 || paths != 1)
             {
                 throw new InvalidOperationException($"外円・中央円・4分割スポークの構成が期待と異なります (ellipses={ellipses}, paths={paths})。");
+            }
+        });
+    }
+
+    private static void TestStandardAndCompactModeIconsUseAbsoluteVectorShapes(List<string> failures)
+    {
+        RunOnStaThread(failures, "標準（フル4タイル）・縮小（極細横長バー）の絶対ベクターアイコン検証", () =>
+        {
+            var standard1 = TurtleAIQuartetHub.Panel.MainWindow.CreateStandardModeIcon();
+            var standard2 = TurtleAIQuartetHub.Panel.MainWindow.CreateStandardModeIcon();
+            if (ReferenceEquals(standard1, standard2))
+            {
+                throw new InvalidOperationException("CreateStandardModeIcon がボタン間で共有不可の同一インスタンスを返しています。");
+            }
+
+            var tiles = standard1.Children.OfType<System.Windows.Shapes.Rectangle>().ToList();
+            if (tiles.Count != 4 || tiles.Any(t => Math.Abs(t.Width - t.Height) > 0.1 || t.Width < 4.5))
+            {
+                throw new InvalidOperationException($"標準モードアイコンのフル 4 タイル構成が期待と異なります (tiles={tiles.Count})。");
+            }
+
+            var compact1 = TurtleAIQuartetHub.Panel.MainWindow.CreateCompactModeIcon();
+            var compact2 = TurtleAIQuartetHub.Panel.MainWindow.CreateCompactModeIcon();
+            if (ReferenceEquals(compact1, compact2))
+            {
+                throw new InvalidOperationException("CreateCompactModeIcon がボタン間で共有不可の同一インスタンスを返しています。");
+            }
+
+            var bars = compact1.Children.OfType<System.Windows.Shapes.Rectangle>().ToList();
+            var dividers = compact1.Children.OfType<System.Windows.Shapes.Path>().ToList();
+            if (bars.Count != 1 || dividers.Count != 1)
+            {
+                throw new InvalidOperationException($"縮小モードアイコンの極細バー＋中央仕切り構成が期待と異なります (bars={bars.Count}, dividers={dividers.Count})。");
+            }
+
+            var bar = bars[0];
+            if (!(bar.Width >= 11.0 && bar.Height <= 6.5 && bar.Width >= bar.Height * 1.9))
+            {
+                throw new InvalidOperationException($"縮小モードアイコンが横長の極細バー形状ではありません ({bar.Width:0.0}x{bar.Height:0.0})。");
+            }
+
+            // タイトルバー XAML・コード・極小ダイヤルに旧斜め矢印（E740 / E73F）が残っていないことも確認する。
+            var panelDir = System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel"));
+            string[] checkedFiles =
+            [
+                System.IO.Path.Combine(panelDir, "MainWindow.xaml"),
+                System.IO.Path.Combine(panelDir, "MainWindow.xaml.cs"),
+                System.IO.Path.Combine(panelDir, "Services", "MicroDialWindow.cs")
+            ];
+            foreach (var file in checkedFiles)
+            {
+                var text = System.IO.File.ReadAllText(file);
+                if (text.Contains("E740", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("E73F", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"{System.IO.Path.GetFileName(file)} に旧相対矢印アイコン（E740 / E73F）が残っています。");
+                }
+            }
+        });
+    }
+
+    private static void TestMicroDialTopArcUsesAbsoluteStandardAndCompactVectorIcons(List<string> failures)
+    {
+        RunOnStaThread(failures, "極小ダイヤル上弧の標準・縮小絶対アイコンと明色Foreground検証", () =>
+        {
+            var slots = CreateMixedStatusSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var info = dial.VerifyTopModeSatellitesForTesting();
+                if (info.StandardTileCount != 4)
+                {
+                    throw new InvalidOperationException($"極小ダイヤル上弧の標準ボタンがフル 4 タイルではありません (tiles={info.StandardTileCount})。");
+                }
+
+                if (info.CompactRectCount != 1 || info.CompactDividerCount != 1)
+                {
+                    throw new InvalidOperationException($"極小ダイヤル上弧の縮小ボタンが極細バー構成ではありません (rects={info.CompactRectCount}, dividers={info.CompactDividerCount})。");
+                }
+
+                // 暗い丸ボタン背景上でベクター線が沈まないよう明るい Foreground（#EEF4EF 系）が設定されていること。
+                if (info.StandardButtonForeground.R < 0xD0 || info.CompactButtonForeground.R < 0xD0)
+                {
+                    throw new InvalidOperationException(
+                        $"極小ダイヤル上弧の標準/縮小ボタン Foreground が暗すぎます (std={info.StandardButtonForeground}, cmp={info.CompactButtonForeground})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
             }
         });
     }

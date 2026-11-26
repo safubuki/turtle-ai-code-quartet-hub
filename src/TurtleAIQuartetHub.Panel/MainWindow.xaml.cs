@@ -24,10 +24,8 @@ public partial class MainWindow : Window
     private const double MicroWindowSize = 116;
     private const double ExitConfirmViewportWidth = 430;
     private const double ExitConfirmViewportHeight = 250;
-    // 縮小=ChromeBackToWindow、標準=ChromeFullScreen、極小=円形オービット・ダイヤル（ベクター描画）。
-    // ボタンには「次に遷移するモード」のアイコンを表示する。
-    private const string CompactModeGlyph = "\uE73F";
-    private const string StandardModeGlyph = "\uE740";
+    // 標準=フル 4 タイル、縮小=極細横長バー、極小=円形オービット・ダイヤル（すべて画面形状を表す絶対シルエットのベクター描画）。
+    // ボタンには「次に遷移するモード」の絶対アイコンを表示する。
     private const double StoredOverviewGap = 6;
     private const double StoredOverviewSlideDistance = 40;
     private const double StoredOverviewItemRise = 10;
@@ -4464,7 +4462,15 @@ public partial class MainWindow : Window
         StoredOverviewToggleChevron.Margin = IsCompactMode ? new Thickness(6, 1, 0, 0) : new Thickness(8, 1, 0, 0);
         DisplayModeButton.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
         MicroJumpButton.Visibility = IsStandardMode ? Visibility.Visible : Visibility.Collapsed;
-        if (MicroJumpButton.Content is null)
+        if (StandardJumpButton.Content is not Canvas)
+        {
+            StandardJumpButton.Content = CreateStandardModeIcon();
+        }
+        if (CompactJumpButton.Content is not Canvas)
+        {
+            CompactJumpButton.Content = CreateCompactModeIcon();
+        }
+        if (MicroJumpButton.Content is not Canvas)
         {
             MicroJumpButton.Content = CreateMicroDialModeIcon();
         }
@@ -4484,7 +4490,8 @@ public partial class MainWindow : Window
         switch (_displayMode)
         {
             case DisplayMode.Standard:
-                displayModeIcon = CompactModeGlyph;
+                _compactModeButtonIcon ??= CreateCompactModeIcon();
+                displayModeIcon = _compactModeButtonIcon;
                 displayModeToolTip = "縮小表示へ切り替え";
                 break;
             case DisplayMode.Compact:
@@ -4493,11 +4500,13 @@ public partial class MainWindow : Window
                 displayModeToolTip = "極小表示（円形ダイヤル）へ切り替え";
                 break;
             case DisplayMode.Micro:
-                displayModeIcon = StandardModeGlyph;
+                _standardModeButtonIcon ??= CreateStandardModeIcon();
+                displayModeIcon = _standardModeButtonIcon;
                 displayModeToolTip = "標準表示へ戻す";
                 break;
             default:
-                displayModeIcon = CompactModeGlyph;
+                _compactModeButtonIcon ??= CreateCompactModeIcon();
+                displayModeIcon = _compactModeButtonIcon;
                 displayModeToolTip = "縮小表示へ切り替え";
                 break;
         }
