@@ -41,16 +41,16 @@ git remote -v
 
 ### 手順3: テンプレートとCLIの導入
 
-Issue運用を未整備のリポジトリには、次を実行する。
+Issue運用を未整備のリポジトリには、次を実行する（`.claude/skills` や `.github/skills` から使う場合はパスを読み替える）。
 
 ```powershell
-node .github/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target . --with-cli
+node .agents/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target . --with-cli
 ```
 
 別リポジトリへ適用する場合:
 
 ```powershell
-node .github/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target "C:\path\repo" --with-cli
+node .agents/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target "C:\path\repo" --with-cli
 ```
 
 このセットアップは次を作成・更新する。

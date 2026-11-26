@@ -1,16 +1,15 @@
 ---
 name: turtle-ai-quartet-hub-overview
-description: Turtle AI Code Quartet Hub のプロジェクト概要・実装パターン・既知課題・QA 方針を参照する overview スキル。「overview」「プロジェクト概要」「このリポジトリを把握」「アーキテクチャ」「既知課題」「実装パターン」「回帰防止」「workspace summary」などで発火。
+description: Turtle AI Code Quartet Hub（4 つの VS Code ウィンドウを WPF パネルで管理する Windows ツール）のプロジェクト概要・実装パターン・既知課題・QA 方針を参照する overview スキル。Quartet Hub のコードを修正・機能追加する前に、関係する節だけを読んでデグレを防ぐ。「Quartet Hub の概要」「このリポジトリを把握」「既知課題」「実装パターン」「回帰防止」などで発火。
 ---
 
 # Turtle AI Quartet Hub Overview
 
 ## スキル読み込み通知
 
-このスキルが読み込まれたら、必ず以下の通知をユーザーに表示してください：
+読み込んだら 1 行だけ通知する：
 
-> 💡 **Turtle AI Quartet Hub Overview スキルを読み込みました**  
-> このワークスペースの構成、実装パターン、既知課題、QA 方針を参照して安全に作業します。
+> 💡 **Turtle AI Quartet Hub Overview を読み込みました** — 関係する節だけ参照して安全に作業します。
 
 ## When to Use
 
@@ -26,13 +25,19 @@ Turtle AI Code Quartet Hub は、4 つの VS Code ウィンドウを WPF パネ�
 
 ## 手順
 
-### Step 1: まずリファレンスを読む
+### Step 1: 関係する節だけを読む
 
-最初に以下を順番に読むこと。
+リファレンスは合計で数百 KB あり、追記で増え続けるので**丸ごと読まない**。見出しの一覧を先に見て、依頼に関係する節だけを読む。
 
-1. `references/project-details.md`
-2. `references/implementation-patterns.md`
-3. `references/current-issues-qa.md`
+```bash
+grep -n "^## " references/implementation-patterns.md references/current-issues-qa.md
+```
+
+| ファイル | 大きさ | 読み方 |
+|---|---|---|
+| `references/project-details.md` | 数十 KB | 構成・責務分担を知りたいときに該当節を読む |
+| `references/implementation-patterns.md` | いちばん大きい（節が多い） | 見出しから変更対象の責務に当たる節だけ読む |
+| `references/current-issues-qa.md` | 数十 KB | 既知課題・QA 方針の該当節だけ読む |
 
 ### Step 2: 依頼内容を関連箇所へ結び付ける
 
@@ -45,7 +50,7 @@ Turtle AI Code Quartet Hub は、4 つの VS Code ウィンドウを WPF パネ�
 
 ### Step 3: 対応後に overview を更新する
 
-新しい実装パターン、注意点、QA の合意事項、既知課題の解像度が増えたら、対応完了時にこの overview の参照ドキュメントへ追記すること。
+新しい実装パターン、注意点、QA の合意事項、既知課題の解像度が増えたら、対応完了時に参照ドキュメントの該当する節へ追記する。積み上がった記録は、過去にやったことを繰り返さないための資産なので、既存の記録は削除・要約しない。似た節があれば新しい節を立てずにその節へ追記し、あとから見出しで探せるようにする。
 
 ## 参照ドキュメント
 

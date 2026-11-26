@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>設定 — Tsumugi</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme');
+  if (q.get('accent')) document.documentElement.dataset.accent = q.get('accent');
+</script>
+<style>
+  .app-header { position: sticky; top: 0; z-index: var(--z-sticky); height: var(--header-h); border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--bg) 88%, transparent); backdrop-filter: blur(10px); }
+  .app-header .container { height: 100%; display: flex; align-items: center; gap: var(--space-3); }
+  .brand { display: flex; align-items: center; gap: var(--space-2); font-weight: var(--weight-bold); text-decoration: none; }
+  .brand svg { width: 1.5rem; height: 1.5rem; }
+  .crumb { color: var(--text-muted); font-size: var(--text-sm); }
+
+  .page { padding-block: var(--space-10) var(--space-32); }
+  .page-title { font-size: var(--text-3xl); }
+  .page-title + p { margin-top: var(--space-2); color: var(--text-muted); }
+  .layout { display: grid; gap: var(--space-10); margin-top: var(--space-10); }
+  @media (min-width: 64rem) { .layout { grid-template-columns: 12rem 1fr; gap: var(--space-12); } }
+
+  .side-nav { display: flex; gap: var(--space-1); overflow-x: auto; }
+  @media (min-width: 64rem) { .side-nav { position: sticky; top: calc(var(--header-h) + var(--space-8)); align-self: start; flex-direction: column; } }
+  .side-nav a { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); color: var(--text-muted); font-size: var(--text-sm); font-weight: var(--weight-medium); text-decoration: none; white-space: nowrap; }
+  .side-nav a:hover { background: var(--surface-3); color: var(--text); }
+  .side-nav a[aria-current="true"] { background: var(--surface-3); color: var(--text); }
+
+  /* 1 セクション = 左に説明、右にフォーム。説明を読めば何の設定か分かる */
+  .settings-section { display: grid; gap: var(--space-5); padding-bottom: var(--space-12); }
+  .settings-section + .settings-section { padding-top: var(--space-12); border-top: 1px solid var(--border); }
+  @media (min-width: 80rem) { .settings-section { grid-template-columns: 15rem 1fr; gap: var(--space-10); } }
+  .settings-section h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); letter-spacing: 0; }
+  .settings-section > div > p { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-muted); }
+  .form-card { display: grid; gap: var(--space-6); }
+  .row-2 { display: grid; gap: var(--space-6); }
+  @media (min-width: 40rem) { .row-2 { grid-template-columns: 1fr 1fr; } }
+  .field__top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+  .counter { font-size: var(--text-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  .avatar-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+  .avatar-row .avatar { width: 4rem; height: 4rem; font-size: var(--text-xl); }
+  .avatar-row .hint { flex-basis: 100%; }
+  @media (min-width: 40rem) { .avatar-row .hint { flex-basis: auto; } }
+
+  /* 入力欄に付ける接頭辞（URL など） */
+  .affix { display: flex; border: 1px solid var(--border-input); border-radius: var(--radius-md); background: var(--surface); overflow: hidden; }
+  .affix:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); }
+  .affix[data-invalid] { border-color: var(--danger); }
+  .affix[data-invalid]:focus-within { box-shadow: 0 0 0 3px var(--danger-soft), 0 0 0 1px var(--danger); }
+  .affix span { display: grid; place-items: center; padding: 0 var(--space-3); background: var(--surface-2); border-right: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-sm); }
+  .affix .input { border: 0; border-radius: 0; box-shadow: none !important; }
+  .affix .input:focus-visible { outline: none; }
+  .verified { display: flex; gap: var(--space-2); align-items: center; }
+
+  .switch-list { display: grid; }
+  .switch-row { display: flex; gap: var(--space-4); align-items: flex-start; justify-content: space-between; padding-block: var(--space-4); }
+  .switch-row + .switch-row { border-top: 1px solid var(--border); }
+  .switch-row:first-child { padding-top: 0; }
+  .switch-row strong { display: block; font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+  .switch-row span { font-size: var(--text-sm); color: var(--text-muted); }
+  .choices { display: grid; gap: var(--space-3); }
+  @media (min-width: 48rem) { .choices { grid-template-columns: repeat(3, 1fr); } }
+  fieldset { border: 0; padding: 0; min-width: 0; }
+  legend { font-size: var(--text-sm); font-weight: var(--weight-medium); margin-bottom: var(--space-3); padding: 0; }
+
+  .status-row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; justify-content: space-between; }
+  .status-row strong { display: block; font-size: var(--text-sm); }
+  .status-row span.muted { font-size: var(--text-sm); }
+
+  /* 色相が離れた 2 色は oklch で混ぜると途中の色相（紫など）になる。srgb で混ぜる */
+  .danger-card { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+  .danger-card .status-row strong { color: var(--danger-text); }
+
+  /* 未保存の変更があるときだけ出る保存バー */
+  .save-bar {
+    position: fixed;
+    left: 50%;
+    bottom: var(--space-6);
+    z-index: var(--z-sticky);
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    width: min(100% - 2 * var(--space-4), 36rem);
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    box-shadow: var(--shadow-xl);
+    font-size: var(--text-sm);
+    transform: translate(-50%, 0);
+    transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-2) var(--ease-out);
+  }
+  .save-bar[hidden] { display: flex; opacity: 0; pointer-events: none; transform: translate(-50%, 16px); }
+  .save-bar .cluster { margin-left: auto; --cluster-gap: var(--space-2); flex-wrap: nowrap; }
+  .save-bar .dot { color: var(--warning); }
+  .save-bar__msg { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+  @media (max-width: 29.99rem) { .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5M12 16h.01"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.4-3.1 8.3-7.5 9.5-4.4-1.2-7.5-5.1-7.5-9.5V6z"/></symbol>
+</svg>
+
+<a class="skip-link" href="#main">本文へスキップ</a>
+
+<header class="app-header">
+  <div class="container">
+    <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M9 11h14M9 16h10M9 21h6" stroke="var(--on-accent)" stroke-width="2.5" stroke-linecap="round"/></svg>Tsumugi</a>
+    <span class="crumb">/ 設定</span>
+  </div>
+</header>
+
+<main class="page container" id="main">
+  <h1 class="page-title">設定</h1>
+  <p>アカウントと通知の設定を管理します。</p>
+
+  <div class="layout">
+    <nav class="side-nav" aria-label="設定の項目">
+      <a href="#profile" aria-current="true">プロフィール</a>
+      <a href="#notifications">通知</a>
+      <a href="#security">セキュリティ</a>
+      <a href="#danger">アカウントの削除</a>
+    </nav>
+
+    <form id="settings" novalidate>
+      <section class="settings-section" id="profile" aria-labelledby="profile-title">
+        <div>
+          <h2 id="profile-title">プロフィール</h2>
+          <p>チームのメンバーに表示される情報です。</p>
+        </div>
+        <div class="card form-card">
+          <div class="avatar-row">
+            <span class="avatar">佐</span>
+            <button class="btn btn--secondary btn--sm" type="button">画像を変更</button>
+            <button class="btn btn--ghost btn--sm" type="button">削除</button>
+            <p class="hint">PNG または JPG、2MB まで</p>
+          </div>
+          <div class="row-2">
+            <div class="field"><label class="label" for="last">姓</label><input class="input" id="last" value="佐藤" autocomplete="family-name"></div>
+            <div class="field"><label class="label" for="first">名</label><input class="input" id="first" value="陽菜" autocomplete="given-name"></div>
+          </div>
+          <div class="field">
+            <label class="label" for="email">メールアドレス</label>
+            <input class="input" id="email" type="email" value="hina.sato@example.co.jp" autocomplete="email" aria-describedby="email-hint">
+            <p class="hint verified" id="email-hint"><span class="badge badge--success"><svg class="icon icon--sm"><use href="#i-check-circle"/></svg>確認済み</span>変更すると確認メールが届きます。</p>
+          </div>
+          <div class="field">
+            <label class="label" for="handle">ユーザー名</label>
+            <div class="affix" data-invalid>
+              <span>tsumugi.app/</span>
+              <input class="input" id="handle" value="hina" aria-invalid="true" aria-describedby="handle-error" autocomplete="username">
+            </div>
+            <p class="error-text" id="handle-error"><svg class="icon icon--sm"><use href="#i-alert"/></svg>「hina」はすでに使われています。「hina-sato」などはいかがですか？</p>
+          </div>
+          <div class="field">
+            <div class="field__top"><label class="label" for="bio">自己紹介 <span class="optional">（任意）</span></label><span class="counter" id="bio-count">31 / 160</span></div>
+            <textarea class="textarea" id="bio" maxlength="160" aria-describedby="bio-count">プロダクトマネージャー。週次定例の進行役をしています。</textarea>
+          </div>
+          <div class="field">
+            <label class="label" for="tz">タイムゾーン</label>
+            <select class="select" id="tz"><option>（GMT+09:00）東京</option><option>（GMT+08:00）シンガポール</option><option>（GMT+00:00）ロンドン</option></select>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section" id="notifications" aria-labelledby="notify-title">
+        <div>
+          <h2 id="notify-title">通知</h2>
+          <p>担当のタスクと期限の通知を受け取る方法を選びます。</p>
+        </div>
+        <div class="card form-card">
+          <div class="switch-list">
+            <label class="switch-row"><span><strong>メール</strong><span>担当になったとき、期限の前日</span></span><input class="switch" type="checkbox" role="switch" checked></label>
+            <label class="switch-row"><span><strong>Slack</strong><span>#team-meeting にダイレクトメッセージで届きます</span></span><input class="switch" type="checkbox" role="switch" checked></label>
+            <label class="switch-row"><span><strong>週次レポート</strong><span>毎週月曜 9:00 に先週の決定事項をまとめて送ります</span></span><input class="switch" type="checkbox" role="switch"></label>
+          </div>
+          <fieldset>
+            <legend>通知のまとめ方</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="digest" value="instant"><span><span class="choice__title">すぐに送る</span><br><span class="choice__desc">発生したら 1 件ずつ</span></span></label>
+              <label class="choice"><input type="radio" name="digest" value="hourly" checked><span><span class="choice__title">1 時間ごと</span><br><span class="choice__desc">まとめて 1 通にする</span></span></label>
+              <label class="choice"><input type="radio" name="digest" value="daily"><span><span class="choice__title">1 日 1 回</span><br><span class="choice__desc">毎朝 8:00 に届く</span></span></label>
+            </div>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="settings-section" id="security" aria-labelledby="security-title">
+        <div>
+          <h2 id="security-title">セキュリティ</h2>
+          <p>ログインの保護を強めます。</p>
+        </div>
+        <div class="card form-card">
+          <div class="status-row">
+            <div><strong>2 段階認証</strong><span class="muted">ログイン時に認証アプリのコードも求めます</span></div>
+            <div class="cluster"><span class="badge badge--warning"><span class="dot"></span>未設定</span><button class="btn btn--secondary btn--sm" type="button">設定する</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section" id="danger" aria-labelledby="danger-title">
+        <div>
+          <h2 id="danger-title">アカウントの削除</h2>
+          <p>この操作は取り消せません。</p>
+        </div>
+        <div class="card danger-card">
+          <div class="status-row">
+            <div><strong>アカウントを削除する</strong><span class="muted">議事録とタスクはチームに残り、あなたの名前は「退会したメンバー」と表示されます。</span></div>
+            <button class="btn btn--danger btn--sm" type="button" id="open-delete">アカウントを削除</button>
+          </div>
+        </div>
+      </section>
+    </form>
+  </div>
+</main>
+
+<div class="save-bar" role="status" id="save-bar">
+  <span class="save-bar__msg"><span class="dot"></span>未保存の変更<span class="hide-sm">があります</span></span>
+  <div class="cluster">
+    <button class="btn btn--ghost btn--sm" type="button" id="discard">取り消す</button>
+    <button class="btn btn--primary btn--sm" type="submit" form="settings">保存する</button>
+  </div>
+</div>
+
+<dialog class="dialog" id="delete-dialog" aria-labelledby="delete-title">
+  <form method="dialog">
+    <h2 class="dialog__title" id="delete-title">アカウントを削除しますか？</h2>
+    <p class="dialog__body">削除すると、ログインも復元もできなくなります。続けるには下に「削除する」と入力してください。</p>
+    <div class="field" style="margin-top: var(--space-5)">
+      <label class="label" for="confirm">確認</label>
+      <input class="input" id="confirm" autocomplete="off" placeholder="削除する">
+    </div>
+    <div class="dialog__actions">
+      <button class="btn btn--secondary" value="cancel">キャンセル</button>
+      <button class="btn btn--danger" value="delete" id="confirm-delete" disabled>削除する</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const bio = document.getElementById('bio');
+  const count = document.getElementById('bio-count');
+  bio.addEventListener('input', () => { count.textContent = `${bio.value.length} / 160`; });
+
+  // 危険な操作: 文字入力で意思確認してからボタンを有効にする
+  const dialog = document.getElementById('delete-dialog');
+  document.getElementById('open-delete').addEventListener('click', () => dialog.showModal());
+  const confirmInput = document.getElementById('confirm');
+  confirmInput.addEventListener('input', () => { document.getElementById('confirm-delete').disabled = confirmInput.value !== '削除する'; });
+
+  // 保存バー: お手本では最初から「編集中」の状態を見せている
+  document.getElementById('discard').addEventListener('click', () => { document.getElementById('save-bar').hidden = true; });
+  document.getElementById('settings').addEventListener('input', () => { document.getElementById('save-bar').hidden = false; });
+  document.getElementById('settings').addEventListener('submit', (event) => { event.preventDefault(); document.getElementById('save-bar').hidden = true; });
+
+  // 現在地: 見えているセクションのリンクに印を付ける
+  const links = [...document.querySelectorAll('.side-nav a')];
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      links.forEach((link) => link.setAttribute('aria-current', String(link.hash === `#${entry.target.id}`)));
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  document.querySelectorAll('.settings-section').forEach((section) => observer.observe(section));
+</script>
+</body>
+</html>

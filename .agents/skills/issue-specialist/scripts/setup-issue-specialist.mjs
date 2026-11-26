@@ -13,7 +13,7 @@ const ISSUE_TEMPLATE_FILES = [
 ];
 
 function printHelp() {
-  console.log(`Usage: node .github/skills/issue-specialist/scripts/setup-issue-specialist.mjs [options]
+  console.log(`Usage: node .agents/skills/issue-specialist/scripts/setup-issue-specialist.mjs [options]
 
 Issue運用基盤（日本語Issueフォーム + Issue作成CLI）をセットアップします。
 
@@ -25,8 +25,8 @@ Options:
   -h, --help        ヘルプを表示
 
 Examples:
-  node .github/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target . --with-cli
-  node .github/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target "C:\\repos\\my-app" --with-cli --dry-run
+  node .agents/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target . --with-cli
+  node .agents/skills/issue-specialist/scripts/setup-issue-specialist.mjs --target "C:\\repos\\my-app" --with-cli --dry-run
 `);
 }
 

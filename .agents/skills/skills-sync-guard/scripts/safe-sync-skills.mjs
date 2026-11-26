@@ -1,27 +1,46 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, readdir, readFile, readlink, stat } from 'node:fs/promises';
+import { cp, lstat, mkdir, readdir, readFile, readlink, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The sync engine ships inside this skill, so the guard works in any project.
+// A project-level scripts/sync-skills.mjs still takes precedence when present.
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const BUNDLED_RUNNER = path.join(SCRIPT_DIR, 'sync-skills.mjs');
 
 const TARGETS = {
   agents: '.agents/skills',
-  agent: '.agent/skills',
+  claude: '.claude/skills',
   github: '.github/skills',
 };
 
+const SYNC_RUNNERS = [
+  {
+    kind: 'advanced',
+    scriptRelPath: 'scripts/sync-skills.mjs',
+    supportsOverlayRetry: true,
+  },
+  {
+    kind: 'agents-github-mirror',
+    scriptRelPath: 'scripts/sync-agent-skills-to-github.mjs',
+    supportsOverlayRetry: false,
+  },
+];
+
 function printHelp() {
-  console.log(`Usage: node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs [options]
+  console.log(`Usage: node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs [options]
 
 Safely synchronize:
   - .agents/skills
-  - .agent/skills
+  - .claude/skills
   - .github/skills
 
 Options:
   --apply                            Apply changes (default: dry-run)
   --strategy <auto|base|latest>      Sync strategy (default: auto)
-  --base <auto|agents|agent|github>  Base directory (default: auto)
+  --base <auto|agents|claude|github> Base directory (default: auto)
   --no-strict                        Allow base strategy even if conflicts exist
   --no-backup                        Disable pre-sync backup
   --backup-dir <path>                Backup directory (default: .skills-backups)
@@ -31,10 +50,10 @@ Options:
   -h, --help                         Show this help
 
 Examples:
-  node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
-  node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply
-  node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --strategy base --base github
-  node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --strategy latest
+  node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
+  node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply
+  node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --strategy base --base github
+  node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --strategy latest
 `);
 }
 
@@ -123,7 +142,7 @@ function normalizeBase(value, allowAuto) {
   if (v in TARGETS) return v;
   if (allowAuto && v === 'auto') return v;
   if (v === '.agents/skills') return 'agents';
-  if (v === '.agent/skills') return 'agent';
+  if (v === '.claude/skills') return 'claude';
   if (v === '.github/skills') return 'github';
   throw new Error(`Invalid base: ${value}`);
 }
@@ -165,6 +184,15 @@ async function existsAsDirectory(dirPath) {
   try {
     const st = await stat(dirPath);
     return st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function pathExists(targetPath) {
+  try {
+    await stat(targetPath);
+    return true;
   } catch {
     return false;
   }
@@ -386,17 +414,79 @@ function determinePlan(opts, baseCandidate, conflicts) {
   return { strategy, baseName };
 }
 
-function buildSyncArgs(opts, plan) {
-  const args = ['scripts/sync-skills.mjs', '--strategy', plan.strategy, '--base', plan.baseName];
-  if (!opts.apply) args.push('--dry-run');
-  if (!opts.backup) args.push('--no-backup');
-  if (opts.backupDir) args.push('--backup-dir', opts.backupDir);
-  if (!opts.deleteFirst) args.push('--no-delete');
-  if (opts.verbose) args.push('--verbose');
-  return args;
+async function resolveSyncRunner(repoRoot) {
+  for (const runner of SYNC_RUNNERS) {
+    const absPath = path.resolve(repoRoot, runner.scriptRelPath);
+    if (await pathExists(absPath)) {
+      return {
+        ...runner,
+        scriptAbsPath: absPath,
+      };
+    }
+  }
+
+  if (await pathExists(BUNDLED_RUNNER)) {
+    return {
+      ...SYNC_RUNNERS[0],
+      scriptRelPath: path.relative(repoRoot, BUNDLED_RUNNER),
+      scriptAbsPath: BUNDLED_RUNNER,
+    };
+  }
+
+  throw new Error(
+    `No sync script found. Expected the bundled ${BUNDLED_RUNNER} or one of: ${SYNC_RUNNERS.map((runner) => runner.scriptRelPath).join(', ')}`
+  );
 }
 
-function printSummary(targets, baseCandidate, report, plan, opts, freshnessScores) {
+function buildSyncInvocation(opts, plan, runner) {
+  if (runner.kind === 'advanced') {
+    const args = [runner.scriptAbsPath, '--strategy', plan.strategy, '--base', plan.baseName];
+    if (!opts.apply) args.push('--dry-run');
+    if (!opts.backup) args.push('--no-backup');
+    if (opts.backupDir) args.push('--backup-dir', opts.backupDir);
+    if (!opts.deleteFirst) args.push('--no-delete');
+    if (opts.verbose) args.push('--verbose');
+    return {
+      args,
+      supportsOverlayRetry: runner.supportsOverlayRetry,
+    };
+  }
+
+  if (plan.baseName !== 'agents' || plan.strategy !== 'base') {
+    throw new Error(
+      `${runner.scriptRelPath} only supports base sync from .agents/skills to .github/skills`
+    );
+  }
+  if (!opts.deleteFirst) {
+    throw new Error(`${runner.scriptRelPath} does not support overlay sync (--no-delete)`);
+  }
+
+  return {
+    args: [runner.scriptAbsPath],
+    supportsOverlayRetry: runner.supportsOverlayRetry,
+  };
+}
+
+async function backupTargets(repoRoot, targets, backupDir) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupRoot = path.resolve(repoRoot, backupDir, `skills-sync-${timestamp}`);
+  await mkdir(backupRoot, { recursive: true });
+
+  let copied = 0;
+  for (const target of targets) {
+    if (!target.exists) continue;
+    const dest = path.join(backupRoot, target.name);
+    await cp(target.absPath, dest, { recursive: true, force: true });
+    copied += 1;
+  }
+
+  return {
+    backupRoot,
+    copied,
+  };
+}
+
+function printSummary(targets, baseCandidate, report, plan, opts, freshnessScores, invocation) {
   console.log('Skills sync audit summary:');
   for (const t of targets) {
     const newest = t.exists ? new Date(t.newestMtimeMs).toISOString() : 'n/a';
@@ -428,6 +518,8 @@ function printSummary(targets, baseCandidate, report, plan, opts, freshnessScore
     }
     console.log(`Divergences (base already newest): ${report.divergences.length}`);
   }
+
+  console.log(`Sync runner: ${invocation.args[0]}`);
 }
 
 function toJson(targets, baseCandidate, report, plan, opts, freshnessScores) {
@@ -489,32 +581,40 @@ async function main() {
 
   const report = buildConflictReport(targetEntries, auditBaseName);
   const plan = determinePlan(opts, baseCandidate, report.conflicts);
-  const syncArgs = buildSyncArgs(opts, plan);
+  const syncRunner = await resolveSyncRunner(repoRoot);
+  const syncInvocation = buildSyncInvocation(opts, plan, syncRunner);
 
   if (opts.json) {
     console.log(JSON.stringify(toJson(targetEntries, baseCandidate, report, plan, opts, freshnessScores), null, 2));
   } else {
-    printSummary(targetEntries, baseCandidate, report, plan, opts, freshnessScores);
-    console.log(`Planned command: node ${syncArgs.join(' ')}`);
+    printSummary(targetEntries, baseCandidate, report, plan, opts, freshnessScores, syncInvocation);
+    console.log(`Planned command: node ${syncInvocation.args.join(' ')}`);
   }
 
   if (!opts.apply) {
     return;
   }
 
+  if (opts.backup) {
+    const backup = await backupTargets(repoRoot, targetEntries, opts.backupDir);
+    if (!opts.json) {
+      console.log(`Backup created: ${backup.backupRoot} (${backup.copied} targets)`);
+    }
+  }
+
   try {
-    await runSync(repoRoot, syncArgs);
+    await runSync(repoRoot, syncInvocation.args);
   } catch (err) {
-    if (!opts.deleteFirst) {
+    if (!opts.deleteFirst || !syncInvocation.supportsOverlayRetry) {
       throw err;
     }
     const retryOpts = { ...opts, deleteFirst: false };
-    const retryArgs = buildSyncArgs(retryOpts, plan);
+    const retryInvocation = buildSyncInvocation(retryOpts, plan, syncRunner);
     console.warn('Mirror sync failed. Retrying with overlay mode (--no-delete).');
     if (!opts.json) {
-      console.log(`Retry command: node ${retryArgs.join(' ')}`);
+      console.log(`Retry command: node ${retryInvocation.args.join(' ')}`);
     }
-    await runSync(repoRoot, retryArgs);
+    await runSync(repoRoot, retryInvocation.args);
   }
 }
 

@@ -1,6 +1,6 @@
 ---
 name: skills-sync-guard
-description: `.agent/skills` `.agents/skills` `.github/skills` を安全同期するスキル。各フォルダの更新状態を調査し、競合を検知してから最新戦略またはベース戦略で同期を実施する。「skillsを同期」「スキル同期」「sync skills」「sync-skills」「skillsフォルダを揃える」「.agent と .github を同期」などで発火。
+description: "`.agents/skills`（Codex）`.claude/skills`（Claude Code）`.github/skills`（GitHub Copilot）を安全同期するスキル。各フォルダの更新状態を調査し、競合を検知してから最新戦略またはベース戦略で同期を実施する。「skillsを同期」「スキル同期」「sync skills」「sync-skills」「skillsフォルダを揃える」「.agents と .claude と .github を同期」などで発火。"
 ---
 
 # Skills Sync Guard
@@ -14,7 +14,7 @@ description: `.agent/skills` `.agents/skills` `.github/skills` を安全同期�
 
 ## When to Use
 
-- `.agent/skills` と `.agents/skills` と `.github/skills` の内容がズレているとき
+- `.agents/skills`（Codex）と `.claude/skills`（Claude Code）と `.github/skills`（GitHub Copilot）の内容がズレているとき
 - どのフォルダをベースに同期すべきか判断したいとき
 - 同期時の上書き事故を避けながら安全に反映したいとき
 - CI/開発環境で skills 配布先を統一したいとき
@@ -31,7 +31,7 @@ description: `.agent/skills` `.agents/skills` `.github/skills` を安全同期�
 まず dry-run で状態を確認する。
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
 ```
 
 確認ポイント:
@@ -50,7 +50,7 @@ node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
 ベース固定したい場合:
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --strategy base --base github --verbose
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --strategy base --base github --verbose
 ```
 
 ### Step 3: 同期の適用
@@ -58,13 +58,13 @@ node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --strategy ba
 適用時は必ず `--apply` を付ける。バックアップはデフォルト有効。
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --verbose
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --verbose
 ```
 
 競合がある状態で `base` を強制する場合は、ユーザー明示承認のうえでのみ `--no-strict` を使用する。
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --strategy base --base agents --no-strict --verbose
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --strategy base --base agents --no-strict --verbose
 ```
 
 ### Step 4: 同期後検証
@@ -78,20 +78,20 @@ node scripts/sync-skills.mjs --dry-run --verbose
 2. Git 差分を確認し、想定外の削除・上書きがないことを確認する。
 
 ```powershell
-git status --short .agent/skills .agents/skills .github/skills
+git status --short .agents/skills .claude/skills .github/skills
 ```
 
 ## 使い方
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs [options]
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs [options]
 ```
 
 主要オプション:
 
 - `--apply`: dry-run ではなく実際に同期する
 - `--strategy <auto|base|latest>`: 同期戦略を指定する（既定: `auto`）
-- `--base <auto|agents|agent|github>`: ベース候補を指定する（既定: `auto`）
+- `--base <auto|agents|claude|github>`: ベース候補を指定する（既定: `auto`）
 - `--no-strict`: 競合があっても `base` 戦略を許可する
 - `--no-backup`: 同期前バックアップを無効化する（非推奨）
 - `--backup-dir <path>`: バックアップ保存先を変更する

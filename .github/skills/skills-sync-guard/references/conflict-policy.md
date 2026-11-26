@@ -1,6 +1,6 @@
 # Skills Sync Conflict Policy
 
-このドキュメントは `.agent/skills` / `.agents/skills` / `.github/skills` の同期時に、  
+このドキュメントは `.agents/skills`（Codex）/ `.claude/skills`（Claude Code）/ `.github/skills`（GitHub Copilot）の同期時に、  
 上書き事故を避けるための判定基準を定義する。
 
 ## 競合種別
@@ -25,20 +25,20 @@
 1. 監査（dry-run）
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --verbose
 ```
 
 2. 自動戦略で適用（推奨）
 
 ```powershell
-node .github/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --verbose
+node .agents/skills/skills-sync-guard/scripts/safe-sync-skills.mjs --apply --verbose
 ```
 
 3. 同期後確認
 
 ```powershell
 node scripts/sync-skills.mjs --dry-run --verbose
-git status --short .agent/skills .agents/skills .github/skills
+git status --short .agents/skills .claude/skills .github/skills
 ```
 
 ## 非推奨運用

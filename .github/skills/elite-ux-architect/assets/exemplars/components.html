@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>部品カタログ — Elite UX exemplars</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme');
+  if (q.get('accent')) document.documentElement.dataset.accent = q.get('accent');
+</script>
+<style>
+  .page { padding-block: var(--space-12) var(--space-24); }
+  .page > header p { margin-top: var(--space-2); color: var(--text-muted); max-width: var(--measure); }
+  .group { margin-top: var(--space-16); }
+  .group > h2 { font-size: var(--text-2xl); }
+  .group > p { margin-top: var(--space-2); color: var(--text-muted); font-size: var(--text-sm); max-width: var(--measure); }
+  .demo { margin-top: var(--space-6); display: grid; gap: var(--space-8); }
+  .demo h3 { font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-wide); color: var(--text-muted); margin-bottom: var(--space-3); }
+  .demo-grid { display: grid; gap: var(--space-6); }
+  @media (min-width: 48rem) { .demo-grid { grid-template-columns: repeat(2, 1fr); } }
+  .rule { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+  .rule b { color: var(--text); font-weight: var(--weight-semibold); }
+  .is-hover.btn--primary { background: var(--accent-hover); }
+  .is-hover.btn--secondary { background: var(--surface-2); }
+  .is-focus { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  .sk-row { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3); align-items: center; }
+  .static-toast { position: static; display: inline-flex; }
+  .dialog-preview { position: relative; padding: var(--space-8); border-radius: var(--radius-lg); background: var(--overlay); }
+  .dialog-preview .dialog { position: static; display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13.5l2-8h12l2 8v5.5H4z"/><path d="M4 13.5h4.5l1 2h5l1-2H20"/></symbol>
+</svg>
+
+<main class="container page" id="main">
+  <header>
+    <p class="eyebrow">Elite UX exemplars</p>
+    <h1 class="h1">部品カタログ</h1>
+    <p>tokens.css と base.css だけで組んだ部品と、その使い分け。新しい部品を作る前に、ここにあるもので組めないかを確認する。</p>
+  </header>
+
+  <section class="group" aria-labelledby="g-button">
+    <h2 id="g-button">ボタン</h2>
+    <p>1 画面に主ボタン（primary）は 1 つ。残りは secondary か ghost にする。削除など取り消せない操作だけ danger。</p>
+    <div class="demo card">
+      <div>
+        <h3>種類</h3>
+        <div class="cluster">
+          <button class="btn btn--primary">保存する</button>
+          <button class="btn btn--secondary">キャンセル</button>
+          <button class="btn btn--ghost">あとで</button>
+          <button class="btn btn--danger"><svg class="icon icon--sm"><use href="#i-trash"/></svg>削除する</button>
+          <button class="btn btn--secondary btn--icon" aria-label="その他の操作"><svg class="icon"><use href="#i-dots"/></svg></button>
+        </div>
+      </div>
+      <div>
+        <h3>大きさ（32 / 40 / 48px。タッチ端末では 44px 以上に自動で広がる）</h3>
+        <div class="cluster">
+          <button class="btn btn--primary btn--sm">小</button>
+          <button class="btn btn--primary">標準</button>
+          <button class="btn btn--primary btn--lg"><svg class="icon icon--sm"><use href="#i-plus"/></svg>大きい主ボタン</button>
+        </div>
+      </div>
+      <div>
+        <h3>状態</h3>
+        <div class="cluster">
+          <button class="btn btn--primary">通常</button>
+          <button class="btn btn--primary is-hover">hover</button>
+          <button class="btn btn--primary is-focus">focus</button>
+          <button class="btn btn--primary" disabled>無効</button>
+          <button class="btn btn--primary" aria-busy="true"><span class="spinner" aria-hidden="true"></span>保存中…</button>
+        </div>
+        <p class="rule"><b>読み込み中</b>はボタンの幅を変えずに文言を「〜中…」へ。押せない理由が分かる場合は、無効にするより押したときに理由を出すほうが親切。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="g-input">
+    <h2 id="g-input">入力</h2>
+    <p>ラベルは常に入力欄の上に表示する（placeholder をラベル代わりにしない）。エラーは欄の直下に、直し方まで書く。</p>
+    <div class="demo card">
+      <div class="demo-grid">
+        <div class="field"><label class="label" for="c1">チーム名</label><input class="input" id="c1" placeholder="例：営業企画部"><p class="hint">メンバー全員に表示されます</p></div>
+        <div class="field"><label class="label" for="c2">メールアドレス</label><input class="input" id="c2" value="sato@example" aria-invalid="true" aria-describedby="c2e"><p class="error-text" id="c2e"><svg class="icon icon--sm"><use href="#i-x-circle"/></svg>「@」の後ろに「example.co.jp」のようなドメインを入れてください</p></div>
+        <div class="field"><label class="label" for="c3">検索</label><label class="input-group"><svg class="icon"><use href="#i-search"/></svg><input class="input" id="c3" type="search" placeholder="議事録を検索"></label></div>
+        <div class="field"><label class="label" for="c4">プラン</label><select class="select" id="c4"><option>チーム</option><option>ビジネス</option></select></div>
+        <div class="field"><label class="label" for="c5">会社名 <span class="optional">（任意）</span></label><input class="input" id="c5" disabled value="変更できません"></div>
+        <div class="field"><label class="label" for="c6">メモ</label><textarea class="textarea" id="c6">複数行の入力は textarea。高さは 3 行以上。</textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="g-choice">
+    <h2 id="g-choice">選択</h2>
+    <p>すぐに反映される ON/OFF はスイッチ、保存ボタンで確定する選択はチェックボックス。選択肢に説明が要るならラジオカード。</p>
+    <div class="demo card">
+      <div class="demo-grid">
+        <div class="stack" style="--stack-gap: var(--space-3)">
+          <label class="check"><input type="checkbox" checked>議事録を共有したら通知する</label>
+          <label class="check"><input type="checkbox">外部ゲストにも公開する</label>
+          <label class="check"><input class="switch" type="checkbox" role="switch" checked>自動で担当者を提案する</label>
+        </div>
+        <fieldset style="border:0; padding:0; margin:0; display:grid; gap: var(--space-3)">
+          <legend class="visually-hidden">公開範囲</legend>
+          <label class="choice"><input type="radio" name="vis" checked><span><span class="choice__title">チーム内</span><br><span class="choice__desc">招待されたメンバーだけが見られる</span></span></label>
+          <label class="choice"><input type="radio" name="vis"><span><span class="choice__title">社内全体</span><br><span class="choice__desc">同じ組織の全員が検索できる</span></span></label>
+        </fieldset>
+      </div>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="g-feedback">
+    <h2 id="g-feedback">表示・フィードバック</h2>
+    <p>状態は色だけで伝えない。バッジには文言、アラートにはアイコンと見出しを付ける。</p>
+    <div class="demo card">
+      <div>
+        <h3>バッジ</h3>
+        <div class="cluster"><span class="badge">下書き</span><span class="badge badge--accent">新機能</span><span class="badge badge--success"><span class="dot"></span>公開中</span><span class="badge badge--warning"><span class="dot"></span>期限が近い</span><span class="badge badge--danger"><span class="dot"></span>期限切れ</span></div>
+      </div>
+      <div class="demo-grid">
+        <div class="alert" role="note"><svg class="icon"><use href="#i-info"/></svg><div><p class="alert__title">メンテナンスのお知らせ</p><p>12 月 1 日 2:00〜4:00 は閲覧のみになります。</p></div></div>
+        <div class="alert alert--success" role="status"><svg class="icon"><use href="#i-check-circle"/></svg><div><p class="alert__title">保存しました</p><p>3 件のタスクをボードに追加しました。</p></div></div>
+        <div class="alert alert--warning" role="note"><svg class="icon"><use href="#i-alert"/></svg><div><p class="alert__title">あと 2 件で上限です</p><p>フリープランは月 20 件まで作成できます。</p></div></div>
+        <div class="alert alert--danger" role="alert"><svg class="icon"><use href="#i-x-circle"/></svg><div><p class="alert__title">保存できませんでした</p><p>通信が切れました。入力内容は残っています。もう一度お試しください。</p></div></div>
+      </div>
+      <div>
+        <h3>アバター</h3>
+        <div class="cluster"><span class="avatar">佐</span><span class="avatar avatar--lg">田</span><span class="avatar-stack"><span class="avatar">青</span><span class="avatar">鈴</span><span class="avatar">山</span><span class="avatar">+4</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="g-nav">
+    <h2 id="g-nav">ナビゲーション</h2>
+    <p>ページ内の表示切り替えはタブ、同じデータの見方の切り替え（期間・表示形式）はセグメント。</p>
+    <div class="demo card">
+      <div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="true">概要</button><button class="tab" role="tab" aria-selected="false">タスク 12</button><button class="tab" role="tab" aria-selected="false">メンバー</button><button class="tab" role="tab" aria-selected="false">設定</button></div>
+      <div class="segmented" role="group" aria-label="表示形式"><button aria-pressed="true">ボード</button><button aria-pressed="false">リスト</button><button aria-pressed="false">カレンダー</button></div>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="g-state">
+    <h2 id="g-state">空・読み込み・エラーの状態</h2>
+    <p>データがある画面と同じだけ、0 件・読み込み中・失敗の画面を作る。空状態には「次に何をすればよいか」のボタンを置く。</p>
+    <div class="demo-grid" style="margin-top: var(--space-6)">
+      <div class="card"><div class="empty"><div class="empty__icon"><svg class="icon"><use href="#i-inbox"/></svg></div><p class="empty__title">まだ議事録がありません</p><p class="empty__text">最初の会議のメモを書くと、タスクが自動でここに並びます。</p><button class="btn btn--primary btn--sm"><svg class="icon icon--sm"><use href="#i-plus"/></svg>議事録を書く</button></div></div>
+      <div class="card stack" aria-busy="true" aria-label="読み込み中">
+        <div class="sk-row"><div class="skeleton" style="width:2rem;height:2rem;border-radius:50%"></div><div class="skeleton" style="height:0.875rem;width:60%"></div></div>
+        <div class="skeleton" style="height:0.875rem;width:90%"></div>
+        <div class="skeleton" style="height:0.875rem;width:75%"></div>
+        <div class="sk-row"><div class="skeleton" style="width:2rem;height:2rem;border-radius:50%"></div><div class="skeleton" style="height:0.875rem;width:45%"></div></div>
+        <div class="skeleton" style="height:0.875rem;width:85%"></div>
+        <p class="rule">スケルトンは<b>実際のレイアウトと同じ形</b>にする。目的は、表示されたときに画面がずれないことと、何が出てくるかを予告すること（体感速度がスピナーより上がるかは研究で結果が割れている）。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="g-overlay">
+    <h2 id="g-overlay">ダイアログ・トースト</h2>
+    <p>確認が必要な操作だけダイアログで止める。完了の知らせはトーストで、操作を止めない。</p>
+    <div class="demo-grid" style="margin-top: var(--space-6)">
+      <div class="dialog-preview">
+        <div class="dialog" role="dialog" aria-labelledby="dp-title">
+          <h3 class="dialog__title" id="dp-title">このボードを削除しますか？</h3>
+          <p class="dialog__body">12 件のタスクも一緒に削除されます。この操作は取り消せません。</p>
+          <div class="dialog__actions"><button class="btn btn--secondary">キャンセル</button><button class="btn btn--danger">削除する</button></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div><div class="toast static-toast" role="status"><svg class="icon icon--sm"><use href="#i-check-circle"/></svg>3 件のタスクを追加しました<button class="btn btn--ghost btn--sm" style="color: inherit">元に戻す</button></div></div>
+        <p class="rule">ボタンの文言は<b>動詞で結果を言う</b>（「OK」ではなく「削除する」）。取り消せる操作はダイアログで止めずに、トーストに「元に戻す」を付ける。</p>
+        <button class="btn btn--secondary" type="button" id="open-dialog" style="align-self:flex-start">本物のダイアログを開く</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog class="dialog" id="real-dialog" aria-labelledby="rd-title">
+  <form method="dialog">
+    <h2 class="dialog__title" id="rd-title">ネイティブの &lt;dialog&gt;</h2>
+    <p class="dialog__body">showModal() で開くと、背景の操作を止め、Esc で閉じ、閉じたあとは開いたボタンへフォーカスが戻る。自作のモーダルよりこちらを使う。</p>
+    <div class="dialog__actions"><button class="btn btn--primary" value="ok">閉じる</button></div>
+  </form>
+</dialog>
+<script>
+  const realDialog = document.getElementById('real-dialog');
+  document.getElementById('open-dialog').addEventListener('click', () => realDialog.showModal());
+</script>
+</body>
+</html>

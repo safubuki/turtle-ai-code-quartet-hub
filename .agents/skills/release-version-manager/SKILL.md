@@ -35,10 +35,10 @@ description: バージョン更新とリリース要約を支援するスキル�
 2. `scripts/collect-release-context.ps1`
 3. 必要に応じて `git log` / `git diff`
 
-基本コマンド:
+基本コマンド（`.claude/skills` や `.github/skills` から使う場合はパスを読み替える）:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File .github/skills/release-version-manager/scripts/collect-release-context.ps1 -Repo .
+powershell -ExecutionPolicy Bypass -File .agents/skills/release-version-manager/scripts/collect-release-context.ps1 -Repo .
 ```
 
 - 最新タグが取得できる場合は、そのタグ以降のコミットと変更ファイルを収集する
@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File .github/skills/release-version-manager/
 更新補助スクリプト:
 
 ```bash
-node .github/skills/release-version-manager/scripts/update-version-json.mjs --target version.json --version 4.1.0 --previous 4.0.0 --summary "..." --highlight "タイトル::説明" --highlight "タイトル::説明"
+node .agents/skills/release-version-manager/scripts/update-version-json.mjs --target version.json --version 4.1.0 --previous 4.0.0 --summary "..." --highlight "タイトル::説明" --highlight "タイトル::説明"
 ```
 
 - 既定は dry-run

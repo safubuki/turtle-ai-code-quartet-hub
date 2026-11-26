@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 function printHelp() {
-  console.log(`Usage: node .github/skills/release-version-manager/scripts/update-version-json.mjs [options]
+  console.log(`Usage: node .agents/skills/release-version-manager/scripts/update-version-json.mjs [options]
 
 version.json を更新します。既定は dry-run です。
 

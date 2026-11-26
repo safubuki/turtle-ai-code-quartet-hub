@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>概要 — Komorebi Store 管理画面</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme');
+  if (q.get('accent')) document.documentElement.dataset.accent = q.get('accent');
+</script>
+<style>
+  /* ---- App shell: サイドバー + 本体 ---------------------------------- */
+  .app { display: grid; min-height: 100dvh; }
+  @media (min-width: 64rem) { .app { grid-template-columns: var(--sidebar-w) 1fr; } }
+  /* 列全体に背景と枠線、中身だけを sticky にする */
+  .sidebar { display: none; border-right: 1px solid var(--border); background: var(--surface); }
+  @media (min-width: 64rem) { .sidebar { display: block; } }
+  .sidebar__inner {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    padding: var(--space-5) var(--space-3);
+  }
+  .brand { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); font-weight: var(--weight-bold); text-decoration: none; }
+  .brand svg { width: 1.75rem; height: 1.75rem; }
+  .nav-group { display: grid; gap: 2px; }
+  .nav-label { padding: 0 var(--space-3) var(--space-2); font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); letter-spacing: var(--tracking-wide); }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+  }
+  .nav-item:hover { background: var(--surface-3); color: var(--text); }
+  .nav-item[aria-current="page"] { background: var(--accent-soft); color: var(--accent-text); }
+  .nav-item .badge { margin-left: auto; }
+  .sidebar__user { margin-top: auto; display: flex; gap: var(--space-3); align-items: center; padding: var(--space-3); border-top: 1px solid var(--border); font-size: var(--text-sm); }
+  .sidebar__user small { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--header-h);
+    padding: 0 clamp(var(--space-4), 3vw, var(--space-8));
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklch, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+  }
+  .topbar .input-group { width: min(100%, 26rem); }
+  .topbar__actions { margin-left: auto; display: flex; gap: var(--space-1); align-items: center; }
+  .has-dot { position: relative; }
+  .has-dot::after { content: ""; position: absolute; top: 9px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg); }
+  .mobile-only { display: inline-flex; }
+  @media (min-width: 64rem) { .mobile-only { display: none; } }
+  @media (max-width: 39.99rem) { .topbar .input-group kbd { display: none; } }
+
+  .content { padding: var(--space-8) clamp(var(--space-4), 3vw, var(--space-8)) var(--space-16); display: grid; gap: var(--space-6); max-width: 90rem; }
+  .page-head { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-end; justify-content: space-between; }
+  .page-head h1 { font-size: var(--text-2xl); }
+  .page-head p { color: var(--text-muted); font-size: var(--text-sm); margin-top: var(--space-1); }
+
+  /* ---- KPI --------------------------------------------------------- */
+  /* スマホでも 2 列。数値は画面幅に合わせて縮め、補助のスパークラインは隠す */
+  .kpis { display: grid; gap: var(--space-3); grid-template-columns: repeat(2, 1fr); }
+  @media (min-width: 64rem) { .kpis { grid-template-columns: repeat(4, 1fr); gap: var(--space-4); } }
+  @media (max-width: 39.99rem) { .kpi { padding: var(--space-4); } .spark { display: none; } }
+  .kpi { display: grid; gap: var(--space-2); padding: var(--space-5); }
+  .kpi__label { font-size: var(--text-sm); color: var(--text-muted); font-weight: var(--weight-medium); }
+  .kpi__value { font-size: clamp(var(--text-xl), 1rem + 1.6vw, var(--text-3xl)); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .kpi__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-muted); }
+  .kpi__foot .cluster { --cluster-gap: var(--space-2); }
+  .spark { width: 5.5rem; height: 1.75rem; }
+  .spark path { fill: none; stroke: var(--chart-1); stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .spark--down path { stroke: var(--chart-5); }
+
+  /* ---- Main grid --------------------------------------------------- */
+  .grid-main { display: grid; gap: var(--space-4); }
+  @media (min-width: 80rem) { .grid-main { grid-template-columns: 2fr 1fr; } }
+  .legend { display: flex; gap: var(--space-4); font-size: var(--text-xs); color: var(--text-muted); }
+  .legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .legend i { width: 0.75rem; height: 2px; border-radius: 2px; background: var(--chart-1); }
+  .legend i.prev { background: repeating-linear-gradient(90deg, var(--chart-5) 0 3px, transparent 3px 6px); }
+  .chart { margin-top: var(--space-5); }
+  .chart svg { width: 100%; height: auto; overflow: visible; }
+  .chart .grid line { stroke: var(--border); }
+  .chart .axis text { fill: var(--text-muted); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
+  .chart .line { fill: none; stroke: var(--chart-1); stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .line--prev { stroke: var(--chart-5); stroke-dasharray: 4 4; stroke-width: 1.5; }
+  .chart .area { fill: url(#area-fill); }
+  .chart .area-stop { stop-color: var(--chart-1); }
+  .chart .marker { fill: var(--surface); stroke: var(--chart-1); stroke-width: 2.5; }
+  .chart .guide { stroke: var(--border-strong); stroke-dasharray: 3 3; }
+  .tip rect { fill: var(--text); }
+  .tip text { fill: var(--bg); font-size: 0.75rem; }
+  .tip .tip__value { font-weight: 600; font-size: 0.8125rem; }
+  /* SVG は viewBox ごと縮むので、狭い画面では文字を大きめに指定して実寸 11px 前後を保つ */
+  @media (max-width: 39.99rem) {
+    .chart .axis text { font-size: 1.1875rem; }
+    .tip text { font-size: 1.125rem; }
+    .tip .tip__value { font-size: 1.25rem; }
+    .tip rect { width: 170px; height: 64px; }
+    .tip { transform: translate(300px, 0); }
+    .tip text:first-of-type { transform: translateY(6px); }
+    .tip .tip__value { transform: translateY(18px); }
+  }
+
+  .bars { display: grid; gap: var(--space-5); margin-top: var(--space-5); }
+  .bar__row { display: flex; justify-content: space-between; font-size: var(--text-sm); }
+  .bar__row span:last-child { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .bar__track { margin-top: var(--space-2); height: 0.5rem; border-radius: var(--radius-full); background: var(--surface-3); overflow: hidden; }
+  .bar__fill { height: 100%; border-radius: inherit; background: var(--bar, var(--chart-1)); }
+  .card__divider { margin: var(--space-6) calc(var(--space-6) * -1) 0; border-top: 1px solid var(--border); }
+
+  /* ---- Orders ------------------------------------------------------ */
+  .orders-head { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-5) var(--space-6) 0; }
+  .orders-head .tabs { border-bottom: 0; }
+  .order-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+  .customer { display: flex; align-items: center; gap: var(--space-3); white-space: nowrap; }
+  .customer .avatar { width: 1.75rem; height: 1.75rem; }
+  .table-wrap { margin-top: var(--space-3); border-top: 1px solid var(--border); }
+  .table td:first-child, .table th:first-child { padding-left: var(--space-6); }
+  .table td:last-child, .table th:last-child { padding-right: var(--space-6); }
+  /* スマホでは表をカード型の行に組み替える（横スクロールさせない） */
+  @media (max-width: 39.99rem) {
+    .orders .table thead { display: none; }
+    .orders .table, .orders .table tbody { display: block; }
+    .orders .table tr {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      grid-template-areas: "customer customer amount" "id date status";
+      gap: var(--space-2) var(--space-3);
+      align-items: center;
+      padding: var(--space-4) var(--space-5);
+      border-bottom: 1px solid var(--border);
+    }
+    .orders .table tbody tr:last-child { border-bottom: 0; }
+    .orders .table td { padding: 0 !important; border: 0; }
+    .orders .table td:nth-child(1) { grid-area: id; }
+    .orders .table td:nth-child(2) { grid-area: customer; }
+    .orders .table td:nth-child(3) { grid-area: date; font-size: var(--text-xs); }
+    .orders .table td:nth-child(4) { grid-area: status; justify-self: end; }
+    .orders .table td:nth-child(5) { grid-area: amount; font-weight: var(--weight-semibold); }
+    .orders-head { padding-inline: var(--space-5); }
+  }
+  .grid-bottom { display: grid; gap: var(--space-4); }
+  @media (min-width: 80rem) { .grid-bottom { grid-template-columns: 2fr 1fr; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6h-6v6H5.5A1.5 1.5 0 0 1 4 19z"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2.5l2.2 11h10.6l2-8H7"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M4 7.5L12 3.5l8 4v9l-8 4-8-4z"/><path d="M4 7.5l8 4 8-4M12 11.5v9"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M21.5 20c-.5-2.6-1.9-4.2-3.8-5"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 15l3.5-4 3 2.5L19 8"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6.5 8h11v3a5.5 5.5 0 0 1-11 0zM12 16.5V21"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6M12 17h.01"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+</svg>
+
+<a class="skip-link" href="#main">本文へスキップ</a>
+
+<div class="app">
+  <aside class="sidebar" aria-label="サイドバー">
+    <div class="sidebar__inner">
+    <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><circle cx="16" cy="13" r="5" fill="none" stroke="var(--on-accent)" stroke-width="2.5"/><path d="M8 24h16" stroke="var(--on-accent)" stroke-width="2.5" stroke-linecap="round"/></svg>Komorebi</a>
+    <nav class="nav-group" aria-label="メイン">
+      <a class="nav-item" href="#" aria-current="page"><svg class="icon"><use href="#i-home"/></svg>概要</a>
+      <a class="nav-item" href="#"><svg class="icon"><use href="#i-cart"/></svg>注文<span class="badge">12</span></a>
+      <a class="nav-item" href="#"><svg class="icon"><use href="#i-box"/></svg>商品</a>
+      <a class="nav-item" href="#"><svg class="icon"><use href="#i-users"/></svg>顧客</a>
+      <a class="nav-item" href="#"><svg class="icon"><use href="#i-chart"/></svg>レポート</a>
+    </nav>
+    <nav class="nav-group" aria-label="ストア">
+      <div class="nav-label">ストア</div>
+      <a class="nav-item" href="#"><svg class="icon"><use href="#i-plug"/></svg>連携</a>
+      <a class="nav-item" href="#"><svg class="icon"><use href="#i-settings"/></svg>設定</a>
+    </nav>
+    <div class="sidebar__user"><span class="avatar">中</span><span>中村 さくら<small>オーナー</small></span></div>
+    </div>
+  </aside>
+
+  <div>
+    <header class="topbar">
+      <button class="btn btn--ghost btn--icon mobile-only" type="button" aria-label="メニューを開く"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <label class="input-group">
+        <span class="visually-hidden">注文・商品・顧客を検索</span>
+        <svg class="icon"><use href="#i-search"/></svg>
+        <input class="input" type="search" placeholder="注文・商品・顧客を検索">
+        <kbd>Ctrl K</kbd>
+      </label>
+      <div class="topbar__actions">
+        <button class="btn btn--ghost btn--icon has-dot" type="button" aria-label="通知（未読 3 件）"><svg class="icon"><use href="#i-bell"/></svg></button>
+        <button class="btn btn--ghost btn--icon" type="button" aria-label="ヘルプ"><svg class="icon"><use href="#i-help"/></svg></button>
+      </div>
+    </header>
+
+    <main class="content" id="main">
+      <div class="page-head">
+        <div>
+          <h1>概要</h1>
+          <p>11 月 19 日（水）〜 11 月 25 日（火）・前週との比較</p>
+        </div>
+        <div class="cluster">
+          <div class="segmented" role="group" aria-label="期間">
+            <button type="button" aria-pressed="false">今日</button>
+            <button type="button" aria-pressed="true">7 日間</button>
+            <button type="button" aria-pressed="false">30 日間</button>
+          </div>
+          <button class="btn btn--secondary btn--sm" type="button"><svg class="icon icon--sm"><use href="#i-download"/></svg>CSV 書き出し</button>
+        </div>
+      </div>
+
+      <section class="kpis" aria-label="主要指標">
+        <article class="card kpi">
+          <h2 class="kpi__label">売上</h2>
+          <p class="kpi__value">¥1,284,600</p>
+          <div class="kpi__foot">
+            <span class="cluster"><span class="badge badge--success"><svg class="icon icon--sm"><use href="#i-up"/></svg>12.4%</span>前週比</span>
+            <svg class="spark" viewBox="0 0 88 28" aria-hidden="true"><path d="M2 22 L14 19 L26 20 L38 14 L50 15 L62 9 L74 10 L86 4"/></svg>
+          </div>
+        </article>
+        <article class="card kpi">
+          <h2 class="kpi__label">注文数</h2>
+          <p class="kpi__value">342</p>
+          <div class="kpi__foot">
+            <span class="cluster"><span class="badge badge--success"><svg class="icon icon--sm"><use href="#i-up"/></svg>8.1%</span>前週比</span>
+            <svg class="spark" viewBox="0 0 88 28" aria-hidden="true"><path d="M2 18 L14 20 L26 15 L38 16 L50 12 L62 13 L74 8 L86 9"/></svg>
+          </div>
+        </article>
+        <article class="card kpi">
+          <h2 class="kpi__label">平均注文額</h2>
+          <p class="kpi__value">¥3,756</p>
+          <div class="kpi__foot">
+            <span class="cluster"><span class="badge badge--success"><svg class="icon icon--sm"><use href="#i-up"/></svg>3.9%</span>前週比</span>
+            <svg class="spark" viewBox="0 0 88 28" aria-hidden="true"><path d="M2 16 L14 15 L26 17 L38 13 L50 14 L62 12 L74 12 L86 10"/></svg>
+          </div>
+        </article>
+        <article class="card kpi">
+          <h2 class="kpi__label">返品率</h2>
+          <p class="kpi__value">2.1%</p>
+          <div class="kpi__foot">
+            <span class="cluster"><span class="badge badge--danger"><svg class="icon icon--sm"><use href="#i-up"/></svg>0.4pt</span>前週比</span>
+            <svg class="spark spark--down" viewBox="0 0 88 28" aria-hidden="true"><path d="M2 20 L14 19 L26 21 L38 17 L50 18 L62 14 L74 15 L86 12"/></svg>
+          </div>
+        </article>
+      </section>
+
+      <div class="grid-main">
+        <section class="card" aria-labelledby="sales-title">
+          <div class="card__head">
+            <div><h2 class="card__title" id="sales-title">売上推移</h2><p class="card__desc">日別・税込</p></div>
+            <div class="legend"><span><i></i>今週</span><span><i class="prev"></i>前週</span></div>
+          </div>
+          <div class="chart">
+            <svg viewBox="0 0 640 260" role="img" aria-label="今週の日別売上。日曜が最も高く 24.8 万円。前週を全日で上回る。">
+              <defs><linearGradient id="area-fill" x1="0" y1="0" x2="0" y2="1"><stop class="area-stop" offset="0" stop-opacity="0.22"/><stop class="area-stop" offset="1" stop-opacity="0"/></linearGradient></defs>
+              <g class="grid"><line x1="48" x2="632" y1="20" y2="20"/><line x1="48" x2="632" y1="80" y2="80"/><line x1="48" x2="632" y1="140" y2="140"/><line x1="48" x2="632" y1="200" y2="200"/></g>
+              <g class="axis">
+                <text x="40" y="24" text-anchor="end">30万</text><text x="40" y="84" text-anchor="end">20万</text><text x="40" y="144" text-anchor="end">10万</text><text x="40" y="204" text-anchor="end">0</text>
+                <text x="64" y="228" text-anchor="middle">水</text><text x="156" y="228" text-anchor="middle">木</text><text x="248" y="228" text-anchor="middle">金</text><text x="340" y="228" text-anchor="middle">土</text><text x="432" y="228" text-anchor="middle">日</text><text x="524" y="228" text-anchor="middle">月</text><text x="616" y="228" text-anchor="middle">火</text>
+              </g>
+              <path class="line line--prev" d="M64 112 L156 118 L248 104 L340 82 L432 70 L524 120 L616 116"/>
+              <path class="area" d="M64 98 L156 104 L248 86 L340 58 L432 51 L524 94 L616 88 L616 200 L64 200 Z"/>
+              <path class="line" d="M64 98 L156 104 L248 86 L340 58 L432 51 L524 94 L616 88"/>
+              <line class="guide" x1="432" x2="432" y1="51" y2="200"/>
+              <circle class="marker" cx="432" cy="51" r="5"/>
+              <g class="tip" transform="translate(444 6)"><rect width="112" height="44" rx="8"/><text x="12" y="18">11/23（日）</text><text class="tip__value" x="12" y="35">¥248,300</text></g>
+            </svg>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="channel-title">
+          <h2 class="card__title" id="channel-title">チャネル別売上</h2>
+          <p class="card__desc">売上に占める割合</p>
+          <div class="bars">
+            <div><div class="bar__row"><span>自社サイト</span><span>¥642,300 · 50%</span></div><div class="bar__track"><div class="bar__fill" style="width:50%"></div></div></div>
+            <div><div class="bar__row"><span>楽天市場</span><span>¥385,400 · 30%</span></div><div class="bar__track"><div class="bar__fill" style="width:30%; --bar: var(--chart-2)"></div></div></div>
+            <div><div class="bar__row"><span>Instagram ショップ</span><span>¥179,800 · 14%</span></div><div class="bar__track"><div class="bar__fill" style="width:14%; --bar: var(--chart-3)"></div></div></div>
+            <div><div class="bar__row"><span>実店舗</span><span>¥77,100 · 6%</span></div><div class="bar__track"><div class="bar__fill" style="width:6%; --bar: var(--chart-4)"></div></div></div>
+          </div>
+          <div class="card__divider"></div>
+          <a class="link" style="display:inline-flex; gap:var(--space-1); align-items:center; margin-top:var(--space-4); font-size:var(--text-sm)" href="#">チャネルのレポートを開く<svg class="icon icon--sm"><use href="#i-arrow-right"/></svg></a>
+        </section>
+      </div>
+
+      <div class="grid-bottom">
+        <section class="card card--flush orders" aria-labelledby="orders-title">
+          <div class="orders-head">
+            <h2 class="card__title" id="orders-title">最近の注文</h2>
+            <div class="tabs" role="tablist" aria-label="注文の絞り込み">
+              <button class="tab" role="tab" aria-selected="true">すべて</button>
+              <button class="tab" role="tab" aria-selected="false">未発送 4</button>
+              <button class="tab" role="tab" aria-selected="false">返品 1</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th scope="col">注文</th><th scope="col">顧客</th><th scope="col">日時</th><th scope="col">状態</th><th scope="col" class="num">金額</th></tr></thead>
+              <tbody>
+                <tr><td class="order-id">#10482</td><td><span class="customer"><span class="avatar">高</span>高橋 健太</span></td><td class="muted">今日 14:32</td><td><span class="badge badge--warning"><span class="dot"></span>未発送</span></td><td class="num">¥4,980</td></tr>
+                <tr><td class="order-id">#10481</td><td><span class="customer"><span class="avatar">伊</span>伊藤 美咲</span></td><td class="muted">今日 13:05</td><td><span class="badge badge--success"><span class="dot"></span>発送済み</span></td><td class="num">¥12,400</td></tr>
+                <tr><td class="order-id">#10480</td><td><span class="customer"><span class="avatar">渡</span>渡辺 翔</span></td><td class="muted">今日 11:48</td><td><span class="badge"><span class="dot"></span>決済待ち</span></td><td class="num">¥2,750</td></tr>
+                <tr><td class="order-id">#10479</td><td><span class="customer"><span class="avatar">小</span>小林 由美子</span></td><td class="muted">昨日 22:10</td><td><span class="badge badge--danger"><span class="dot"></span>返品申請</span></td><td class="num">¥6,300</td></tr>
+                <tr><td class="order-id">#10478</td><td><span class="customer"><span class="avatar">加</span>加藤 大輔</span></td><td class="muted">昨日 19:26</td><td><span class="badge badge--success"><span class="dot"></span>発送済み</span></td><td class="num">¥8,820</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="stock-title">
+          <h2 class="card__title" id="stock-title">在庫アラート</h2>
+          <div class="empty">
+            <div class="empty__icon"><svg class="icon"><use href="#i-check"/></svg></div>
+            <p class="empty__title">在庫切れの商品はありません</p>
+            <p class="empty__text">在庫が 5 個を下回った商品がここに表示されます。しきい値は設定から変更できます。</p>
+            <a class="btn btn--secondary btn--sm" href="#">しきい値を変更</a>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

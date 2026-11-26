@@ -1,0 +1,21 @@
+{
+  "library": "C:\\git_home\\turtle-skills-neo",
+  "updatedAt": "2026-11-26T00:25:35.600Z",
+  "skills": {
+    "elite-ux-architect": {
+      "hash": "80b300004a86276ce510f8f0247309a22227258e98a9f2a1be21ff9251418f64"
+    },
+    "issue-specialist": {
+      "hash": "69a23febe46c5eb81ed2ac4d5c5a57ec664b1a3127ba2759147ffc00bf470bc6"
+    },
+    "media-video-analyzer": {
+      "hash": "d092a5eb64d7124694b9a7d61910e26ad1a2a2de6041905827be73742956db35"
+    },
+    "release-version-manager": {
+      "hash": "6c30fe4a127973a79e86233f277ef0f70f79ecf91601353ae9ce06576776f3b7"
+    },
+    "skills-sync-guard": {
+      "hash": "e9c723668c3787bb6a1151846651edc1982a42b9a94657c2a7e2a45cd55490f9"
+    }
+  }
+}

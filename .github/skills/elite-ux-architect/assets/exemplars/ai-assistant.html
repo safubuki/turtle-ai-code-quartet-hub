@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>お知らせ文の下書き — Kotonoha</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme');
+  if (q.get('accent')) document.documentElement.dataset.accent = q.get('accent');
+</script>
+<style>
+  /*
+    お手本：AI で「条件を決めて、成果物を作り、直す」画面
+    - 左：条件をボタン・スライダーで選ぶ（Tuners）＋必要なときだけひと言（Hybrid）
+    - 右：いちばん新しい成果物を常に表示（Canvas）。版の切り替え・元に戻す・部分の書き直し（Inline）
+    - チャット欄は置かない。毎回ほぼ同じ条件で作るものは、選ばせるほうが速く、結果もぶれない
+  */
+  body { min-height: 100dvh; background: var(--bg); }
+
+  .app-header { position: sticky; top: 0; z-index: var(--z-sticky); height: var(--header-h); border-bottom: 1px solid var(--border); background: var(--surface); }
+  .app-header__inner { height: 100%; display: flex; align-items: center; gap: var(--space-3); padding-inline: clamp(16px, 4vw, 32px); }
+  .brand { display: flex; align-items: center; gap: var(--space-2); font-weight: var(--weight-bold); text-decoration: none; flex: none; }
+  .brand svg { width: 1.5rem; height: 1.5rem; color: var(--accent); }
+  .doc-name { min-width: 0; padding-left: var(--space-3); border-left: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .saved { margin-left: auto; display: flex; align-items: center; gap: var(--space-1); flex: none; color: var(--text-muted); font-size: var(--text-xs); }
+
+  .workspace { display: grid; }
+  @media (min-width: 64rem) {
+    .workspace { grid-template-columns: 24rem minmax(0, 1fr); height: calc(100dvh - var(--header-h)); }
+  }
+
+  /* ---- 左：条件 -------------------------------------------------------- */
+  .panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+  @media (min-width: 64rem) { .panel { border-right: 1px solid var(--border); } }
+  .panel__body { flex: 1; overflow-y: auto; padding: var(--space-6); display: grid; gap: var(--space-8); align-content: start; }
+  .panel__foot { display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--border); background: var(--surface); }
+  .panel__foot .hint { text-align: center; }
+  .group { display: grid; gap: var(--space-4); }
+  .group__title { font-size: var(--text-base); font-weight: var(--weight-semibold); }
+
+  /* はじめの一歩：よく使うひな形（白紙から書かせない） */
+  .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .chip { min-height: var(--control-sm); padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-full); background: var(--surface); color: var(--text); font-size: var(--text-sm); }
+  .chip:hover { background: var(--surface-2); }
+  .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); font-weight: var(--weight-medium); }
+
+  .segmented--full { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; justify-self: stretch; }
+  .range { width: 100%; accent-color: var(--accent); }
+  .range-ends { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--text-xs); }
+  .range-value { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+
+  /* ---- 右：成果物 ------------------------------------------------------- */
+  .canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .canvas__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) clamp(16px, 4vw, 32px); border-bottom: 1px solid var(--border); background: var(--surface); }
+  .versions { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+  .versions span { min-width: 4.5rem; text-align: center; }
+  .canvas__bar .spacer { flex: 1; }
+  .canvas__scroll { flex: 1; overflow-y: auto; padding: var(--space-6) clamp(16px, 4vw, 32px) var(--space-16); }
+  .canvas__inner { max-width: 42rem; margin-inline: auto; display: grid; gap: var(--space-4); }
+
+  /* できることと限界を、作った物のすぐ上で短く伝える（HAX G2） */
+  .notice { display: flex; gap: var(--space-2); align-items: flex-start; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading-snug); }
+  .notice .icon { margin-top: 1px; }
+
+  .paper { padding: clamp(20px, 4vw, 40px); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-xs); }
+  .paper h1 { font-size: var(--text-2xl); line-height: var(--leading-tight); }
+  .paper p { margin-top: var(--space-4); }
+  .paper:focus-within { border-color: var(--border-input); }
+  [contenteditable]:focus { outline: none; }
+  /* 入力した事実は言い換えずにそのまま使い、下線で示す（なぜこうなったかを見せる：HAX G11） */
+  .fact { text-decoration: underline 2px var(--accent); text-underline-offset: 0.3em; }
+  .legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-xs); }
+  .legend .fact { color: var(--text); }
+
+  /* 部分の書き直し：選んだ文のすぐ上に出す（Inline） */
+  .sel { background: color-mix(in oklch, var(--accent) 20%, transparent); border-radius: 2px; }
+  .inline-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); width: fit-content; max-width: 100%; margin: var(--space-4) 0 calc(-1 * var(--space-2)); padding: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-lg); }
+  .inline-bar .label-sm { padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--text-xs); }
+
+  .paper-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); color: var(--text-muted); font-size: var(--text-sm); }
+
+  /* ---- 状態：作成中・失敗 ----------------------------------------------- */
+  .only-generating, .only-error { display: none; }
+  body[data-state="generating"] .only-generating { display: grid; }
+  body[data-state="error"] .only-error { display: grid; }
+  body[data-state="generating"] :is(.paper, .notice, .paper-foot) { display: none; }
+  .progress-card { gap: var(--space-4); padding: clamp(20px, 4vw, 40px); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+  .progress-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+  .progress-card__head p { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+  .sk-line { height: 0.875rem; }
+
+  /* ---- スマホ：条件と下書きを切り替える ---------------------------------- */
+  .view-switch { display: none; }
+  @media (max-width: 63.99rem) {
+    .view-switch { display: block; position: sticky; top: var(--header-h); z-index: var(--z-sticky); padding: var(--space-3) clamp(16px, 4vw, 32px); border-bottom: 1px solid var(--border); background: var(--surface); }
+    body[data-view="draft"] .panel { display: none; }
+    body[data-view="tuners"] .canvas { display: none; }
+    .panel__body { padding-inline: clamp(16px, 4vw, 32px); }
+    .panel__foot { position: sticky; bottom: 0; padding-inline: clamp(16px, 4vw, 32px); padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom)); }
+    /* 1 行に収める：版の表示を詰める */
+    .canvas__bar { flex-wrap: nowrap; gap: var(--space-1); }
+    .versions span { min-width: 0; padding-inline: var(--space-1); }
+    .doc-name { display: none; }
+  }
+</style>
+</head>
+<body data-view="draft">
+<a class="skip-link" href="#main">本文へ移動</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M5 5h9a5 5 0 0 1 0 10H9l-4 4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L4.5 11.5 9 16"/><path d="M4.5 11.5H15a4.5 4.5 0 0 1 0 9h-3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></symbol>
+</svg>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <a class="brand" href="#"><svg aria-hidden="true"><use href="#i-logo"/></svg>Kotonoha</a>
+    <span class="doc-name">新商品のお知らせ（12 月）</span>
+    <span class="saved"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-check"/></svg>保存済み</span>
+  </div>
+</header>
+
+<div class="view-switch">
+  <div class="segmented segmented--full" role="group" aria-label="表示の切り替え">
+    <button type="button" data-set-view="tuners" aria-pressed="false">条件</button>
+    <button type="button" data-set-view="draft" aria-pressed="true">下書き</button>
+  </div>
+</div>
+
+<div class="workspace">
+  <!-- 左：条件（Tuners + Hybrid） -->
+  <aside class="panel" aria-label="下書きの条件">
+    <div class="panel__body">
+      <section class="group" aria-labelledby="g-template">
+        <h2 class="group__title" id="g-template">何のお知らせ？</h2>
+        <div class="chips" role="group" aria-labelledby="g-template" data-toggle-group>
+          <button type="button" class="chip" aria-pressed="true">新商品</button>
+          <button type="button" class="chip" aria-pressed="false">定休日の変更</button>
+          <button type="button" class="chip" aria-pressed="false">価格の改定</button>
+          <button type="button" class="chip" aria-pressed="false">イベント</button>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="g-facts">
+        <div>
+          <h2 class="group__title" id="g-facts">入れる事実</h2>
+          <p class="hint">ここに書いた内容は言い換えずにそのまま使います。</p>
+        </div>
+        <div class="field">
+          <label class="label" for="f-name">商品名</label>
+          <input class="input" id="f-name" value="季節のいちごタルト">
+        </div>
+        <div class="checks">
+          <div class="field">
+            <label class="label" for="f-date">発売日</label>
+            <input class="input" id="f-date" value="12 月 1 日（月）">
+          </div>
+          <div class="field">
+            <label class="label" for="f-price">価格</label>
+            <input class="input" id="f-price" value="680 円（税込）">
+          </div>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="g-style">
+        <h2 class="group__title" id="g-style">書き方</h2>
+        <div class="field">
+          <span class="label" id="l-to">誰に</span>
+          <div class="segmented segmented--full" role="group" aria-labelledby="l-to" data-toggle-group>
+            <button type="button" aria-pressed="true">お客さま</button>
+            <button type="button" aria-pressed="false">社内</button>
+            <button type="button" aria-pressed="false">取引先</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label" id="l-len">長さ</span>
+          <div class="segmented segmented--full" role="group" aria-labelledby="l-len" data-toggle-group>
+            <button type="button" aria-pressed="false">短め</button>
+            <button type="button" aria-pressed="true">標準</button>
+            <button type="button" aria-pressed="false">長め</button>
+          </div>
+          <p class="hint">標準は 200 字まで</p>
+        </div>
+        <div class="field">
+          <div class="spread"><label class="label" for="f-tone">言葉づかい</label><span class="range-value" id="tone-out">やわらかめ</span></div>
+          <input class="range" id="f-tone" type="range" min="1" max="5" value="4" aria-valuetext="やわらかめ">
+          <div class="range-ends" aria-hidden="true"><span>かため</span><span>くだけた</span></div>
+        </div>
+        <fieldset class="field">
+          <legend class="label">必ず入れる</legend>
+          <div class="checks">
+            <label class="check"><input type="checkbox" checked>発売日</label>
+            <label class="check"><input type="checkbox" checked>価格</label>
+            <label class="check"><input type="checkbox">予約の方法</label>
+            <label class="check"><input type="checkbox">問い合わせ先</label>
+          </div>
+        </fieldset>
+      </section>
+
+      <section class="group" aria-labelledby="g-extra">
+        <div class="field">
+          <label class="label" id="g-extra" for="f-extra">ほかに伝えたいこと <span class="optional">（任意）</span></label>
+          <textarea class="textarea" id="f-extra" rows="3">数量限定。売り切れたら終わり。</textarea>
+          <p class="hint">選ぶだけで足りないときに 1〜2 行で。例：予約できる、駐車場あり</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="panel__foot">
+      <button type="button" class="btn btn--primary btn--block" id="generate">
+        下書きを作り直す
+      </button>
+      <p class="hint">作り直しても今の版は残ります</p>
+    </div>
+  </aside>
+
+  <!-- 右：成果物（Canvas + Inline） -->
+  <main class="canvas" id="main" tabindex="-1">
+    <div class="canvas__bar">
+      <div class="versions" role="group" aria-label="版の切り替え">
+        <button type="button" class="btn btn--ghost btn--icon btn--sm" aria-label="前の版"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg></button>
+        <span>版 3 / 3</span>
+        <button type="button" class="btn btn--ghost btn--icon btn--sm" aria-label="次の版" disabled><svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></button>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-undo"/></svg>元に戻す</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--secondary btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-copy"/></svg>コピー</button>
+    </div>
+
+    <div class="canvas__scroll">
+      <div class="canvas__inner">
+        <!-- 失敗：前の版は消さずに残し、何が起きてどうすればよいかを書く -->
+        <div class="alert alert--danger only-error" role="alert">
+          <svg class="icon" aria-hidden="true"><use href="#i-x-circle"/></svg>
+          <div>
+            <p class="alert__title">下書きを作れませんでした</p>
+            <p>通信が切れました。条件はそのまま残っています。下は前の版（版 3）です。</p>
+            <div class="cluster" style="margin-top: var(--space-3)"><button type="button" class="btn btn--secondary btn--sm">もう一度作る</button></div>
+          </div>
+        </div>
+
+        <!-- 作成中：形だけ先に見せ、いつでも取り消せる（HAX G8） -->
+        <div class="progress-card only-generating" role="status">
+          <div class="progress-card__head">
+            <p><span class="spinner" aria-hidden="true"></span>下書きを作っています（5 秒ほど）</p>
+            <button type="button" class="btn btn--ghost btn--sm">取り消す</button>
+          </div>
+          <div class="skeleton sk-line" style="width: 55%; height: 1.5rem"></div>
+          <div class="skeleton sk-line" style="width: 100%"></div>
+          <div class="skeleton sk-line" style="width: 94%"></div>
+          <div class="skeleton sk-line" style="width: 70%"></div>
+        </div>
+
+        <p class="notice"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-info"/></svg>AI が作った下書きです。下線の事実は入力どおりです。それ以外の表現は送る前に読んで確かめてください。</p>
+
+        <article class="paper" contenteditable="true" spellcheck="false" aria-label="下書き（直接書き直せます）">
+          <h1>冬の新作「<span class="fact">季節のいちごタルト</span>」が登場します</h1>
+          <p><span class="fact">12 月 1 日（月）</span>から、旬のいちごをたっぷり使ったタルトを販売します。サクッと焼き上げた生地に、甘さ控えめのカスタードを重ねました。</p>
+          <div class="inline-bar" role="toolbar" aria-label="選んだ文を書き直す" contenteditable="false">
+            <span class="label-sm">選んだ文を</span>
+            <button type="button" class="btn btn--ghost btn--sm">短く</button>
+            <button type="button" class="btn btn--ghost btn--sm">やわらかく</button>
+            <button type="button" class="btn btn--ghost btn--sm">別の言い方</button>
+          </div>
+          <p><span class="sel">数に限りがありますので、売り切れの際はどうぞご容赦ください。</span>価格は <span class="fact">680 円（税込）</span>です。</p>
+          <p>寒い季節に、ほっとひと息つける甘さをどうぞ。みなさまのご来店をお待ちしています。</p>
+          <div class="legend" contenteditable="false"><span><span class="fact">下線</span>：入力した事実</span><span>文を選ぶと書き直しのボタンが出ます</span></div>
+        </article>
+
+        <div class="paper-foot">
+          <span>182 字・版 3：3 文目を「やわらかく」で書き直し（10:24）</span>
+          <button type="button" class="btn btn--ghost btn--sm">合わない点を伝える</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // お手本の表示切り替え：?state=generating | error、?view=tuners | draft
+  if (q.get('state')) document.body.dataset.state = q.get('state');
+  if (q.get('view')) document.body.dataset.view = q.get('view');
+  const syncView = () => document.querySelectorAll('[data-set-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.setView === document.body.dataset.view)));
+  syncView();
+  document.querySelectorAll('[data-set-view]').forEach(b => b.addEventListener('click', () => { document.body.dataset.view = b.dataset.setView; syncView(); }));
+  document.querySelectorAll('[data-toggle-group]').forEach(g => g.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+  const tones = ['かため', 'ややかため', 'ふつう', 'やわらかめ', 'くだけた'];
+  const tone = document.getElementById('f-tone'), out = document.getElementById('tone-out');
+  tone.addEventListener('input', () => { out.textContent = tones[tone.value - 1]; tone.setAttribute('aria-valuetext', out.textContent); });
+  if (document.body.dataset.state === 'generating') {
+    const g = document.getElementById('generate'); g.disabled = true; g.textContent = '作成中…';
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)">
+<title>11 月の支出 — Kakeibo</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme');
+  if (q.get('accent')) document.documentElement.dataset.accent = q.get('accent');
+</script>
+<style>
+  /* スマホ前提の 1 カラム。PC で開いたときは中央に端末幅で表示する */
+  body { background: var(--surface-2); }
+  .app {
+    --tabbar-h: 4rem;
+    position: relative;
+    max-width: 26.875rem;
+    min-height: 100dvh;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+  .app > main { flex: 1; padding-bottom: var(--space-8); }
+  /* PC では端末サイズの枠の中だけをスクロールさせる（sticky のバーは枠に追従する） */
+  @media (min-width: 48rem) {
+    body { padding-block: var(--space-8); }
+    .app { height: min(54rem, calc(100dvh - 2 * var(--space-8))); min-height: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-2xl); box-shadow: var(--shadow-lg); }
+  }
+
+  .appbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: calc(env(safe-area-inset-top) + var(--space-2)) var(--space-4) var(--space-2);
+    background: color-mix(in oklch, var(--bg) 90%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .month { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-lg); font-weight: var(--weight-bold); }
+  .appbar .avatar { margin-left: auto; }
+
+  .summary { margin: var(--space-2) var(--space-4) 0; padding: var(--space-5); border-radius: var(--radius-xl); background: var(--surface); border: 1px solid var(--border); }
+  .summary__label { font-size: var(--text-sm); color: var(--text-muted); }
+  .summary__value { margin-top: var(--space-1); font-size: var(--text-4xl); font-weight: var(--weight-bold); letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .summary__value small { font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--text-muted); margin-left: var(--space-1); letter-spacing: 0; }
+  .meter { margin-top: var(--space-4); height: 0.5rem; border-radius: var(--radius-full); background: var(--surface-3); overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 71%; border-radius: inherit; background: var(--accent); }
+  .summary__foot { display: flex; justify-content: space-between; margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .summary__foot strong { color: var(--text); font-weight: var(--weight-semibold); }
+
+  .filters { display: flex; gap: var(--space-2); padding: var(--space-5) var(--space-4) var(--space-2); overflow-x: auto; scrollbar-width: none; }
+  .chip {
+    flex: none;
+    min-height: 2.25rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+  .chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+  .day { margin-top: var(--space-3); }
+  .day__head {
+    position: sticky;
+    top: 3.5rem;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .items { margin: 0 var(--space-4); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
+  .item { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: center; min-height: 3.75rem; padding: var(--space-3) var(--space-4); text-decoration: none; }
+  .item + .item { border-top: 1px solid var(--border); }
+  .item:active { background: var(--surface-2); }
+  .cat { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: var(--radius-md); background: var(--cat-bg); color: var(--cat-fg); }
+  .cat--food { --cat-bg: var(--warning-soft); --cat-fg: var(--warning-text); }
+  .cat--daily { --cat-bg: var(--success-soft); --cat-fg: var(--success-text); }
+  .cat--move { --cat-bg: var(--accent-soft); --cat-fg: var(--accent-text); }
+  .cat--fun { --cat-bg: var(--danger-soft); --cat-fg: var(--danger-text); }
+  .item__title { font-weight: var(--weight-medium); line-height: var(--leading-snug); }
+  .item__sub { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
+  .item__amount { font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
+  .item__amount--in { color: var(--success-text); }
+
+  /* 追加ボタンはタブバー中央に置く。右下の FAB は右端の金額を隠すため使わない */
+  .tab-add { display: grid; place-items: center; }
+  .tab-add button {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: var(--shadow-md);
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+  .tab-add button:active { transform: scale(0.96); }
+
+  .tabbar {
+    position: sticky;
+    bottom: 0;
+    z-index: var(--z-sticky);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--border);
+    background: color-mix(in oklch, var(--surface) 92%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .tab-link { display: grid; place-items: center; align-content: center; gap: 2px; color: var(--text-muted); font-size: 0.6875rem; font-weight: var(--weight-medium); text-decoration: none; }
+  .tab-link[aria-current="page"] { color: var(--accent-text); }
+  .tab-link .icon { width: 1.5rem; height: 1.5rem; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-food" viewBox="0 0 24 24"><path d="M7 3v8a2 2 0 0 0 2 2v8M11 3v8a2 2 0 0 1-2 2M17 3c-1.7 1.2-2.5 3.2-2.5 6v4H17v8"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24"><path d="M5.5 8h13l-1 12.5h-11z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></symbol>
+  <symbol id="i-train" viewBox="0 0 24 24"><rect x="5.5" y="3.5" width="13" height="13" rx="3"/><path d="M5.5 10.5h13M9 13.5h.01M15 13.5h.01M8 20l1.5-3.5M16 20l-1.5-3.5"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M4 7.5h16v3a1.5 1.5 0 0 0 0 3v3H4v-3a1.5 1.5 0 0 0 0-3z"/><path d="M14 7.5v9"/></symbol>
+  <symbol id="i-yen" viewBox="0 0 24 24"><path d="M6 4l6 8 6-8M12 12v8M8 13h8M8 16.5h8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6h-6v6H5.5A1.5 1.5 0 0 1 4 19z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+  <symbol id="i-pie" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 3.8A8.5 8.5 0 0 1 20.2 9H15z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="appbar">
+    <button class="btn btn--ghost btn--icon" type="button" aria-label="前の月"><svg class="icon"><use href="#i-left"/></svg></button>
+    <h1 class="month">2026 年 11 月</h1>
+    <button class="btn btn--ghost btn--icon" type="button" aria-label="次の月" disabled><svg class="icon"><use href="#i-right"/></svg></button>
+    <span class="avatar">ゆ</span>
+  </header>
+
+  <main>
+    <section class="summary" aria-label="今月の支出">
+      <p class="summary__label">今月の支出</p>
+      <p class="summary__value">¥128,450<small>/ 予算 ¥180,000</small></p>
+      <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="180000" aria-valuenow="128450" aria-label="予算の使用率 71%"><i></i></div>
+      <div class="summary__foot"><span>残り <strong>¥51,550</strong></span><span>あと 5 日</span></div>
+    </section>
+
+    <div class="filters" role="group" aria-label="カテゴリで絞り込む">
+      <button class="chip" type="button" aria-pressed="true">すべて</button>
+      <button class="chip" type="button" aria-pressed="false">食費</button>
+      <button class="chip" type="button" aria-pressed="false">日用品</button>
+      <button class="chip" type="button" aria-pressed="false">交通</button>
+      <button class="chip" type="button" aria-pressed="false">娯楽</button>
+    </div>
+
+    <section class="day" aria-labelledby="d25">
+      <h2 class="day__head" id="d25"><span>11 月 25 日（火）</span><span>−¥3,460</span></h2>
+      <div class="items">
+        <a class="item" href="#"><span class="cat cat--food"><svg class="icon"><use href="#i-food"/></svg></span><span><div class="item__title">ランチ</div><div class="item__sub">食費・クレジットカード</div></span><span class="item__amount">−¥1,280</span></a>
+        <a class="item" href="#"><span class="cat cat--daily"><svg class="icon"><use href="#i-bag"/></svg></span><span><div class="item__title">ドラッグストア</div><div class="item__sub">日用品・電子マネー</div></span><span class="item__amount">−¥1,760</span></a>
+        <a class="item" href="#"><span class="cat cat--move"><svg class="icon"><use href="#i-train"/></svg></span><span><div class="item__title">電車</div><div class="item__sub">交通・IC カード</div></span><span class="item__amount">−¥420</span></a>
+      </div>
+    </section>
+
+    <section class="day" aria-labelledby="d24">
+      <h2 class="day__head" id="d24"><span>11 月 24 日（月）</span><span>+¥1,820</span></h2>
+      <div class="items">
+        <a class="item" href="#"><span class="cat cat--fun"><svg class="icon"><use href="#i-ticket"/></svg></span><span><div class="item__title">映画</div><div class="item__sub">娯楽・クレジットカード</div></span><span class="item__amount">−¥2,000</span></a>
+        <a class="item" href="#"><span class="cat cat--daily"><svg class="icon"><use href="#i-yen"/></svg></span><span><div class="item__title">フリマの売上</div><div class="item__sub">収入・銀行振込</div></span><span class="item__amount item__amount--in">+¥3,820</span></a>
+      </div>
+    </section>
+
+    <section class="day" aria-labelledby="d23">
+      <h2 class="day__head" id="d23"><span>11 月 23 日（日）</span><span>−¥6,980</span></h2>
+      <div class="items">
+        <a class="item" href="#"><span class="cat cat--food"><svg class="icon"><use href="#i-food"/></svg></span><span><div class="item__title">スーパー</div><div class="item__sub">食費・電子マネー</div></span><span class="item__amount">−¥6,980</span></a>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="メイン">
+    <a class="tab-link" href="#" aria-current="page"><svg class="icon"><use href="#i-home"/></svg>ホーム</a>
+    <a class="tab-link" href="#"><svg class="icon"><use href="#i-list"/></svg>履歴</a>
+    <div class="tab-add"><button type="button" aria-label="支出を追加"><svg class="icon icon--lg"><use href="#i-plus"/></svg></button></div>
+    <a class="tab-link" href="#"><svg class="icon"><use href="#i-pie"/></svg>レポート</a>
+    <a class="tab-link" href="#"><svg class="icon"><use href="#i-settings"/></svg>設定</a>
+  </nav>
+</div>
+
+<script>
+  document.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c === chip)));
+  }));
+</script>
+</body>
+</html>
