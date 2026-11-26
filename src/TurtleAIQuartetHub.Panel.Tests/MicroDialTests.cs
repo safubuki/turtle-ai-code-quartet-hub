@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 28;
+    public const int Count = 29;
 
     public static void Run(List<string> failures)
     {
@@ -20,6 +20,7 @@ internal static class MicroDialTests
         TestCompactAndMicroExitConfirmAvoidMainWindowResizeAndUncloak(failures);
         TestMicroDialCaptureCoreCircleImage(failures);
         TestMicroDialCaptureCoreCircleImageCenteredWithoutVerticalClip(failures);
+        TestMicroDialCoreShadowConcentricWithCore(failures);
         TestMicroDialNonActivatingMenuClickAndJumpGuards(failures);
         TestMicroDialCenterButtonSupportsDragAndSingleClickToggle(failures);
         TestMicroDialInnerWorkingArcBrighterAndThicker(failures);
@@ -487,6 +488,40 @@ internal static class MicroDialTests
                     throw new InvalidOperationException(
                         $"円形コアキャプチャの上下端が非対称または切れています (h={h}, topEdge={topEdge}, bottomEdge={bottomEdge})。");
                 }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialCoreShadowConcentricWithCore(List<string> failures)
+    {
+        RunOnStaThread(failures, "本体円背面のソフト影が本体円と同心（上下左右の縁取り幅が均一）であることの検証", () =>
+        {
+            var slots = CreateSampleSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var info = dial.VerifyCoreShadowConcentricForTesting();
+
+                // 旧バグ: 影を下へ 2〜3 DIP ずらしていたため、縁取りが上は細く（外側 5 DIP）下は太く（外側 11 DIP）見えた。
+                static void Check(string name, (double Top, double Bottom, double Left, double Right) m)
+                {
+                    const double tolerance = 0.01;
+                    if (m.Top <= 0
+                        || Math.Abs(m.Top - m.Bottom) > tolerance
+                        || Math.Abs(m.Left - m.Right) > tolerance
+                        || Math.Abs(m.Top - m.Left) > tolerance)
+                    {
+                        throw new InvalidOperationException(
+                            $"{name}の縁取り幅が上下左右で均一ではありません (top={m.Top:0.00}, bottom={m.Bottom:0.00}, left={m.Left:0.00}, right={m.Right:0.00})。");
+                    }
+                }
+
+                Check("外側ソフト影", info.OuterShadowMargins);
+                Check("内側ソフト影", info.InnerShadowMargins);
             }
             finally
             {

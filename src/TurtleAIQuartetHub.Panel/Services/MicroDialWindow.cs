@@ -31,6 +31,10 @@ internal sealed class MicroDialWindow : Window
     public const double CoreRadiusDip = CoreDiameterDip / 2.0;
     public const double StageCenterDip = StageSizeDip / 2.0;
 
+    // 本体円の背面に重ねる同心ソフト影（外側 +8 DIP／内側 +4 DIP の均一な縁取り）。
+    private const double CoreShadowOuterDiameterDip = CoreDiameterDip + 16.0;
+    private const double CoreShadowInnerDiameterDip = CoreDiameterDip + 8.0;
+
     private const double SatelliteOrbitRadiusDip = 81.0;
     private const double SectorOuterRadiusDip = 51.0;
     private const double SectorInnerRadiusDip = 18.5;
@@ -404,25 +408,25 @@ internal sealed class MicroDialWindow : Window
         };
 
         // 軽量ソフト影（BlurEffect 不使用で 60/120fps 維持）。
-        // _coreHost の内側へ入れると VisualBrush(_coreHost) の自動境界が影の非対称余白（下 +3 DIP）へ引っ張られて
+        // _coreHost の内側へ入れると VisualBrush(_coreHost) の自動境界が影の余白へ引っ張られて
         // 終了消散／モード切替／最小化キャプチャで円の上下枠が切れるため、_coreHost の背面（_dialRoot）へ独立配置する。
+        // 影は本体円と完全同心（上下左右とも均一な幅）にする。以前は下方向へ 2〜3 DIP ずらしたドロップシャドウだったが、
+        // 縁取りが「上は細く下は太い」＝円が中心からずれて見えるため、オフセット（Margin）は付けないこと。
         _coreShadowOuter = new Ellipse
         {
-            Width = CoreDiameterDip + 16,
-            Height = CoreDiameterDip + 16,
+            Width = CoreShadowOuterDiameterDip,
+            Height = CoreShadowOuterDiameterDip,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 6, 0, 0),
             Fill = CreateFrozenBrush(Color.FromArgb(0x28, 0x00, 0x00, 0x00)),
             IsHitTestVisible = false
         };
         _coreShadowInner = new Ellipse
         {
-            Width = CoreDiameterDip + 8,
-            Height = CoreDiameterDip + 8,
+            Width = CoreShadowInnerDiameterDip,
+            Height = CoreShadowInnerDiameterDip,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 4, 0, 0),
             Fill = CreateFrozenBrush(Color.FromArgb(0x42, 0x00, 0x00, 0x00)),
             IsHitTestVisible = false
         };
@@ -1408,6 +1412,33 @@ internal sealed class MicroDialWindow : Window
             Math.Abs(topKeyDist - botKeyDist),
             Math.Abs(topTitleDist - botTitleDist),
             Math.Abs(aOffsetX - cOffsetX));
+    }
+
+    // 本体円の背面のソフト影 2 枚が本体円と完全同心か（上下左右の縁取り幅が均一か）を検証する。
+    // 戻り値は各影について (上, 下, 左, 右) の本体円外周からのはみ出し幅（DIP）。
+    internal (
+        (double Top, double Bottom, double Left, double Right) OuterShadowMargins,
+        (double Top, double Bottom, double Left, double Right) InnerShadowMargins) VerifyCoreShadowConcentricForTesting()
+    {
+        _stageRoot.Measure(new Size(StageSizeDip, StageSizeDip));
+        _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
+        _stageRoot.UpdateLayout();
+
+        var coreTopLeft = _coreHost.TranslatePoint(new Point(0, 0), _dialRoot);
+        var coreRect = new Rect(coreTopLeft, new Size(_coreHost.ActualWidth, _coreHost.ActualHeight));
+
+        (double, double, double, double) MarginsOf(FrameworkElement shadow)
+        {
+            var topLeft = shadow.TranslatePoint(new Point(0, 0), _dialRoot);
+            var rect = new Rect(topLeft, new Size(shadow.ActualWidth, shadow.ActualHeight));
+            return (
+                coreRect.Top - rect.Top,
+                rect.Bottom - coreRect.Bottom,
+                coreRect.Left - rect.Left,
+                rect.Right - coreRect.Right);
+        }
+
+        return (MarginsOf(_coreShadowOuter), MarginsOf(_coreShadowInner));
     }
 
     internal void SimulateSectorClickForTesting(int index, bool middleClick = false)
