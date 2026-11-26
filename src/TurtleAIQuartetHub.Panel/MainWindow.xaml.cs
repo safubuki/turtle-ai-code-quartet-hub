@@ -6530,6 +6530,14 @@ public partial class MainWindow : Window
 
         switch (msg)
         {
+            case WmDwmSendIconicThumbnail:
+                // 極小表示中にタスクバーのアイコンへマウスオーバーしたとき、旧 MicroPanel ではなく新しい円形ダイヤルを映す。
+                if (TryProvideTaskbarIconicThumbnail(hwnd, lParam))
+                {
+                    handled = true;
+                }
+
+                break;
             case WM_WINDOWPOSCHANGING:
                 ArmRestoreRevealIfRestoring(hwnd, lParam);
                 break;

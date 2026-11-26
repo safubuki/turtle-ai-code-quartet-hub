@@ -42,6 +42,9 @@ internal sealed class MicroDialWindow : Window
     private const double DragStartThresholdDip = 7.0;
     private const double IdleAiAlertOpacity = 0.86;
 
+    // タスクバーのサムネイルで円の周囲に取る余白（DIP）。円が枠いっぱいに詰まらず、かつ十分大きく見える幅にする。
+    private const double TaskbarThumbnailPaddingDip = 9.0;
+
     private static readonly TimeSpan ExpandAnimDuration = TimeSpan.FromMilliseconds(190);
     private static readonly TimeSpan CollapseAnimDuration = TimeSpan.FromMilliseconds(180);
     private static readonly TimeSpan LeaveGraceDuration = TimeSpan.FromMilliseconds(240);
@@ -66,6 +69,8 @@ internal sealed class MicroDialWindow : Window
     private static readonly IntPtr HwndTopmost = new(-1);
 
     private static readonly Brush CoreBackgroundBrush = CreateFrozenBrush(Color.FromRgb(0x0F, 0x14, 0x12));
+    // タスクバーのサムネイルの不透明背景。標準・縮小表示のサムネイルと揃うよう、本体パネル（MainWindow.Background）と同じ #101211。
+    private static readonly Brush TaskbarThumbnailBackgroundBrush = CreateFrozenBrush(Color.FromRgb(0x10, 0x12, 0x11));
     private static readonly Brush CoreIdleBorderBrush = CreateFrozenBrush(Color.FromRgb(0x2F, 0x4A, 0x3C));
     private static readonly Brush CoreActiveBorderBrush = CreateFrozenBrush(Color.FromRgb(0x45, 0xD4, 0x83));
     private static readonly Brush SectorReadyFillBrush = CreateFrozenBrush(Color.FromRgb(0x17, 0x26, 0x1E));
@@ -772,6 +777,49 @@ internal sealed class MicroDialWindow : Window
                 UpdateIdleOrActiveOpacity(animate: false);
             }
         }
+    }
+
+    // タスクバーのアイコンへマウスオーバーしたときのサムネイル（DWM の iconic サムネイル）用に、
+    // 新しい円形コアを「非透過」の正方形ビットマップへ描画する（最大サイズ maxWidthPx x maxHeightPx 物理px に収める）。
+    // - 非ホバー時のゴースト透過（既定 30%）は親 _dialRoot の Opacity に掛かっているだけなので、
+    //   _coreHost を直接 VisualBrush で描けば常に不透明 1.0 になり、本番ダイヤルの Opacity やアニメーションにも一切触れない。
+    // - 円の外側は本体パネルと同じ不透明背景で塗りつぶすため、サムネイル上で背後が透けない（全ピクセル α=255）。
+    // - ベクターをサムネイルの解像度で直接描くため、縮小リサンプリングによるにじみも出ない。
+    public BitmapSource RenderTaskbarThumbnailImage(int maxWidthPx, int maxHeightPx)
+    {
+        var sidePx = Math.Max(1, Math.Min(maxWidthPx, maxHeightPx));
+        var sideDip = CoreDiameterDip + (TaskbarThumbnailPaddingDip * 2.0);
+        var renderDpi = 96.0 * sidePx / sideDip;
+
+        _coreHost.UpdateLayout();
+
+        var clipGeometry = new EllipseGeometry(
+            new Point(CoreRadiusDip, CoreRadiusDip),
+            CoreRadiusDip,
+            CoreRadiusDip);
+        clipGeometry.Freeze();
+
+        var drawingVisual = new DrawingVisual();
+        using (var dc = drawingVisual.RenderOpen())
+        {
+            dc.DrawRectangle(TaskbarThumbnailBackgroundBrush, null, new Rect(0, 0, sideDip, sideDip));
+            dc.PushTransform(new TranslateTransform(TaskbarThumbnailPaddingDip, TaskbarThumbnailPaddingDip));
+            dc.PushClip(clipGeometry);
+            var brush = new VisualBrush(_coreHost)
+            {
+                Stretch = Stretch.None,
+                AlignmentX = AlignmentX.Center,
+                AlignmentY = AlignmentY.Center
+            };
+            dc.DrawRectangle(brush, null, new Rect(0, 0, CoreDiameterDip, CoreDiameterDip));
+            dc.Pop();
+            dc.Pop();
+        }
+
+        var bitmap = new RenderTargetBitmap(sidePx, sidePx, renderDpi, renderDpi, PixelFormats.Pbgra32);
+        bitmap.Render(drawingVisual);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     public void HideWithPopups()

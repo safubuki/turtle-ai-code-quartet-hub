@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 30;
+    public const int Count = 32;
 
     public static void Run(List<string> failures)
     {
@@ -39,6 +39,8 @@ internal static class MicroDialTests
         TestStandardTitleBarHasMicroJumpButtonNextToCompactButton(failures);
         TestMicroDialLeftArcHasDownloadsAndPullRequestButtons(failures);
         TestFocusNameOverlayPlacedBelowMicroDial(failures);
+        TestMicroDialTaskbarThumbnailIsOpaqueWithoutGhostOpacity(failures);
+        TestMainWindowTaskbarThumbnailShowsDialOnlyWhileMicroDialActive(failures);
     }
 
     private static void TestSmartLabelsSkipSharedTokenPrefix(List<string> failures)
@@ -1423,6 +1425,162 @@ internal static class MicroDialTests
         var d = MakeSlot("D", "Gemini-Skills", "antigravity");
         d.WindowStatus = SlotWindowStatus.Launching;
         return [a, b, c, d];
+    }
+
+    private static void TestMicroDialTaskbarThumbnailIsOpaqueWithoutGhostOpacity(List<string> failures)
+    {
+        RunOnStaThread(failures, "タスクバーのサムネイル画像が新しい円形ダイヤルを非透過（ゴースト透過なし・全面不透明）で描くことの検証", () =>
+        {
+            // AI 作業中・完了の点滅アニメーションが入ると撮影ごとに画素が揺れるため、待機中のみの 4 スロットで比較する。
+            var slots = new List<WindowSlot>
+            {
+                MakeSlot("A", "AI-Usage-Checker"),
+                MakeSlot("B", "タートルHub"),
+                MakeSlot("C", "AI-Agent-Lab", "antigravity"),
+                MakeSlot("D", "Gemini-Skills", "codex-cli")
+            };
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                // 非ホバー時のゴースト透過（既定 30%）が本番ダイヤルに掛かっている状態で撮る。
+                var ghostedStage = dial.RenderStageOffscreenForPreview(expanded: false, previewHoveredSector: null, ghostWhenCollapsed: true);
+                var ghostedThumbnail = dial.RenderTaskbarThumbnailImage(200, 112);
+                var solidStage = dial.RenderStageOffscreenForPreview(expanded: false, previewHoveredSector: null, ghostWhenCollapsed: false);
+                var solidThumbnail = dial.RenderTaskbarThumbnailImage(200, 112);
+
+                static byte[] Pixels(System.Windows.Media.Imaging.BitmapSource bmp)
+                {
+                    var stride = bmp.PixelWidth * 4;
+                    var buffer = new byte[stride * bmp.PixelHeight];
+                    bmp.CopyPixels(buffer, stride, 0);
+                    return buffer;
+                }
+
+                // 前提: 本番ダイヤル（ステージ）側は本当にゴースト透過で薄くなっていること（円中心の α が明確に低い）。
+                var ghostedStagePixels = Pixels(ghostedStage);
+                var solidStagePixels = Pixels(solidStage);
+                var stageCenterAlphaIndex = ((ghostedStage.PixelHeight / 2) * ghostedStage.PixelWidth * 4) + ((ghostedStage.PixelWidth / 2) * 4) + 3;
+                if (ghostedStagePixels[stageCenterAlphaIndex] >= 200 || solidStagePixels[stageCenterAlphaIndex] != 255)
+                {
+                    throw new InvalidOperationException(
+                        $"検証の前提となるゴースト透過状態を作れませんでした (ghostedAlpha={ghostedStagePixels[stageCenterAlphaIndex]}, solidAlpha={solidStagePixels[stageCenterAlphaIndex]})。");
+                }
+
+                // 最大サイズ（200x112）に収まる正方形で、凍結済みであること。
+                if (ghostedThumbnail.PixelWidth != 112 || ghostedThumbnail.PixelHeight != 112 || !ghostedThumbnail.IsFrozen)
+                {
+                    throw new InvalidOperationException(
+                        $"サムネイル画像が最大サイズに収まる正方形になっていません ({ghostedThumbnail.PixelWidth}x{ghostedThumbnail.PixelHeight}, frozen={ghostedThumbnail.IsFrozen})。");
+                }
+
+                var pixels = Pixels(ghostedThumbnail);
+                var w = ghostedThumbnail.PixelWidth;
+                var h = ghostedThumbnail.PixelHeight;
+
+                // 全ピクセル α=255（円の外側も含めて背後が一切透けない）。
+                for (var i = 3; i < pixels.Length; i += 4)
+                {
+                    if (pixels[i] != 255)
+                    {
+                        throw new InvalidOperationException($"サムネイル画像に透過ピクセルが含まれています (index={i / 4}, alpha={pixels[i]})。");
+                    }
+                }
+
+                // 四隅は本体パネルと同じ不透明背景 #101211（B,G,R = 0x11,0x12,0x10）。
+                foreach (var (x, y) in new[] { (0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1) })
+                {
+                    var p = ((y * w) + x) * 4;
+                    if (pixels[p] != 0x11 || pixels[p + 1] != 0x12 || pixels[p + 2] != 0x10)
+                    {
+                        throw new InvalidOperationException(
+                            $"サムネイル画像の四隅が本体パネルの背景色になっていません ((x,y)=({x},{y}), BGR=({pixels[p]:X2},{pixels[p + 1]:X2},{pixels[p + 2]:X2}))。");
+                    }
+                }
+
+                // 円形ダイヤルが実際に描かれていること（中心付近の中央ボタン「非」の領域が背景色ではない）。
+                var nonBackground = 0;
+                for (var p = 0; p < pixels.Length; p += 4)
+                {
+                    if (pixels[p] != 0x11 || pixels[p + 1] != 0x12 || pixels[p + 2] != 0x10)
+                    {
+                        nonBackground++;
+                    }
+                }
+
+                if (nonBackground < (w * h) / 4)
+                {
+                    throw new InvalidOperationException($"サムネイル画像に円形ダイヤルが描かれていません (nonBackground={nonBackground}/{w * h})。");
+                }
+
+                // ゴースト透過の有無で 1 画素も変わらない（非ホバー時の薄い表示ではなく常に不透明で映る）。
+                if (!pixels.AsSpan().SequenceEqual(Pixels(solidThumbnail)))
+                {
+                    throw new InvalidOperationException("サムネイル画像が本番ダイヤルのゴースト透過の影響を受けて薄くなっています。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMainWindowTaskbarThumbnailShowsDialOnlyWhileMicroDialActive(List<string> failures)
+    {
+        var panelDir = System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel"));
+        var thumbnailCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.TaskbarThumbnail.cs"));
+        var mainCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.xaml.cs"));
+        var microCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.MicroDial.cs"));
+
+        // iconic サムネイルは「円形ダイヤルが本番表示されている間」だけ有効にし、それ以外は既定のライブサムネイルへ戻す。
+        if (!thumbnailCs.Contains("var shouldUseIconic = IsMicroDialActive;", StringComparison.Ordinal)
+            || !thumbnailCs.Contains("DwmwaForceIconicRepresentation", StringComparison.Ordinal)
+            || !thumbnailCs.Contains("DwmwaHasIconicBitmap", StringComparison.Ordinal)
+            || !thumbnailCs.Contains("dial.RenderTaskbarThumbnailImage(maxWidth, maxHeight)", StringComparison.Ordinal)
+            || !thumbnailCs.Contains("DwmSetIconicThumbnail(hwnd, hBitmap, 0)", StringComparison.Ordinal))
+        {
+            failures.Add("タスクバーのサムネイルが極小ダイヤル稼働中だけ円形ダイヤル画像（iconic）へ切り替わる構成になっていません。");
+        }
+
+        // サムネイル差し替えは Cloak や本番ダイヤルの透過度など既存の表示処理に触れない。
+        if (thumbnailCs.Contains("SetCloaked(", StringComparison.Ordinal)
+            || thumbnailCs.Contains("BeginAnimation(", StringComparison.Ordinal)
+            || thumbnailCs.Contains("SetGhostOpacity", StringComparison.Ordinal))
+        {
+            failures.Add("タスクバーのサムネイル差し替え処理が Cloak・アニメーション・透過度など既存の表示処理へ干渉しています。");
+        }
+
+        if (!mainCs.Contains("case WmDwmSendIconicThumbnail:", StringComparison.Ordinal)
+            || !mainCs.Contains("TryProvideTaskbarIconicThumbnail(hwnd, lParam)", StringComparison.Ordinal))
+        {
+            failures.Add("MainWindow のウィンドウプロシージャが WM_DWMSENDICONICTHUMBNAIL に応答していません。");
+        }
+
+        // ダイヤル破棄・一時退避（本体露出）・状態同期の各経路でサムネイル方式を追従させる。
+        var disposeStart = microCs.IndexOf("private void DisposeMicroDialWindow()", StringComparison.Ordinal);
+        var suspendStart = microCs.IndexOf("private void SuspendMicroDialForMainOverlay(", StringComparison.Ordinal);
+        var resumeStart = microCs.IndexOf("private void ResumeMicroDialAfterMainOverlay(", StringComparison.Ordinal);
+        var syncStart = microCs.IndexOf("private void SyncMicroDialUiState()", StringComparison.Ordinal);
+        if (disposeStart < 0 || suspendStart <= disposeStart || resumeStart <= suspendStart || syncStart < 0)
+        {
+            failures.Add("MainWindow.MicroDial.cs にダイヤル破棄・一時退避・状態同期のメソッドが見つかりません。");
+            return;
+        }
+
+        var disposeBody = microCs[disposeStart..suspendStart];
+        var suspendBody = microCs[suspendStart..resumeStart];
+        var syncBody = microCs[syncStart..Math.Min(microCs.Length, syncStart + 400)];
+        var suspendSyncIndex = suspendBody.IndexOf("SyncTaskbarThumbnailRepresentation();", StringComparison.Ordinal);
+        var suspendUncloakIndex = suspendBody.IndexOf("SetCloaked(new WindowInteropHelper(this).Handle, false);", StringComparison.Ordinal);
+        if (!disposeBody.Contains("SyncTaskbarThumbnailRepresentation();", StringComparison.Ordinal)
+            || suspendSyncIndex < 0
+            || suspendUncloakIndex < 0
+            || suspendSyncIndex > suspendUncloakIndex
+            || !syncBody.Contains("SyncTaskbarThumbnailRepresentation();", StringComparison.Ordinal))
+        {
+            failures.Add("ダイヤル破棄・一時退避（本体露出前）・状態同期の各経路でタスクバーのサムネイル方式が追従していません。");
+        }
     }
 
     private static List<WindowSlot> CreateSampleSlots()

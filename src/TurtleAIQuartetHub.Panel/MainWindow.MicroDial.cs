@@ -302,6 +302,8 @@ public partial class MainWindow
         {
             DiagnosticLog.Write(ex);
         }
+
+        SyncTaskbarThumbnailRepresentation();
     }
 
     // 終了確認・クリア確認・控えの名前変更など、本体パネル内モーダルを表示する間だけ円形ダイヤルを一時退避して本物を前面に出す。
@@ -313,6 +315,7 @@ public partial class MainWindow
         }
 
         _microDialSuspendedForOverlay = true;
+        SyncTaskbarThumbnailRepresentation();
         _microDialWindow.HideWithPopups();
         if (expandForModal)
         {
@@ -341,6 +344,7 @@ public partial class MainWindow
         _microDialSuspendedForOverlay = false;
         if (!IsMicroMode || _microDialWindow is null || WindowState == WindowState.Minimized || _closeConfirmed)
         {
+            SyncTaskbarThumbnailRepresentation();
             return;
         }
 
@@ -446,6 +450,8 @@ public partial class MainWindow
 
     private void SyncMicroDialUiState()
     {
+        // タスクバーのサムネイル（マウスオーバー時の表示）も円形ダイヤルの稼働状態・最新スロット状態へ追従させる。
+        SyncTaskbarThumbnailRepresentation();
         if (_microDialWindow is null)
         {
             return;
