@@ -31,6 +31,7 @@ public partial class MainWindow
         }
 
         SuppressFocusedSlotReassertForPanelInput();
+        slot.RefreshWorkspaceLinks();
         var menu = BuildCompactSlotContextMenu(slot, card);
         menu.PlacementTarget = card;
         menu.Placement = PlacementMode.MousePoint;
@@ -66,8 +67,10 @@ public partial class MainWindow
             menu.Style = style;
         }
 
+        SuppressFocusedSlotReassertForPanelInput();
         if (slot is not null)
         {
+            slot.RefreshWorkspaceLinks();
             var tagHost = new Border { Tag = slot };
             PopulateSlotContextMenuItems(menu, slot, tagHost, includePowerAction: true);
             menu.Items.Add(new Separator());
@@ -167,7 +170,7 @@ public partial class MainWindow
             "エクスプローラーで開く",
             CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
             slot.CanOpenWorkspaceFolder,
-            () => OpenSlotWorkspaceFolderButton_Click(card, new RoutedEventArgs()));
+            () => OpenSlotWorkspaceFolderButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
         openFolderItem.ToolTip = slot.WorkspaceFolderToolTip;
         menu.Items.Add(openFolderItem);
 
@@ -175,7 +178,7 @@ public partial class MainWindow
             "GitHub を開く",
             CreateStoredMenuGitHubIcon(),
             slot.CanOpenGitHub,
-            () => OpenSlotGitHubButton_Click(card, new RoutedEventArgs()));
+            () => OpenSlotGitHubButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
         gitHubItem.ToolTip = slot.GitHubToolTip;
         menu.Items.Add(gitHubItem);
 
@@ -184,7 +187,7 @@ public partial class MainWindow
             "次のディスプレイへ移動",
             CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
             slot.WindowStatus == SlotWindowStatus.Ready && monitorCount > 1,
-            () => MoveSlotToNextDisplayButton_Click(card, new RoutedEventArgs()));
+            () => MoveSlotToNextDisplayButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
         displayItem.InputGestureText = slot.HasDisplayBadge ? slot.DisplayBadgeText : string.Empty;
         displayItem.ToolTip = monitorCount <= 1
             ? "利用可能なディスプレイが1枚のため移動できません。"
@@ -210,7 +213,7 @@ public partial class MainWindow
             "控えへ移動",
             CreateStoredMenuGlyphIcon("", StoredMenuIconBrush),
             slot.HasPanelContent,
-            () => StoreSlotButton_Click(card, new RoutedEventArgs()));
+            () => StoreSlotButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
         storeItem.ToolTip = "ウィンドウを閉じて、このパネルの内容を控えに移します。";
         menu.Items.Add(storeItem);
 
@@ -218,7 +221,7 @@ public partial class MainWindow
             "登録内容をクリア...",
             CreateStoredMenuGlyphIcon("", StoredMenuDangerBrush),
             slot.HasPanelContent,
-            () => ClearSlotPanelInfoButton_Click(card, new RoutedEventArgs()));
+            () => ClearSlotPanelInfoButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
         clearItem.Foreground = StoredMenuDangerBrush;
         clearItem.ToolTip = "このスロットの登録内容を空きに戻します（フォルダは削除されません）。";
         menu.Items.Add(clearItem);
@@ -232,7 +235,7 @@ public partial class MainWindow
                 "閉じる",
                 CreateStoredMenuGlyphIcon("\uE7E8", StoredMenuDangerBrush),
                 isEnabled: !_isBusy,
-                () => SlotMainActionButton_Click(card, new RoutedEventArgs()));
+                () => SlotMainActionButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
             closeItem.Foreground = StoredMenuDangerBrush;
             closeItem.ToolTip = $"スロット {slot.Name} のウィンドウを閉じます。";
             return closeItem;
@@ -255,7 +258,7 @@ public partial class MainWindow
             "起動する",
             CreateStoredMenuGlyphIcon("\uE768", StoredMenuAccentBrush),
             isEnabled: canLaunch,
-            () => SlotMainActionButton_Click(card, new RoutedEventArgs()));
+            () => SlotMainActionButton_Click(card, new RoutedEventArgs(MenuItem.ClickEvent, card)));
         launchItem.ToolTip = canLaunch
             ? $"スロット {slot.Name} の {app!.DisplayName} を起動します。"
             : app?.ToolTip ?? $"スロット {slot.Name} の起動対象アプリが利用できません。";

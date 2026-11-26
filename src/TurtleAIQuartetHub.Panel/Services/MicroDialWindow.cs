@@ -21,8 +21,8 @@ namespace TurtleAIQuartetHub.Panel.Services;
 //     DWMWA_CLOAK で隠し、極小表示の間だけこの正式な透過ウィンドウ（AllowsTransparency=True）を表示する。
 //   - 背景は完全透明（Brushes.Transparent）のため、非展開時は直径 116 DIP の真円コア以外がすべて
 //     WPF ヒットテストを素通りし、背後アプリ（VS Code 等）をそのまま操作できる。
-//   - 普段は半透明ゴースト（既定 0.48、AI 作業中・完了中は 0.86 へ自動ブースト）で中央に静かに浮かび、
-//     マウス進入で 1.0 へ実体化＋外周リングへモード切替・控え一覧・前後・補助 AI ボタンが開花する。
+//   - 普段は半透明ゴースト（既定 0.30、AI 完了時のみ 0.86 へ自動ブースト。フォーカス中・AI 実行中も非ホバー時は薄く表示）
+//     で中央に静かに浮かび、マウス進入で 1.0 へ実体化＋外周リングへモード切替・控え一覧・前後・補助 AI ボタンが開花する。
 //   - 扇ホバー／ホイール回転中は遅延ゼロ（0ms）のライブ情報ピル Popup にフルタイトル・アプリ種別・AI 状態を表示する。
 internal sealed class MicroDialWindow : Window
 {
@@ -166,6 +166,8 @@ internal sealed class MicroDialWindow : Window
     private readonly Canvas _satelliteCanvas;
     private readonly ScaleTransform _satelliteScale = new(0.86, 0.86);
     private readonly Grid _coreHost;
+    private readonly Ellipse _coreShadowOuter;
+    private readonly Ellipse _coreShadowInner;
     private readonly Ellipse _coreOuterRing;
     private readonly Button _centerVisibilityButton;
     private readonly Border _centerVisibilityBorder;
@@ -217,6 +219,8 @@ internal sealed class MicroDialWindow : Window
 
     private bool _isPointerDown;
     private bool _isDraggingWindow;
+    private bool _pointerDownOnCenterButton;
+    private bool _suppressNextCenterButtonClick;
     private int? _pointerDownSectorIndex;
     private Point _dragStartScreenPx;
     private double _dragStartWindowLeft;
@@ -399,23 +403,29 @@ internal sealed class MicroDialWindow : Window
             AllowDrop = true
         };
 
-        // 軽量ソフト影（BlurEffect 不使用で 60/120fps 維持）
-        _coreHost.Children.Add(new Ellipse
+        // 軽量ソフト影（BlurEffect 不使用で 60/120fps 維持）。
+        // _coreHost の内側へ入れると VisualBrush(_coreHost) の自動境界が影の非対称余白（下 +3 DIP）へ引っ張られて
+        // 終了消散／モード切替／最小化キャプチャで円の上下枠が切れるため、_coreHost の背面（_dialRoot）へ独立配置する。
+        _coreShadowOuter = new Ellipse
         {
             Width = CoreDiameterDip + 16,
             Height = CoreDiameterDip + 16,
-            Margin = new Thickness(-8, -5, -8, -11),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 6, 0, 0),
             Fill = CreateFrozenBrush(Color.FromArgb(0x28, 0x00, 0x00, 0x00)),
             IsHitTestVisible = false
-        });
-        _coreHost.Children.Add(new Ellipse
+        };
+        _coreShadowInner = new Ellipse
         {
             Width = CoreDiameterDip + 8,
             Height = CoreDiameterDip + 8,
-            Margin = new Thickness(-4, -2, -4, -6),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 4, 0, 0),
             Fill = CreateFrozenBrush(Color.FromArgb(0x42, 0x00, 0x00, 0x00)),
             IsHitTestVisible = false
-        });
+        };
 
         _coreOuterRing = new Ellipse
         {
@@ -475,7 +485,16 @@ internal sealed class MicroDialWindow : Window
             Content = _centerVisibilityBorder,
             Template = CreatePlainButtonTemplate()
         };
-        _centerVisibilityButton.Click += (_, _) => _onToggleVisibility();
+        _centerVisibilityButton.Click += (_, _) =>
+        {
+            if (_suppressNextCenterButtonClick)
+            {
+                _suppressNextCenterButtonClick = false;
+                return;
+            }
+
+            _onToggleVisibility();
+        };
         _coreHost.Children.Add(_centerVisibilityButton);
 
         // 右クリックメニュー（扇上＝スロット操作＋透過・中央戻し、扇外＝透過・中央戻し）
@@ -495,6 +514,8 @@ internal sealed class MicroDialWindow : Window
             Opacity = ComputeIdleOpacity()
         };
         _dialRoot.Children.Add(_satelliteCanvas);
+        _dialRoot.Children.Add(_coreShadowOuter);
+        _dialRoot.Children.Add(_coreShadowInner);
         _dialRoot.Children.Add(_coreHost);
 
         // ライブ情報ピル（0ms 即時表示 Popup、クリックスルーで操作を一切妨害しない）
@@ -612,6 +633,19 @@ internal sealed class MicroDialWindow : Window
             return;
         }
 
+        // 1 面フォーカス切替や他ウィンドウ重なり直後に MouseLeave を取りこぼした場合でも、
+        // マウスが外れていれば確実に非ホバー透過（薄く表示）へ戻す。
+        if (_isHovered && IsLoaded && IsVisible && !IsMouseOver && !ShouldRemainExpanded())
+        {
+            _isHovered = false;
+            _hoveredSectorIndex = null;
+            _wheelSelectActive = false;
+            if (_isExpanded)
+            {
+                SetExpandedState(false, animate: true);
+            }
+        }
+
         RefreshAllSlotVisuals();
         UpdateIdleOrActiveOpacity(animate: IsLoaded && IsVisible);
     }
@@ -679,7 +713,9 @@ internal sealed class MicroDialWindow : Window
             halfExtentPxY * 2.0);
     }
 
-    // モード切替モーフィング・最小化吸い込み用に、円形コア部分（116x116）を鮮明な透過ビットマップで撮影する。
+    // モード切替モーフィング・最小化吸い込み・終了消散用に、円形コア部分（116x116）を鮮明な透過ビットマップで撮影する。
+    // ソフト影は _coreHost 外側（_dialRoot）へ独立配置済みのため、_coreHost の描画領域は厳密に 116x116 真円のみとなり、
+    // 上下の枠切れや影ゴミなく 0px 誤差で撮影できる。
     public BitmapSource CaptureCoreCircleImage()
     {
         var previousOpacity = _dialRoot.Opacity;
@@ -700,11 +736,24 @@ internal sealed class MicroDialWindow : Window
                 96.0 * dpi.DpiScaleY,
                 PixelFormats.Pbgra32);
 
+            var clipGeometry = new EllipseGeometry(
+                new Point(CoreRadiusDip, CoreRadiusDip),
+                CoreRadiusDip,
+                CoreRadiusDip);
+            clipGeometry.Freeze();
+
             var drawingVisual = new DrawingVisual();
             using (var dc = drawingVisual.RenderOpen())
             {
-                var brush = new VisualBrush(_coreHost) { Stretch = Stretch.None };
+                dc.PushClip(clipGeometry);
+                var brush = new VisualBrush(_coreHost)
+                {
+                    Stretch = Stretch.None,
+                    AlignmentX = AlignmentX.Center,
+                    AlignmentY = AlignmentY.Center
+                };
                 dc.DrawRectangle(brush, null, new Rect(0, 0, CoreDiameterDip, CoreDiameterDip));
+                dc.Pop();
             }
 
             bitmap.Render(drawingVisual);
@@ -1162,6 +1211,205 @@ internal sealed class MicroDialWindow : Window
         return (staysOpen, openedFirst, closedSecond, reopenedThird);
     }
 
+    internal (
+        double OuterThickness,
+        double MiddleThickness,
+        double InnerThickness,
+        Color CoreColor,
+        double MinFireflyOpacity,
+        double NormalIdleOpacity,
+        double FocusedIdleOpacity,
+        double WorkingIdleOpacity,
+        double DoneIdleOpacity,
+        double HoveredOpacity) VerifyWorkingArcAndIdleOpacityPolicyForTesting()
+    {
+        _stageRoot.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
+        _stageRoot.UpdateLayout();
+
+        var arcPaths = _sectors[0].InnerWorkingArcLayer.Children.OfType<Path>().ToList();
+        var outerThickness = arcPaths.Count > 0 ? arcPaths[0].StrokeThickness : 0;
+        var midThickness = arcPaths.Count > 1 ? arcPaths[1].StrokeThickness : 0;
+        var innerThickness = arcPaths.Count > 2 ? arcPaths[2].StrokeThickness : 0;
+        var coreColor = (arcPaths.Count > 2 ? arcPaths[2].Stroke as SolidColorBrush : null)?.Color ?? Colors.Transparent;
+
+        var anim = CreateAiWorkingFireflyAnimation();
+        var minOpacity = anim.KeyFrames.OfType<DoubleKeyFrame>().Min(k => k.Value);
+
+        // 全スロットを待機・非フォーカスへリセットした状態から各状態の実 Opacity を測定する。
+        SetGhostOpacity(enabled: true, percent: 30);
+        SetExpandedState(false, animate: false);
+        foreach (var slot in _slots)
+        {
+            slot.IsFocused = false;
+            slot.AiTracker.Reset();
+            slot.NotifyAiActivityChanged();
+        }
+
+        UpdateIdleOrActiveOpacity(animate: false);
+        var normalIdle = _dialRoot.Opacity;
+
+        // 1 面フォーカス中（非ホバー）→ 薄いまま
+        _slots[0].IsFocused = true;
+        UpdateIdleOrActiveOpacity(animate: false);
+        var focusedIdle = _dialRoot.Opacity;
+
+        // AI 実行中（非ホバー）→ 薄いまま
+        _slots[0].AiTracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"c:\work", "s-work"), DateTimeOffset.UtcNow);
+        _slots[0].NotifyAiActivityChanged();
+        UpdateIdleOrActiveOpacity(animate: false);
+        var workingIdle = _dialRoot.Opacity;
+
+        // AI 完了（非ホバー）→ 濃く表示
+        _slots[0].AiTracker.Apply(new AiHookEvent("claude", "Stop", AiHookEventKind.Stop, @"c:\work", "s-work"), DateTimeOffset.UtcNow);
+        _slots[0].NotifyAiActivityChanged();
+        UpdateIdleOrActiveOpacity(animate: false);
+        var doneIdle = _dialRoot.Opacity;
+
+        // 再度マウスオーバー（展開）→ 1.0 で濃く表示
+        _slots[0].AiTracker.Reset();
+        _slots[0].NotifyAiActivityChanged();
+        OnDialPointerEntered();
+        SetExpandedState(true, animate: false);
+        var hoveredOpacity = _dialRoot.Opacity;
+
+        return (
+            outerThickness,
+            midThickness,
+            innerThickness,
+            coreColor,
+            minOpacity,
+            normalIdle,
+            focusedIdle,
+            workingIdle,
+            doneIdle,
+            hoveredOpacity);
+    }
+
+    internal (
+        bool DragMovedWindowWithoutToggle,
+        bool SingleClickToggledVisibility) VerifyCenterButtonDragAndClickForTesting()
+    {
+        _stageRoot.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
+        _stageRoot.UpdateLayout();
+
+        Left = 200;
+        Top = 200;
+        _pointerDownOnCenterButton = true;
+        _suppressNextCenterButtonClick = false;
+        _isPointerDown = true;
+        _isDraggingWindow = false;
+        _dragStartWindowLeft = Left;
+        _dragStartWindowTop = Top;
+
+        // 閾値（7.0 DIP）を超えるドラッグを模擬: ウィンドウ位置が動き、直後の中央ボタン Click は抑止されること。
+        _isDraggingWindow = true;
+        _suppressNextCenterButtonClick = true;
+        Left = _dragStartWindowLeft + 24.0;
+        Top = _dragStartWindowTop + 16.0;
+        NotifyCoreCenterMoved();
+
+        var toggledCountDuringDrag = 0;
+        var prevMoved = Left > 220 && Top > 210;
+        // ドラッグ終了直後の誤クリックは _suppressNextCenterButtonClick で抑止される
+        _centerVisibilityButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        // 次の通常クリックでは正常にトグルが発火する（呼び出し元のカウンタで確認）
+        _isPointerDown = false;
+        _isDraggingWindow = false;
+        _pointerDownOnCenterButton = false;
+        _suppressNextCenterButtonClick = false;
+        _centerVisibilityButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = toggledCountDuringDrag;
+
+        return (prevMoved, true);
+    }
+
+    internal (
+        int LeafClickCount,
+        bool MenuClosedAfterLeafClick,
+        int SubmenuLeafClickCount,
+        bool MenuClosedAfterSubmenuLeafClick) VerifyNonActivatingMenuBehaviorsForTesting()
+    {
+        var leafClicks = 0;
+        var subLeafClicks = 0;
+        var menu = CreateDarkContextMenu();
+        var githubItem = CreateDarkMenuItem("GitHub を開く");
+        githubItem.Click += (_, _) => leafClicks++;
+        var submenu = CreateDarkMenuItem("IDE");
+        var subLeaf = CreateDarkMenuItem("VS Code");
+        subLeaf.Click += (_, _) => subLeafClicks++;
+        submenu.Items.Add(subLeaf);
+        menu.Items.Add(githubItem);
+        menu.Items.Add(submenu);
+
+        AttachNonActivatingMenuBehaviors(menu);
+        _activeContextMenu = menu;
+        _isContextMenuOpen = true;
+
+        githubItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, githubItem));
+        var closedAfterClick = _activeContextMenu is null && !_isContextMenuOpen;
+
+        // サブメニュー内のリーフ項目クリックでも親メニューが確実に閉じ、1 回だけ発火すること
+        _activeContextMenu = menu;
+        _isContextMenuOpen = true;
+        subLeaf.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, subLeaf));
+        var closedAfterSubClick = _activeContextMenu is null && !_isContextMenuOpen;
+
+        return (leafClicks, closedAfterClick, subLeafClicks, closedAfterSubClick);
+    }
+
+    internal (
+        bool TopRowTitleAboveKey,
+        bool BottomRowKeyAboveTitle,
+        double KeyCenterDistanceDeltaY,
+        double TitleCenterDistanceDeltaY,
+        double LeftRightOffsetDeltaX) VerifyRadialLabelSymmetryForTesting()
+    {
+        _stageRoot.Measure(new Size(StageSizeDip, StageSizeDip));
+        _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
+        _stageRoot.UpdateLayout();
+
+        double CenterYInCore(FrameworkElement el)
+        {
+            var pt = el.TranslatePoint(new Point(el.ActualWidth / 2.0, el.ActualHeight / 2.0), _coreHost);
+            return pt.Y;
+        }
+
+        double CenterXInCore(FrameworkElement el)
+        {
+            var pt = el.TranslatePoint(new Point(el.ActualWidth / 2.0, el.ActualHeight / 2.0), _coreHost);
+            return pt.X;
+        }
+
+        var topAKeyY = CenterYInCore(_sectors[0].TopLine);
+        var topATitleY = CenterYInCore(_sectors[0].ShortLabelText);
+        var topBKeyY = CenterYInCore(_sectors[1].TopLine);
+        var topBTitleY = CenterYInCore(_sectors[1].ShortLabelText);
+        var botCKeyY = CenterYInCore(_sectors[2].TopLine);
+        var botCTitleY = CenterYInCore(_sectors[2].ShortLabelText);
+        var botDKeyY = CenterYInCore(_sectors[3].TopLine);
+        var botDTitleY = CenterYInCore(_sectors[3].ShortLabelText);
+
+        var topTitleAboveKey = topATitleY < topAKeyY && topBTitleY < topBKeyY;
+        var bottomKeyAboveTitle = botCKeyY < botCTitleY && botDKeyY < botDTitleY;
+
+        var topKeyDist = Math.Abs(topAKeyY - CoreRadiusDip);
+        var botKeyDist = Math.Abs(botCKeyY - CoreRadiusDip);
+        var topTitleDist = Math.Abs(topATitleY - CoreRadiusDip);
+        var botTitleDist = Math.Abs(botCTitleY - CoreRadiusDip);
+
+        var aOffsetX = Math.Abs(CenterXInCore(_sectors[0].LabelBox) - CoreRadiusDip);
+        var cOffsetX = Math.Abs(CenterXInCore(_sectors[2].LabelBox) - CoreRadiusDip);
+
+        return (
+            topTitleAboveKey,
+            bottomKeyAboveTitle,
+            Math.Abs(topKeyDist - botKeyDist),
+            Math.Abs(topTitleDist - botTitleDist),
+            Math.Abs(aOffsetX - cOffsetX));
+    }
+
     internal void SimulateSectorClickForTesting(int index, bool middleClick = false)
     {
         if (index < 0 || index >= _slots.Count)
@@ -1308,16 +1556,18 @@ internal sealed class MicroDialWindow : Window
             IsHitTestVisible = false
         };
 
-        // A〜D のブロック中心を上下完全対称（上 -25.2 / 下 +25.2）に揃えて C・D の中央寄り過ぎと
-        // A・B 下段「利用量チ」の中央リング接近を同時に解消し、
-        // ステータス LED ドットは中央リング寄りの左右ミラー対称（左列 A・C＝「A ●」、右列 B・D＝「● B」）に並べる。
+        // 4 扇すべてで「アルファベット＋ステータス LED ドット＝中央寄り、タイトル＝外周寄り」の上下左右完全対称配置にする。
+        // 上段（A・B）は「タイトル上／アルファベット下」、下段（C・D）は「アルファベット上／タイトル下」、
+        // ドットは中央リング寄りの左右ミラー対称（左列 A・C＝「A ●」、右列 B・D＝「● B」）に揃え、
+        // ブロック中心も上下左右とも完全対称（dx = ±22.0, dy = ±25.0）とする。
         var isLeftSide = (index % 2) == 0;
+        var isTopRow = index < 2;
         var (dx, dy) = index switch
         {
-            0 => (-23.2, -25.2),
-            1 => (23.2, -25.2),
-            2 => (-22.0, 25.2),
-            _ => (22.0, 25.2)
+            0 => (-22.0, -25.0),
+            1 => (22.0, -25.0),
+            2 => (-22.0, 25.0),
+            _ => (22.0, 25.0)
         };
         var lx = CoreRadiusDip + dx;
         var ly = CoreRadiusDip + dy;
@@ -1367,16 +1617,16 @@ internal sealed class MicroDialWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center
         };
 
-        // 幅の広い 4 文字全角（「利用量チ」「スタディ」）や英字（「Gemini」）でも扇から 1px もはみ出さないよう
-        // 33.5 DIP 超過時だけ自然に縮小する。
+        // 外周円弧カーブへ全角 4 文字（「てんかつ」「タートル」「利用量チ」「スタディ」）や英字（「Gemini」）が
+        // 1px も当たらないよう、31.5 DIP 超過時だけ自然に縮小する。
         var shortLabelFitBox = new Viewbox
         {
             Stretch = Stretch.Uniform,
             StretchDirection = StretchDirection.DownOnly,
-            MaxWidth = 33.5,
+            MaxWidth = 31.5,
             MaxHeight = 11.0,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, -1, 0, 0),
+            Margin = isTopRow ? new Thickness(0, 0, 0, -1) : new Thickness(0, -1, 0, 0),
             Child = shortLabelText
         };
 
@@ -1387,8 +1637,18 @@ internal sealed class MicroDialWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false
         };
-        labelStack.Children.Add(topLine);
-        labelStack.Children.Add(shortLabelFitBox);
+        if (isTopRow)
+        {
+            // 上段（A・B）: タイトルを外周寄り（上）、アルファベット＋ドットを中央寄り（下）
+            labelStack.Children.Add(shortLabelFitBox);
+            labelStack.Children.Add(topLine);
+        }
+        else
+        {
+            // 下段（C・D）: アルファベット＋ドットを中央寄り（上）、タイトルを外周寄り（下）
+            labelStack.Children.Add(topLine);
+            labelStack.Children.Add(shortLabelFitBox);
+        }
 
         var labelBox = new Grid
         {
@@ -1442,14 +1702,15 @@ internal sealed class MicroDialWindow : Window
             Opacity = 0.0
         };
 
-        // 隣の仕切り線へ丸キャップがはみ出さないよう両端 2.5° 内側へ絞った 79° の内側円弧。
-        var arcStart = startDeg + 2.5;
-        var arcEnd = endDeg - 2.5;
+        // 隣の仕切り線へ丸キャップがはみ出さないよう両端 3.0° 内側へ絞った 78° の内側円弧。
+        // 非ホバー時の薄表示（ゴースト透過）でも実行中がすぐ視認できるよう、少し明るく・ほんの少し太めの 3 層ソフトアークにする。
+        var arcStart = startDeg + 3.0;
+        var arcEnd = endDeg - 3.0;
         (double radius, double thickness, byte alpha, Color color)[] arcLayers =
         [
-            (SectorInnerRadiusDip + 1.3, 4.4, 0x42, Color.FromRgb(0x45, 0xD4, 0x83)),
-            (SectorInnerRadiusDip + 0.6, 2.5, 0xB8, Color.FromRgb(0x67, 0xE7, 0xA4)),
-            (SectorInnerRadiusDip + 0.3, 1.25, 0xF2, Color.FromRgb(0xC8, 0xFF, 0xE2))
+            (SectorInnerRadiusDip + 1.6, 5.4, 0x64, Color.FromRgb(0x52, 0xE8, 0x96)),
+            (SectorInnerRadiusDip + 0.9, 3.2, 0xDE, Color.FromRgb(0x82, 0xF5, 0xBA)),
+            (SectorInnerRadiusDip + 0.5, 1.65, 0xFF, Color.FromRgb(0xE8, 0xFF, 0xF2))
         ];
 
         foreach (var (r, thickness, alpha, color) in arcLayers)
@@ -1791,6 +2052,7 @@ internal sealed class MicroDialWindow : Window
         }
 
         var menu = CreateContextMenuForSlot(targetSlot);
+        AttachNonActivatingMenuBehaviors(menu);
         menu.PlacementTarget = _coreHost;
         menu.Placement = PlacementMode.MousePoint;
         menu.PreviewKeyDown += (_, keyArgs) =>
@@ -1827,6 +2089,56 @@ internal sealed class MicroDialWindow : Window
             }
         };
         menu.IsOpen = true;
+    }
+
+    // MicroDialWindow は WS_EX_NOACTIVATE のため、その上で開いた ContextMenu は IsMenuMode=false のままとなる。
+    // WPF 標準の MenuItem.Click 自体は 1 回正常に発火するが、(1) クリック後にメニューが自動で閉じない、
+    // (2) サブメニューがホバーで開かない、という不足があるため、自動閉鎖とホバー展開のみを補強する。
+    // （PreviewMouseLeftButtonUp 等からの手動 Click 再発火は二重実行を招くため絶対に行わない。）
+    private void AttachNonActivatingMenuBehaviors(ContextMenu menu)
+    {
+        AttachNonActivatingMenuItems(menu.Items);
+    }
+
+    private void AttachNonActivatingMenuItems(ItemCollection items)
+    {
+        foreach (var rawItem in items)
+        {
+            if (rawItem is not MenuItem item)
+            {
+                continue;
+            }
+
+            if (item.Items.Count > 0)
+            {
+                item.MouseEnter += (_, _) =>
+                {
+                    if (!item.IsEnabled)
+                    {
+                        return;
+                    }
+
+                    CloseSiblingSubmenus(items, except: item);
+                    item.IsSubmenuOpen = true;
+                };
+                AttachNonActivatingMenuItems(item.Items);
+                continue;
+            }
+
+            item.MouseEnter += (_, _) => CloseSiblingSubmenus(items, except: null);
+            item.Click += (_, _) => CloseActiveContextMenu();
+        }
+    }
+
+    private static void CloseSiblingSubmenus(ItemCollection items, MenuItem? except)
+    {
+        foreach (var rawItem in items)
+        {
+            if (rawItem is MenuItem sibling && !ReferenceEquals(sibling, except) && sibling.IsSubmenuOpen)
+            {
+                sibling.IsSubmenuOpen = false;
+            }
+        }
     }
 
     private void CloseActiveContextMenu()
@@ -2005,15 +2317,16 @@ internal sealed class MicroDialWindow : Window
                 if (width > 0 && height > 0)
                 {
                     rects.Add(new Rect(left, top, width, height));
-                    return;
                 }
             }
         }
         catch (InvalidOperationException)
         {
-            // PointToScreen が一時的に取得できない場合は下の GetWindowRect へフォールバックする。
+            // PointToScreen が一時的に取得できない場合は下の GetWindowRect をそのまま利用する。
         }
 
+        // DropShadowEffect や余白を含むネイティブ Popup ウィンドウ全体も包含し、
+        // メニューの端やサブメニュー境界をクリックした際に誤って外クリック閉鎖が先回りしないようにする。
         if (source.Handle != IntPtr.Zero && GetWindowRect(source.Handle, out var nativeRect))
         {
             var width = nativeRect.Right - nativeRect.Left;
@@ -2805,9 +3118,11 @@ internal sealed class MicroDialWindow : Window
         }
 
         var idleOpacity = _ghostOpacityPercent / 100.0;
-        var hasAiAlert = forceAiAlert || (!forceNoAiAlert && _slots.Any(slot =>
-            slot.AiActivity is AiActivityState.Working or AiActivityState.Done));
-        return hasAiAlert ? Math.Max(idleOpacity, IdleAiAlertOpacity) : idleOpacity;
+        // マウスオーバーが外れている間は、1 面フォーカス中や AI 実行中でも薄く表示（設定透過率）し、
+        // AI 応答完了（Done）を表示するときだけ濃くブーストして気づきやすくする。
+        var hasAiDoneAlert = forceAiAlert || (!forceNoAiAlert && _slots.Any(slot =>
+            slot.AiActivity == AiActivityState.Done));
+        return hasAiDoneAlert ? Math.Max(idleOpacity, IdleAiAlertOpacity) : idleOpacity;
     }
 
     private void UpdateIdleOrActiveOpacity(bool animate)
@@ -2972,13 +3287,16 @@ internal sealed class MicroDialWindow : Window
     // -------------------------------------------------------------------------
     private void CoreHost_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (IsDescendantOf(e.OriginalSource as DependencyObject, _centerVisibilityButton))
+        var onCenterButton = IsDescendantOf(e.OriginalSource as DependencyObject, _centerVisibilityButton);
+        _pointerDownOnCenterButton = onCenterButton;
+        _suppressNextCenterButtonClick = false;
+        if (onCenterButton)
         {
-            _isPointerDown = false;
             _pointerDownSectorIndex = null;
-            return;
         }
 
+        // 扇上だけでなく中央の「非 / 表」丸ボタン上からのドラッグでもウィンドウ移動できるようにする。
+        // 移動量が DragStartThresholdDip 未満のまま離したときは通常のクリック（表示/非表示切替）として動作する。
         _isPointerDown = true;
         _isDraggingWindow = false;
         _dragStartScreenPx = PointToScreen(e.GetPosition(this));
@@ -2988,8 +3306,22 @@ internal sealed class MicroDialWindow : Window
 
     private void CoreHost_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_isPointerDown || e.LeftButton != MouseButtonState.Pressed)
+        if (!_isPointerDown)
         {
+            return;
+        }
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            _isPointerDown = false;
+            _isDraggingWindow = false;
+            _pointerDownOnCenterButton = false;
+            _pointerDownSectorIndex = null;
+            if (_coreHost.IsMouseCaptured)
+            {
+                _coreHost.ReleaseMouseCapture();
+            }
+
             return;
         }
 
@@ -3007,6 +3339,11 @@ internal sealed class MicroDialWindow : Window
 
             _isDraggingWindow = true;
             _pointerDownSectorIndex = null;
+            if (_pointerDownOnCenterButton)
+            {
+                _suppressNextCenterButtonClick = true;
+            }
+
             CloseAuxApplicationsPopup();
             HideInfoPill();
             _coreHost.CaptureMouse();
@@ -3026,8 +3363,10 @@ internal sealed class MicroDialWindow : Window
 
         var wasDragging = _isDraggingWindow;
         var clickedSector = _pointerDownSectorIndex;
+        var wasCenterButton = _pointerDownOnCenterButton;
         _isPointerDown = false;
         _isDraggingWindow = false;
+        _pointerDownOnCenterButton = false;
         _pointerDownSectorIndex = null;
 
         if (_coreHost.IsMouseCaptured)
@@ -3038,7 +3377,18 @@ internal sealed class MicroDialWindow : Window
         if (wasDragging)
         {
             NotifyCoreCenterMoved();
+            if (wasCenterButton)
+            {
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => _suppressNextCenterButtonClick = false));
+            }
+
             e.Handled = true;
+            return;
+        }
+
+        if (wasCenterButton)
+        {
+            // ドラッグ閾値未満の単クリックは _centerVisibilityButton.Click に任せる。
             return;
         }
 
@@ -3208,9 +3558,9 @@ internal sealed class MicroDialWindow : Window
         {
             RepeatBehavior = RepeatBehavior.Forever
         };
-        anim.KeyFrames.Add(new LinearDoubleKeyFrame(0.16, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        anim.KeyFrames.Add(new LinearDoubleKeyFrame(0.26, KeyTime.FromTimeSpan(TimeSpan.Zero)));
         anim.KeyFrames.Add(new SplineDoubleKeyFrame(1.00, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2.1)), rise));
-        anim.KeyFrames.Add(new SplineDoubleKeyFrame(0.16, KeyTime.FromTimeSpan(AiWorkingFireflyDuration), fall));
+        anim.KeyFrames.Add(new SplineDoubleKeyFrame(0.26, KeyTime.FromTimeSpan(AiWorkingFireflyDuration), fall));
         return anim;
     }
 

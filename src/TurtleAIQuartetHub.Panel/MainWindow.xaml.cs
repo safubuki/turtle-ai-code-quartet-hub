@@ -676,11 +676,11 @@ public partial class MainWindow : Window
             }
 
             case "--layer" when args.Length >= 2 && string.Equals(args[1], "top", StringComparison.OrdinalIgnoreCase):
-                PinAllTopButton_Click(this, new RoutedEventArgs());
+                PinAllTopButton_Click(this, new RoutedEventArgs(Button.ClickEvent, this));
                 break;
 
             case "--layer" when args.Length >= 2 && string.Equals(args[1], "back", StringComparison.OrdinalIgnoreCase):
-                SendAllBackButton_Click(this, new RoutedEventArgs());
+                SendAllBackButton_Click(this, new RoutedEventArgs(Button.ClickEvent, this));
                 break;
         }
 
@@ -2410,7 +2410,10 @@ public partial class MainWindow : Window
 
     private async void MoveSlotToNextDisplayButton_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
+        if (e.RoutedEvent is not null)
+        {
+            e.Handled = true;
+        }
         if (sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
@@ -2538,12 +2541,17 @@ public partial class MainWindow : Window
     private void OpenSlotGitHubButton_Click(object sender, RoutedEventArgs e)
     {
         // カードの 1 面フォーカス切り替えへ伝播させない。
-        e.Handled = true;
+        if (e.RoutedEvent is not null)
+        {
+            e.Handled = true;
+        }
         if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
         }
 
+        // 開いたブラウザが 1 面フォーカス中のスロット裏へ押し戻されないよう再主張を一時抑止する。
+        SuppressFocusedSlotReassertForPanelInput();
         var webUrl = slot.GitHubWebUrl;
         if (string.IsNullOrEmpty(webUrl))
         {
@@ -2559,6 +2567,7 @@ public partial class MainWindow : Window
 
     private void PullRequestInboxButton_Click(object sender, RoutedEventArgs e)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         if (OpenInBrowser(PullRequestInboxUrl))
         {
             MarkPullRequestsSeen();
@@ -2573,6 +2582,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        SuppressFocusedSlotReassertForPanelInput();
         var downloadsPath = DownloadsFolderResolver.Resolve();
         if (string.IsNullOrWhiteSpace(downloadsPath) || !System.IO.Directory.Exists(downloadsPath))
         {
@@ -2632,12 +2642,16 @@ public partial class MainWindow : Window
 
     private void OpenSlotWorkspaceFolderButton_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
+        if (e.RoutedEvent is not null)
+        {
+            e.Handled = true;
+        }
         if (_isBusy || sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
         }
 
+        SuppressFocusedSlotReassertForPanelInput();
         var explorerPath = slot.ExplorerWorkspacePath;
         if (string.IsNullOrWhiteSpace(explorerPath))
         {

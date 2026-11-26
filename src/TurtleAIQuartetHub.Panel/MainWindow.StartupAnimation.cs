@@ -312,7 +312,9 @@ public partial class MainWindow
                 return;
             }
 
-            var scale = VisualTreeHelper.GetDpi(this);
+            var scale = fromMicroDial && _microDialWindow is { } dialForDpi
+                ? VisualTreeHelper.GetDpi(dialForDpi)
+                : VisualTreeHelper.GetDpi(this);
             var ghostArea = panelRect;
             ghostArea.Inflate(StartupGhostPadding * scale.DpiScaleX, StartupGhostPadding * scale.DpiScaleY);
 
@@ -529,9 +531,11 @@ public partial class MainWindow
             };
 
             // 2. パネル画像本体（HighQuality フィルタ・BitmapCache 不使用で軽快・鮮明）
+            // 真円キャプチャ（極小モード）では Border の丸枠と 1px のズレも出ないよう Fill で全面へぴったり合わせる。
+            var isCircularGhost = cornerRadius >= 40.0;
             var imageBrush = new ImageBrush(panelImage)
             {
-                Stretch = Stretch.None,
+                Stretch = isCircularGhost ? Stretch.Fill : Stretch.None,
                 AlignmentX = AlignmentX.Center,
                 AlignmentY = AlignmentY.Center
             };

@@ -992,6 +992,17 @@ public sealed class WindowSlot : INotifyPropertyChanged
 
     // 同じフォルダについてはボタンの有効判定とツールチップで結果を使い回す。
     // フォルダが変われば（パス変更の通知で再評価され）解決し直す。
+    public void RefreshWorkspaceLinks()
+    {
+        _gitHubResolutionFolder = null;
+        OnPropertyChanged(nameof(ExplorerWorkspacePath));
+        OnPropertyChanged(nameof(CanOpenWorkspaceFolder));
+        OnPropertyChanged(nameof(WorkspaceFolderToolTip));
+        OnPropertyChanged(nameof(GitHubWebUrl));
+        OnPropertyChanged(nameof(CanOpenGitHub));
+        OnPropertyChanged(nameof(GitHubToolTip));
+    }
+
     private GitHubRepositoryResolver.Resolution ResolveGitHub()
     {
         var folder = ExplorerWorkspacePath;

@@ -269,6 +269,7 @@ public partial class MainWindow
 
     private void OpenStoredPanelFolder(StoredPanelSlot storedPanel)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         var explorerPath = storedPanel.ExplorerWorkspacePath;
         if (string.IsNullOrWhiteSpace(explorerPath))
         {
@@ -295,6 +296,7 @@ public partial class MainWindow
 
     private void OpenStoredPanelGitHub(StoredPanelSlot storedPanel)
     {
+        SuppressFocusedSlotReassertForPanelInput();
         var webUrl = storedPanel.GitHubWebUrl;
         if (string.IsNullOrEmpty(webUrl))
         {

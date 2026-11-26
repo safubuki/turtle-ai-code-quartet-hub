@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 21;
+    public const int Count = 27;
 
     public static void Run(List<string> failures)
     {
@@ -19,6 +19,12 @@ internal static class MicroDialTests
         TestStandaloneExitConfirmWindowStructureAndPlacement(failures);
         TestCompactAndMicroExitConfirmAvoidMainWindowResizeAndUncloak(failures);
         TestMicroDialCaptureCoreCircleImage(failures);
+        TestMicroDialCaptureCoreCircleImageCenteredWithoutVerticalClip(failures);
+        TestMicroDialNonActivatingMenuClickAndJumpGuards(failures);
+        TestMicroDialCenterButtonSupportsDragAndSingleClickToggle(failures);
+        TestMicroDialInnerWorkingArcBrighterAndThicker(failures);
+        TestMicroDialIdleOpacityThinWhenFocusedOrWorkingAndDenseOnlyWhenDone(failures);
+        TestMicroDialRadialLabelSymmetry(failures);
         TestMicroDialStoredAssignAndHiddenStateTransitions(failures);
         TestMicroDialModeButtonIconUsesCircularDialVector(failures);
         TestStandardAndCompactModeIconsUseAbsoluteVectorShapes(failures);
@@ -435,6 +441,295 @@ internal static class MicroDialTests
                 if (bmp.PixelWidth < 100 || bmp.PixelHeight < 100 || !bmp.IsFrozen)
                 {
                     throw new InvalidOperationException($"円形コアキャプチャ画像が不正です ({bmp.PixelWidth}x{bmp.PixelHeight}, frozen={bmp.IsFrozen})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialCaptureCoreCircleImageCenteredWithoutVerticalClip(List<string> failures)
+    {
+        RunOnStaThread(failures, "円形コアキャプチャ画像の上下対称・枠切れ無し・四隅透過検証", () =>
+        {
+            var slots = CreateSampleSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                _ = dial.VerifyOffscreenStateForTesting();
+                var bmp = dial.CaptureCoreCircleImage();
+                var w = bmp.PixelWidth;
+                var h = bmp.PixelHeight;
+                var stride = w * 4;
+                var pixels = new byte[stride * h];
+                bmp.CopyPixels(pixels, stride, 0);
+
+                byte AlphaAt(int x, int y) => pixels[(y * stride) + (x * 4) + 3];
+
+                // 四隅（円外）がソフト影ゴミ無しの完全透明であること
+                if (AlphaAt(0, 0) != 0 || AlphaAt(w - 1, 0) != 0 || AlphaAt(0, h - 1) != 0 || AlphaAt(w - 1, h - 1) != 0)
+                {
+                    throw new InvalidOperationException("円形コアキャプチャの四隅にソフト影などの不透明ゴミが混入しています。");
+                }
+
+                // 中央縦ラインの上端・下端の不透明ピクセル開始位置が対称（ズレ 1px 以内）であり、
+                // かつ円の上端・下端が端から 2px 以内でしっかり収まっていること（旧バグ: 上端が 3px 切れて下端に 3px 余白）
+                var cx = w / 2;
+                var topEdge = Enumerable.Range(0, h).FirstOrDefault(y => AlphaAt(cx, y) > 128, -1);
+                var bottomEdge = Enumerable.Range(0, h).Reverse().FirstOrDefault(y => AlphaAt(cx, y) > 128, -1);
+                var topMargin = topEdge;
+                var bottomMargin = (h - 1) - bottomEdge;
+                if (topEdge < 0 || bottomEdge < 0 || topMargin > 2 || bottomMargin > 2 || Math.Abs(topMargin - bottomMargin) > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"円形コアキャプチャの上下端が非対称または切れています (h={h}, topEdge={topEdge}, bottomEdge={bottomEdge})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialNonActivatingMenuClickAndJumpGuards(List<string> failures)
+    {
+        RunOnStaThread(failures, "極小右クリックメニューの非アクティブクリック閉鎖・サブメニュー展開・ジャンプ抑止検証", () =>
+        {
+            var slots = CreateMixedStatusSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var res = dial.VerifyNonActivatingMenuBehaviorsForTesting();
+                if (res.LeafClickCount != 1 || !res.MenuClosedAfterLeafClick)
+                {
+                    throw new InvalidOperationException(
+                        $"非アクティブ ContextMenu のリーフ項目クリック後に 1 回実行＆自動閉鎖されませんでした (clicks={res.LeafClickCount}, closed={res.MenuClosedAfterLeafClick})。");
+                }
+
+                if (res.SubmenuLeafClickCount != 1 || !res.MenuClosedAfterSubmenuLeafClick)
+                {
+                    throw new InvalidOperationException(
+                        $"非アクティブ ContextMenu のサブメニュー項目クリック後に 1 回実行＆自動閉鎖されませんでした (clicks={res.SubmenuLeafClickCount}, closed={res.MenuClosedAfterSubmenuLeafClick})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+
+            // 本番コードで BuildMicroDialContextMenu・GitHub・エクスプローラーの各経路が
+            // フォーカス再主張抑止・リンク再解決・有効な RoutedEvent 付き RoutedEventArgs を備えていること
+            var panelDir = System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel"));
+            var slotMenuCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.SlotContextMenu.cs"));
+            var mainCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.xaml.cs"));
+
+            if (!slotMenuCs.Contains("slot.RefreshWorkspaceLinks();", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("MainWindow.SlotContextMenu.cs でメニュー構築前に RefreshWorkspaceLinks() を呼んでいません。");
+            }
+
+            // 引数なし new RoutedEventArgs() に e.Handled = true を設定すると WPF が InvalidOperationException を投げるため、
+            // Panel プロジェクト全体に引数なし new RoutedEventArgs() が 1 件も残っていないことを保証する。
+            foreach (var csFile in System.IO.Directory.EnumerateFiles(panelDir, "*.cs", System.IO.SearchOption.AllDirectories))
+            {
+                if (csFile.Contains("\\bin\\", StringComparison.OrdinalIgnoreCase)
+                    || csFile.Contains("\\obj\\", StringComparison.OrdinalIgnoreCase)
+                    || csFile.Contains("\\.build-tmp\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var code = System.IO.File.ReadAllText(csFile);
+                if (code.Contains("new RoutedEventArgs()", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"{System.IO.Path.GetFileName(csFile)} に RoutedEvent=null の引数なし new RoutedEventArgs() が残っています（e.Handled = true で例外になります）。");
+                }
+            }
+
+            // MenuItem.ClickEvent 付き RoutedEventArgs は e.Handled = true が例外なく通ること
+            var validMenuArgs = new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent);
+            validMenuArgs.Handled = true;
+            if (!validMenuArgs.Handled)
+            {
+                throw new InvalidOperationException("MenuItem.ClickEvent 付き RoutedEventArgs で Handled=true を設定できませんでした。");
+            }
+
+            // 非アクティブ ContextMenu に手動 PreviewMouseLeftButtonUp → Click 再発火を入れると
+            // WPF 標準の InvokeClickAfterRender と競合してタブが 2 つ開くなどの二重実行を起こすため、
+            // AttachNonActivatingMenuItems 内に手動 RaiseEvent(ClickEvent) が存在しないことも保証する。
+            var dialCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "Services", "MicroDialWindow.cs"));
+            var attachStart = dialCs.IndexOf("private void AttachNonActivatingMenuItems(", StringComparison.Ordinal);
+            var attachEnd = dialCs.IndexOf("private static void CloseSiblingSubmenus(", StringComparison.Ordinal);
+            if (attachStart < 0 || attachEnd <= attachStart)
+            {
+                throw new InvalidOperationException("MicroDialWindow.cs に AttachNonActivatingMenuItems が見つかりません。");
+            }
+
+            if (dialCs[attachStart..attachEnd].Contains("RaiseEvent(", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("AttachNonActivatingMenuItems 内に二重実行を引き起こす手動 RaiseEvent が残っています。");
+            }
+
+            var githubStart = mainCs.IndexOf("private void OpenSlotGitHubButton_Click(", StringComparison.Ordinal);
+            var githubEnd = mainCs.IndexOf("private void PullRequestInboxButton_Click(", StringComparison.Ordinal);
+            if (githubStart < 0 || githubEnd <= githubStart
+                || !mainCs[githubStart..githubEnd].Contains("SuppressFocusedSlotReassertForPanelInput();", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("OpenSlotGitHubButton_Click にフォーカス再主張抑止がありません。");
+            }
+        });
+    }
+
+    private static void TestMicroDialCenterButtonSupportsDragAndSingleClickToggle(List<string> failures)
+    {
+        RunOnStaThread(failures, "極小ダイヤル中央ボタンからのドラッグ移動と単クリック切替の両立検証", () =>
+        {
+            var slots = CreateMixedStatusSlots();
+            var toggleCount = 0;
+            var movedCount = 0;
+            var dial = new MicroDialWindow(
+                slots,
+                ghostOpacityEnabled: true,
+                getAuxApplications: () => [],
+                onSlotActivated: _ => { },
+                onStoredPanelDropped: (_, _) => { },
+                onSlotSwapped: (_, _) => { },
+                onToggleVisibility: () => toggleCount++,
+                onToggleStoredOverview: () => { },
+                onPinTop: () => { },
+                onSendBack: () => { },
+                onLaunchAuxApp: _ => { },
+                onSwitchStandard: () => { },
+                onSwitchCompact: () => { },
+                onMinimize: () => { },
+                onRequestClose: () => { },
+                onGhostOpacityChanged: (_, _) => { },
+                onRecenterRequested: () => { },
+                onCoreCenterMoved: _ => movedCount++);
+            try
+            {
+                var res = dial.VerifyCenterButtonDragAndClickForTesting();
+                if (!res.DragMovedWindowWithoutToggle || movedCount < 1)
+                {
+                    throw new InvalidOperationException($"中央ボタンからのドラッグ移動が機能していません (moved={movedCount})。");
+                }
+
+                // ドラッグ直後の誤クリックは抑止され、通常単クリックの 1 回だけトグルが発火すること
+                if (toggleCount != 1)
+                {
+                    throw new InvalidOperationException($"中央ボタンのドラッグ抑止／単クリックトグル回数が期待（1）と異なります ({toggleCount})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialInnerWorkingArcBrighterAndThicker(List<string> failures)
+    {
+        RunOnStaThread(failures, "実行中ホタル点滅（中央内側アーク）の視認性・太さ・明度検証", () =>
+        {
+            var slots = CreateSampleSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var info = dial.VerifyWorkingArcAndIdleOpacityPolicyForTesting();
+                if (!(info.OuterThickness >= 5.0 && info.MiddleThickness >= 3.0 && info.InnerThickness >= 1.5))
+                {
+                    throw new InvalidOperationException(
+                        $"実行中内側アークの太さが視認性改善基準を満たしていません (outer={info.OuterThickness:0.00}, mid={info.MiddleThickness:0.00}, inner={info.InnerThickness:0.00})。");
+                }
+
+                if (!(info.CoreColor.G >= 0xF5 && info.CoreColor.R >= 0xDF && info.MinFireflyOpacity >= 0.24))
+                {
+                    throw new InvalidOperationException(
+                        $"実行中内側アークの明るさ・点滅下限が基準を満たしていません (core={info.CoreColor}, minOpacity={info.MinFireflyOpacity:0.00})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialIdleOpacityThinWhenFocusedOrWorkingAndDenseOnlyWhenDone(List<string> failures)
+    {
+        RunOnStaThread(failures, "非ホバー時の透過方針（フォーカス中・実行中は薄く、完了・再ホバー時は濃く）検証", () =>
+        {
+            var slots = CreateSampleSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var info = dial.VerifyWorkingArcAndIdleOpacityPolicyForTesting();
+                if (Math.Abs(info.NormalIdleOpacity - 0.30) > 0.01)
+                {
+                    throw new InvalidOperationException($"通常・非ホバー時の透過率が 0.30 ではありません ({info.NormalIdleOpacity:0.00})。");
+                }
+
+                if (Math.Abs(info.FocusedIdleOpacity - 0.30) > 0.01)
+                {
+                    throw new InvalidOperationException($"フォーカス中・非ホバー時に薄くなっていません ({info.FocusedIdleOpacity:0.00})。");
+                }
+
+                if (Math.Abs(info.WorkingIdleOpacity - 0.30) > 0.01)
+                {
+                    throw new InvalidOperationException($"AI 実行中・非ホバー時に薄くなっていません ({info.WorkingIdleOpacity:0.00})。");
+                }
+
+                if (info.DoneIdleOpacity < 0.85)
+                {
+                    throw new InvalidOperationException($"AI 完了・非ホバー時に濃く表示されていません ({info.DoneIdleOpacity:0.00})。");
+                }
+
+                if (info.HoveredOpacity < 0.99)
+                {
+                    throw new InvalidOperationException($"マウスオーバー時に濃く表示されていません ({info.HoveredOpacity:0.00})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialRadialLabelSymmetry(List<string> failures)
+    {
+        RunOnStaThread(failures, "極小ダイヤルの放射状対称ラベル配置（アルファベット中央寄り・タイトル外周寄り）検証", () =>
+        {
+            var slots = CreateMixedStatusSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var info = dial.VerifyRadialLabelSymmetryForTesting();
+                if (!info.TopRowTitleAboveKey)
+                {
+                    throw new InvalidOperationException("上段（A・B）でタイトルがアルファベットの上側（外周寄り）に配置されていません。");
+                }
+
+                if (!info.BottomRowKeyAboveTitle)
+                {
+                    throw new InvalidOperationException("下段（C・D）でアルファベットがタイトルの上側（中央寄り）に配置されていません。");
+                }
+
+                if (info.KeyCenterDistanceDeltaY > 1.0 || info.TitleCenterDistanceDeltaY > 1.0)
+                {
+                    throw new InvalidOperationException(
+                        $"上下段のアルファベット・タイトルの中央からの距離が対称ではありません (keyDelta={info.KeyCenterDistanceDeltaY:0.00}, titleDelta={info.TitleCenterDistanceDeltaY:0.00})。");
+                }
+
+                if (info.LeftRightOffsetDeltaX > 0.5)
+                {
+                    throw new InvalidOperationException(
+                        $"上下段の横位置オフセットが揃っていません (deltaX={info.LeftRightOffsetDeltaX:0.00})。");
                 }
             }
             finally
