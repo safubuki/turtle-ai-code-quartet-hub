@@ -105,6 +105,8 @@ public partial class MainWindow : Window
     private bool _isStoredOverviewWanted;
     // 縮小表示の控え一覧は、最初は前半の行だけを出す。後半は一覧下のボタンで下に伸ばして出す（このセッション中は覚えておく）。
     private const int CompactOverviewVisibleRows = 5;
+    private const double CompactOverviewFallbackRowHeightDip = 55.0;
+    private const double StoredOverviewWheelStepDip = 55.0;
     private bool _isCompactOverviewExpanded;
     private double _standardWindowWidth;
     private double _standardWindowHeight;
@@ -3569,26 +3571,50 @@ public partial class MainWindow : Window
     {
         // 画面端で反対側へ回り込むこともあるので、実際に出た側を見てスライド方向を決める。
         UpdateStoredOverviewSide();
+        StoredOverviewScrollViewer.ScrollToTop();
         StoredOverviewRoot.UpdateLayout();
         UpdateStoredOverviewRows();
         StoredOverviewTranslate.X = _isStoredOverviewOnLeft ? StoredOverviewSlideDistance : -StoredOverviewSlideDistance;
         AnimateStoredOverview(show: true);
-        // 行を畳んで高さが変わったので、画面の下にはみ出さない位置を計算し直す。
+        // 高さが確定したあとで、画面の下にはみ出さない位置を計算し直す。
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RepositionStoredOverview);
     }
 
-    // 縮小・極小表示では前半の行だけを出し、一覧の下のボタンで後半を下に伸ばす。標準表示は常にすべての行を出す。
+    // 縮小・極小表示では全 10 行（1〜40）を表示可能なまま維持し、折りたたみ時はスクロール領域の高さだけを
+    // 前半 5 行分に抑えることで、領域を拡大せずにマウスホイールだけで上下スクロールできるようにする（スクロールバーは非表示）。
+    // 下部のボタンを押したときだけ領域自体を拡大／折りたたみし、標準表示は常に全行を表示する。
     private void UpdateStoredOverviewRows()
     {
         var isCompact = _displayMode is DisplayMode.Compact or DisplayMode.Micro;
-        var limitRows = isCompact && !_isCompactOverviewExpanded;
+        var limitViewport = isCompact && !_isCompactOverviewExpanded;
         var pages = _statusStore.StoredPanelPages;
+        var firstRowHeights = new List<double>(CompactOverviewVisibleRows);
+
         for (var index = 0; index < pages.Count; index++)
         {
-            if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is UIElement container)
+            if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement container)
             {
-                container.Visibility = limitRows && index >= CompactOverviewVisibleRows ? Visibility.Collapsed : Visibility.Visible;
+                container.Visibility = Visibility.Visible;
+                if (index < CompactOverviewVisibleRows)
+                {
+                    var measuredHeight = container.ActualHeight > 0 ? container.ActualHeight : container.DesiredSize.Height;
+                    firstRowHeights.Add(measuredHeight);
+                }
             }
+        }
+
+        // 縮小・極小表示ではスクロールバーを表示せず、ホイール操作だけで上下移動できるようにする。
+        StoredOverviewScrollViewer.VerticalScrollBarVisibility = isCompact
+            ? ScrollBarVisibility.Hidden
+            : ScrollBarVisibility.Auto;
+
+        if (limitViewport)
+        {
+            StoredOverviewScrollViewer.MaxHeight = ComputeCompactOverviewViewportHeight(firstRowHeights, CompactOverviewVisibleRows);
+        }
+        else
+        {
+            StoredOverviewScrollViewer.ClearValue(MaxHeightProperty);
         }
 
         var hiddenSlots = pages.Skip(CompactOverviewVisibleRows).SelectMany(page => page.Slots).ToList();
@@ -3608,10 +3634,55 @@ public partial class MainWindow : Window
         AutomationProperties.SetName(StoredOverviewMoreButton, StoredOverviewMoreText.Text);
     }
 
+    internal static double ComputeCompactOverviewViewportHeight(IReadOnlyList<double> rowHeights, int visibleRows)
+    {
+        var count = Math.Max(1, visibleRows);
+        var total = 0.0;
+        for (var i = 0; i < count; i++)
+        {
+            var h = i < rowHeights.Count ? rowHeights[i] : 0.0;
+            total += h > 1.0 ? h : CompactOverviewFallbackRowHeightDip;
+        }
+
+        return total;
+    }
+
+    internal static double ComputeStoredOverviewNextScrollOffset(
+        double currentOffset,
+        double scrollableHeight,
+        int wheelDelta,
+        double stepDip = StoredOverviewWheelStepDip)
+    {
+        if (scrollableHeight <= 0 || wheelDelta == 0)
+        {
+            return Math.Clamp(currentOffset, 0.0, Math.Max(0.0, scrollableHeight));
+        }
+
+        var notches = -wheelDelta / 120.0;
+        var next = currentOffset + (notches * stepDip);
+        return Math.Clamp(next, 0.0, scrollableHeight);
+    }
+
+    private void StoredOverviewScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (StoredOverviewScrollViewer.ScrollableHeight <= 0 || e.Delta == 0)
+        {
+            return;
+        }
+
+        var nextOffset = ComputeStoredOverviewNextScrollOffset(
+            StoredOverviewScrollViewer.VerticalOffset,
+            StoredOverviewScrollViewer.ScrollableHeight,
+            e.Delta);
+        StoredOverviewScrollViewer.ScrollToVerticalOffset(nextOffset);
+        e.Handled = true;
+    }
+
     private void StoredOverviewMoreButton_Click(object sender, RoutedEventArgs e)
     {
         _isCompactOverviewExpanded = !_isCompactOverviewExpanded;
         UpdateStoredOverviewRows();
+        StoredOverviewScrollViewer.ScrollToTop();
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RepositionStoredOverview);
     }
 
@@ -3668,11 +3739,22 @@ public partial class MainWindow : Window
     private void AnimateStoredOverviewItemsIn()
     {
         StoredOverviewRoot.UpdateLayout();
+        var isCompactCollapsed = (_displayMode is DisplayMode.Compact or DisplayMode.Micro) && !_isCompactOverviewExpanded;
         var items = new List<FrameworkElement>();
         for (var index = 0; index < StoredOverviewPagesList.Items.Count; index++)
         {
             if (StoredOverviewPagesList.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement { Visibility: Visibility.Visible } container)
             {
+                if (isCompactCollapsed && index >= CompactOverviewVisibleRows)
+                {
+                    // 折りたたみ時のスクロール領域下（21〜40）は最初から不透明にしておき、
+                    // 開いた直後に下へスクロールしても即座に表示されるようにする。
+                    container.BeginAnimation(OpacityProperty, null);
+                    container.Opacity = 1;
+                    container.RenderTransform = Transform.Identity;
+                    continue;
+                }
+
                 items.Add(container);
             }
         }
@@ -3790,6 +3872,7 @@ public partial class MainWindow : Window
         }
 
         UpdateStoredOverviewMaxHeight();
+        UpdateStoredOverviewRows();
         // パネルを動かして右側に空きができたら右へ戻す（逆に右が足りなくなれば左へ）。
         _storedOverviewPrefersLeft = ShouldPlaceStoredOverviewOnLeft();
         var offset = StoredOverviewPopup.HorizontalOffset;

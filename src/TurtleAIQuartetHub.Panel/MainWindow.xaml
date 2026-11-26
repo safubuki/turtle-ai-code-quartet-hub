@@ -2930,7 +2930,8 @@
               Background="{StaticResource PanelBackgroundBrush}"
               BorderBrush="#3E5148"
               BorderThickness="1"
-              CornerRadius="10">
+              CornerRadius="10"
+              PreviewMouseWheel="StoredOverviewScrollViewer_PreviewMouseWheel">
         <Border.RenderTransform>
           <TranslateTransform x:Name="StoredOverviewTranslate" />
         </Border.RenderTransform>
@@ -2978,7 +2979,7 @@
                           ItemTemplate="{StaticResource StoredOverviewPageTemplate}" />
           </ScrollViewer>
 
-          <!-- 縮小表示だけ、最初は前半（1〜20）だけを出し、このボタンで後半（21〜40）を下に伸ばして表示する。 -->
+          <!-- 縮小・極小表示では領域を前半 5 行分の高さに保ったままホイールで 1〜40 をスクロールでき、このボタンで領域自体を下に拡大／折りたたみできる。 -->
           <Button x:Name="StoredOverviewMoreButton"
                   Grid.Row="2"
                   Visibility="Collapsed"

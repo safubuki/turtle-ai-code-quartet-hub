@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 27;
+    public const int Count = 28;
 
     public static void Run(List<string> failures)
     {
@@ -25,6 +25,7 @@ internal static class MicroDialTests
         TestMicroDialInnerWorkingArcBrighterAndThicker(failures);
         TestMicroDialIdleOpacityThinWhenFocusedOrWorkingAndDenseOnlyWhenDone(failures);
         TestMicroDialRadialLabelSymmetry(failures);
+        TestCompactAndMicroStoredOverviewScrollableWithoutScrollBar(failures);
         TestMicroDialStoredAssignAndHiddenStateTransitions(failures);
         TestMicroDialModeButtonIconUsesCircularDialVector(failures);
         TestStandardAndCompactModeIconsUseAbsoluteVectorShapes(failures);
@@ -737,6 +738,60 @@ internal static class MicroDialTests
                 dial.Close();
             }
         });
+    }
+
+    private static void TestCompactAndMicroStoredOverviewScrollableWithoutScrollBar(List<string> failures)
+    {
+        // 1. 折りたたみ時のビューポート高さ計算（実測値・区切り線あり・未計測フォールバック）
+        var measuredWithDivider = TurtleAIQuartetHub.Panel.MainWindow.ComputeCompactOverviewViewportHeight([55, 75, 55, 55, 55], 5);
+        if (Math.Abs(measuredWithDivider - 295.0) > 0.01)
+        {
+            failures.Add($"区切り線込み 5 行分の折りたたみ高さ計算が期待（295）と異なります ({measuredWithDivider:0.0})。");
+        }
+
+        var fallbackHeight = TurtleAIQuartetHub.Panel.MainWindow.ComputeCompactOverviewViewportHeight([], 5);
+        if (Math.Abs(fallbackHeight - 275.0) > 0.01)
+        {
+            failures.Add($"未計測時の 5 行分フォールバック高さが期待（275）と異なります ({fallbackHeight:0.0})。");
+        }
+
+        // 2. マウスホイール上下スクロールの計算（下へ 1 ノッチ＝+55 DIP、上へ 1 ノッチ＝-55 DIP、上下端クランプ）
+        var downOne = TurtleAIQuartetHub.Panel.MainWindow.ComputeStoredOverviewNextScrollOffset(0, 275, wheelDelta: -120);
+        var upOne = TurtleAIQuartetHub.Panel.MainWindow.ComputeStoredOverviewNextScrollOffset(downOne, 275, wheelDelta: +120);
+        var clampedBottom = TurtleAIQuartetHub.Panel.MainWindow.ComputeStoredOverviewNextScrollOffset(260, 275, wheelDelta: -120);
+        var clampedTop = TurtleAIQuartetHub.Panel.MainWindow.ComputeStoredOverviewNextScrollOffset(10, 275, wheelDelta: +120);
+        if (Math.Abs(downOne - 55.0) > 0.01 || Math.Abs(upOne - 0.0) > 0.01 || Math.Abs(clampedBottom - 275.0) > 0.01 || Math.Abs(clampedTop - 0.0) > 0.01)
+        {
+            failures.Add($"控え一覧ホイールスクロール計算が期待と異なります (down={downOne}, up={upOne}, bottom={clampedBottom}, top={clampedTop})。");
+        }
+
+        // 3. 縮小・極小表示では後半行を Collapsed で隠さず Visible のまま保持し、
+        //    ScrollBarVisibility.Hidden でスクロールバー非表示＋PreviewMouseWheel でスクロール可能であること
+        var panelDir = System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TurtleAIQuartetHub.Panel"));
+        var mainCs = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.xaml.cs"));
+        var mainXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(panelDir, "MainWindow.xaml"));
+
+        var updateStart = mainCs.IndexOf("private void UpdateStoredOverviewRows()", StringComparison.Ordinal);
+        var updateEnd = mainCs.IndexOf("internal static double ComputeCompactOverviewViewportHeight(", StringComparison.Ordinal);
+        if (updateStart < 0 || updateEnd <= updateStart)
+        {
+            failures.Add("MainWindow.xaml.cs に UpdateStoredOverviewRows が見つかりません。");
+            return;
+        }
+
+        var updateBody = mainCs[updateStart..updateEnd];
+        if (!updateBody.Contains("ScrollBarVisibility.Hidden", StringComparison.Ordinal)
+            || !updateBody.Contains("StoredOverviewScrollViewer.MaxHeight =", StringComparison.Ordinal)
+            || updateBody.Contains("index >= CompactOverviewVisibleRows ? Visibility.Collapsed", StringComparison.Ordinal))
+        {
+            failures.Add("UpdateStoredOverviewRows がスクロールバー非表示＋全行保持の MaxHeight 制限方式になっていません。");
+        }
+
+        if (!mainXaml.Contains("PreviewMouseWheel=\"StoredOverviewScrollViewer_PreviewMouseWheel\"", StringComparison.Ordinal))
+        {
+            failures.Add("MainWindow.xaml の控え一覧に PreviewMouseWheel ハンドラが設定されていません。");
+        }
     }
 
     private static void TestMicroDialStoredAssignAndHiddenStateTransitions(List<string> failures)
