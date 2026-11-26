@@ -49,6 +49,12 @@ internal sealed class MicroDialWindow : Window
     private const int WsExNoActivate = 0x08000000;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoActivate = 0x0010;
+    private const int WhMouseLl = 14;
+    private const int WmLButtonDown = 0x0201;
+    private const int WmRButtonDown = 0x0204;
+    private const int WmMButtonDown = 0x0207;
+    private const int WmNcLButtonDown = 0x00A1;
+    private const int WmNcRButtonDown = 0x00A4;
     private static readonly IntPtr HwndTopmost = new(-1);
 
     private static readonly Brush CoreBackgroundBrush = CreateFrozenBrush(Color.FromRgb(0x0F, 0x14, 0x12));
@@ -191,6 +197,10 @@ internal sealed class MicroDialWindow : Window
     private bool _isExpanded;
     private bool _isStoredOverviewOpen;
     private bool _isContextMenuOpen;
+    private ContextMenu? _activeContextMenu;
+    private IntPtr _outsideClickMouseHookHandle;
+    // WH_MOUSE_LL コールバックデリゲートを GC 回収から保護するためインスタンスフィールドで保持する。
+    private readonly LowLevelMouseProc _outsideClickMouseHookProc;
     private readonly Popup _auxApplicationsPopup;
     private readonly StackPanel _auxApplicationsListPanel;
     private bool _areWindowsHidden;
@@ -256,6 +266,7 @@ internal sealed class MicroDialWindow : Window
         _onOpenPullRequestInbox = onOpenPullRequestInbox;
         _contextMenuStyle = contextMenuStyle ?? CreateFallbackDarkContextMenuStyle();
         _buildContextMenu = buildContextMenu;
+        _outsideClickMouseHookProc = OutsideClickMouseHookCallback;
 
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -705,6 +716,7 @@ internal sealed class MicroDialWindow : Window
 
     public void HideWithPopups()
     {
+        CloseActiveContextMenu();
         CloseAuxApplicationsPopup();
         HideInfoPill();
         _leaveGraceTimer.Stop();
@@ -1057,6 +1069,54 @@ internal sealed class MicroDialWindow : Window
             ai90,
             gestureDisabled,
             idleDisabled);
+    }
+
+    internal static bool IsOutsideDismissMouseMessage(int message) => message
+        is WmLButtonDown
+        or WmRButtonDown
+        or WmMButtonDown
+        or WmNcLButtonDown
+        or WmNcRButtonDown;
+
+    internal static bool IsPointInsideAnyRect(Point screenPointPx, IReadOnlyList<Rect> rects)
+    {
+        foreach (var rect in rects)
+        {
+            if (rect.Width > 0 && rect.Height > 0 && rect.Contains(screenPointPx))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal (
+        bool DismissedOnParentMenuClick,
+        bool DismissedOnSubmenuClick,
+        bool DismissedOnOutsideClick,
+        bool MenuClearedAfterOutsideClick,
+        bool MenuClearedAfterHideWithPopups) VerifyContextMenuOutsideClickDismissalForTesting()
+    {
+        var parentRect = new Rect(100, 100, 220, 90);
+        var submenuRect = new Rect(322, 100, 180, 260);
+        Rect[] activeRects = [parentRect, submenuRect];
+
+        var menu = CreateContextMenuForSlot(null);
+        _activeContextMenu = menu;
+        _isContextMenuOpen = true;
+
+        var onParent = TryDismissActiveContextMenuIfOutside(new Point(150, 130), activeRects);
+        var onSubmenu = TryDismissActiveContextMenuIfOutside(new Point(380, 180), activeRects);
+        var onOutside = TryDismissActiveContextMenuIfOutside(new Point(40, 40), activeRects);
+        var clearedAfterOutside = _activeContextMenu is null && !_isContextMenuOpen && _outsideClickMouseHookHandle == IntPtr.Zero;
+
+        _activeContextMenu = menu;
+        _isContextMenuOpen = true;
+        HideWithPopups();
+        var clearedAfterHide = _activeContextMenu is null && !_isContextMenuOpen && _outsideClickMouseHookHandle == IntPtr.Zero;
+
+        return (onParent, onSubmenu, onOutside, clearedAfterOutside, clearedAfterHide);
     }
 
     internal (bool UsesStaysOpenPopup, bool OpenedFirst, bool ClosedSecond, bool ReopenedThird) VerifyAuxMenuToggleForTesting()
@@ -1686,6 +1746,7 @@ internal sealed class MicroDialWindow : Window
     private void CoreHost_PreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        CloseActiveContextMenu();
         CloseAuxApplicationsPopup();
         if (_pendingStoredPanel is not null)
         {
@@ -1708,14 +1769,36 @@ internal sealed class MicroDialWindow : Window
         var menu = CreateContextMenuForSlot(targetSlot);
         menu.PlacementTarget = _coreHost;
         menu.Placement = PlacementMode.MousePoint;
+        menu.PreviewKeyDown += (_, keyArgs) =>
+        {
+            if (keyArgs.Key == Key.Escape)
+            {
+                CloseActiveContextMenu();
+                keyArgs.Handled = true;
+            }
+        };
         menu.Opened += (_, _) =>
         {
+            _activeContextMenu = menu;
             _isContextMenuOpen = true;
             _leaveGraceTimer.Stop();
+            InstallOutsideClickMouseHook();
+            if (PresentationSource.FromVisual(menu) is HwndSource menuSource && menuSource.Handle != IntPtr.Zero)
+            {
+                // キーボード（Esc・矢印キー）と標準メニュー応答を有効化するため Popup 側へ前景案内を行う。
+                // 仮に OS のフォアグラウンド制限で拒否されても WH_MOUSE_LL が確実に外クリックで閉じる。
+                _ = SetForegroundWindow(menuSource.Handle);
+            }
         };
         menu.Closed += (_, _) =>
         {
-            _isContextMenuOpen = false;
+            if (ReferenceEquals(_activeContextMenu, menu))
+            {
+                _activeContextMenu = null;
+                _isContextMenuOpen = false;
+                UninstallOutsideClickMouseHook();
+            }
+
             if (!_isHovered && !ShouldRemainExpanded())
             {
                 _leaveGraceTimer.Stop();
@@ -1723,6 +1806,159 @@ internal sealed class MicroDialWindow : Window
             }
         };
         menu.IsOpen = true;
+    }
+
+    private void CloseActiveContextMenu()
+    {
+        UninstallOutsideClickMouseHook();
+        var menu = _activeContextMenu;
+        _activeContextMenu = null;
+        _isContextMenuOpen = false;
+        if (menu is not null && menu.IsOpen)
+        {
+            menu.IsOpen = false;
+        }
+    }
+
+    private void InstallOutsideClickMouseHook()
+    {
+        if (_outsideClickMouseHookHandle != IntPtr.Zero || _closed)
+        {
+            return;
+        }
+
+        try
+        {
+            var moduleHandle = GetModuleHandle(null);
+            _outsideClickMouseHookHandle = SetWindowsHookEx(WhMouseLl, _outsideClickMouseHookProc, moduleHandle, 0);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+            _outsideClickMouseHookHandle = IntPtr.Zero;
+        }
+    }
+
+    private void UninstallOutsideClickMouseHook()
+    {
+        var hook = _outsideClickMouseHookHandle;
+        if (hook == IntPtr.Zero)
+        {
+            return;
+        }
+
+        _outsideClickMouseHookHandle = IntPtr.Zero;
+        try
+        {
+            _ = UnhookWindowsHookEx(hook);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+        }
+    }
+
+    // MicroDialWindow は WS_EX_NOACTIVATE のため、他アプリやデスクトップ上のクリックが
+    // WPF ContextMenu のマウスキャプチャへ届かない。メニュー表示中だけ低レベルマウス押下を監視し、
+    // 親メニューおよび展開中の全サブメニュー（PART_Popup）の外側クリックを検知したら即座に閉じる。
+    private IntPtr OutsideClickMouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        try
+        {
+            if (nCode >= 0 && IsOutsideDismissMouseMessage(wParam.ToInt32()) && _activeContextMenu is { IsOpen: true } menu)
+            {
+                var hookInfo = Marshal.PtrToStructure<MsllHookStruct>(lParam);
+                var clickPointPx = new Point(hookInfo.Pt.X, hookInfo.Pt.Y);
+                var menuRects = CollectActiveContextMenuScreenRects(menu);
+                if (menuRects.Count > 0 && !IsPointInsideAnyRect(clickPointPx, menuRects))
+                {
+                    _ = Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(CloseActiveContextMenu));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(ex);
+        }
+
+        return CallNextHookEx(_outsideClickMouseHookHandle, nCode, wParam, lParam);
+    }
+
+    private bool TryDismissActiveContextMenuIfOutside(Point screenPointPx, IReadOnlyList<Rect> menuRects)
+    {
+        if (_activeContextMenu is null || menuRects.Count == 0 || IsPointInsideAnyRect(screenPointPx, menuRects))
+        {
+            return false;
+        }
+
+        CloseActiveContextMenu();
+        return true;
+    }
+
+    private static List<Rect> CollectActiveContextMenuScreenRects(ContextMenu menu)
+    {
+        var rects = new List<Rect>(4);
+        TryAddElementScreenRect(menu, rects);
+        CollectOpenSubmenuRects(menu.Items, rects);
+        return rects;
+    }
+
+    private static void CollectOpenSubmenuRects(ItemCollection items, List<Rect> rects)
+    {
+        foreach (var rawItem in items)
+        {
+            if (rawItem is not MenuItem menuItem || !menuItem.IsSubmenuOpen)
+            {
+                continue;
+            }
+
+            if (menuItem.Template?.FindName("PART_Popup", menuItem) is Popup { IsOpen: true, Child: FrameworkElement subChild })
+            {
+                TryAddElementScreenRect(subChild, rects);
+            }
+
+            CollectOpenSubmenuRects(menuItem.Items, rects);
+        }
+    }
+
+    private static void TryAddElementScreenRect(FrameworkElement element, List<Rect> rects)
+    {
+        if (PresentationSource.FromVisual(element) is not HwndSource source)
+        {
+            return;
+        }
+
+        try
+        {
+            if (element.ActualWidth > 0 && element.ActualHeight > 0)
+            {
+                var topLeft = element.PointToScreen(new Point(0, 0));
+                var bottomRight = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+                var left = Math.Min(topLeft.X, bottomRight.X);
+                var top = Math.Min(topLeft.Y, bottomRight.Y);
+                var width = Math.Abs(bottomRight.X - topLeft.X);
+                var height = Math.Abs(bottomRight.Y - topLeft.Y);
+                if (width > 0 && height > 0)
+                {
+                    rects.Add(new Rect(left, top, width, height));
+                    return;
+                }
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // PointToScreen が一時的に取得できない場合は下の GetWindowRect へフォールバックする。
+        }
+
+        if (source.Handle != IntPtr.Zero && GetWindowRect(source.Handle, out var nativeRect))
+        {
+            var width = nativeRect.Right - nativeRect.Left;
+            var height = nativeRect.Bottom - nativeRect.Top;
+            if (width > 0 && height > 0)
+            {
+                rects.Add(new Rect(nativeRect.Left, nativeRect.Top, width, height));
+            }
+        }
     }
 
     private ContextMenu CreateContextMenuForSlot(WindowSlot? slot)
@@ -2835,6 +3071,7 @@ internal sealed class MicroDialWindow : Window
     {
         _closed = true;
         _leaveGraceTimer.Stop();
+        CloseActiveContextMenu();
         CloseAuxApplicationsPopup();
         HideInfoPill();
         foreach (var slot in _slots)
@@ -2988,6 +3225,34 @@ internal sealed class MicroDialWindow : Window
         public bool IsDropHighlighted { get; set; }
     }
 
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MsllHookStruct
+    {
+        public NativePoint Pt;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr DwExtraInfo;
+    }
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
@@ -2996,4 +3261,22 @@ internal sealed class MicroDialWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowsHookExW", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
 }

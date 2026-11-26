@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 18;
+    public const int Count = 19;
 
     public static void Run(List<string> failures)
     {
@@ -15,6 +15,7 @@ internal static class MicroDialTests
         TestGhostOpacityConfigDefaultAndBackwardCompat(failures);
         TestMicroDialOffscreenStructureOpacityAndWheel(failures);
         TestMicroDialGhostOpacitySubmenuTenPercentSteps(failures);
+        TestMicroDialContextMenuOutsideClickDismissal(failures);
         TestMicroDialCaptureCoreCircleImage(failures);
         TestMicroDialStoredAssignAndHiddenStateTransitions(failures);
         TestMicroDialModeButtonIconUsesCircularDialVector(failures);
@@ -246,6 +247,50 @@ internal static class MicroDialTests
                     || callbackHistory[2] != (false, 90))
                 {
                     throw new InvalidOperationException("透過度変更コールバックの通知履歴が期待と異なります。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialContextMenuOutsideClickDismissal(List<string> failures)
+    {
+        RunOnStaThread(failures, "右クリックメニューのメニュー外クリック閉鎖・サブメニュー内保護検証", () =>
+        {
+            if (!MicroDialWindow.IsOutsideDismissMouseMessage(0x0201)
+                || !MicroDialWindow.IsOutsideDismissMouseMessage(0x0204)
+                || !MicroDialWindow.IsOutsideDismissMouseMessage(0x0207)
+                || MicroDialWindow.IsOutsideDismissMouseMessage(0x0200))
+            {
+                throw new InvalidOperationException("マウス押下判定（WM_MOUSEMOVE 除外）が期待と異なります。");
+            }
+
+            var slots = CreateMixedStatusSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var res = dial.VerifyContextMenuOutsideClickDismissalForTesting();
+                if (res.DismissedOnParentMenuClick)
+                {
+                    throw new InvalidOperationException("親メニュー内クリックで誤ってメニューが閉じました。");
+                }
+
+                if (res.DismissedOnSubmenuClick)
+                {
+                    throw new InvalidOperationException("展開中のサブメニュー内クリックで誤ってメニューが閉じました。");
+                }
+
+                if (!res.DismissedOnOutsideClick || !res.MenuClearedAfterOutsideClick)
+                {
+                    throw new InvalidOperationException("メニュー外クリックで右クリックメニューが閉じていません。");
+                }
+
+                if (!res.MenuClearedAfterHideWithPopups)
+                {
+                    throw new InvalidOperationException("HideWithPopups 実行後に右クリックメニュー追跡状態が解除されていません。");
                 }
             }
             finally
