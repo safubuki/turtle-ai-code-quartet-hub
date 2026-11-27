@@ -106,14 +106,32 @@ public static class AiHookEventParser
 // スロット 1 つ分の AI 状態。作業中のセッションと、まだ見ていない完了を別々に持つ。
 // 作業中は時間では片付けない（長い処理を途中で消さない）。終了・中断の知らせ、次の指示、
 // カードの停止ボタン、ウィンドウを閉じる、手動リセットのいずれかで終わる。
+//
+// 同じウィンドウ・同じツールで複数の会話（セッション）を動かしたとき:
+//   緑の作業中は「そのウィンドウで最後に指示を出したセッション」が終わるまで続ける。
+//   それより前のセッションは「置き換え済み」として覚えておき、そのセッション自身の完了が届いたら
+//   （＝実際に並行して動いていた証拠）、完了の青で知らせつつ、最後のセッションの作業中は消さない（確認すると緑に戻る）。
+//   逆に最後のセッションが先に終わったときは、前のセッションが「まだ動いている」のか「停止ボタンで通知なしに止められた」のかを
+//   フックからは区別できないため、作業中へは戻さない（「動いていないのに実行中のまま」を再発させないため）。
+//   前のセッションがあとで終わったときは、その完了もまた青で知らせる。
 public sealed class AiActivityTracker
 {
+    // 置き換え済みセッションを覚えておく上限。通知なしに止められた会話の ID がたまり続けないようにする。
+    private const int MaxSupersededSessions = 8;
+
     private readonly HashSet<string> _activeSessions = new(StringComparer.OrdinalIgnoreCase);
+    // 作業中・置き換え済みの各セッションが指示を受けた時刻（置き換え済みセッションが終わったときの、かかった時間に使う）。
+    private readonly Dictionary<string, DateTimeOffset> _sessionStartedAt = new(StringComparer.OrdinalIgnoreCase);
+    // 同じツールの新しいセッションの開始で作業中から外したセッション（古い順）。どちらも SessionId 付きのときだけ覚える。
+    private readonly List<string> _supersededSessions = [];
     private bool _needsAttention;
 
     public AiActivityState State => _needsAttention
         ? AiActivityState.Done
         : _activeSessions.Count > 0 ? AiActivityState.Working : AiActivityState.Idle;
+
+    // 完了の青を確認したあと、まだ作業中の表示（緑）に戻るセッションが残っているか。ツールチップの案内に使う。
+    public bool HasWorkingSessions => _activeSessions.Count > 0;
 
     public string LastTool { get; private set; } = string.Empty;
 
@@ -133,7 +151,15 @@ public sealed class AiActivityTracker
     public bool Apply(AiHookEvent hookEvent, DateTimeOffset now)
     {
         var before = State;
-        var key = string.IsNullOrEmpty(hookEvent.SessionId) ? hookEvent.Tool : $"{hookEvent.Tool}:{hookEvent.SessionId}";
+        var hasSessionId = !string.IsNullOrEmpty(hookEvent.SessionId);
+        var key = hasSessionId ? $"{hookEvent.Tool}:{hookEvent.SessionId}" : hookEvent.Tool;
+        // 置き換え済みの前のセッション自身からの知らせか。そのセッションが実際に動いていた（または止まった）ことが
+        // はっきりしているので、最後に指示を出した同じツールのセッションの作業中は消さない。
+        var fromSupersededSession = hasSessionId
+            && hookEvent.Kind is AiHookEventKind.Stop or AiHookEventKind.Interrupt
+            && !_activeSessions.Contains(key)
+            && !_activeSessions.Contains(hookEvent.Tool)
+            && IsSuperseded(key);
         switch (hookEvent.Kind)
         {
             case AiHookEventKind.Start:
@@ -142,24 +168,49 @@ public sealed class AiActivityTracker
                     WorkingSince = now;
                 }
 
+                if (!_activeSessions.Contains(key) || IsPromptSubmit(hookEvent.EventName) || !_sessionStartedAt.ContainsKey(key))
+                {
+                    _sessionStartedAt[key] = now;
+                }
+
                 // 同一ツールの別セッションが中断未通知のまま残っていると、後続完了の解除時に
-                // 緑の作業中へ戻ってしまうため、同ツールの古いセッションは置き換える。
+                // 緑の作業中へ戻ってしまうため、同ツールの古いセッションは作業中から外す（置き換え）。
+                // 外したセッションは、そのセッション自身の完了・中断が届いたときに見分けられるよう覚えておく
+                // （新旧どちらも SessionId 付きのときだけ。ID の無いツールは従来どおり置き換えるだけにする）。
                 // 異なるツール（例: Claude と Copilot）は並行動作として残す。
-                RemoveSessionsForTool(hookEvent.Tool, exceptKey: key);
+                SupersedeSessionsForTool(hookEvent.Tool, key, rememberSuperseded: hasSessionId);
+                ForgetSuperseded(key);
                 _activeSessions.Add(key);
                 // 新しく指示を出した＝そのウィンドウを見ている。前の完了の光は役目を終えている。
                 _needsAttention = false;
                 CompletedAt = null;
                 CompletedDuration = null;
                 break;
+            case AiHookEventKind.Stop when fromSupersededSession:
+                // 同じウィンドウで前に指示を出したセッションが、あとのセッションの作業中に終わった（並行して動いていた）。
+                // 完了は青で知らせ、あとのセッションの作業中は残す（青を確認すると緑の作業中へ戻る）。
+                // かかった時間は、終わったそのセッション自身の分にする。
+                CompletedDuration = _sessionStartedAt.TryGetValue(key, out var supersededSince) && now >= supersededSince
+                    ? now - supersededSince
+                    : null;
+                ForgetSuperseded(key);
+                _needsAttention = true;
+                CompletedAt = now;
+                break;
             case AiHookEventKind.Stop:
                 // 開始で同ツールのセッションは 1 つに置き換わっている。完了・中断の SessionId が開始と違っても
                 // （ツールが付け直す・空で届くなど）作業中が残らないよう、同ツールの作業中をまとめて止める。
                 // 作業中の時計を止めて、かかった時間を残す（数え始めを知らない完了では残さない）。
+                // 置き換え済みのセッションは作業中へ戻さない（通知なしに止められた会話かもしれないため）。
                 CompletedDuration = WorkingSince is { } since && now >= since ? now - since : null;
+                ForgetSuperseded(key);
                 RemoveSessionsForTool(hookEvent.Tool);
                 _needsAttention = true;
                 CompletedAt = now;
+                break;
+            case AiHookEventKind.Interrupt when fromSupersededSession:
+                // 置き換え済みの前のセッション自身の中断・終了。あとのセッションの作業中は消さない。
+                ForgetSuperseded(key);
                 break;
             case AiHookEventKind.Interrupt:
                 if (IsSessionEnd(hookEvent.EventName) && !string.IsNullOrEmpty(hookEvent.SessionId))
@@ -177,6 +228,7 @@ public sealed class AiActivityTracker
                     RemoveSessionsForTool(hookEvent.Tool);
                 }
 
+                ForgetSuperseded(key);
                 break;
             default:
                 return false;
@@ -184,7 +236,67 @@ public sealed class AiActivityTracker
 
         LastTool = hookEvent.Tool;
         ClearWorkingSinceIfIdle();
+        PruneSessionStarts();
         return before != State;
+    }
+
+    private bool IsSuperseded(string key) =>
+        _supersededSessions.Exists(existingKey => string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase));
+
+    private void ForgetSuperseded(string key) =>
+        _supersededSessions.RemoveAll(existingKey => string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase));
+
+    // 同じツールのほかのセッションを作業中から外す。新旧どちらも SessionId 付きなら、置き換え済みとして覚えておく。
+    // SessionId の無い開始が来たツールは ID で見分けられないため、置き換え済みの記録も捨てて従来どおりにする。
+    private void SupersedeSessionsForTool(string tool, string exceptKey, bool rememberSuperseded)
+    {
+        if (string.IsNullOrEmpty(tool))
+        {
+            return;
+        }
+
+        var prefix = tool + ":";
+        var replaced = _activeSessions
+            .Where(existingKey => !string.Equals(existingKey, exceptKey, StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(existingKey, tool, StringComparison.OrdinalIgnoreCase)
+                    || existingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        foreach (var existingKey in replaced)
+        {
+            _activeSessions.Remove(existingKey);
+            if (rememberSuperseded && existingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                ForgetSuperseded(existingKey);
+                _supersededSessions.Add(existingKey);
+            }
+        }
+
+        if (!rememberSuperseded)
+        {
+            _supersededSessions.RemoveAll(existingKey => existingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // 通知なしに止められた会話の ID がたまり続けないよう、古いものから捨てる。
+        while (_supersededSessions.Count > MaxSupersededSessions)
+        {
+            _supersededSessions.RemoveAt(0);
+        }
+    }
+
+    // 作業中でも置き換え済みでもなくなったセッションの開始時刻を捨てる。
+    private void PruneSessionStarts()
+    {
+        if (_sessionStartedAt.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var staleKey in _sessionStartedAt.Keys
+            .Where(existingKey => !_activeSessions.Contains(existingKey) && !IsSuperseded(existingKey))
+            .ToList())
+        {
+            _sessionStartedAt.Remove(staleKey);
+        }
     }
 
     private static bool IsPromptSubmit(string eventName) =>
@@ -258,6 +370,7 @@ public sealed class AiActivityTracker
 
         _activeSessions.Clear();
         WorkingSince = null;
+        PruneSessionStarts();
         return true;
     }
 
@@ -265,6 +378,8 @@ public sealed class AiActivityTracker
     {
         var before = State;
         _activeSessions.Clear();
+        _supersededSessions.Clear();
+        _sessionStartedAt.Clear();
         WorkingSince = null;
         _needsAttention = false;
         CompletedAt = null;

@@ -591,11 +591,17 @@ public sealed class WindowSlot : INotifyPropertyChanged
             : $"{GetAiToolDisplayName(AiTracker.LastTool)} が作業中（{AiElapsedText}）",
         AiActivityState.Done => AiTracker.CompletedAt is { } completedAt
             ? AiTracker.CompletedDuration is { } duration
-                ? $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}、かかった時間 {AiWorkingElapsed.Format(duration)}。フォーカス表示を切り替えると消えます）"
-                : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}。フォーカス表示を切り替えると消えます）"
-            : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（フォーカス表示を切り替えると消えます）",
+                ? $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}、かかった時間 {AiWorkingElapsed.Format(duration)}。{AiDoneDismissHint}）"
+                : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{completedAt.ToLocalTime():M/d H:mm}。{AiDoneDismissHint}）"
+            : $"{GetAiToolDisplayName(AiTracker.LastTool)} の応答が完了（{AiDoneDismissHint}）",
         _ => null
     };
+
+    // 完了の青を確認したあとの案内。同じウィンドウでまだ作業中の会話（別の AI や、あとから指示を出した会話）が
+    // 残っているときは、青が消えたあと緑の作業中に戻ることを伝える。
+    private string AiDoneDismissHint => AiTracker.HasWorkingSessions
+        ? "このウィンドウではまだ作業中の会話があります。フォーカス表示を切り替えると、作業中の緑の表示に戻ります"
+        : "フォーカス表示を切り替えると消えます";
 
     public void NotifyAiActivityChanged()
     {

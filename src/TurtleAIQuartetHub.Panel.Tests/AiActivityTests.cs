@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 71;
+    public const int Count = 77;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -188,6 +188,8 @@ internal static class AiActivityTests
         Check(failures, "状態: 開始時に SessionId が空で完了時に付与されても、解除後に作業中へ戻らない",
             unkeyedStartThenKeyedStop.State == AiActivityState.Idle);
 
+        VerifySameToolParallelSessions(failures, now);
+
         var tempStateDir = Path.Combine(Path.GetTempPath(), "turtle-reset-all-test-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -267,6 +269,96 @@ internal static class AiActivityTests
         {
             try { Directory.Delete(restartStateDir, recursive: true); } catch (IOException) { }
         }
+    }
+
+    // 同じウィンドウ・同じツールで複数の会話（セッション）を並行して動かす（VS Code 版 Claude Code の複数タブなど）。
+    // 緑は「最後に指示を出した会話」が終わるまで続け、前の会話の完了は青で知らせる。
+    // 最後の会話が先に終わったときは、前の会話が通知なしに止められた可能性があるため作業中へは戻さない。
+    private static void VerifySameToolParallelSessions(List<string> failures, DateTimeOffset now)
+    {
+        static AiHookEvent Prompt(string tool, string session) =>
+            new(tool, "UserPromptSubmit", AiHookEventKind.Start, @"C:\work", session);
+        static AiHookEvent Finished(string tool, string session) =>
+            new(tool, "Stop", AiHookEventKind.Stop, @"C:\work", session);
+
+        var olderFirst = new AiActivityTracker();
+        olderFirst.Apply(Prompt("claude", "older"), now);
+        olderFirst.Apply(Prompt("claude", "newer"), now.AddMinutes(1));
+        olderFirst.Apply(Finished("claude", "older"), now.AddMinutes(5));
+        var olderDoneShown = olderFirst.State == AiActivityState.Done
+            && olderFirst.HasWorkingSessions
+            && olderFirst.CompletedDuration == TimeSpan.FromMinutes(5);
+        var backToWorking = olderFirst.Acknowledge()
+            && olderFirst.State == AiActivityState.Working
+            && olderFirst.WorkingSince == now.AddMinutes(1);
+        olderFirst.Apply(Finished("claude", "newer"), now.AddMinutes(8));
+        var lastDone = olderFirst.State == AiActivityState.Done
+            && !olderFirst.HasWorkingSessions
+            && olderFirst.CompletedDuration == TimeSpan.FromMinutes(7);
+        Check(failures, "並行セッション: 前の会話が先に終わっても、あとから指示を出した会話の緑は残す（前の完了は青で知らせ、確認後は緑へ戻る）",
+            olderDoneShown && backToWorking && lastDone
+            && olderFirst.Acknowledge() && olderFirst.State == AiActivityState.Idle);
+
+        var newerFirst = new AiActivityTracker();
+        newerFirst.Apply(Prompt("claude", "older"), now);
+        newerFirst.Apply(Prompt("claude", "newer"), now.AddMinutes(1));
+        newerFirst.Apply(Finished("claude", "newer"), now.AddMinutes(3));
+        var newerDone = newerFirst.State == AiActivityState.Done && !newerFirst.HasWorkingSessions;
+        var notRevivedOnAck = newerFirst.Acknowledge() && newerFirst.State == AiActivityState.Idle;
+        newerFirst.Apply(Finished("claude", "older"), now.AddMinutes(6));
+        var olderDoneLater = newerFirst.State == AiActivityState.Done
+            && newerFirst.CompletedDuration == TimeSpan.FromMinutes(6);
+        Check(failures, "並行セッション: あとの会話が先に終わったら作業中へは戻さず（通知なしの停止と区別できないため）、前の会話の完了はあとで青で知らせる",
+            newerDone && notRevivedOnAck && olderDoneLater
+            && newerFirst.Acknowledge() && newerFirst.State == AiActivityState.Idle);
+
+        var supersededInterrupt = new AiActivityTracker();
+        supersededInterrupt.Apply(Prompt("codex", "thread-old"), now);
+        supersededInterrupt.Apply(Prompt("codex", "thread-new"), now.AddMinutes(1));
+        var oldInterruptKept = !supersededInterrupt.Apply(
+                new AiHookEvent("codex", "Interrupt", AiHookEventKind.Interrupt, @"C:\work", "thread-old"), now.AddMinutes(2))
+            && supersededInterrupt.State == AiActivityState.Working;
+        supersededInterrupt.Apply(Prompt("claude", "chat-old"), now.AddMinutes(3));
+        supersededInterrupt.Apply(Prompt("claude", "chat-new"), now.AddMinutes(4));
+        supersededInterrupt.Apply(
+            AiHookEventParser.TryParse(["--ai-event", "claude", "Notification", @"C:\work", "chat-old", "idle_prompt"])!, now.AddMinutes(5));
+        var oldIdlePromptKept = supersededInterrupt.State == AiActivityState.Working && supersededInterrupt.HasWorkingSessions;
+        supersededInterrupt.Apply(new AiHookEvent("codex", "Interrupt", AiHookEventKind.Interrupt, @"C:\work", "unknown-id"), now.AddMinutes(6));
+        supersededInterrupt.Apply(
+            AiHookEventParser.TryParse(["--ai-event", "claude", "Notification", @"C:\work", "chat-new", "idle_prompt"])!, now.AddMinutes(7));
+        Check(failures, "並行セッション: 前の会話自身の中断・入力待ちでは、あとの会話の緑を消さない（ID の分からない中断は従来どおりまとめて止める）",
+            oldInterruptKept && oldIdlePromptKept && supersededInterrupt.State == AiActivityState.Idle);
+
+        var unkeyedForgets = new AiActivityTracker();
+        unkeyedForgets.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", "conv-1"), now);
+        unkeyedForgets.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", "conv-2"), now.AddSeconds(10));
+        unkeyedForgets.Apply(new AiHookEvent("antigravity", "PreInvocation", AiHookEventKind.Start, @"C:\work", ""), now.AddSeconds(20));
+        unkeyedForgets.Apply(Finished("antigravity", "conv-1"), now.AddSeconds(30));
+        Check(failures, "並行セッション: ID の無い開始が来たツールは、前の会話の完了でも従来どおり作業中をまとめて止める",
+            unkeyedForgets.State == AiActivityState.Done && !unkeyedForgets.HasWorkingSessions
+            && unkeyedForgets.Acknowledge() && unkeyedForgets.State == AiActivityState.Idle);
+
+        var capped = new AiActivityTracker();
+        for (var i = 0; i <= 9; i++)
+        {
+            capped.Apply(Prompt("claude", $"s{i}"), now.AddMinutes(i));
+        }
+
+        capped.Apply(Finished("claude", "s1"), now.AddMinutes(20));
+        var recentSupersededKeepsNewest = capped.State == AiActivityState.Done && capped.HasWorkingSessions;
+        capped.Apply(Finished("claude", "s0"), now.AddMinutes(21));
+        Check(failures, "並行セッション: 置き換え済みの会話は新しい 8 件だけ覚え、それより古い会話の完了は従来どおり作業中をまとめて止める",
+            recentSupersededKeepsNewest && capped.State == AiActivityState.Done && !capped.HasWorkingSessions);
+
+        var slot = new WindowSlot(new SlotConfig { Name = "A" });
+        slot.AiTracker.Apply(Prompt("claude", "older"), now);
+        slot.AiTracker.Apply(Prompt("claude", "newer"), now.AddMinutes(1));
+        slot.AiTracker.Apply(Finished("claude", "older"), now.AddMinutes(2));
+        var stillWorkingHint = slot.AiActivityToolTip?.Contains("まだ作業中の会話があります", StringComparison.Ordinal) == true;
+        slot.AiTracker.Apply(Finished("claude", "newer"), now.AddMinutes(3));
+        var plainHint = slot.AiActivityToolTip?.Contains("フォーカス表示を切り替えると消えます", StringComparison.Ordinal) == true;
+        Check(failures, "並行セッション: 完了の青の間もまだ作業中の会話があれば、確認後に緑へ戻ることをツールチップで案内する",
+            stillWorkingHint && plainHint);
     }
 
     // Copilot、VS Code 版の Claude Code、Antigravity の一部は停止ボタンや Esc で中断しても終了の知らせを送らない（Codex は Interrupt を送る）。
