@@ -34,6 +34,17 @@ public sealed class AiCardOrbitGlow : FrameworkElement
         typeof(AiCardOrbitGlow),
         new FrameworkPropertyMetadata(8d, OnMetricChanged));
 
+    /// <summary>
+    /// 1 周の秒数に掛ける倍率（既定 1.0）。周長から決まる標準の周期を、用途ごとにゆっくり（1 より大きく）できる。
+    /// 光の太さ・尾の長さ・加速カーブ・フレームレートは変えないため、ゆっくりにしても滑らかさと見た目の大きさはそのまま。
+    /// </summary>
+    public static readonly DependencyProperty CycleDurationScaleProperty = DependencyProperty.Register(
+        nameof(CycleDurationScale),
+        typeof(double),
+        typeof(AiCardOrbitGlow),
+        new FrameworkPropertyMetadata(1.0, OnCycleDurationScaleChanged),
+        value => value is double scale && double.IsFinite(scale) && scale > 0.0);
+
     public static readonly DependencyProperty PhaseProperty = DependencyProperty.Register(
         nameof(Phase),
         typeof(double),
@@ -86,6 +97,16 @@ public sealed class AiCardOrbitGlow : FrameworkElement
         set => SetValue(CornerRadiusProperty, value);
     }
 
+    public double CycleDurationScale
+    {
+        get => (double)GetValue(CycleDurationScaleProperty);
+        set => SetValue(CycleDurationScaleProperty, value);
+    }
+
+    /// <summary>現在の周長と <see cref="CycleDurationScale"/> から決まる 1 周の秒数（周長が未確定なら 0）。</summary>
+    internal double CurrentCycleDurationSeconds =>
+        _perimeter is null ? 0.0 : ComputeDurationSeconds(_perimeter.Length) * CycleDurationScale;
+
     /// <summary>周回アニメーションの正規化時間位相（0.0〜1.0）。テスト時は直接設定して任意位置を描画できる。</summary>
     public double Phase
     {
@@ -125,6 +146,16 @@ public sealed class AiCardOrbitGlow : FrameworkElement
         }
 
         self.InvalidateArrange();
+    }
+
+    private static void OnCycleDurationScaleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var self = (AiCardOrbitGlow)d;
+        // 回っている最中に変わったときだけ、新しい周期で張り直す（止まっているときは次の開始で反映される）。
+        if (self._motionRunning && self._perimeter is not null)
+        {
+            self.StartMotionClock(self._perimeter.Length);
+        }
     }
 
     private static void OnPhaseChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -225,7 +256,7 @@ public sealed class AiCardOrbitGlow : FrameworkElement
 
     private void StartMotionClock(double perimeterLength)
     {
-        var durationSeconds = ComputeDurationSeconds(perimeterLength);
+        var durationSeconds = ComputeDurationSeconds(perimeterLength) * CycleDurationScale;
         var animation = new DoubleAnimation(0.0, 1.0, new Duration(TimeSpan.FromSeconds(durationSeconds)))
         {
             RepeatBehavior = RepeatBehavior.Forever

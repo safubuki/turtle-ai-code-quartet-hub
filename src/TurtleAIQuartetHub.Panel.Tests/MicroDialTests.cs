@@ -866,6 +866,21 @@ internal static class MicroDialTests
                     throw new InvalidOperationException(
                         $"外周 LED 周回の光の届く範囲が想定外です (reach={info.MaxGlowReachFromCenter:0.00}, shadow={info.ShadowOuterRadius:0.00}, satellite={info.SatelliteInnerRadius:0.00})。");
                 }
+
+                // 画面中央で目につきすぎないよう、周長から決まる標準の周期（約 2.73 秒）の 1.5 倍（約 4.1 秒）でゆっくり回ること。
+                if (Math.Abs(info.CycleDurationSeconds - (info.PerimeterBaseCycleDurationSeconds * 1.5)) > 0.01
+                    || info.CycleDurationSeconds < 3.9
+                    || info.CycleDurationSeconds > 4.3)
+                {
+                    throw new InvalidOperationException(
+                        $"外周 LED 周回の 1 周の秒数が想定外です (cycle={info.CycleDurationSeconds:0.00}s, base={info.PerimeterBaseCycleDurationSeconds:0.00}s)。");
+                }
+
+                // 標準・縮小表示のカード枠の周回は既定のまま（倍率 1.0）であること。
+                if (Math.Abs(new TurtleAIQuartetHub.Panel.AiCardOrbitGlow().CycleDurationScale - 1.0) > 1e-9)
+                {
+                    throw new InvalidOperationException("AiCardOrbitGlow の既定の周期倍率が 1.0 ではありません（標準・縮小表示の速さが変わります）。");
+                }
             }
             finally
             {

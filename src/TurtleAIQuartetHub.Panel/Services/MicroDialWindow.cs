@@ -43,6 +43,10 @@ internal sealed class MicroDialWindow : Window
     private const double CoreWorkingOrbitSizeDip =
         CoreDiameterDip - (2.0 * ((CoreRingStrokeThicknessDip / 2.0) - AiCardOrbitGlow.BorderCenterInset));
 
+    // 外周 LED 周回の 1 周の秒数の倍率。画面中央で目につきすぎないよう、周長から決まる標準（約 2.73 秒）より
+    // ゆっくり（約 4.1 秒）回す。光の太さ・尾の長さ・加速カーブ・60fps の滑らかさは標準・縮小表示と同じまま。
+    private const double CoreWorkingOrbitCycleDurationScale = 1.5;
+
     private const double SatelliteOrbitRadiusDip = 81.0;
     private const double SectorOuterRadiusDip = 51.0;
     private const double SectorInnerRadiusDip = 18.5;
@@ -457,7 +461,8 @@ internal sealed class MicroDialWindow : Window
 
         // AI 実行中の外周 LED 周回: どれか 1 スロットでも実行中のときだけ、本体円の外枠線の上を 1 筋の緑の光がくるりと回る。
         // 標準・縮小表示のカード枠と同じ AiCardOrbitGlow を真円（角丸＝半径）として使い、線の太さ・ふわっとした発光・
-        // 終盤に少しだけ加速する動き・尾の引き方を標準・縮小表示とそろえる。中央寄りのホタル点滅（扇ごとの内側アーク）はそのまま併用する。
+        // 終盤に少しだけ加速する動き・尾の引き方を標準・縮小表示とそろえる（1 周の速さだけ CycleDurationScale でゆっくりにする）。
+        // 中央寄りのホタル点滅（扇ごとの内側アーク）はそのまま併用する。
         // 光は 116 DIP の外へ数 DIP はみ出すため、_coreHost の内側へ入れると VisualBrush(_coreHost) の自動境界が引っ張られ、
         // 終了消散／モード切替／最小化キャプチャやタスクバーのサムネイルの円がずれて切れる。ソフト影と同じく _coreHost の外側（_dialRoot）へ同心で重ねること。
         _coreWorkingOrbitGlow = new AiCardOrbitGlow
@@ -465,6 +470,7 @@ internal sealed class MicroDialWindow : Window
             Width = CoreWorkingOrbitSizeDip,
             Height = CoreWorkingOrbitSizeDip,
             CornerRadius = CoreWorkingOrbitSizeDip / 2.0,
+            CycleDurationScale = CoreWorkingOrbitCycleDurationScale,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -1536,7 +1542,9 @@ internal sealed class MicroDialWindow : Window
         double CenterOffsetFromCore,
         double MaxGlowReachFromCenter,
         double ShadowOuterRadius,
-        double SatelliteInnerRadius) VerifyCoreWorkingOrbitForTesting()
+        double SatelliteInnerRadius,
+        double CycleDurationSeconds,
+        double PerimeterBaseCycleDurationSeconds) VerifyCoreWorkingOrbitForTesting()
     {
         void Layout()
         {
@@ -1590,6 +1598,10 @@ internal sealed class MicroDialWindow : Window
             maxRadiusError = Math.Max(maxRadiusError, Math.Abs(r - ringCenterlineRadius));
         }
 
+        // 1 周の秒数（周長から決まる標準の周期と、極小表示でゆっくりにした実際の周期）。
+        var cycleDuration = _coreWorkingOrbitGlow.CurrentCycleDurationSeconds;
+        var perimeterBaseDuration = AiCardOrbitGlow.ComputeDurationSeconds(perimeter.Length);
+
         // 光の筋（外側のふわっとした光まで含む）が中心からどこまで届くか（上下左右の到達距離の最大）を複数位相で測る。
         var maxReach = 0.0;
         foreach (var phase in new[] { 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875 })
@@ -1630,7 +1642,9 @@ internal sealed class MicroDialWindow : Window
             (orbitCenter - coreCenter).Length,
             maxReach,
             CoreShadowOuterDiameterDip / 2.0,
-            SatelliteOrbitRadiusDip - 14.0);
+            SatelliteOrbitRadiusDip - 14.0,
+            cycleDuration,
+            perimeterBaseDuration);
     }
 
     internal void SimulateSectorClickForTesting(int index, bool middleClick = false)
