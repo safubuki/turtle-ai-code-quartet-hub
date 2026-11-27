@@ -35,6 +35,14 @@ internal sealed class MicroDialWindow : Window
     private const double CoreShadowOuterDiameterDip = CoreDiameterDip + 16.0;
     private const double CoreShadowInnerDiameterDip = CoreDiameterDip + 8.0;
 
+    // 本体円の外枠線（_coreOuterRing）の太さ。
+    private const double CoreRingStrokeThicknessDip = 1.4;
+
+    // 外周の実行中 LED 周回（AiCardOrbitGlow）の要素の一辺。AiCardOrbitGlow は要素の 0.5 DIP 内側を周回するため、
+    // その分を差し引いて、周回の中心線が本体円の外枠線の中心線（半径 58 − 0.7 = 57.3 DIP）にぴったり重なる寸法にする。
+    private const double CoreWorkingOrbitSizeDip =
+        CoreDiameterDip - (2.0 * ((CoreRingStrokeThicknessDip / 2.0) - AiCardOrbitGlow.BorderCenterInset));
+
     private const double SatelliteOrbitRadiusDip = 81.0;
     private const double SectorOuterRadiusDip = 51.0;
     private const double SectorInnerRadiusDip = 18.5;
@@ -178,6 +186,7 @@ internal sealed class MicroDialWindow : Window
     private readonly Ellipse _coreShadowOuter;
     private readonly Ellipse _coreShadowInner;
     private readonly Ellipse _coreOuterRing;
+    private readonly AiCardOrbitGlow _coreWorkingOrbitGlow;
     private readonly Button _centerVisibilityButton;
     private readonly Border _centerVisibilityBorder;
     private readonly TextBlock _centerVisibilityText;
@@ -442,11 +451,25 @@ internal sealed class MicroDialWindow : Window
             Height = CoreDiameterDip,
             Fill = CoreBackgroundBrush,
             Stroke = CoreIdleBorderBrush,
-            StrokeThickness = 1.4
+            StrokeThickness = CoreRingStrokeThicknessDip
         };
         _coreHost.Children.Add(_coreOuterRing);
 
-        // 4 つのクォーター扇（A=左上, B=右上, C=左下, D=右下。各扇が独立した AI 作業中 LED 周回を持つ）
+        // AI 実行中の外周 LED 周回: どれか 1 スロットでも実行中のときだけ、本体円の外枠線の上を 1 筋の緑の光がくるりと回る。
+        // 標準・縮小表示のカード枠と同じ AiCardOrbitGlow を真円（角丸＝半径）として使い、線の太さ・ふわっとした発光・
+        // 終盤に少しだけ加速する動き・尾の引き方を標準・縮小表示とそろえる。中央寄りのホタル点滅（扇ごとの内側アーク）はそのまま併用する。
+        // 光は 116 DIP の外へ数 DIP はみ出すため、_coreHost の内側へ入れると VisualBrush(_coreHost) の自動境界が引っ張られ、
+        // 終了消散／モード切替／最小化キャプチャやタスクバーのサムネイルの円がずれて切れる。ソフト影と同じく _coreHost の外側（_dialRoot）へ同心で重ねること。
+        _coreWorkingOrbitGlow = new AiCardOrbitGlow
+        {
+            Width = CoreWorkingOrbitSizeDip,
+            Height = CoreWorkingOrbitSizeDip,
+            CornerRadius = CoreWorkingOrbitSizeDip / 2.0,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        // 4 つのクォーター扇（A=左上, B=右上, C=左下, D=右下。各扇が独立した AI 作業中の内側ホタル点滅を持つ）
         var sectorsCanvas = new Canvas
         {
             Width = CoreDiameterDip,
@@ -526,6 +549,7 @@ internal sealed class MicroDialWindow : Window
         _dialRoot.Children.Add(_coreShadowOuter);
         _dialRoot.Children.Add(_coreShadowInner);
         _dialRoot.Children.Add(_coreHost);
+        _dialRoot.Children.Add(_coreWorkingOrbitGlow);
 
         // ライブ情報ピル（0ms 即時表示 Popup、クリックスルーで操作を一切妨害しない）
         (_infoPillPopup, _infoPillBorder, _infoPillKeyBadge, _infoPillKeyText, _infoPillTitleText, _infoPillAppDot, _infoPillAppText, _infoPillStatusBadge, _infoPillStatusText, _infoPillAssignHint) =
@@ -1499,6 +1523,116 @@ internal sealed class MicroDialWindow : Window
         return (MarginsOf(_coreShadowOuter), MarginsOf(_coreShadowInner));
     }
 
+    // 外周の実行中 LED 周回が「どれか 1 つでも実行中のときだけ」動き、本体円の外枠線の中心線上を同心で回り、
+    // キャプチャ対象の _coreHost の外側（前面）に置かれていることを検証する。
+    internal (
+        bool HostedOutsideCoreHostInFront,
+        bool CollapsedWhenNoneWorking,
+        bool VisibleWhenOneWorking,
+        bool VisibleWhenSeveralWorking,
+        bool CollapsedWhileAssignWaiting,
+        bool CollapsedAfterAllStopped,
+        double MaxCenterlineRadiusError,
+        double CenterOffsetFromCore,
+        double MaxGlowReachFromCenter,
+        double ShadowOuterRadius,
+        double SatelliteInnerRadius) VerifyCoreWorkingOrbitForTesting()
+    {
+        void Layout()
+        {
+            _stageRoot.Measure(new Size(StageSizeDip, StageSizeDip));
+            _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
+            _stageRoot.UpdateLayout();
+        }
+
+        void StartWorking(int index, string sessionId)
+        {
+            _slots[index].AiTracker.Apply(new AiHookEvent("claude", "UserPromptSubmit", AiHookEventKind.Start, @"c:\work", sessionId), DateTimeOffset.UtcNow);
+            _slots[index].NotifyAiActivityChanged();
+        }
+
+        bool IsOrbitShown() => _coreWorkingOrbitGlow.Activity == AiActivityState.Working
+            && _coreWorkingOrbitGlow.Visibility == Visibility.Visible;
+
+        Layout();
+        var hostedOutside = !IsDescendantOf(_coreWorkingOrbitGlow, _coreHost)
+            && ReferenceEquals(VisualTreeHelper.GetParent(_coreWorkingOrbitGlow), _dialRoot)
+            && _dialRoot.Children.IndexOf(_coreWorkingOrbitGlow) > _dialRoot.Children.IndexOf(_coreHost);
+
+        foreach (var slot in _slots)
+        {
+            slot.AiTracker.Reset();
+            slot.NotifyAiActivityChanged();
+        }
+
+        var collapsedWhenNone = !IsOrbitShown() && _coreWorkingOrbitGlow.Visibility == Visibility.Collapsed;
+
+        StartWorking(2, "orbit-1");
+        var visibleWhenOne = IsOrbitShown();
+
+        StartWorking(0, "orbit-2");
+        var visibleWhenSeveral = IsOrbitShown();
+
+        Layout();
+
+        // 周回の中心線（AiCardOrbitGlow の周長モデル）上の各点が、本体円の外枠線の中心線と同じ半径・同じ中心にあること。
+        var coreCenter = _coreHost.TranslatePoint(new Point(CoreRadiusDip, CoreRadiusDip), _dialRoot);
+        var orbitOrigin = _coreWorkingOrbitGlow.TranslatePoint(new Point(0, 0), _dialRoot);
+        var orbitSize = new Size(_coreWorkingOrbitGlow.ActualWidth, _coreWorkingOrbitGlow.ActualHeight);
+        var orbitCenter = new Point(orbitOrigin.X + (orbitSize.Width / 2.0), orbitOrigin.Y + (orbitSize.Height / 2.0));
+        var ringCenterlineRadius = CoreRadiusDip - (_coreOuterRing.StrokeThickness / 2.0);
+        var perimeter = AiCardOrbitGlow.CreatePerimeter(orbitSize, _coreWorkingOrbitGlow.CornerRadius);
+        var maxRadiusError = 0.0;
+        for (var k = 0; k < 64; k++)
+        {
+            var p = perimeter.EvaluateAtDistance(perimeter.Length * k / 64.0);
+            var r = (new Point(orbitOrigin.X + p.X, orbitOrigin.Y + p.Y) - coreCenter).Length;
+            maxRadiusError = Math.Max(maxRadiusError, Math.Abs(r - ringCenterlineRadius));
+        }
+
+        // 光の筋（外側のふわっとした光まで含む）が中心からどこまで届くか（上下左右の到達距離の最大）を複数位相で測る。
+        var maxReach = 0.0;
+        foreach (var phase in new[] { 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875 })
+        {
+            _coreWorkingOrbitGlow.SetStaticPhase(phase);
+            var bounds = _coreWorkingOrbitGlow.GetVisualContentBounds();
+            if (bounds.IsEmpty)
+            {
+                continue;
+            }
+
+            maxReach = Math.Max(maxReach, Math.Max(
+                Math.Max(orbitCenter.X - (orbitOrigin.X + bounds.Left), (orbitOrigin.X + bounds.Right) - orbitCenter.X),
+                Math.Max(orbitCenter.Y - (orbitOrigin.Y + bounds.Top), (orbitOrigin.Y + bounds.Bottom) - orbitCenter.Y)));
+        }
+
+        SetPendingStoredPanel(new StoredPanelSlot(1) { PanelTitle = "Orbit-Check", WorkspacePath = @"c:\work\orbit" });
+        var collapsedWhileAssign = !IsOrbitShown();
+        SetPendingStoredPanel(null);
+        var restoredAfterAssign = IsOrbitShown();
+
+        foreach (var slot in _slots)
+        {
+            slot.AiTracker.Reset();
+            slot.NotifyAiActivityChanged();
+        }
+
+        var collapsedAfterStop = !IsOrbitShown() && _coreWorkingOrbitGlow.Visibility == Visibility.Collapsed;
+
+        return (
+            hostedOutside,
+            collapsedWhenNone,
+            visibleWhenOne,
+            visibleWhenSeveral && restoredAfterAssign,
+            collapsedWhileAssign,
+            collapsedAfterStop,
+            maxRadiusError,
+            (orbitCenter - coreCenter).Length,
+            maxReach,
+            CoreShadowOuterDiameterDip / 2.0,
+            SatelliteOrbitRadiusDip - 14.0);
+    }
+
     internal void SimulateSectorClickForTesting(int index, bool middleClick = false)
     {
         if (index < 0 || index >= _slots.Count)
@@ -1523,7 +1657,8 @@ internal sealed class MicroDialWindow : Window
         bool expanded,
         int? previewHoveredSector,
         bool ghostWhenCollapsed,
-        double? previewWorkingFireflyOpacity = null)
+        double? previewWorkingFireflyOpacity = null,
+        double? previewWorkingOrbitPhase = null)
     {
         _ghostOpacityEnabled = ghostWhenCollapsed;
         _hoveredSectorIndex = previewHoveredSector;
@@ -1551,6 +1686,11 @@ internal sealed class MicroDialWindow : Window
         _stageRoot.Measure(new Size(StageSizeDip, StageSizeDip));
         _stageRoot.Arrange(new Rect(0, 0, StageSizeDip, StageSizeDip));
         _stageRoot.UpdateLayout();
+
+        if (previewWorkingOrbitPhase is { } orbitPhase && _coreWorkingOrbitGlow.Activity == AiActivityState.Working)
+        {
+            _coreWorkingOrbitGlow.SetStaticPhase(orbitPhase);
+        }
 
         var rtb = new RenderTargetBitmap(
             (int)Math.Ceiling(StageSizeDip * 2),
@@ -2919,10 +3059,32 @@ internal sealed class MicroDialWindow : Window
             ApplySectorVisual(i);
         }
 
+        UpdateCoreWorkingOrbit();
+
         if (_infoPillPopup.IsOpen)
         {
             UpdateInfoPill(_hoveredSectorIndex ?? _selectedSectorIndex);
         }
+    }
+
+    // どれか 1 スロットでも AI 実行中のときだけ、本体円の外周 LED 周回を動かす（全スロットが実行中でなければ止めて消す）。
+    // 控え入替待ちの間は、扇の内側ホタル点滅と同じく配置先表示を優先して止める。
+    private void UpdateCoreWorkingOrbit()
+    {
+        var anyWorking = false;
+        if (_pendingStoredPanel is null)
+        {
+            for (var i = 0; i < 4 && i < _slots.Count; i++)
+            {
+                if (_slots[i].AiActivity == AiActivityState.Working)
+                {
+                    anyWorking = true;
+                    break;
+                }
+            }
+        }
+
+        _coreWorkingOrbitGlow.Activity = anyWorking ? AiActivityState.Working : AiActivityState.Idle;
     }
 
     private void ApplySectorVisual(int index)

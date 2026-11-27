@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class MicroDialTests
 {
-    public const int Count = 32;
+    public const int Count = 33;
 
     public static void Run(List<string> failures)
     {
@@ -25,6 +25,7 @@ internal static class MicroDialTests
         TestMicroDialNonActivatingMenuClickAndJumpGuards(failures);
         TestMicroDialCenterButtonSupportsDragAndSingleClickToggle(failures);
         TestMicroDialInnerWorkingArcBrighterAndThicker(failures);
+        TestMicroDialOuterWorkingOrbitRunsOnlyWhileAnySlotWorking(failures);
         TestMicroDialIdleOpacityThinWhenFocusedOrWorkingAndDenseOnlyWhenDone(failures);
         TestMicroDialRadialLabelSymmetry(failures);
         TestCompactAndMicroStoredOverviewScrollableWithoutScrollBar(failures);
@@ -809,6 +810,61 @@ internal static class MicroDialTests
                 {
                     throw new InvalidOperationException(
                         $"実行中内側アークの明るさ・点滅下限が基準を満たしていません (core={info.CoreColor}, minOpacity={info.MinFireflyOpacity:0.00})。");
+                }
+            }
+            finally
+            {
+                dial.Close();
+            }
+        });
+    }
+
+    private static void TestMicroDialOuterWorkingOrbitRunsOnlyWhileAnySlotWorking(List<string> failures)
+    {
+        RunOnStaThread(failures, "実行中の外周 LED 周回（どれか 1 つでも実行中のときだけ・外枠線上・キャプチャ対象外）検証", () =>
+        {
+            var slots = CreateSampleSlots();
+            var dial = CreateDial(slots, ghostOpacityEnabled: true);
+            try
+            {
+                var info = dial.VerifyCoreWorkingOrbitForTesting();
+
+                // _coreHost の内側へ入れると VisualBrush(_coreHost) のキャプチャ／サムネイルの円がずれて切れる。
+                if (!info.HostedOutsideCoreHostInFront)
+                {
+                    throw new InvalidOperationException("外周 LED 周回が _coreHost の外側（_dialRoot の前面）に置かれていません。");
+                }
+
+                if (!info.CollapsedWhenNoneWorking || !info.CollapsedAfterAllStopped)
+                {
+                    throw new InvalidOperationException(
+                        $"実行中のスロットが 1 つも無いのに外周 LED 周回が出ています (none={info.CollapsedWhenNoneWorking}, afterStop={info.CollapsedAfterAllStopped})。");
+                }
+
+                if (!info.VisibleWhenOneWorking || !info.VisibleWhenSeveralWorking)
+                {
+                    throw new InvalidOperationException(
+                        $"実行中のスロットがあるのに外周 LED 周回が出ていません (one={info.VisibleWhenOneWorking}, several={info.VisibleWhenSeveralWorking})。");
+                }
+
+                if (!info.CollapsedWhileAssignWaiting)
+                {
+                    throw new InvalidOperationException("控え入替待ちの間も外周 LED 周回が動いています（内側ホタル点滅と同じく止めること）。");
+                }
+
+                if (info.MaxCenterlineRadiusError > 0.05 || info.CenterOffsetFromCore > 0.05)
+                {
+                    throw new InvalidOperationException(
+                        $"外周 LED 周回が本体円の外枠線の中心線上を同心で回っていません (radiusError={info.MaxCenterlineRadiusError:0.000}, centerOffset={info.CenterOffsetFromCore:0.000})。");
+                }
+
+                // ふわっとした外側の光まで含めても、背面のソフト影の内側に収まり、展開時の外周ボタンへ届かないこと。
+                if (info.MaxGlowReachFromCenter <= MicroDialWindow.CoreRadiusDip
+                    || info.MaxGlowReachFromCenter > info.ShadowOuterRadius
+                    || info.MaxGlowReachFromCenter >= info.SatelliteInnerRadius)
+                {
+                    throw new InvalidOperationException(
+                        $"外周 LED 周回の光の届く範囲が想定外です (reach={info.MaxGlowReachFromCenter:0.00}, shadow={info.ShadowOuterRadius:0.00}, satellite={info.SatelliteInnerRadius:0.00})。");
                 }
             }
             finally
