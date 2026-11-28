@@ -78,6 +78,7 @@ public partial class MainWindow : Window
     private int _panelFocusRequestsInFlight;
     private readonly ManagedWindowCloseService _managedWindowCloseService;
     private readonly FocusNameOverlay _focusNameOverlay;
+    private readonly FocusSwitchShieldWindow _focusSwitchShieldWindow;
     private readonly LaunchStagingOverlay _launchStagingOverlay;
     private readonly VscodeLauncher _vscodeLauncher;
     private readonly ApplicationLauncher _applicationLauncher;
@@ -169,6 +170,7 @@ public partial class MainWindow : Window
         // 各スロットの IsFocused 変化を購読し、true で表示・false で即消しを一元化する
         //（個々のフォーカス制御経路に手を入れずに済む）。
         _focusNameOverlay = new FocusNameOverlay(_windowArranger);
+        _focusSwitchShieldWindow = new FocusSwitchShieldWindow(_windowArranger);
         _launchStagingOverlay = new LaunchStagingOverlay(_windowArranger);
         ContentRendered += (_, _) => BeginStartupRevealIfArmed();
         foreach (var slot in _statusStore.Slots)
@@ -2208,6 +2210,25 @@ public partial class MainWindow : Window
             try
             {
                 await Task.Delay(FocusSwitchArrangeDelay, cancellation.Token);
+
+                // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
+                if (!ReconcileExternalWindowFocus()
+                    && !cancellation.IsCancellationRequested
+                    && slot.WindowHandle != IntPtr.Zero
+                    && slot.IsFocused)
+                {
+                    // 最大化が完全に落ち着いてから、フォーカス対象を前面の盾に保ったまま
+                    // 覆いの下で旧フォーカスを quadrant へ静かに戻す。ここで他スロットを HWND_BOTTOM
+                    // へ送ると、隣接セルや 3 枚起動時に管理外ウィンドウの白い背景が露出しやすい。
+                    await ArrangeSlotsExceptBehindFocusAsync(slot, cancellation.Token);
+                    if (!cancellation.IsCancellationRequested
+                        && slot.WindowHandle != IntPtr.Zero
+                        && slot.IsFocused)
+                    {
+                        EnsureFocusedSlotAboveTiles(slot);
+                        ScheduleFocusedZOrderVerification(slot);
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -2221,24 +2242,6 @@ public partial class MainWindow : Window
                 }
 
                 cancellation.Dispose();
-            }
-
-            // 遅延後に対象スロットがフォーカスから外れていれば、別操作が後勝ちしているので何もしない。
-            if (!ReconcileExternalWindowFocus() && slot.WindowHandle != IntPtr.Zero && slot.IsFocused)
-            {
-                // 最大化が完全に落ち着いてから、フォーカス対象を通常 Z 順の先頭に保ったまま
-                // 覆いの下で旧フォーカスを quadrant へ静かに戻す。ここで他スロットを HWND_BOTTOM
-                // へ送ると、隣接セルや 3 枚起動時に管理外ウィンドウの白い背景が露出しやすい。
-                try
-                {
-                    ArrangeSlotsExceptOnActiveMonitor(slot, false);
-                }
-                finally
-                {
-                    EnsureFocusedSlotAboveTiles(slot);
-                }
-
-                ScheduleFocusedZOrderVerification(slot);
             }
             return;
         }
@@ -4382,6 +4385,82 @@ public partial class MainWindow : Window
         return arranged;
     }
 
+    // 1 面フォーカス中のスロット（C）を通常帯のまま一切動かさず、
+    // 自プロセスの DWM サムネイル盾（パネル直下）の裏側で旧フォーカス等の他スロットを 4 面へ戻す。
+    // 最背面指定中や管理外アプリ（ブラウザ等）が前面にあるときは盾を表示しない。
+    private Task<int> ArrangeSlotsExceptBehindFocusAsync(
+        WindowSlot focusedSlot,
+        CancellationToken cancellationToken)
+    {
+        var useShield = ShouldShieldFocusedWindowDuringBackgroundRestore(focusedSlot);
+        return _windowArranger.ArrangeExceptBehindFocusAsync(
+            _statusStore.Slots,
+            focusedSlot,
+            _statusStore.Config.Gap,
+            GetActiveMonitorIndex(),
+            keepAboveHandle: focusedSlot.WindowHandle,
+            tryBeginShield: useShield ? TryBeginFocusSwitchShield : null,
+            endShield: useShield ? EndFocusSwitchShield : null,
+            cancellationToken: cancellationToken);
+    }
+
+    private bool TryBeginFocusSwitchShield(IntPtr focusedWindowHandle)
+    {
+        return _focusSwitchShieldWindow.TryShowBehind(focusedWindowHandle, GetFocusShieldOverlayHandles());
+    }
+
+    private void EndFocusSwitchShield()
+    {
+        _focusSwitchShieldWindow.Hide();
+    }
+
+    private bool ShouldShieldFocusedWindowDuringBackgroundRestore(WindowSlot? focusedSlot)
+    {
+        if (focusedSlot is null
+            || focusedSlot.WindowHandle == IntPtr.Zero
+            || !focusedSlot.IsFocused
+            || _managedWindowLayerMode == WindowSlot.SlotWindowLayerMode.Backmost)
+        {
+            return false;
+        }
+
+        return !_windowArranger.IsObscuredByExternalWindow(focusedSlot.WindowHandle, GetManagedWindowHandles());
+    }
+
+    private IReadOnlyList<IntPtr> GetFocusShieldOverlayHandles()
+    {
+        var handles = new List<IntPtr>(2);
+        if (IsMicroDialActive && _microDialWindow is not null)
+        {
+            var dialHandle = _microDialWindow.Handle;
+            if (dialHandle != IntPtr.Zero)
+            {
+                handles.Add(dialHandle);
+            }
+        }
+        else if (WindowState != WindowState.Minimized)
+        {
+            var panelHandle = new WindowInteropHelper(this).Handle;
+            if (panelHandle != IntPtr.Zero)
+            {
+                handles.Add(panelHandle);
+            }
+        }
+
+        var overlayHandle = _focusNameOverlay.Handle;
+        if (overlayHandle != IntPtr.Zero)
+        {
+            handles.Add(overlayHandle);
+        }
+
+        return handles;
+    }
+
+    private void ReleaseTemporaryFocusShieldImmediate()
+    {
+        _focusSwitchShieldWindow.Hide();
+    }
+
     private void PrepareFocusTransitionBackdrop(WindowSlot focusSlot, bool arrangeOtherSlotsFirst)
     {
         if (_areWindowsHidden || focusSlot.WindowHandle == IntPtr.Zero)
@@ -5244,6 +5323,7 @@ public partial class MainWindow : Window
         // すべて UI スレッド上で逐次実行されるため、二重 Dispose や競合は起きない。
         _focusSwitchArrangeCancellation?.Cancel();
         _focusedZOrderVerificationCancellation?.Cancel();
+        ReleaseTemporaryFocusShieldImmediate();
     }
 
     private void ScheduleFocusedZOrderVerification(WindowSlot? focusedSlot = null)
@@ -5556,9 +5636,27 @@ public partial class MainWindow : Window
                          .GroupBy(GetSlotMonitorIndex))
             {
                 var focus = GetFocusedSlotOnMonitor(group.Key);
-                _windowArranger.ArrangeOnly(_statusStore.Slots,
-                    group.Select(slot => slot.WindowHandle).ToArray(),
-                    _statusStore.Config.Gap, GetActiveMonitorIndex(), focus?.WindowHandle ?? IntPtr.Zero);
+                var groupHandles = group.Select(slot => slot.WindowHandle).ToArray();
+                if (focus is not null && _windowArranger.GetWindowState(focus.WindowHandle) == ManagedWindowState.Maximized)
+                {
+                    var useShield = ShouldShieldFocusedWindowDuringBackgroundRestore(focus);
+                    await _windowArranger.ArrangeOnlyBehindFocusAsync(
+                        _statusStore.Slots,
+                        groupHandles,
+                        _statusStore.Config.Gap,
+                        GetActiveMonitorIndex(),
+                        keepAboveHandle: focus.WindowHandle,
+                        tryBeginShield: useShield ? TryBeginFocusSwitchShield : null,
+                        endShield: useShield ? EndFocusSwitchShield : null,
+                        cancellationToken: cancellation.Token);
+                }
+                else
+                {
+                    _windowArranger.ArrangeOnly(_statusStore.Slots,
+                        groupHandles,
+                        _statusStore.Config.Gap, GetActiveMonitorIndex(), focus?.WindowHandle ?? IntPtr.Zero);
+                }
+
                 if (focus is null)
                 {
                     foreach (var slot in group.Where(slot => !_windowArranger.IsMinimized(slot.WindowHandle)))
@@ -6490,8 +6588,7 @@ public partial class MainWindow : Window
         CancelFolderSizeCalculation();
         _panelFrontRestoreCancellation?.Cancel();
         _panelFrontRestoreCancellation?.Dispose();
-        _focusSwitchArrangeCancellation?.Cancel();
-        _focusedZOrderVerificationCancellation?.Cancel();
+        CancelFocusSwitchArrange();
         _focusedSlotReassertCancellation?.Cancel();
         _focusedSlotReassertCancellation?.Dispose();
         _postLaunchArrangeCancellation?.Cancel();
@@ -6503,6 +6600,7 @@ public partial class MainWindow : Window
         CompleteRestoreRevealImmediately();
         CleanupLaunchPresentationOnClose();
         DisposeMicroDialWindow();
+        _focusSwitchShieldWindow.Dispose();
         _focusNameOverlay.Close();
         base.OnClosed(e);
 

@@ -32,6 +32,10 @@ public sealed class WindowArranger
     private const int DwmwaCloaked = 14;
     private static readonly TimeSpan MaximizeRequestTimeout = TimeSpan.FromMilliseconds(160);
     private static readonly TimeSpan MaximizeStatePollInterval = TimeSpan.FromMilliseconds(8);
+    private static readonly TimeSpan ShieldRevealDelay = TimeSpan.FromMilliseconds(16);
+    private static readonly TimeSpan BehindOrderTimeout = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan RestoreRequestTimeout = TimeSpan.FromMilliseconds(160);
+    private static readonly TimeSpan RestoreSettleDelay = TimeSpan.FromMilliseconds(24);
     private const uint GW_HWNDPREV = 3;
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOPMOST = 0x00000008;
@@ -68,6 +72,56 @@ public sealed class WindowArranger
     {
         return ArrangeCore(slots, gap, monitorIndex, excludedSlot: null,
             animateRestore: false, keepAboveHandle, includedHandles: handles);
+    }
+
+    // 1 面フォーカス中の窓（keepAboveHandle）を通常帯のまま一切動かさずに、
+    // それ以外の最大化・最小化窓を背面で静かに 4 面セルへ戻す非同期版。
+    // Win32 の SW_SHOWNOACTIVATE は通常帯の先頭へ Z 順（重なり順）を引き上げるため、
+    // 復元が必要な窓がある間だけ呼び出し側の DWM サムネイル盾（tryBeginShield / endShield）で
+    // パネル直下に C のライブ映像を覆い、背面窓の非最大化・4 面配置・C 直下への Z 順復帰を
+    // すべて完了確認してから盾を閉じる。C を Topmost 化しないためパネルや C 自体がちらつかない。
+    public Task<int> ArrangeExceptBehindFocusAsync(
+        IReadOnlyList<WindowSlot> slots,
+        WindowSlot excludedSlot,
+        int gap,
+        int monitorIndex,
+        IntPtr keepAboveHandle,
+        Func<IntPtr, bool>? tryBeginShield = null,
+        Action? endShield = null,
+        CancellationToken cancellationToken = default)
+    {
+        return ArrangeBehindFocusCoreAsync(
+            slots,
+            gap,
+            monitorIndex,
+            excludedSlot,
+            keepAboveHandle,
+            tryBeginShield,
+            endShield,
+            includedHandles: null,
+            cancellationToken);
+    }
+
+    public Task<int> ArrangeOnlyBehindFocusAsync(
+        IReadOnlyList<WindowSlot> slots,
+        IReadOnlyCollection<IntPtr> handles,
+        int gap,
+        int monitorIndex,
+        IntPtr keepAboveHandle,
+        Func<IntPtr, bool>? tryBeginShield = null,
+        Action? endShield = null,
+        CancellationToken cancellationToken = default)
+    {
+        return ArrangeBehindFocusCoreAsync(
+            slots,
+            gap,
+            monitorIndex,
+            excludedSlot: null,
+            keepAboveHandle,
+            tryBeginShield,
+            endShield,
+            includedHandles: handles,
+            cancellationToken);
     }
 
     public bool NeedsArrange(IReadOnlyList<WindowSlot> slots, int gap, int monitorIndex, int tolerance = 48)
@@ -245,6 +299,190 @@ public sealed class WindowArranger
                 }
             }
         }
+    }
+
+    // 1 面フォーカス切替後の背面復元を非同期で完了させる。
+    // C（新フォーカス）のウィンドウ自体は通常帯のまま一切 Topmost 化せず、
+    // 必要な瞬間だけ自プロセスの DWM サムネイル盾（tryBeginShield）でパネル直下を覆うことで、
+    // パネル本体の消失や C 自身の帯切替ちらつきを防ぎつつ、旧フォーカス A の飛び出しを完全に隠す。
+    private async Task<int> ArrangeBehindFocusCoreAsync(
+        IReadOnlyList<WindowSlot> slots,
+        int gap,
+        int monitorIndex,
+        WindowSlot? excludedSlot,
+        IntPtr keepAboveHandle,
+        Func<IntPtr, bool>? tryBeginShield,
+        Action? endShield,
+        IReadOnlyCollection<IntPtr>? includedHandles,
+        CancellationToken cancellationToken)
+    {
+        var placements = BuildPlacements(slots, gap, monitorIndex, excludedSlot);
+        if (includedHandles is not null)
+        {
+            placements.RemoveAll(placement => !includedHandles.Contains(placement.Handle)
+                || IsIconic(placement.Handle));
+        }
+
+        if (placements.Count == 0)
+        {
+            return 0;
+        }
+
+        var restoring = placements
+            .Where(placement => IsIconic(placement.Handle) || IsZoomed(placement.Handle))
+            .ToList();
+
+        // 復元（最大化・最小化解除）が必要な窓が無ければ Z 順が跳ね上がらないため、
+        // 盾も DWM 遷移停止も行わず静かに 4 面座標だけを整える。
+        if (restoring.Count == 0)
+        {
+            var normalTargets = placements
+                .Select(CompensateForFrameCached)
+                .ToList();
+            var normalArranged = 0;
+            foreach (var target in normalTargets)
+            {
+                if (SetWindowPos(
+                    target.Handle,
+                    IntPtr.Zero,
+                    target.X,
+                    target.Y,
+                    target.Width,
+                    target.Height,
+                    ArrangeFlags))
+                {
+                    normalArranged++;
+                }
+            }
+
+            return normalArranged;
+        }
+
+        var shieldActive = false;
+        var disabledTransitions = new List<IntPtr>(restoring.Count);
+        try
+        {
+            foreach (var placement in restoring)
+            {
+                SetDwmTransitionsDisabled(placement.Handle, true);
+                disabledTransitions.Add(placement.Handle);
+            }
+
+            if (keepAboveHandle != IntPtr.Zero
+                && IsWindow(keepAboveHandle)
+                && tryBeginShield is not null)
+            {
+                shieldActive = tryBeginShield(keepAboveHandle);
+                if (shieldActive)
+                {
+                    // DWM サムネイルの初回合成フレームがパネル直下へ描かれてから背面復元を始める。
+                    await Task.Delay(ShieldRevealDelay, cancellationToken);
+                }
+            }
+
+            foreach (var placement in restoring)
+            {
+                ReleaseTopmostIfNeeded(placement.Handle);
+                if (keepAboveHandle != IntPtr.Zero)
+                {
+                    PlaceDirectlyBehind(placement.Handle, keepAboveHandle);
+                }
+
+                PresetRestoreBoundsToCell(CompensateForFrameCached(placement));
+                ShowWindow(placement.Handle, SW_SHOWNOACTIVATE);
+            }
+
+            // 相手スレッドが SW_SHOWNOACTIVATE を処理して通常状態へ戻るのを待つ（タイムアウト付き）。
+            await WaitUntilAsync(
+                () => restoring.All(placement =>
+                    !IsWindow(placement.Handle)
+                    || (!IsZoomed(placement.Handle) && !IsIconic(placement.Handle))),
+                RestoreRequestTimeout,
+                MaximizeStatePollInterval,
+                cancellationToken);
+
+            // 復元後の通常状態で不可視枠（DWM 拡張フレーム）を計測し、4 面セルへ正確に配置する。
+            // 座標変更と Z 順変更は分離（SWP_NOZORDER）を維持する。
+            var targets = placements
+                .Select(CompensateForFrameCached)
+                .ToList();
+
+            var arranged = 0;
+            foreach (var target in targets)
+            {
+                if (SetWindowPos(
+                    target.Handle,
+                    IntPtr.Zero,
+                    target.X,
+                    target.Y,
+                    target.Width,
+                    target.Height,
+                    ArrangeFlags))
+                {
+                    arranged++;
+                }
+            }
+
+            // SW_SHOWNOACTIVATE で通常帯先頭へ上がった背面窓を、盾を閉じる前に確実に C の直下へ戻す。
+            if (keepAboveHandle != IntPtr.Zero && IsWindow(keepAboveHandle) && !IsTopmost(keepAboveHandle))
+            {
+                var focusMonitor = GetMonitorIndexForWindow(keepAboveHandle);
+                var sameMonitorTiles = placements
+                    .Where(placement => placement.Handle != keepAboveHandle
+                        && IsWindow(placement.Handle)
+                        && (focusMonitor < 0 || GetMonitorIndexForWindow(placement.Handle) == focusMonitor))
+                    .ToList();
+
+                foreach (var tile in sameMonitorTiles)
+                {
+                    ReleaseTopmostIfNeeded(tile.Handle);
+                    PlaceDirectlyBehind(tile.Handle, keepAboveHandle);
+                }
+
+                await WaitUntilAsync(
+                    () => sameMonitorTiles.All(tile =>
+                        !IsWindow(tile.Handle) || !IsAbove(tile.Handle, keepAboveHandle)),
+                    BehindOrderTimeout,
+                    MaximizeStatePollInterval,
+                    cancellationToken);
+            }
+
+            // DWM が遷移無効状態のまま最終配置と Z 順変更を消化する短い猶予を確保する。
+            await Task.Delay(RestoreSettleDelay, cancellationToken);
+            return arranged;
+        }
+        finally
+        {
+            foreach (var handle in disabledTransitions)
+            {
+                SetDwmTransitionsDisabled(handle, false);
+            }
+
+            if (shieldActive)
+            {
+                endShield?.Invoke();
+            }
+        }
+    }
+
+    private static async Task<bool> WaitUntilAsync(
+        Func<bool> condition,
+        TimeSpan timeout,
+        TimeSpan pollInterval,
+        CancellationToken cancellationToken)
+    {
+        if (condition())
+        {
+            return true;
+        }
+
+        var startedAt = DateTimeOffset.UtcNow;
+        while (!condition() && DateTimeOffset.UtcNow - startedAt < timeout)
+        {
+            await Task.Delay(pollInterval, cancellationToken);
+        }
+
+        return condition();
     }
 
     private static bool BringToFrontWithoutTopmostCore(IntPtr windowHandle)
@@ -436,6 +674,18 @@ public sealed class WindowArranger
         }
 
         return FrameInset.Zero;
+    }
+
+    // ウィンドウの可視枠（DWM 拡張フレーム）を物理ピクセルで返す。取得できないときは GetWindowRect で代用。
+    public bool TryGetVisibleWindowBounds(IntPtr windowHandle, out WindowBounds bounds)
+    {
+        bounds = default;
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        return TryGetVisibleBounds(windowHandle, out bounds);
     }
 
     // ウィンドウの可視枠（DWM 拡張フレーム）を返す。取得できないときは GetWindowRect で代用。

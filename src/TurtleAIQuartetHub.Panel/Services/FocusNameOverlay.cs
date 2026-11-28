@@ -54,6 +54,12 @@ public sealed class FocusNameOverlay
         _windowArranger = windowArranger;
     }
 
+    // 表示中のオーバーレイ窓のハンドル。背面復元の一時シールド中に、
+    // フォーカス名カードがフォーカス窓の後ろへ隠れないよう前面維持に使う。
+    public IntPtr Handle => _window is not null && _window.Visibility == Visibility.Visible
+        ? new WindowInteropHelper(_window).Handle
+        : IntPtr.Zero;
+
     // スロット名（パネルD）・タイトル・アプリ名の 3 行を、monitorIndex（GetSlotMonitorIndex の
     // 正規化済みインデックス）の作業領域中央へ出す。極小表示などで avoidRectScreenPx が指定され、
     // 同じディスプレイ上に重なる場合は被らないよう下側（下に空きが無ければ上側）へ配置する。
