@@ -40,6 +40,8 @@ public sealed class WindowArranger
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOPMOST = 0x00000008;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const uint FLASHW_STOP = 0;
+    private const uint ASFW_ANY = 0xFFFFFFFF;
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
     private static readonly IntPtr HWND_BOTTOM = new(1);
     private static readonly IntPtr HWND_TOPMOST = new(-1);
@@ -1008,7 +1010,7 @@ public sealed class WindowArranger
         }
 
         ShowWindow(windowHandle, SW_RESTORE);
-        return SetForegroundWindow(windowHandle);
+        return TryActivateForegroundWindow(windowHandle);
     }
 
     public bool FocusMaximized(IntPtr windowHandle)
@@ -1019,7 +1021,114 @@ public sealed class WindowArranger
         }
 
         ShowWindow(windowHandle, SW_MAXIMIZE);
-        return SetForegroundWindow(windowHandle);
+        return TryActivateForegroundWindow(windowHandle);
+    }
+
+    // 他アプリ（ブラウザ等）がフォアグラウンド権限を握っていたり、極小表示（WS_EX_NOACTIVATE）から
+    // 呼び出された場合でも、Windows のフォアグラウンドロックによるタスクバー点滅（拒否）を避けて
+    // 確実に対象ウィンドウを前面・アクティブ化する。
+    public bool TryActivateForegroundWindow(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        if (IsIconic(windowHandle))
+        {
+            ShowWindow(windowHandle, SW_RESTORE);
+        }
+
+        var targetThreadId = GetWindowThreadProcessId(windowHandle, out var targetProcessId);
+        if (targetProcessId != 0)
+        {
+            _ = AllowSetForegroundWindow(targetProcessId);
+        }
+
+        // 第 1 段階: 通常の SetForegroundWindow。成功すれば最小コスト・副作用ゼロで即終了。
+        if (SetForegroundWindow(windowHandle) && GetForegroundWindow() == windowHandle)
+        {
+            StopWindowFlashing(windowHandle);
+            return true;
+        }
+
+        // 第 2 段階: フォアグラウンドロック突破。
+        // 応答不能ウィンドウへの AttachThreadInput はブロックを避けるため IsHungAppWindow で除外する。
+        var currentThreadId = GetCurrentThreadId();
+        var foregroundHandle = GetForegroundWindow();
+        var foregroundThreadId = foregroundHandle != IntPtr.Zero && IsWindow(foregroundHandle) && !IsHungAppWindow(foregroundHandle)
+            ? GetWindowThreadProcessId(foregroundHandle, out _)
+            : 0u;
+        var canAttachTarget = targetThreadId != 0
+            && targetThreadId != currentThreadId
+            && targetThreadId != foregroundThreadId
+            && !IsHungAppWindow(windowHandle);
+
+        var attachedForeground = false;
+        var attachedTarget = false;
+        try
+        {
+            if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
+            {
+                attachedForeground = AttachThreadInput(currentThreadId, foregroundThreadId, true);
+            }
+
+            if (canAttachTarget)
+            {
+                attachedTarget = AttachThreadInput(currentThreadId, targetThreadId, true);
+            }
+
+            _ = AllowSetForegroundWindow(targetProcessId != 0 ? targetProcessId : ASFW_ANY);
+            _ = SetWindowPos(windowHandle, HWND_TOP, 0, 0, 0, 0, LayerFlags);
+            _ = SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (attachedTarget)
+            {
+                _ = AttachThreadInput(currentThreadId, targetThreadId, false);
+            }
+
+            if (attachedForeground)
+            {
+                _ = AttachThreadInput(currentThreadId, foregroundThreadId, false);
+            }
+        }
+
+        if (GetForegroundWindow() == windowHandle)
+        {
+            StopWindowFlashing(windowHandle);
+            DiagnosticLog.Write(
+                $"Foreground lock recovered via AttachThreadInput (attachedFg={attachedForeground}, attachedTarget={attachedTarget}).");
+            return true;
+        }
+
+        // 第 3 段階: 管理者権限ウィンドウ前面時など UIPI で AttachThreadInput すら拒否された場合の最終救済。
+        // 一時 Topmost → NoTopmost で少なくとも Z 順を確実に前面へ引き上げ、タスクバーのオレンジ点滅を止める。
+        _ = BringToFrontOnce(windowHandle);
+        var retryFocused = SetForegroundWindow(windowHandle) && GetForegroundWindow() == windowHandle;
+        StopWindowFlashing(windowHandle);
+        DiagnosticLog.Write(
+            $"Foreground lock fallback applied via BringToFrontOnce (retryFocused={retryFocused}).");
+        return retryFocused;
+    }
+
+    public bool StopWindowFlashing(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        var info = new FLASHWINFO
+        {
+            cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
+            hwnd = windowHandle,
+            dwFlags = FLASHW_STOP,
+            uCount = 0,
+            dwTimeout = 0
+        };
+        return FlashWindowEx(ref info);
     }
 
     // 対象は直前に通常 z-order の先頭へ配置済み。ShowWindow は ShowWindowAsync への別名なので、
@@ -1047,9 +1156,8 @@ public sealed class WindowArranger
                 await Task.Delay(MaximizeStatePollInterval);
             }
 
-            // OS のフォアグラウンド取得制限で SetForegroundWindow が false を返しても、
-            // 対象が有効なまま最大化まで完了していればカード側の 1 面フォーカス状態へ反映する。
-            return SetForegroundWindow(windowHandle) || (IsWindow(windowHandle) && IsZoomed(windowHandle));
+            // フォアグラウンドロック発生時も AttachThreadInput / BringToFrontOnce で前面化・点滅停止まで行う。
+            return TryActivateForegroundWindow(windowHandle) || (IsWindow(windowHandle) && IsZoomed(windowHandle));
         }
         finally
         {
@@ -1404,6 +1512,25 @@ public sealed class WindowArranger
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(uint dwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsHungAppWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     // ShowWindow ではなく ShowWindowAsync を使う。ShowWindow は他プロセスのウィンドウへ
     // 同期メッセージを送るため、相手スレッドがハングしていると呼び出し元（パネルの UI
     // スレッド）が無期限にブロックする。Async 版は表示要求をキューに積んで即座に戻る。
@@ -1502,5 +1629,15 @@ public sealed class WindowArranger
         public POINT ptMinPosition;
         public POINT ptMaxPosition;
         public RECT rcNormalPosition;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
     }
 }

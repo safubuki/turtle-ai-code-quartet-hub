@@ -8,7 +8,7 @@ using TurtleAIQuartetHub.Panel.Services;
 // AI フックの通知から決まる作業状態（作業中・完了・解除）、スロットの特定、フック設定の足し引き、多重パイプ受信を確認する。
 internal static class AiActivityTests
 {
-    public const int Count = 77;
+    public const int Count = 80;
 
     public static async Task RunAsync(List<string> failures)
     {
@@ -67,6 +67,10 @@ internal static class AiActivityTests
             && AiHookEventParser.Classify("errorOccurred", "") == AiHookEventKind.Stop);
         var agTracker = new AiActivityTracker();
         agTracker.Apply(agStart!, DateTimeOffset.UtcNow);
+        agTracker.Apply(AiHookEventParser.TryParse(["--ai-event", "antigravity", "Stop", @"C:\work\a", "conv-1", "background_tasks_running"])!, DateTimeOffset.UtcNow);
+        Check(failures, "状態: Antigravity のバックグラウンドタスク実行中（fullyIdle=false）の Stop は完了にせず作業中を維持する",
+            AiHookEventParser.Classify("Stop", "background_tasks_running") == AiHookEventKind.Unknown
+            && agTracker.State == AiActivityState.Working);
         agTracker.Apply(AiHookEventParser.TryParse(["--ai-event", "antigravity", "Stop", @"C:\work\a", "conv-1", "USER_CANCELED"])!, DateTimeOffset.UtcNow);
         Check(failures, "状態: Antigravity の USER_CANCELED は偽の完了（青）を残さず作業中だけを止める",
             agTracker.State == AiActivityState.Idle);
@@ -876,6 +880,43 @@ internal static class AiActivityTests
                     && delivered[2] == "Stop"
                     && string.Equals(delivered[3].TrimEnd('\\'), workingDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase),
                     $"exit={ps.ExitCode}, stdout={stdout}, delivered={string.Join(",", delivered ?? [])}");
+
+                // Antigravity のバックグラウンドタスク実行中（fullyIdle=false + NO_TOOL_CALL）は
+                // background_tasks_running へ変換し、USER_CANCELED のときはキャンセル理由を優先する。
+                var bgDelivered = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var cancelDelivered = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var nextStage = 0;
+                coordinator.CommandReceived += args =>
+                {
+                    if (nextStage == 1) bgDelivered.TrySetResult(args);
+                    else if (nextStage == 2) cancelDelivered.TrySetResult(args);
+                };
+
+                nextStage = 1;
+                var bgJson = $"{{\"terminationReason\":\"NO_TOOL_CALL\",\"fullyIdle\":false,\"conversationId\":\"conv-bg\",\"workspacePaths\":[\"{workingDir.Replace("\\", "\\\\")}\"]}}";
+                var (bgExit, bgStdout) = await RunNotifyScriptAsync(tempScript, workingDir, "antigravity", "Stop", bgJson);
+                var bgArgs = await Task.WhenAny(bgDelivered.Task, Task.Delay(3000)) == bgDelivered.Task
+                    ? await bgDelivered.Task
+                    : null;
+                Check(failures, "通知スクリプト: Antigravity の fullyIdle=false + NO_TOOL_CALL を background_tasks_running として送る",
+                    bgExit == 0
+                    && bgStdout == "{}"
+                    && bgArgs is { Length: >= 6 }
+                    && bgArgs[5] == "background_tasks_running",
+                    $"exit={bgExit}, stdout={bgStdout}, delivered={string.Join(",", bgArgs ?? [])}");
+
+                nextStage = 2;
+                var cancelJson = $"{{\"terminationReason\":\"USER_CANCELED\",\"fullyIdle\":false,\"conversationId\":\"conv-bg\",\"workspacePaths\":[\"{workingDir.Replace("\\", "\\\\")}\"]}}";
+                var (cancelExit, cancelStdout) = await RunNotifyScriptAsync(tempScript, workingDir, "antigravity", "Stop", cancelJson);
+                var cancelArgs = await Task.WhenAny(cancelDelivered.Task, Task.Delay(3000)) == cancelDelivered.Task
+                    ? await cancelDelivered.Task
+                    : null;
+                Check(failures, "通知スクリプト: Antigravity の fullyIdle=false でも USER_CANCELED はキャンセル理由を優先して送る",
+                    cancelExit == 0
+                    && cancelStdout == "{}"
+                    && cancelArgs is { Length: >= 6 }
+                    && cancelArgs[5] == "USER_CANCELED",
+                    $"exit={cancelExit}, stdout={cancelStdout}, delivered={string.Join(",", cancelArgs ?? [])}");
             }
             finally
             {
@@ -886,6 +927,35 @@ internal static class AiActivityTests
         {
             try { File.Delete(tempScript); } catch (IOException) { }
         }
+    }
+
+    private static async Task<(int ExitCode, string Stdout)> RunNotifyScriptAsync(
+        string scriptPath,
+        string workingDir,
+        string tool,
+        string hookEvent,
+        string stdinJson)
+    {
+        using var ps = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\" -Tool {tool} -HookEvent {hookEvent}",
+                WorkingDirectory = workingDir,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            }
+        };
+        ps.Start();
+        await ps.StandardInput.WriteAsync(stdinJson);
+        ps.StandardInput.Close();
+        var stdout = (await ps.StandardOutput.ReadToEndAsync()).Trim();
+        using var timeoutCts = new CancellationTokenSource(5000);
+        await ps.WaitForExitAsync(timeoutCts.Token);
+        return (ps.ExitCode, stdout);
     }
 
     private static AiHookEvent Event(string tool, AiHookEventKind kind, string session) =>

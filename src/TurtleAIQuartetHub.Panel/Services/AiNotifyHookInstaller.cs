@@ -787,6 +787,11 @@ public sealed class AiNotifyHookInstaller
                     if ([bool]$data.recoverable) { $detail = 'recoverable' }
                     else { $detail = 'fatal' }
                 }
+                if ($HookEvent -eq 'Stop' -and (-not $detail -or $detail -eq 'NO_TOOL_CALL')) {
+                    if (($null -ne $data.fullyIdle -and (-not [bool]$data.fullyIdle)) -or ($null -ne $data.fully_idle -and (-not [bool]$data.fully_idle))) {
+                        $detail = 'background_tasks_running'
+                    }
+                }
             }
             if (-not $cwd) { $cwd = (Get-Location).Path }
             $payload = ConvertTo-Json -Compress -InputObject @('--ai-event', $Tool, $HookEvent, $cwd, $session, $detail)

@@ -2192,6 +2192,7 @@ public partial class MainWindow : Window
                 && slot.WindowHandle != IntPtr.Zero
                 && _windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, GetManagedWindowHandles()))
             {
+                SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
                 PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: false);
                 await FocusFromPanelAsync(slot.WindowHandle, monitor);
                 if (focusTransitionVersion != _focusTransitionVersion)
@@ -2199,7 +2200,16 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
+                // フォアグラウンドロック等で HWND_TOP だけではブラウザより上へ出られなかった場合は
+                // 一時 Topmost → NoTopmost で確実に前面突破する。
+                if (_windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, GetManagedWindowHandles()))
+                {
+                    _windowArranger.BringToFrontOnce(slot.WindowHandle);
+                }
+                else
+                {
+                    _windowArranger.BringToFrontWithoutTopmost(slot.WindowHandle);
+                }
                 // 既に 1 面フォーカス中のカードが外部ウィンドウに隠れていた場合も、
                 // パネルでカードをクリックして前面へ呼び戻した時点で完了通知を確認済みとみなす。
                 AcknowledgeAiActivityOnFocusChange(slot);
@@ -2212,10 +2222,17 @@ public partial class MainWindow : Window
             // このディスプレイのフォーカスだけ解除し、その面を 4 面へ戻す。他ディスプレイは維持。
             if (!_areWindowsHidden)
             {
+                SetManagedWindowLayerState(WindowSlot.SlotWindowLayerMode.Topmost);
                 CapturePreferredLayout(slot);
                 PrepareFocusTransitionBackdrop(slot, arrangeOtherSlotsFirst: true);
                 ClearFocusedSlotForDisplay(monitor);
                 var arranged = ArrangeSlotsOnActiveMonitor(false, applyLayersAfterArrange: false);
+                // ブラウザ等の外部ウィンドウやタスクバープレビューがフォアグラウンドを握ったままでも
+                // 4 画面が確実に手前へ出てくるよう、代表スロットへフォアグラウンドを譲渡する。
+                if (slot.WindowHandle != IntPtr.Zero)
+                {
+                    _windowArranger.TryActivateForegroundWindow(slot.WindowHandle);
+                }
                 // 他ディスプレイのフォーカスは Arrange でタイル対象外だが、レイヤー再適用で前後が
                 // 乱れ得るので前面に立て直す。
                 if (FocusedSlots().Any())
@@ -2266,6 +2283,13 @@ public partial class MainWindow : Window
 
         if (focusActivated)
         {
+            // ブラウザ等の外部ウィンドウが依然として上に被っていれば、一時 Topmost→NoTopmost で確実に前面突破する。
+            if (slot.WindowHandle != IntPtr.Zero
+                && _windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, GetManagedWindowHandles()))
+            {
+                _windowArranger.BringToFrontOnce(slot.WindowHandle);
+            }
+
             // 新フォーカスを最大化する間、他スロットのタイルと前フォーカスの最大化はそのまま残して
             // 画面を覆わせておく。ここで他スロットを背面（HWND_BOTTOM）へ送ると、最大化アニメが
             // 画面を覆い切るまでの間、タイルの位置に管理外ウィンドウ（ブラウザ等）が透けて見える。
@@ -2434,6 +2458,10 @@ public partial class MainWindow : Window
             // 非表示中にディスプレイ切替した場合はここで別ディスプレイへ移動するため、
             // 移動先 DPI/解像度に合わせて遅延付きで再補正し、サイズくずれを防ぐ。
             var arranged = await ArrangeSlotsOnActiveMonitorWithSettlingAsync();
+            if (_managedWindowLayerMode == WindowSlot.SlotWindowLayerMode.Topmost)
+            {
+                EnsureManagedTilesAboveExternalWindows();
+            }
             _statusStore.Message = arranged > 0
                 ? $"{arranged}個の管理中ウィンドウを表示しました。"
                 : "表示できる管理中ウィンドウがありません。";
@@ -5547,8 +5575,16 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    ApplyManagedWindowLayers(false);
-                    BringPanelToFrontImmediate();
+                    if (_managedWindowLayerMode == WindowSlot.SlotWindowLayerMode.Topmost
+                        && HasAnyManagedSlotObscuredByExternalWindow())
+                    {
+                        ApplyLayerPreservingFocusMode(WindowSlot.SlotWindowLayerMode.Topmost, bringToFrontOnce: true);
+                    }
+                    else
+                    {
+                        ApplyManagedWindowLayers(false);
+                        BringPanelToFrontImmediate();
+                    }
                 }
 
                 RefreshAuxiliaryUi();
@@ -5900,8 +5936,56 @@ public partial class MainWindow : Window
             return false;
         }
 
+        if (restoredFocusedSlot.WindowHandle != IntPtr.Zero)
+        {
+            _windowArranger.TryActivateForegroundWindow(restoredFocusedSlot.WindowHandle);
+            if (_windowArranger.IsObscuredByExternalWindow(restoredFocusedSlot.WindowHandle, GetManagedWindowHandles()))
+            {
+                _windowArranger.BringToFrontOnce(restoredFocusedSlot.WindowHandle);
+            }
+        }
+
         SchedulePanelToFront();
         return true;
+    }
+
+    private bool HasAnyManagedSlotObscuredByExternalWindow()
+    {
+        var managedHandles = GetManagedWindowHandles();
+        return _statusStore.Slots.Any(slot =>
+            slot.WindowHandle != IntPtr.Zero
+            && _windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, managedHandles));
+    }
+
+    private void EnsureManagedTilesAboveExternalWindows()
+    {
+        var managedHandles = GetManagedWindowHandles();
+        var anyObscured = false;
+        IntPtr firstHandle = IntPtr.Zero;
+        foreach (var slot in _statusStore.Slots)
+        {
+            if (slot.WindowHandle == IntPtr.Zero)
+            {
+                continue;
+            }
+
+            if (firstHandle == IntPtr.Zero)
+            {
+                firstHandle = slot.WindowHandle;
+            }
+
+            if (_windowArranger.IsObscuredByExternalWindow(slot.WindowHandle, managedHandles))
+            {
+                anyObscured = true;
+                _windowArranger.BringToFrontOnce(slot.WindowHandle);
+            }
+        }
+
+        if (anyObscured && firstHandle != IntPtr.Zero)
+        {
+            _windowArranger.TryActivateForegroundWindow(firstHandle);
+            BringPanelToFrontImmediate();
+        }
     }
 
     private void UpdateVisibilityButtonVisual()
@@ -5944,13 +6028,15 @@ public partial class MainWindow : Window
 
         // CLI / AI アプリのポップオーバーが開いている間の欄外クリックは、ポップアップを閉じるだけにして
         // 背後のスロットカードへクリック（フォーカス切替）が貫通しないようにする。
-        // トグルボタン自身（AIアプリ ▾ / 各カードの CLI ▾）の押下はボタンの Click へそのまま通す。
+        // ただしポップアップ自身の中身（CLI 候補・AI アプリ候補）とトグルボタン自身の押下はそのまま通す。
         if (IsAnyStandardPickerPopupOpen())
         {
             var source = e.OriginalSource as DependencyObject;
-            var isPickerToggleButton = IsSelfOrChild(source, StandardAiAppsPickerButton)
-                || FindAncestorSlotCliPickerButton(source) is not null;
-            if (!isPickerToggleButton)
+            var isInsidePickerUi = IsSelfOrChild(source, StandardAiAppsPickerButton)
+                || FindAncestorSlotCliPickerButton(source) is not null
+                || (SlotCliPickerPopup.Child is not null && IsSelfOrChild(source, SlotCliPickerPopup.Child))
+                || (StandardAiAppsPopup.Child is not null && IsSelfOrChild(source, StandardAiAppsPopup.Child));
+            if (!isInsidePickerUi)
             {
                 CloseSlotCliPickerPopup();
                 _suppressSlotCardMouseUpAfterPickerDismiss = true;

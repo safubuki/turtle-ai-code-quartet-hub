@@ -49,6 +49,13 @@ public static class AiHookEventParser
                 return AiHookEventKind.Start;
             case "stop":
             case "agentstop":
+                // Antigravity はバックグラウンドタスク実行中（1 task running）の待機時にも
+                // fullyIdle=false で Stop(NO_TOOL_CALL) を送る。まだ作業継続中のため完了（青）にせず緑を維持する。
+                if (detail.Trim().Equals("background_tasks_running", StringComparison.OrdinalIgnoreCase))
+                {
+                    return AiHookEventKind.Unknown;
+                }
+
                 // Antigravity の USER_CANCELED / cancel 等や Copilot の abort / user_exit は
                 // ユーザー自身による中断。偽の完了（青）を残さず、作業中の緑だけを止める。
                 return IsCancellationReason(detail)
