@@ -83,35 +83,24 @@ internal static class AiDoneFireflyTests
         var resources = LoadMainWindowResources(Path.Combine(rootDir, "src", "TurtleAIQuartetHub.Panel", "MainWindow.xaml"));
         var peakPhase = AiDoneFirefly.PeakSeconds / AiDoneFirefly.CycleDurationSeconds;
 
-        // 1. 標準表示カード展開と IDE / CLI 枠内非塗りつぶし + 完了滑らか点滅確認
+        // 1. 標準表示カード展開（案C：中段1行 IDE 2ボタン＋CLIポップオーバーボタン）と完了滑らか点滅確認
         var stdSlot = CreateMockSlot("C", "AI スタディ", @"c:\git_home\agent-study", AiActivityState.Done);
-        var stdHost = RenderTemplate(resources, "SlotCardTemplate", stdSlot, 295, 169);
+        var stdHost = RenderTemplate(resources, "SlotCardTemplate", stdSlot, 295, 136);
 
-        var headers = FindVisualChildren<TextBlock>(stdHost)
-            .Where(tb => tb.Text is "IDE" or "CLI")
+        var ideButtonStyle = (Style)resources["IdeApplicationSelectorButtonStyle"];
+        var cliPickerStyle = (Style)resources["SlotCliPickerButtonStyle"];
+        var ideButtons = FindVisualChildren<Button>(stdHost)
+            .Where(b => ReferenceEquals(b.Style, ideButtonStyle))
             .ToList();
-        var allHeadersTransparent = headers.Count == 2
-            && headers.All(tb => Equals((tb.Background as SolidColorBrush)?.Color, Colors.Transparent));
-
-        var fillStyle = (Style)resources["ApplicationGroupFillStyle"];
-        var fillBorders = FindVisualChildren<Border>(stdHost)
-            .Where(b => ReferenceEquals(b.Style, fillStyle))
+        var cliPickerButtons = FindVisualChildren<Button>(stdHost)
+            .Where(b => ReferenceEquals(b.Style, cliPickerStyle))
             .ToList();
-        var fillDarkBg = fillBorders.Count == 2
-            && fillBorders.All(b => ((SolidColorBrush)b.Background).Color == Color.FromRgb(0x12, 0x18, 0x16) && b.Margin.Top >= 1.0);
-
-        var outlineStyle = (Style)resources["ApplicationGroupBorderStyle"];
-        var outlineBorders = FindVisualChildren<Border>(stdHost)
-            .Where(b => ReferenceEquals(b.Style, outlineStyle))
-            .ToList();
-        var outlineCutoutsReady = outlineBorders.Count == 2
-            && outlineBorders.All(b => b.Clip is not null && !b.Clip.Bounds.IsEmpty);
 
         Check(
             failures,
-            "IDE/CLI 見出し背景: 枠内背景(#121816)は塗られずラベルは完全透明で上辺枠線だけ切り抜かれること",
-            allHeadersTransparent && fillDarkBg && outlineCutoutsReady,
-            $"headers={headers.Count}(transparent={allHeadersTransparent}), fills={fillBorders.Count}(dark={fillDarkBg}), outlines={outlineBorders.Count}(clipped={outlineCutoutsReady})");
+            "標準カード案C構成: 中段に IDE 2 ボタン（VS Code / Antigravity）と CLI ポップオーバーボタン 1 個が配置されること",
+            ideButtons.Count == 2 && cliPickerButtons.Count == 1,
+            $"ideButtons={ideButtons.Count}, cliPickerButtons={cliPickerButtons.Count}");
 
         AiDoneFirefly.FreezeAtPhaseForTesting(stdHost, 0.02);
         stdHost.UpdateLayout();
@@ -283,7 +272,7 @@ internal static class AiDoneFireflyTests
             && mainXaml.Contains("Property=\"local:AiDoneFirefly.Role\" Value=\"MicroSurface\"", StringComparison.Ordinal)
             && mainXaml.Contains("Property=\"local:AiDoneFirefly.Role\" Value=\"BadgeSurface\"", StringComparison.Ordinal)
             && mainXaml.Contains("Property=\"local:AiDoneFirefly.Role\" Value=\"BadgeGlow\"", StringComparison.Ordinal)
-            && mainXaml.Contains("local:GroupHeaderCutout.Header=", StringComparison.Ordinal);
+            && mainXaml.Contains("x:Name=\"SlotCliPickerPopup\"", StringComparison.Ordinal);
 
         var guideMentionsFirefly = guideXaml.Contains("少し早めのホタル点滅", StringComparison.Ordinal)
             && guideXaml.Contains("青のホタル点滅", StringComparison.Ordinal);

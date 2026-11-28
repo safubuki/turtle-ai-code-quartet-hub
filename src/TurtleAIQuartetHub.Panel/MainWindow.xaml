@@ -6,10 +6,10 @@
         xmlns:views="clr-namespace:TurtleAIQuartetHub.Panel.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Turtle AI Code Quartet Hub"
-        Width="650"
-        Height="535"
+        Width="616"
+        Height="392"
         MinWidth="560"
-        MinHeight="520"
+        MinHeight="386"
         Background="#101211"
         Foreground="#EEF4EF"
         FontFamily="Segoe UI"
@@ -309,10 +309,12 @@
       <Setter Property="Background" Value="{StaticResource AccentBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="FontSize" Value="15" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="MinHeight" Value="34" />
-      <Setter Property="Padding" Value="10,5" />
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Padding" Value="10,3" />
       <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
       <Setter Property="TextOptions.TextRenderingMode" Value="Auto" />
     </Style>
@@ -334,8 +336,16 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
 
-    <!-- 標準表示フッターの「すべて閉じる」。高さは BarButton のまま、色はカードのクリア（SlotClearInfoButtonStyle）に合わせる。 -->
-    <Style x:Key="DangerBarButton" TargetType="Button" BasedOn="{StaticResource BarButton}">
+    <!-- 標準表示フッターの 1 行 6 ボタン共通スタイル（高さ 30 DIP 統一・アイコン＋テキスト用）。 -->
+    <Style x:Key="FooterBarButton" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="5,3" />
+    </Style>
+
+    <!-- 標準表示フッターの「すべて閉じる」。高さは FooterBarButton のまま、色はカードのクリア（SlotClearInfoButtonStyle）に合わせる。 -->
+    <Style x:Key="DangerBarButton" TargetType="Button" BasedOn="{StaticResource FooterBarButton}">
       <Setter Property="Foreground" Value="#F2B7AF" />
       <Setter Property="Background" Value="#261816" />
       <Setter Property="BorderBrush" Value="#6A3832" />
@@ -373,15 +383,36 @@
 
     <Style x:Key="ApplicationSelectorBaseButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
       <Setter Property="MinWidth" Value="0" />
-      <Setter Property="MinHeight" Value="24" />
-      <Setter Property="Height" Value="24" />
-      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="6,1" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="ToolTip" Value="{Binding ToolTip}" />
       <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
       <Setter Property="Background" Value="#17201B" />
       <Setter Property="BorderBrush" Value="#344A3E" />
+    </Style>
+
+    <Style x:Key="SlotCliPickerButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="4,1,4,1" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#D6E6DC" />
+      <Setter Property="Background" Value="#17201B" />
+      <Setter Property="BorderBrush" Value="#344A3E" />
+      <Setter Property="ToolTip" Value="{Binding StandardCliButtonToolTip}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsCliApplicationSelected}" Value="True">
+          <Setter Property="Foreground" Value="#E9FFF2" />
+          <Setter Property="Background" Value="#263F31" />
+          <Setter Property="BorderBrush" Value="#59D58E" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
 
     <Style x:Key="ApplicationSelectorButtonStyle" TargetType="Button" BasedOn="{StaticResource ApplicationSelectorBaseButtonStyle}">
@@ -406,6 +437,9 @@
               Click="SlotApplicationSwitchButton_Click"
               ToolTip="{Binding ToolTip}"
               ToolTipService.ShowOnDisabled="True"
+              Height="28"
+              MinHeight="28"
+              Padding="8,2"
               Style="{StaticResource ApplicationSelectorButtonStyle}">
         <TextBlock Text="{Binding ShortName}"
                    TextTrimming="CharacterEllipsis"
@@ -462,7 +496,7 @@
       </Style.Triggers>
     </Style>
 
-    <Style x:Key="VisibilityRestoreButtonStyle" TargetType="Button" BasedOn="{StaticResource BarButton}">
+    <Style x:Key="VisibilityRestoreButtonStyle" TargetType="Button" BasedOn="{StaticResource FooterBarButton}">
       <Setter Property="Foreground" Value="#1A1406" />
       <Setter Property="Background" Value="#F2CA57" />
       <Setter Property="BorderBrush" Value="#FFF0B5" />
@@ -481,10 +515,12 @@
     </Style>
 
     <Style x:Key="SlotActionButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
-      <Setter Property="MinHeight" Value="24" />
-      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="4,1" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="MinWidth" Value="64" />
     </Style>
 
     <Style x:Key="StoredAssignButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
@@ -668,9 +704,10 @@
     </Style>
 
     <Style x:Key="SlotOpenFolderButtonStyle" TargetType="Button" BasedOn="{StaticResource StoredAssignButton}">
-      <Setter Property="MinWidth" Value="28" />
-      <Setter Property="Width" Value="28" />
-      <Setter Property="Height" Value="24" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="Foreground" Value="#DDEFE5" />
       <Setter Property="Background" Value="#17271E" />
@@ -1861,6 +1898,18 @@
       </Border>
     </DataTemplate>
 
+    <DataTemplate x:Key="IdeApplicationOptionTemplate" DataType="{x:Type models:SlotApplicationOption}">
+      <Button Tag="{Binding}"
+              Click="SlotApplicationSwitchButton_Click"
+              ToolTip="{Binding ToolTip}"
+              ToolTipService.ShowOnDisabled="True"
+              Style="{StaticResource IdeApplicationSelectorButtonStyle}">
+        <TextBlock Text="{Binding ShortName}"
+                   TextTrimming="CharacterEllipsis"
+                   TextAlignment="Center" />
+      </Button>
+    </DataTemplate>
+
     <DataTemplate x:Key="SlotCardTemplate" DataType="{x:Type models:WindowSlot}">
       <Border x:Name="SlotCardFocusFrame"
               Background="Transparent"
@@ -1889,7 +1938,6 @@
                     Style="{StaticResource AiCardDoneWashStyle}" />
             <Grid Margin="8">
             <Grid.RowDefinitions>
-              <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -1928,11 +1976,42 @@
                          TextOptions.TextFormattingMode="Ideal"
                          TextOptions.TextRenderingMode="Auto"
                          MaxLength="40" />
-                <TextBlock Text="{Binding ShortPath}"
-                           Margin="2,0,0,0"
-                           FontSize="12.5"
-                           TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource MutedTextBrush}" />
+                <Grid Margin="2,0,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding ShortPath}"
+                             FontSize="12.5"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource MutedTextBrush}" />
+                  <Border Grid.Column="1"
+                          CornerRadius="5"
+                          Background="#17271E"
+                          BorderBrush="{Binding DisplayBrush}"
+                          BorderThickness="1"
+                          Padding="5,0"
+                          Margin="4,0,0,0"
+                          VerticalAlignment="Center">
+                    <Border.Style>
+                      <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding HasDisplayBadge}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding DisplayBadgeText}"
+                               FontSize="10.5"
+                               FontWeight="SemiBold"
+                               Foreground="{Binding DisplayBrush}"
+                               ToolTip="このパネルが表示されているディスプレイ" />
+                  </Border>
+                </Grid>
               </StackPanel>
               <!-- 右上: 停止（作業中だけ）・クリアのボタンと、その下に右端をそろえた経過時間のストップウォッチ。 -->
               <StackPanel Grid.Column="3"
@@ -1962,125 +2041,81 @@
               </StackPanel>
             </Grid>
 
-            <Grid Grid.Row="1"
-                  Margin="0,4,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="98" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-
-              <Grid Grid.Column="0"
-                    Margin="0,0,6,0">
-                <Border Style="{StaticResource ApplicationGroupFillStyle}" />
-                <Border Style="{StaticResource ApplicationGroupBorderStyle}"
-                        local:GroupHeaderCutout.Header="{Binding ElementName=IdeGroupHeader}" />
-                <Border Padding="7,9,7,5">
-                  <ItemsControl ItemsSource="{Binding IdeApplicationOptions}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <StackPanel Orientation="Vertical" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemContainerStyle>
-                      <Style TargetType="ContentPresenter">
-                        <Setter Property="Margin" Value="2,0,2,4" />
-                      </Style>
-                    </ItemsControl.ItemContainerStyle>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="{x:Type models:SlotApplicationOption}">
-                        <Button Tag="{Binding}"
-                                Click="SlotApplicationSwitchButton_Click"
-                                ToolTip="{Binding ToolTip}"
-                                ToolTipService.ShowOnDisabled="True"
-                                Style="{StaticResource IdeApplicationSelectorButtonStyle}">
-                          <TextBlock Text="{Binding ShortName}"
-                                     TextTrimming="CharacterEllipsis"
-                                     TextAlignment="Center" />
-                        </Button>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </Border>
-                <TextBlock x:Name="IdeGroupHeader"
-                           Text="IDE"
-                           Style="{StaticResource ApplicationGroupLabelStyle}" />
-              </Grid>
-
-              <Grid Grid.Column="1">
-                <Border Style="{StaticResource ApplicationGroupFillStyle}" />
-                <Border Style="{StaticResource ApplicationGroupBorderStyle}"
-                        local:GroupHeaderCutout.Header="{Binding ElementName=CliGroupHeader}" />
-                <Border Padding="7,9,7,5">
-                  <Grid>
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <UniformGrid Grid.Row="0"
-                                 Columns="2">
-                      <ContentControl Content="{Binding CliApplicationOptions[0]}"
-                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
-                                      Margin="2,0,2,4" />
-                      <ContentControl Content="{Binding CliApplicationOptions[1]}"
-                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
-                                      Margin="2,0,2,4" />
-                    </UniformGrid>
-
-                    <Grid Grid.Row="1">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                      </Grid.ColumnDefinitions>
-
-                      <ContentControl Grid.Column="0"
-                                      Content="{Binding CliApplicationOptions[2]}"
-                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
-                                      Margin="2,0,2,4" />
-                      <ContentControl Grid.Column="1"
-                                      Width="46"
-                                      Content="{Binding CliApplicationOptions[3]}"
-                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
-                                      Margin="2,0,2,4" />
-                      <ContentControl Grid.Column="2"
-                                      Content="{Binding CliApplicationOptions[4]}"
-                                      ContentTemplate="{StaticResource CliApplicationOptionTemplate}"
-                                      Margin="2,0,2,4" />
-                    </Grid>
-                  </Grid>
-                </Border>
-                <TextBlock x:Name="CliGroupHeader"
-                           Text="CLI"
-                           Style="{StaticResource ApplicationGroupLabelStyle}" />
-              </Grid>
-            </Grid>
-
-            <Grid Grid.Row="2"
+            <!-- 中段・下段を 1 つの 3 列×2 行グリッドに統一し、高さ (26 DIP) と縦ラインを完全に揃える。
+                 CLI ▾・控え移動・閉じるの 3 ボタンを最小同サイズ (62×26 DIP) で統一し、
+                 左 3 アイコン（VS Code と同幅）と控え移動の間にゆとりある隙間を空ける。 -->
+            <Grid x:Name="SlotCardActionsGrid"
+                  Grid.Row="1"
                   Margin="0,6,0,0">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="26" />
+                <RowDefinition Height="6" />
+                <RowDefinition Height="26" />
+              </Grid.RowDefinitions>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="62" />
               </Grid.ColumnDefinitions>
 
-              <StackPanel Grid.Column="0"
-                          Orientation="Horizontal"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Center">
+              <!-- 1行目: VS Code / Antigravity / CLI ▾ -->
+              <ContentControl Grid.Row="0"
+                              Grid.Column="0"
+                              Content="{Binding IdeApplicationOptions[0]}"
+                              ContentTemplate="{StaticResource IdeApplicationOptionTemplate}" />
+              <ContentControl Grid.Row="0"
+                              Grid.Column="2"
+                              Content="{Binding IdeApplicationOptions[1]}"
+                              ContentTemplate="{StaticResource IdeApplicationOptionTemplate}" />
+              <Button x:Name="SlotCliPickerButton"
+                      Grid.Row="0"
+                      Grid.Column="4"
+                      Tag="{Binding}"
+                      Click="SlotCliPickerButton_Click"
+                      AutomationProperties.Name="CLI アプリを選択"
+                      Style="{StaticResource SlotCliPickerButtonStyle}">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                  <TextBlock Text="{Binding StandardCliButtonText}"
+                             TextTrimming="CharacterEllipsis"
+                             MaxWidth="40"
+                             VerticalAlignment="Center" />
+                  <TextBlock Text="&#xE70D;"
+                             FontFamily="Segoe MDL2 Assets"
+                             FontSize="9"
+                             Opacity="0.85"
+                             Margin="2,1,0,0"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <!-- 2行目 Col 0: フォルダ・GitHub・次ディスプレイの 3 アイコンを VS Code ボタンと同幅で均等配置 -->
+              <Grid Grid.Row="2"
+                    Grid.Column="0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="6" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="6" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
                 <!-- E838 (FolderOpen): E8B7 (Folder) は小サイズだと四角にしか見えないため、
                      開いたフォルダのグリフでエクスプローラを開く操作だと分かるようにする。 -->
-                <Button Content="&#xE838;"
+                <Button Grid.Column="0"
+                        Content="&#xE838;"
                         Tag="{Binding}"
                         Click="OpenSlotWorkspaceFolderButton_Click"
                         AutomationProperties.Name="ワークスペースフォルダを開く"
-                        VerticalAlignment="Center"
                         Style="{StaticResource SlotOpenFolderButtonStyle}" />
 
-                <Button Tag="{Binding}"
+                <Button Grid.Column="2"
+                        Tag="{Binding}"
                         Click="OpenSlotGitHubButton_Click"
                         AutomationProperties.Name="GitHub のリポジトリページを開く"
-                        VerticalAlignment="Center"
-                        Margin="6,0,0,0"
                         Style="{StaticResource SlotOpenGitHubButtonStyle}">
                   <Path Data="{StaticResource GitHubMarkGeometry}"
                         Width="13"
@@ -2089,12 +2124,11 @@
                         Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                 </Button>
 
-                <Button Content="&#xE7F4;"
+                <Button Grid.Column="4"
+                        Content="&#xE7F4;"
                         Tag="{Binding}"
                         Click="MoveSlotToNextDisplayButton_Click"
-                        AutomationProperties.Name="このパネルを次のディスプレイへ移動"
-                        VerticalAlignment="Center"
-                        Margin="6,0,0,0">
+                        AutomationProperties.Name="このパネルを次のディスプレイへ移動">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SlotOpenFolderButtonStyle}">
                       <Setter Property="ToolTip" Value="このパネルだけ次のディスプレイへ移動（ベースに戻すまで巡回）" />
@@ -2109,81 +2143,60 @@
                     </Style>
                   </Button.Style>
                 </Button>
+              </Grid>
 
-                <Border CornerRadius="6"
-                        Background="#17271E"
-                        BorderBrush="{Binding DisplayBrush}"
-                        BorderThickness="1"
-                        Padding="6,1"
-                        Margin="6,0,0,0"
-                        VerticalAlignment="Center">
-                  <Border.Style>
-                    <Style TargetType="Border">
-                      <Setter Property="Visibility" Value="Visible" />
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding HasDisplayBadge}" Value="False">
-                          <Setter Property="Visibility" Value="Collapsed" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Border.Style>
-                  <TextBlock Text="{Binding DisplayBadgeText}"
-                             FontSize="12"
-                             FontWeight="SemiBold"
-                             Foreground="{Binding DisplayBrush}"
-                             ToolTip="このパネルが表示されているディスプレイ" />
-                </Border>
-              </StackPanel>
+              <!-- 2行目 Col 2: 控え移動（CLI ▾・閉じる と完全同サイズ 62×26、右寄せで左 3 アイコンとの間に隙間を確保） -->
+              <Button Grid.Row="2"
+                      Grid.Column="2"
+                      Width="62"
+                      HorizontalAlignment="Right"
+                      Tag="{Binding}"
+                      Click="StoreSlotButton_Click">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                    <Setter Property="Content" Value="控え移動" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
+                        <Setter Property="IsEnabled" Value="False" />
+                        <Setter Property="Opacity" Value="0.4" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
 
-              <StackPanel Grid.Column="1"
-                          Orientation="Horizontal"
-                          VerticalAlignment="Center">
-                <Button Tag="{Binding}"
-                        Click="StoreSlotButton_Click"
-                        Margin="0,0,6,0">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                      <Setter Property="Content" Value="控え移動" />
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding HasPanelContent}" Value="False">
-                          <Setter Property="IsEnabled" Value="False" />
-                          <Setter Property="Opacity" Value="0.4" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-                <Button Tag="{Binding}"
-                        Click="SlotMainActionButton_Click"
-                        MinWidth="64">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
-                      <Setter Property="Content" Value="閉じる" />
-                      <Style.Triggers>
-                        <MultiDataTrigger>
-                          <MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
-                            <Condition Binding="{Binding HasPanelContent}" Value="True" />
-                          </MultiDataTrigger.Conditions>
-                          <Setter Property="Content" Value="起動" />
-                        </MultiDataTrigger>
-                        <MultiDataTrigger>
-                          <MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
-                            <Condition Binding="{Binding HasPanelContent}" Value="False" />
-                          </MultiDataTrigger.Conditions>
-                          <Setter Property="Content" Value="新規" />
-                        </MultiDataTrigger>
-                        <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
-                          <Setter Property="Content" Value="起動中" />
-                          <Setter Property="IsEnabled" Value="False" />
-                          <Setter Property="Opacity" Value="0.5" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-              </StackPanel>
+              <!-- 2行目 Col 4: 閉じる／起動／新規（CLI ▾・控え移動 と完全同サイズ 62×26） -->
+              <Button Grid.Row="2"
+                      Grid.Column="4"
+                      Tag="{Binding}"
+                      Click="SlotMainActionButton_Click">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource SlotActionButton}">
+                    <Setter Property="Content" Value="閉じる" />
+                    <Style.Triggers>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
+                          <Condition Binding="{Binding HasPanelContent}" Value="True" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Content" Value="起動" />
+                      </MultiDataTrigger>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Missing}" />
+                          <Condition Binding="{Binding HasPanelContent}" Value="False" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Content" Value="新規" />
+                      </MultiDataTrigger>
+                      <DataTrigger Binding="{Binding WindowStatus}" Value="{x:Static models:SlotWindowStatus.Launching}">
+                        <Setter Property="Content" Value="起動中" />
+                        <Setter Property="IsEnabled" Value="False" />
+                        <Setter Property="Opacity" Value="0.5" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
             </Grid>
             </Grid>
           </Grid>
@@ -2912,6 +2925,108 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
+    <!-- 標準カードの「CLI ▾」押下時に表示する CLI 選択ポップオーバー。
+         StaysOpen=True にして再クリックでの確実なトグル開閉と、欄外クリック時の誤フォーカス防止を実現する。 -->
+    <Popup x:Name="SlotCliPickerPopup"
+           Placement="Bottom"
+           VerticalOffset="4"
+           AllowsTransparency="True"
+           StaysOpen="True"
+           PopupAnimation="Fade"
+           PreviewKeyDown="StandardPickerPopup_PreviewKeyDown">
+      <Border Width="216"
+              Padding="9,8"
+              Background="#111A15"
+              BorderBrush="#3C654D"
+              BorderThickness="1"
+              CornerRadius="9">
+        <Border.Effect>
+          <DropShadowEffect Color="#000000"
+                            BlurRadius="16"
+                            ShadowDepth="4"
+                            Opacity="0.55" />
+        </Border.Effect>
+        <StackPanel>
+          <TextBlock x:Name="SlotCliPickerTitleText"
+                     Text="CLI を選択して起動・切替"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     FontSize="10.5"
+                     FontWeight="SemiBold"
+                     Margin="2,0,0,6" />
+          <ItemsControl x:Name="SlotCliPickerItemsControl"
+                        ItemTemplate="{StaticResource CliApplicationOptionTemplate}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="2" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+              <Style TargetType="ContentPresenter">
+                <Setter Property="Margin" Value="2" />
+              </Style>
+            </ItemsControl.ItemContainerStyle>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </Popup>
+
+    <!-- 標準表示の「AIアプリ ▾」押下時に表示する AI アプリ起動ポップオーバー（CLI ポップオーバーと統一デザイン）。
+         StaysOpen=True にして再クリックでの確実なトグル開閉と、欄外クリック時の誤フォーカス防止を実現する。 -->
+    <Popup x:Name="StandardAiAppsPopup"
+           Placement="Top"
+           VerticalOffset="-4"
+           AllowsTransparency="True"
+           StaysOpen="True"
+           PopupAnimation="Fade"
+           PreviewKeyDown="StandardPickerPopup_PreviewKeyDown">
+      <Border Width="188"
+              Padding="9,8"
+              Background="#111A15"
+              BorderBrush="#3C654D"
+              BorderThickness="1"
+              CornerRadius="9">
+        <Border.Effect>
+          <DropShadowEffect Color="#000000"
+                            BlurRadius="16"
+                            ShadowDepth="4"
+                            Opacity="0.55" />
+        </Border.Effect>
+        <StackPanel>
+          <TextBlock Text="AI アプリを起動"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     FontSize="10.5"
+                     FontWeight="SemiBold"
+                     Margin="2,0,0,6" />
+          <ItemsControl x:Name="StandardAiAppsPopupItemsControl"
+                        ItemsSource="{Binding AuxiliaryApplications}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Vertical" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+              <Style TargetType="ContentPresenter">
+                <Setter Property="Margin" Value="0,2" />
+              </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="{x:Type models:LauncherApplication}">
+                <Button Content="{Binding ShortName}"
+                        Tag="{Binding}"
+                        Click="AuxiliaryApplicationButton_Click"
+                        Width="Auto"
+                        MinWidth="0"
+                        Height="28"
+                        MinHeight="28"
+                        HorizontalAlignment="Stretch"
+                        Style="{StaticResource AuxiliaryApplicationButtonStyle}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </Popup>
+
     <!-- 控え一覧。メインの 4 カードを隠さないよう、パネルの外側（画面の空きが広い側）へ
          別ウィンドウとして横付けする。上端はパネルに揃え、高さは中身に合わせる（パネルの高さには揃えない）。
          画面の下に入りきらないときだけ上へずらし、それでも入りきらないときは一覧をスクロールする。 -->
@@ -3264,14 +3379,15 @@
       </Grid>
     </Border>
 
-    <!-- AI アプリ（左寄せ）と控え一覧の開閉ボタン（右端）の行。標準・縮小表示で同じ並びにする。 -->
+    <!-- AI アプリ（左寄せ）・全ディスプレイ移動（標準のみ、控え一覧の左隣）・控え一覧の開閉ボタン（右端）の行。 -->
     <Grid x:Name="StoredPanelsRowGrid" Grid.Row="2" Margin="5,2,5,3">
-      <!-- 右列は残りの幅。標準表示は開閉ボタンを右端に「最背面」と同じ幅で置き、縮小表示は残りの幅いっぱいに広げる。 -->
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="*" />
+        <ColumnDefinition x:Name="StandardMonitorColumn" Width="*" />
+        <ColumnDefinition x:Name="StoredOverviewColumn" Width="Auto" />
       </Grid.ColumnDefinitions>
       <StackPanel x:Name="AuxiliaryApplicationsRow"
+                  Grid.Column="0"
                   Orientation="Horizontal"
                   HorizontalAlignment="Left"
                   VerticalAlignment="Center"
@@ -3305,14 +3421,76 @@
         </ItemsControl>
       </StackPanel>
 
+      <!-- 標準表示用: AI アプリを 1 ボタンへ集約し、クリックでポップオーバー展開する（縮小表示は従来の横並び行を維持）。 -->
+      <Button x:Name="StandardAiAppsPickerButton"
+              Grid.Column="0"
+              Height="28"
+              MinHeight="28"
+              Width="116"
+              Padding="10,0,8,0"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center"
+              Click="StandardAiAppsPickerButton_Click"
+              ToolTip="GPT/Codex・Claude・Antigravity2 などの AI アプリを一覧から起動します"
+              AutomationProperties.Name="AIアプリ一覧を開く"
+              Style="{StaticResource BarButton}">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock Text="✦"
+                     FontSize="11"
+                     Foreground="{StaticResource AccentBrush}"
+                     VerticalAlignment="Center"
+                     Margin="0,0,5,0" />
+          <TextBlock Text="AIアプリ"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="&#xE70D;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="9"
+                     Opacity="0.85"
+                     Margin="6,1,0,0"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
+      <!-- 全ディスプレイ移動（標準表示のみ）：控え一覧のすぐ左隣に並べ、下段の一括起動ボタンの横幅を確保する。 -->
+      <Button x:Name="ToggleMonitorButton"
+              Grid.Column="1"
+              Height="28"
+              MinHeight="28"
+              Width="128"
+              Padding="6,2"
+              Margin="8,0,6,0"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              ToolTip="全パネルをまとめて次のディスプレイへ移動します"
+              AutomationProperties.Name="全ディスプレイ移動"
+              Click="ToggleMonitorButton_Click"
+              Style="{StaticResource BarButton}">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock Text="&#xE7F4;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="12"
+                     VerticalAlignment="Center"
+                     Margin="0,1,4,0" />
+          <TextBlock Text="全ディスプレイ移動"
+                     FontSize="11.5"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
       <!-- 控え一覧をパネルの横へ引き出す／しまうボタン。矢印は一覧が出る側を向き、開いている間は戻る向きになる。 -->
       <Button x:Name="StoredOverviewToggleButton"
-              Grid.Column="1"
+              Grid.Column="2"
               Height="28"
               MinHeight="0"
               MinWidth="0"
               Padding="10,0,8,0"
-              Margin="8,0,0,0"
+              Margin="0"
               HorizontalAlignment="Right"
               VerticalAlignment="Center"
               Click="StoredOverviewButton_Click"
@@ -3336,86 +3514,116 @@
       </Button>
     </Grid>
 
-    <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,2,5,3">
+    <!-- 標準表示フッター：左から 最前面 / 最背面 / 非表示 / すべて閉じる を詰め、右端に大きく 一括起動 を配置。 -->
+    <Grid x:Name="FooterControlsGrid" Grid.Row="3" Margin="5,4,5,2">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="0.80*" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="0.80*" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="0.82*" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="1.16*" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="2.60*" />
       </Grid.ColumnDefinitions>
 
-      <Border Background="{StaticResource SurfaceAltBrush}"
-              BorderBrush="{StaticResource BorderBrushSoft}"
-              BorderThickness="1"
-              CornerRadius="8"
-              Padding="7,4"
-                Margin="0,0,5,0">
-        <TextBlock Text="{Binding Message}"
-                   Foreground="{StaticResource MutedTextBrush}"
-                   FontSize="10"
-                   VerticalAlignment="Center"
-                   TextWrapping="Wrap" />
-      </Border>
+      <Button Grid.Column="0"
+              x:Name="TopmostAllButton"
+              ToolTip="管理中ウィンドウを最前面にします"
+              AutomationProperties.Name="最前面"
+              Click="PinAllTopButton_Click"
+              Style="{StaticResource FooterBarButton}">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock Text="&#xE74A;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="0,1,4,0" />
+          <TextBlock Text="最前面"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
 
-      <StackPanel Grid.Column="1"
-                  VerticalAlignment="Center"
-                  Width="336">
-        <Grid Margin="0,0,0,4">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="4" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="4" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
+      <Button Grid.Column="2"
+              x:Name="BackmostAllButton"
+              ToolTip="管理中ウィンドウを最背面にします"
+              AutomationProperties.Name="最背面"
+              Click="SendAllBackButton_Click"
+              Style="{StaticResource FooterBarButton}">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock Text="&#xE74B;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="0,1,4,0" />
+          <TextBlock Text="最背面"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
 
-          <Button Grid.Column="0"
-                  x:Name="ToggleMonitorButton"
-                  Content="全ディスプレイ移動"
-                  ToolTip="全パネルをまとめて次のディスプレイへ移動します"
-                  Click="ToggleMonitorButton_Click"
-                  Style="{StaticResource BarButton}" />
-          <Button Grid.Column="2"
-                  x:Name="TopmostAllButton"
-                  Content="最前面"
-                  Click="PinAllTopButton_Click"
-                  Style="{StaticResource BarButton}" />
-          <Button Grid.Column="4"
-                  x:Name="BackmostAllButton"
-                  Content="最背面"
-                  Click="SendAllBackButton_Click"
-                  Style="{StaticResource BarButton}" />
-        </Grid>
+      <Button Grid.Column="4"
+              x:Name="ToggleVisibilityButton"
+              ToolTip="管理中ウィンドウの表示／非表示を切り替えます"
+              AutomationProperties.Name="非表示"
+              Click="ToggleVisibilityButton_Click"
+              Style="{StaticResource FooterBarButton}">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock x:Name="ToggleVisibilityButtonIcon"
+                     Text="&#xED1A;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="12"
+                     VerticalAlignment="Center"
+                     Margin="0,1,4,0" />
+          <TextBlock x:Name="ToggleVisibilityButtonText"
+                     Text="非表示"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
 
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="4" />
-            <ColumnDefinition Width="2*" />
-          </Grid.ColumnDefinitions>
+      <Button Grid.Column="6"
+              x:Name="CloseAllButton"
+              ToolTip="管理中のすべてのウィンドウを閉じます"
+              AutomationProperties.Name="すべて閉じる"
+              Click="CloseAllButton_Click"
+              Style="{StaticResource DangerBarButton}">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock Text="&#xE711;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="10"
+                     VerticalAlignment="Center"
+                     Margin="0,1,5,0" />
+          <TextBlock Text="すべて閉じる"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
 
-          <Button Grid.Column="0"
-                  x:Name="ToggleVisibilityButton"
-                  Content="非表示"
-                  Click="ToggleVisibilityButton_Click"
-                  Style="{StaticResource BarButton}" />
-          <Button Grid.Column="2"
-                  x:Name="CloseAllButton"
-                  Content="すべて閉じる"
-                  Click="CloseAllButton_Click"
-                  Style="{StaticResource DangerBarButton}" />
-        </Grid>
-      </StackPanel>
-    </Grid>
-
-    <!-- 下の 2 は、ウィンドウの縁（DWM の 1px の枠）を除いた見た目の下の隙間を、上の「すべて閉じる」との隙間とそろえるため。 -->
-    <Grid Grid.Row="4"
-          x:Name="ApplicationLauncherPanel"
-          Margin="5,5,5,2">
-      <Button x:Name="LaunchButton"
+      <Button Grid.Column="8"
+              x:Name="LaunchButton"
               Click="LaunchButton_Click"
               ToolTip="{Binding LaunchButtonToolTip}"
+              AutomationProperties.Name="Launch Quartet（一括起動）"
               Style="{StaticResource LaunchButtonStyle}"
               HorizontalAlignment="Stretch">
-        <TextBlock Text="{Binding LaunchButtonText}" />
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock Text="&#xE768;"
+                     FontFamily="Segoe MDL2 Assets"
+                     FontSize="12"
+                     VerticalAlignment="Center"
+                     Margin="0,1,6,0" />
+          <TextBlock Text="一括起動"
+                     VerticalAlignment="Center" />
+        </StackPanel>
       </Button>
     </Grid>
 

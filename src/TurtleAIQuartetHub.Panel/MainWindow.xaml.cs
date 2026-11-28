@@ -117,6 +117,7 @@ public partial class MainWindow : Window
     private WindowSlot? _pendingSlotInfoClear;
     private StoredPanelSlot? _pendingStoredPanelDeletion;
     private StoredPanelSlot? _selectedOverviewStoredPanel;
+    private bool _suppressSlotCardMouseUpAfterPickerDismiss;
     private bool _suppressNextOverviewTileClick;
     private bool _isStoredOverviewClosing;
     private bool _storedOverviewPrefersLeft;
@@ -191,6 +192,7 @@ public partial class MainWindow : Window
         };
         _systemMonitorTimer.Tick += SystemMonitorTimer_Tick;
         Activated += MainWindow_Activated;
+        Deactivated += MainWindow_Deactivated;
         StateChanged += MainWindow_StateChanged;
         // 押される前に、吸い込まれる先（タスクバーのこのアプリのボタン）の位置を先読みしておく。
         MinimizeButton.MouseEnter += (_, _) => PrefetchTaskbarButtonRect();
@@ -235,12 +237,75 @@ public partial class MainWindow : Window
 
     private async void AuxiliaryApplicationButton_Click(object sender, RoutedEventArgs e)
     {
+        CloseStandardAiAppsPopup();
         if (_isBusy || sender is not FrameworkElement { Tag: LauncherApplication application })
         {
             return;
         }
 
         await OpenAuxiliaryApplicationAsync(application);
+    }
+
+    private void StandardAiAppsPickerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (e.RoutedEvent is not null)
+        {
+            e.Handled = true;
+        }
+
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (StandardAiAppsPopup.IsOpen)
+        {
+            CloseStandardAiAppsPopup();
+            return;
+        }
+
+        CloseSlotCliPickerPopupOnly();
+        StandardAiAppsPopup.PlacementTarget = StandardAiAppsPickerButton;
+        StandardAiAppsPopup.IsOpen = true;
+    }
+
+    private void CloseStandardAiAppsPopup()
+    {
+        if (StandardAiAppsPopup is not null && StandardAiAppsPopup.IsOpen)
+        {
+            StandardAiAppsPopup.IsOpen = false;
+        }
+    }
+
+    private void StandardPickerPopup_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && IsAnyStandardPickerPopupOpen())
+        {
+            CloseSlotCliPickerPopup();
+            e.Handled = true;
+        }
+    }
+
+    private bool IsAnyStandardPickerPopupOpen()
+    {
+        return (SlotCliPickerPopup is not null && SlotCliPickerPopup.IsOpen)
+            || (StandardAiAppsPopup is not null && StandardAiAppsPopup.IsOpen);
+    }
+
+    private static Button? FindAncestorSlotCliPickerButton(DependencyObject? source)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is Button { Name: "SlotCliPickerButton" } button)
+            {
+                return button;
+            }
+
+            current = GetUiParent(current);
+        }
+
+        return null;
     }
 
     private async Task OpenAuxiliaryApplicationAsync(LauncherApplication application)
@@ -1730,6 +1795,13 @@ public partial class MainWindow : Window
 
     private void SlotCard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_suppressSlotCardMouseUpAfterPickerDismiss)
+        {
+            _suppressSlotCardMouseUpAfterPickerDismiss = false;
+            e.Handled = true;
+            return;
+        }
+
         if (sender is not FrameworkElement { Tag: WindowSlot slot })
         {
             return;
@@ -2884,8 +2956,49 @@ public partial class MainWindow : Window
         });
     }
 
+    private void SlotCliPickerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (e.RoutedEvent is not null)
+        {
+            e.Handled = true;
+        }
+
+        if (_isBusy || sender is not Button { Tag: WindowSlot slot } button)
+        {
+            return;
+        }
+
+        if (SlotCliPickerPopup.IsOpen && ReferenceEquals(SlotCliPickerPopup.PlacementTarget, button))
+        {
+            CloseSlotCliPickerPopupOnly();
+            return;
+        }
+
+        CloseStandardAiAppsPopup();
+        SlotCliPickerTitleText.Text = $"スロット {slot.Name} の CLI を選択";
+        SlotCliPickerItemsControl.ItemsSource = slot.CliApplicationOptions;
+        SlotCliPickerPopup.PlacementTarget = button;
+        SlotCliPickerPopup.HorizontalOffset = Math.Min(0, button.ActualWidth - 216);
+        SlotCliPickerPopup.IsOpen = true;
+    }
+
+    private void CloseSlotCliPickerPopupOnly()
+    {
+        if (SlotCliPickerPopup is not null && SlotCliPickerPopup.IsOpen)
+        {
+            SlotCliPickerPopup.IsOpen = false;
+        }
+    }
+
+    private void CloseSlotCliPickerPopup()
+    {
+        CloseSlotCliPickerPopupOnly();
+        CloseStandardAiAppsPopup();
+    }
+
     private async void SlotApplicationSwitchButton_Click(object sender, RoutedEventArgs e)
     {
+        CloseSlotCliPickerPopup();
         if (_isBusy)
         {
             return;
@@ -4627,6 +4740,7 @@ public partial class MainWindow : Window
 
         if (mode == DisplayMode.Standard)
         {
+            CloseSlotCliPickerPopup();
             StopPanelLocateEmphasis();
             ClearCompactPanelFrame();
             try
@@ -4666,8 +4780,8 @@ public partial class MainWindow : Window
         {
             ScheduleStoredOverviewAutoOpen();
         }
+        CloseSlotCliPickerPopup();
         FooterControlsGrid.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
-        ApplicationLauncherPanel.Visibility = isStandard ? Visibility.Visible : Visibility.Collapsed;
         // タイトルバーのツール群。縮小表示では、押せばすぐ外部で開く「ダウンロード」と「PR 受信箱」だけを出し、
         // モーダルを開くもの（システムモニタ・設定・ヘルプ）は標準表示だけにする。極小表示はすべて隠す。
         TitleBarToolButtonsPanel.Visibility = isMicro ? Visibility.Collapsed : Visibility.Visible;
@@ -4768,16 +4882,27 @@ public partial class MainWindow : Window
         StoredPanelsRowGrid.Margin = IsCompactMode ? new Thickness(5, 2, 5, 2) : new Thickness(5, 2, 5, 3);
         // 控え一覧の開閉ボタンは AI アプリのボタンと同じ高さにそろえる。
         StoredOverviewToggleButton.Height = IsCompactMode ? 23 : 28;
-        // 標準表示は下の「最背面」と同じ幅で右端をそろえる。縮小表示はフッターが無いので、AI アプリの右の残り幅いっぱいに広げる
-        // （左の Margin 8 が Antigravity2 との隙間になる）。
+        // 標準表示は左に「AIアプリ ▾」1 ボタン、右に「全ディスプレイ移動（128）」＋隙間（6）＋「控え一覧（106）」＝計 240 DIP として、
+        // 真下の大きな「一括起動」ボタン（約 240 DIP）と縦ラインを揃える。
+        // 縮小表示は従来の AI アプリ 3 ボタン直並べ＋残り幅いっぱいの「控え一覧」を維持する。
+        AuxiliaryApplicationsRow.Visibility = IsCompactMode ? Visibility.Visible : Visibility.Collapsed;
+        StandardAiAppsPickerButton.Visibility = IsStandardMode ? Visibility.Visible : Visibility.Collapsed;
+        ToggleMonitorButton.Visibility = IsStandardMode ? Visibility.Visible : Visibility.Collapsed;
         if (IsCompactMode)
         {
+            StandardMonitorColumn.Width = new GridLength(0);
+            StoredOverviewColumn.Width = new GridLength(1, GridUnitType.Star);
             StoredOverviewToggleButton.ClearValue(WidthProperty);
+            StoredOverviewToggleButton.Margin = new Thickness(8, 0, 0, 0);
             StoredOverviewToggleButton.HorizontalAlignment = HorizontalAlignment.Stretch;
         }
         else
         {
-            StoredOverviewToggleButton.SetBinding(WidthProperty, new System.Windows.Data.Binding(nameof(ActualWidth)) { Source = BackmostAllButton });
+            StandardMonitorColumn.Width = new GridLength(1, GridUnitType.Star);
+            StoredOverviewColumn.Width = GridLength.Auto;
+            StoredOverviewToggleButton.ClearValue(WidthProperty);
+            StoredOverviewToggleButton.Width = 106;
+            StoredOverviewToggleButton.Margin = new Thickness(0);
             StoredOverviewToggleButton.HorizontalAlignment = HorizontalAlignment.Right;
         }
         StoredOverviewToggleButton.Padding = IsCompactMode ? new Thickness(8, 0, 6, 0) : new Thickness(10, 0, 8, 0);
@@ -5013,6 +5138,7 @@ public partial class MainWindow : Window
         }
 
         ActivatePanelWindow();
+        CloseSlotCliPickerPopup();
         StopPanelLocateEmphasis();
 
         var cancellation = new CancellationTokenSource();
@@ -5181,8 +5307,14 @@ public partial class MainWindow : Window
         RepositionStoredOverview();
     }
 
+    private void MainWindow_Deactivated(object? sender, EventArgs e)
+    {
+        CloseSlotCliPickerPopup();
+    }
+
     private void MainWindow_LocationChanged(object? sender, EventArgs e)
     {
+        CloseSlotCliPickerPopup();
         SuppressPeriodicRefreshForInteractiveLayout();
         RepositionStoredOverview();
     }
@@ -5774,10 +5906,12 @@ public partial class MainWindow : Window
 
     private void UpdateVisibilityButtonVisual()
     {
-        ToggleVisibilityButton.Content = _areWindowsHidden ? "表示" : "非表示";
+        ToggleVisibilityButtonText.Text = _areWindowsHidden ? "表示" : "非表示";
+        ToggleVisibilityButtonIcon.Text = _areWindowsHidden ? "\uE890" : "\uED1A";
+        AutomationProperties.SetName(ToggleVisibilityButton, _areWindowsHidden ? "表示" : "非表示");
         ToggleVisibilityButton.Style = (Style)FindResource(_areWindowsHidden
             ? "VisibilityRestoreButtonStyle"
-            : "BarButton");
+            : "FooterBarButton");
 
         // 縮小/極小モードの円形トグルも、非表示中は標準モードの「表示」ボタンと同じ黄色にする。
         var centerButtonStyle = (Style)FindResource(_areWindowsHidden
@@ -5807,6 +5941,27 @@ public partial class MainWindow : Window
     {
         CancelInlineTitleClick();
         SuppressFocusedSlotReassertForPanelInput();
+
+        // CLI / AI アプリのポップオーバーが開いている間の欄外クリックは、ポップアップを閉じるだけにして
+        // 背後のスロットカードへクリック（フォーカス切替）が貫通しないようにする。
+        // トグルボタン自身（AIアプリ ▾ / 各カードの CLI ▾）の押下はボタンの Click へそのまま通す。
+        if (IsAnyStandardPickerPopupOpen())
+        {
+            var source = e.OriginalSource as DependencyObject;
+            var isPickerToggleButton = IsSelfOrChild(source, StandardAiAppsPickerButton)
+                || FindAncestorSlotCliPickerButton(source) is not null;
+            if (!isPickerToggleButton)
+            {
+                CloseSlotCliPickerPopup();
+                _suppressSlotCardMouseUpAfterPickerDismiss = true;
+                e.Handled = true;
+                return;
+            }
+        }
+        else
+        {
+            _suppressSlotCardMouseUpAfterPickerDismiss = false;
+        }
 
         if (Keyboard.FocusedElement is not TextBox textBox || textBox.IsReadOnly)
         {
@@ -6380,6 +6535,13 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && IsAnyStandardPickerPopupOpen())
+        {
+            CloseSlotCliPickerPopup();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && _launchStagingOverlay.IsActive)
         {
             DiagnosticLog.Write(LogLevel.Info, "Launch/close staging overlay dismissed by Escape key.");
@@ -6593,6 +6755,7 @@ public partial class MainWindow : Window
         _focusedSlotReassertCancellation?.Dispose();
         _postLaunchArrangeCancellation?.Cancel();
         _postLaunchArrangeCancellation?.Dispose();
+        CloseSlotCliPickerPopup();
         StopPanelLocateEmphasis();
         CloseStandaloneExitConfirmDialog();
         CloseStandaloneCloseAllConfirmDialog();
@@ -6825,7 +6988,6 @@ public partial class MainWindow : Window
     private void SetBusyState(bool busy)
     {
         LaunchButton.IsEnabled = !busy && HasLaunchableWorkspaceSlot();
-        ApplicationLauncherPanel.IsEnabled = !busy;
         TopmostAllButton.IsEnabled = !busy;
         BackmostAllButton.IsEnabled = !busy;
         ToggleMonitorButton.IsEnabled = !busy;
@@ -6852,6 +7014,7 @@ public partial class MainWindow : Window
         DiskCleanupConfirmOverlay.IsEnabled = !busy;
         VscodeProcessRecoveryConfirmOverlay.IsEnabled = !busy;
         AuxiliaryApplicationPanel.IsEnabled = !busy;
+        StandardAiAppsPickerButton.IsEnabled = !busy;
     }
 
     private void RefreshLaunchButtonAvailability()

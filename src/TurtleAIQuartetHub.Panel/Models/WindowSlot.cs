@@ -125,6 +125,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
             if (SetField(ref _applicationDisplayName, string.IsNullOrWhiteSpace(value) ? ApplicationId : value.Trim()))
             {
                 OnPropertyChanged(nameof(ApplicationBadgeText));
+                OnPropertyChanged(nameof(StandardCliButtonToolTip));
             }
         }
     }
@@ -137,6 +138,7 @@ public sealed class WindowSlot : INotifyPropertyChanged
             if (SetField(ref _applicationShortName, string.IsNullOrWhiteSpace(value) ? ApplicationDisplayName : value.Trim()))
             {
                 OnPropertyChanged(nameof(ApplicationBadgeText));
+                OnPropertyChanged(nameof(StandardCliButtonText));
             }
         }
     }
@@ -164,6 +166,30 @@ public sealed class WindowSlot : INotifyPropertyChanged
     public bool IsVsCodeApplication => string.Equals(ApplicationId, AppConfig.VsCodeApplicationId, StringComparison.OrdinalIgnoreCase);
 
     public bool IsAntigravityApplication => string.Equals(ApplicationId, "antigravity", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsCliApplicationSelected => !IsVsCodeApplication && !IsAntigravityApplication;
+
+    public string StandardCliButtonText
+    {
+        get
+        {
+            if (!IsCliApplicationSelected)
+            {
+                return "CLI";
+            }
+
+            if (string.Equals(ApplicationId, "antigravity-cli", StringComparison.OrdinalIgnoreCase))
+            {
+                return "AG CLI";
+            }
+
+            return string.IsNullOrWhiteSpace(ApplicationShortName) ? "CLI" : ApplicationShortName;
+        }
+    }
+
+    public string StandardCliButtonToolTip => IsCliApplicationSelected
+        ? $"選択中: {ApplicationDisplayName}（クリックで CLI 一覧を開く）"
+        : "クリックで CLI（Claude / Codex / Antigravity CLI / Grok / Copilot）を選択・起動";
 
     public string CompactIdeToggleLabel => IsVsCodeApplication ? "V" : IsAntigravityApplication ? "A" : "·";
 
@@ -1163,6 +1189,9 @@ public sealed class WindowSlot : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsCompactIdeSelected));
         OnPropertyChanged(nameof(CanToggleCompactIde));
         OnPropertyChanged(nameof(CompactIdeToggleToolTip));
+        OnPropertyChanged(nameof(IsCliApplicationSelected));
+        OnPropertyChanged(nameof(StandardCliButtonText));
+        OnPropertyChanged(nameof(StandardCliButtonToolTip));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

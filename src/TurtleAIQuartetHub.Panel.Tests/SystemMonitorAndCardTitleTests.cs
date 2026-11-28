@@ -5,7 +5,7 @@ using TurtleAIQuartetHub.Panel.Services;
 
 internal static class SystemMonitorAndCardTitleTests
 {
-    public const int Count = 22;
+    public const int Count = 23;
 
     public static void Run(List<string> failures)
     {
@@ -169,16 +169,58 @@ internal static class SystemMonitorAndCardTitleTests
         var root = doc.Root!;
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-        // 1. ウィンドウ全体サイズが 650x535 のままで圧迫・肥大化していないこと
+        // 1. ウィンドウ全体サイズが案C＋1行フッターでスリム化された 616x392 になっていること
         var widthAttr = (string?)root.Attribute("Width");
         var heightAttr = (string?)root.Attribute("Height");
         Check(
             failures,
-            "MainWindow の基準サイズ(650x535)が維持されていること",
-            widthAttr == "650" && heightAttr == "535",
+            "MainWindow の基準サイズ(616x392)が維持されていること",
+            widthAttr == "616" && heightAttr == "392",
             $"Width={widthAttr}, Height={heightAttr}");
 
-        // 2. SlotCardTemplate のタイトル TextBox が FontWeight=Bold かつ拡大フォント(16.5)になっていること
+        // 1b. 標準表示カードが案C（IDE 2種常設＋CLIポップオーバー）構成で、全ディスプレイ移動が控え一覧の左隣にあり、
+        //     フッターが1行5ボタン（最前面→最背面→非表示→すべて閉じる→大きな一括起動、メッセージ欄なし）であること
+        var cliPickerPopup = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "SlotCliPickerPopup");
+        var aiAppsPopup = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "StandardAiAppsPopup");
+        var storedRowGrid = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "StoredPanelsRowGrid");
+        var monitorInStoredRow = storedRowGrid?.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "ToggleMonitorButton");
+        var aiAppsButtonInStoredRow = storedRowGrid?.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "StandardAiAppsPickerButton");
+        var footerGrid = root.Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "FooterControlsGrid");
+        var footerButtonNames = footerGrid?.Descendants()
+            .Where(e => e.Name.LocalName == "Button")
+            .Select(e => (string?)e.Attribute(x + "Name") ?? string.Empty)
+            .ToList() ?? [];
+        var footerExpectedOrder = new[]
+        {
+            "TopmostAllButton",
+            "BackmostAllButton",
+            "ToggleVisibilityButton",
+            "CloseAllButton",
+            "LaunchButton"
+        };
+        var hasMessageBoxInFooter = footerGrid?.Descendants()
+            .Any(e => ((string?)e.Attribute("Text"))?.Contains("Message", StringComparison.Ordinal) == true) == true;
+        Check(
+            failures,
+            "標準表示が案C（CLI・AIアプリ各ポップオーバーは StaysOpen=True トグル）＋全ディスプレイ移動の上段配置＋アイコン付き1行5ボタンフッターになっていること",
+            cliPickerPopup is not null
+            && (string?)cliPickerPopup.Attribute("StaysOpen") == "True"
+            && aiAppsPopup is not null
+            && (string?)aiAppsPopup.Attribute("StaysOpen") == "True"
+            && aiAppsButtonInStoredRow is not null
+            && monitorInStoredRow is not null
+            && !hasMessageBoxInFooter
+            && footerButtonNames.SequenceEqual(footerExpectedOrder),
+            $"cliPopup={cliPickerPopup is not null}(staysOpen={(string?)cliPickerPopup?.Attribute("StaysOpen")}), aiAppsPopup={aiAppsPopup is not null}(staysOpen={(string?)aiAppsPopup?.Attribute("StaysOpen")}), aiBtn={aiAppsButtonInStoredRow is not null}, monitorInStoredRow={monitorInStoredRow is not null}, hasMsg={hasMessageBoxInFooter}, buttons=[{string.Join(", ", footerButtonNames)}]");
+
+        // 2. SlotCardTemplate のタイトル TextBox が FontWeight=Bold かつ拡大フォント(16.5)になっていること、
+        //    さらに中段・下段ボタンが単一の 3 列×2 行グリッド（SlotCardActionsGrid）で揃っていること
         var slotCardTemplate = root.Descendants()
             .FirstOrDefault(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == "SlotCardTemplate");
         Check(failures, "SlotCardTemplate が存在すること", slotCardTemplate is not null, "SlotCardTemplate");
@@ -196,6 +238,24 @@ internal static class SystemMonitorAndCardTitleTests
                 && (string?)titleTextBox.Attribute("FontSize") == "16.5"
                 && ((string?)titleTextBox.Attribute("Style"))?.Contains("InlineTitleTextBox", StringComparison.Ordinal) == true,
                 titleTextBox?.ToString() ?? "null");
+
+            var actionsGrid = slotCardTemplate.Descendants()
+                .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "SlotCardActionsGrid");
+            var rowHeights = actionsGrid?.Element(actionsGrid.Name.Namespace + "Grid.RowDefinitions")?
+                .Elements().Select(r => (string?)r.Attribute("Height")).ToList() ?? [];
+            var colWidths = actionsGrid?.Element(actionsGrid.Name.Namespace + "Grid.ColumnDefinitions")?
+                .Elements().Select(c => (string?)c.Attribute("Width")).ToList() ?? [];
+            var storeButton = actionsGrid?.Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "Button" && (string?)e.Attribute("Click") == "StoreSlotButton_Click");
+            Check(
+                failures,
+                "SlotCardActionsGrid が 3 列×2 行（高さ 26・隙間 6・CLI/控え移動/閉じる同幅 62・右寄せ）で揃っていること",
+                actionsGrid is not null
+                && rowHeights.SequenceEqual(["26", "6", "26"])
+                && colWidths.SequenceEqual(["*", "6", "*", "6", "62"])
+                && (string?)storeButton?.Attribute("Width") == "62"
+                && (string?)storeButton?.Attribute("HorizontalAlignment") == "Right",
+                $"rows=[{string.Join(",", rowHeights)}], cols=[{string.Join(",", colWidths)}], storeW={(string?)storeButton?.Attribute("Width")}, storeAlign={(string?)storeButton?.Attribute("HorizontalAlignment")}");
         }
 
         // 2b. 控え Quartet（タブと 4 枚の控えカード）は標準・縮小とも置かず、控えは一覧から選んで
@@ -240,10 +300,10 @@ internal static class SystemMonitorAndCardTitleTests
             .FirstOrDefault(e => (string?)e.Attribute(x + "Name") == "AuxiliaryApplicationsRow");
         Check(
             failures,
-            "控え一覧の開閉ボタンが AI アプリの右側にあり、一覧を開くこと",
+            "控え一覧の開閉ボタンが AI アプリの右側（右端列）にあり、一覧を開くこと",
             overviewToggleButton is not null
             && (string?)overviewToggleButton.Attribute("Click") == "StoredOverviewButton_Click"
-            && (string?)overviewToggleButton.Attribute("Grid.Column") == "1"
+            && (string?)overviewToggleButton.Attribute("Grid.Column") == "2"
             && overviewToggleButton.Parent is not null
             && ReferenceEquals(overviewToggleButton.Parent, auxiliaryRow?.Parent)
             && (string?)auxiliaryRow?.Attribute("HorizontalAlignment") == "Left",

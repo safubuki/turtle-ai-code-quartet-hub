@@ -321,8 +321,8 @@ public partial class MainWindow
                 break;
             }
             default:
-                width = _standardWindowWidth > 0 ? _standardWindowWidth : 650;
-                height = _standardWindowHeight > 0 ? _standardWindowHeight : 535;
+                width = _standardWindowWidth > 0 ? _standardWindowWidth : 616;
+                height = _standardWindowHeight > 0 ? _standardWindowHeight : 392;
                 break;
         }
 
